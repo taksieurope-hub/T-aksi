@@ -14,6 +14,13 @@ from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import bcrypt
 import jwt
+import httpx # You already have this in requirements.txt
+import base64
+
+# Load PayPal Secrets
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID")
+PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET")
+PAYPAL_API_BASE = "https://api-m.paypal.com" # Use "https://api-m.sandbox.paypal.com" for testing
 
 # Load environment variables
 ROOT_DIR = Path(__file__).parent
@@ -173,11 +180,13 @@ class RideRequest(BaseModel):
     destination_lng: Optional[float] = Field(None, alias="destinationLng")
     stops: List[StopLocation] = []
     payment_method: Optional[str] = Field("cash", alias="paymentMethod")
+    # --- NEW FIELD FOR PAYPAL ---
+    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId") 
+    # ----------------------------
     estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
     estimated_duration: Optional[int] = Field(0, alias="estimatedDuration")
     
     model_config = ConfigDict(populate_by_name=True)
-
 class TopUpRequest(BaseModel):
     amount: float = Field(gt=0)
     payment_reference: Optional[str] = None
