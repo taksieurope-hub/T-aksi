@@ -333,9 +333,9 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-2xl h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-md h-[90vh] flex flex-col p-0 gap-0">
         <style>{mapStyles}</style>
-        <DialogHeader className="p-4 bg-black/80 z-10 absolute top-0 w-full border-b border-[#00ff88]/20 flex-none">
+        <DialogHeader className="p-4 bg-black/80 z-10 w-full border-b border-[#00ff88]/20 flex-none">
           <DialogTitle className="text-[#00ff88] flex items-center">
             <MapPin className="w-5 h-5 mr-2" /> {title || "Select Location"}
           </DialogTitle>
@@ -345,12 +345,12 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         </DialogHeader>
         
         {/* Map Container - Takes available space */}
-        <div className="flex-1 w-full min-h-0 relative mt-16 mb-20">
+        <div className="flex-1 w-full min-h-[300px] relative">
           <div ref={mapRef} className="w-full h-full" />
         </div>
         
         {/* Sticky Footer */}
-        <div className="absolute bottom-0 w-full p-4 bg-black/95 border-t border-[#00ff88]/30 flex flex-col gap-3 z-20">
+        <div className="w-full p-4 bg-black border-t border-[#00ff88]/30 flex flex-col gap-3 flex-none">
             {address && (
             <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-3">
                 <p className="text-[#00ff88] text-xs font-bold uppercase">Selected Address:</p>
