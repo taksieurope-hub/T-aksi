@@ -580,7 +580,7 @@ const RiderDashboard = () => {
   const [rideHistory, setRideHistory] = useState([]);
   const [waitTime, setWaitTime] = useState(0);
 
-  // Polling Reference (Fix for multiple intervals)
+  // Polling Reference
   const pollRef = useRef(null);
   
   // Booking state
@@ -593,31 +593,25 @@ const RiderDashboard = () => {
   // Top Up State
   const [topupAmount, setTopupAmount] = useState("");
   
-  // Route info
+  // Route & Fare info
   const [routeInfo, setRouteInfo] = useState(null);
   const [fareEstimate, setFareEstimate] = useState(null);
-  
-  // Surge pricing
   const [surgeInfo, setSurgeInfo] = useState(null);
 
-  // Cleanup polling on unmount (Fix for memory leaks)
+  // Cleanup
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
-  // Load Google Maps
+  // Load Maps
   useEffect(() => {
     if (window.google) {
       setMapsLoaded(true);
       return;
     }
-    
-    if (!GOOGLE_MAPS_API_KEY) {
-      console.error("Google Maps API Key is missing!");
-      return;
-    }
+    if (!GOOGLE_MAPS_API_KEY) return;
 
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
@@ -626,7 +620,7 @@ const RiderDashboard = () => {
     document.head.appendChild(script);
   }, []);
 
-  // Live Wait Time Calculator
+  // Live Wait Time
   useEffect(() => {
       let interval;
       if (activeRide?.status === 'arrived' && activeRide.arrived_at) {
@@ -642,27 +636,21 @@ const RiderDashboard = () => {
       return () => clearInterval(interval);
   }, [activeRide]);
 
+  // Initial Fetches
   useEffect(() => {
     fetchActiveRide();
     fetchRideHistory();
     fetchSurgeStatus();
   }, []);
   
-  // Fetch surge status when pickup location changes
   useEffect(() => {
-    if (pickup.lat) {
-      fetchSurgeStatus();
-    }
+    if (pickup.lat) fetchSurgeStatus();
   }, [pickup.lat, pickup.lng]);
 
-  // Calculate route when locations change
   useEffect(() => {
-    if (mapsLoaded && pickup.lat && destination.lat) {
-      calculateRoute();
-    }
+    if (mapsLoaded && pickup.lat && destination.lat) calculateRoute();
   }, [pickup, destination, stops, mapsLoaded]);
 
-  // Update fare when route or car type or surge changes
   useEffect(() => {
     if (routeInfo) {
       const surge = surgeInfo?.multiplier || 1.0;
@@ -671,51 +659,27 @@ const RiderDashboard = () => {
     }
   }, [routeInfo, carType, stops.length, surgeInfo, waitTime]);
   
+  // --- HELPER FUNCTIONS ---
   const fetchSurgeStatus = async () => {
     try {
       const params = pickup.lat ? `?lat=${pickup.lat}&lng=${pickup.lng}` : '';
       const res = await axios.get(`${API}/surge/status${params}`);
       setSurgeInfo(res.data);
-    } catch (error) {
-      console.error("Error fetching surge:", error);
-    }
+    } catch (error) { console.error("Error fetching surge:", error); }
   };
 
   const calculateRoute = async () => {
     if (!window.google || !pickup.lat || !destination.lat) return;
-    
     const directionsService = new window.google.maps.DirectionsService();
-    
-    // Build waypoints from stops
-    const waypoints = stops
-      .filter(s => s.lat && s.lng)
-      .map(s => ({
-        location: new window.google.maps.LatLng(s.lat, s.lng),
-        stopover: true
-      }));
+    const waypoints = stops.filter(s => s.lat && s.lng).map(s => ({ location: new window.google.maps.LatLng(s.lat, s.lng), stopover: true }));
     
     directionsService.route(
-      {
-        origin: new window.google.maps.LatLng(pickup.lat, pickup.lng),
-        destination: new window.google.maps.LatLng(destination.lat, destination.lng),
-        waypoints,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-        optimizeWaypoints: false
-      },
+      { origin: new window.google.maps.LatLng(pickup.lat, pickup.lng), destination: new window.google.maps.LatLng(destination.lat, destination.lng), waypoints, travelMode: window.google.maps.TravelMode.DRIVING, optimizeWaypoints: false },
       (result, status) => {
         if (status === 'OK') {
-          let totalDistance = 0;
-          let totalDuration = 0;
-          
-          result.routes[0].legs.forEach(leg => {
-            totalDistance += leg.distance.value;
-            totalDuration += leg.duration.value;
-          });
-          
-          setRouteInfo({
-            distance: Math.round(totalDistance / 100) / 10, // km with 1 decimal
-            duration: Math.round(totalDuration / 60) // minutes
-          });
+          let totalDistance = 0; let totalDuration = 0;
+          result.routes[0].legs.forEach(leg => { totalDistance += leg.distance.value; totalDuration += leg.duration.value; });
+          setRouteInfo({ distance: Math.round(totalDistance / 100) / 10, duration: Math.round(totalDuration / 60) });
         }
       }
     );
@@ -724,192 +688,92 @@ const RiderDashboard = () => {
   const fetchActiveRide = async () => {
     try {
       const res = await axios.get(`${API}/rider/active-ride`);
-      if (res.data) {
-        setActiveRide(res.data);
-        setActiveTab("active");
-        pollRideStatus(res.data.id);
-      }
-    } catch (error) {
-      console.error("Error fetching active ride:", error);
-    }
+      if (res.data) { setActiveRide(res.data); setActiveTab("active"); pollRideStatus(res.data.id); }
+    } catch (error) { console.error("Error fetching active ride:", error); }
   };
 
   const fetchRideHistory = async () => {
-    try {
-      const res = await axios.get(`${API}/rider/history`);
-      setRideHistory(res.data.rides || []);
-    } catch (error) {
-      console.error("Error fetching history:", error);
-    }
+    try { const res = await axios.get(`${API}/rider/history`); setRideHistory(res.data.rides || []); } catch (error) { console.error("Error fetching history:", error); }
   };
 
-  const addStop = () => {
-    if (stops.length < 3) {
-      setStops([...stops, { address: "", lat: null, lng: null, order: stops.length }]);
-    } else {
-      toast.error("Maximum 3 stops allowed");
-    }
-  };
-
-  const updateStop = (index, data) => {
-    const newStops = [...stops];
-    newStops[index] = { ...newStops[index], ...data };
-    setStops(newStops);
-  };
-
-  const removeStop = (index) => {
-    setStops(stops.filter((_, i) => i !== index));
-  };
+  const addStop = () => { if (stops.length < 3) { setStops([...stops, { address: "", lat: null, lng: null, order: stops.length }]); } else { toast.error("Maximum 3 stops allowed"); } };
+  const updateStop = (index, data) => { const newStops = [...stops]; newStops[index] = { ...newStops[index], ...data }; setStops(newStops); };
+  const removeStop = (index) => { setStops(stops.filter((_, i) => i !== index)); };
 
   const handleBookRide = async (paid = false) => {
-    if (!pickup.lat || !pickup.address) {
-      toast.error("Please select pickup location");
-      return;
-    }
-    
+    if (!pickup.lat || !pickup.address) { toast.error("Please select pickup location"); return; }
     setLoading(true);
     try {
       const rideData = {
-        pickup: pickup.address,
-        pickupLat: pickup.lat,
-        pickupLng: pickup.lng,
-        destination: destination.address || null,
-        destinationLat: destination.lat,
-        destinationLng: destination.lng,
-        stops: stops.filter(s => s.lat).map((s, i) => ({
-          address: s.address,
-          lat: s.lat,
-          lng: s.lng,
-          order: i
-        })),
-        carType,
-        paymentMethod,
-        estimatedDistance: routeInfo?.distance || 5,
-        estimatedDuration: routeInfo?.duration || 15,
-        paid // Flag if paid via PayPal/Card
+        pickup: pickup.address, pickupLat: pickup.lat, pickupLng: pickup.lng,
+        destination: destination.address || null, destinationLat: destination.lat, destinationLng: destination.lng,
+        stops: stops.filter(s => s.lat).map((s, i) => ({ address: s.address, lat: s.lat, lng: s.lng, order: i })),
+        carType, paymentMethod, estimatedDistance: routeInfo?.distance || 5, estimatedDuration: routeInfo?.duration || 15, paid
       };
-      
       const res = await axios.post(`${API}/rides/request`, rideData);
-      
       toast.success("Ride requested! Searching for drivers...");
-      setActiveRide({
-        id: res.data.ride_id,
-        status: "searching",
-        estimated_fare: res.data.estimated_fare,
-        fare_breakdown: res.data.fare_breakdown
-      });
+      setActiveRide({ id: res.data.ride_id, status: "searching", estimated_fare: res.data.estimated_fare, fare_breakdown: res.data.fare_breakdown });
       setActiveTab("active");
-      
       pollRideStatus(res.data.ride_id);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to request ride");
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { toast.error(error.response?.data?.detail || "Failed to request ride"); } finally { setLoading(false); }
   };
 
   const handleWalletTopUp = async (details) => {
       const amount = parseFloat(topupAmount);
       try {
-          // In production, send details.orderID to backend to verify
           await axios.post(`${API}/rider/wallet/topup`, { amount, reference: details.orderID });
           updateUser({ ...user, wallet_balance: (user.wallet_balance || 0) + amount });
           toast.success(`Success! ₾${amount} added to wallet.`);
           setTopupAmount("");
-      } catch (e) {
-          toast.error("Top up failed");
-      }
+      } catch (e) { toast.error("Top up failed"); }
   };
 
-  // FIXED POLLING FUNCTION
   const pollRideStatus = async (rideId) => {
-    // 1. Clear existing interval
     if (pollRef.current) clearInterval(pollRef.current);
-
-    // 2. Start new interval
     pollRef.current = setInterval(async () => {
       try {
         const res = await axios.get(`${API}/rides/${rideId}`);
         setActiveRide(res.data);
-        
         if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-          
-          if (res.data.status === "completed") {
-            toast.success("Ride completed!");
-            fetchRideHistory();
-          } else if (res.data.status === "no_drivers") {
-            toast.error("No drivers available. Please try again.");
-          }
-        } else if (res.data.status === "accepted" && res.data.driver_info) {
-          // Optional: You can move this toast to a useEffect looking at status changes to avoid spam
-          // toast.success(`Driver ${res.data.driver_info.name} is coming!`);
+          clearInterval(pollRef.current); pollRef.current = null;
+          if (res.data.status === "completed") { toast.success("Ride completed!"); fetchRideHistory(); }
+          else if (res.data.status === "no_drivers") { toast.error("No drivers available. Please try again."); }
         }
-      } catch (error) {
-        // Stop polling on 404 or persistent errors
-        if (error.response?.status === 404) {
-             clearInterval(pollRef.current);
-        }
-      }
+      } catch (error) { if (error.response?.status === 404) clearInterval(pollRef.current); }
     }, 3000);
   };
 
   const handleCancelRide = async () => {
     if (!activeRide) return;
-    
-    try {
-      await axios.post(`${API}/rides/${activeRide.id}/cancel`);
-      
-      // Stop polling immediately
-      if (pollRef.current) clearInterval(pollRef.current);
-
-      toast.success("Ride cancelled");
-      setActiveRide(null);
-      setActiveTab("book");
-    } catch (error) {
-      toast.error("Failed to cancel ride");
-    }
+    try { await axios.post(`${API}/rides/${activeRide.id}/cancel`); if (pollRef.current) clearInterval(pollRef.current); toast.success("Ride cancelled"); setActiveRide(null); setActiveTab("book"); } catch (error) { toast.error("Failed to cancel ride"); }
   };
-
+  
   const handleRetryRide = async () => {
     if (!activeRide) return;
-    
     try {
-      const res = await axios.post(`${API}/rides/${activeRide.id}/retry`);
+      await axios.post(`${API}/rides/${activeRide.id}/retry`);
       toast.success("Searching for drivers again...");
-      setActiveRide(prev => ({ ...prev, status: 'searching', matching_status: 'Retrying - Searching within 3km' }));
+      setActiveRide(prev => ({ ...prev, status: 'searching' }));
       pollRideStatus(activeRide.id);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to retry ride");
-    }
+    } catch (error) { toast.error(error.response?.data?.detail || "Failed to retry ride"); }
   };
 
   const getCurrentLocation = () => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        
+        const lat = position.coords.latitude; const lng = position.coords.longitude;
         if (window.google) {
           const geocoder = new window.google.maps.Geocoder();
           geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-            if (status === 'OK' && results[0]) {
-              setPickup({
-                address: results[0].formatted_address,
-                lat,
-                lng
-              });
-              toast.success("Location detected!");
-            }
+            if (status === 'OK' && results[0]) { setPickup({ address: results[0].formatted_address, lat, lng }); toast.success("Location detected!"); }
           });
         }
       },
-      () => toast.error("Could not get location"),
-      { enableHighAccuracy: true }
+      () => toast.error("Could not get location"), { enableHighAccuracy: true }
     );
   };
 
+  // --- UI CONSTANTS ---
   const carTypes = Object.entries(PRICING_RULES).map(([key, val]) => ({
     value: key,
     label: val.name,
@@ -958,24 +822,14 @@ const RiderDashboard = () => {
       <main className="container mx-auto p-4 max-w-2xl">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid grid-cols-5 bg-black/50 border border-[#00ff88]/20 mb-6">
-            <TabsTrigger value="book" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
-              <Car className="w-4 h-4 sm:mr-2" /> Book
-            </TabsTrigger>
-            <TabsTrigger value="active" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
-              <Navigation className="w-4 h-4 sm:mr-2" /> Ride
-            </TabsTrigger>
-            <TabsTrigger value="wallet" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
-              <Wallet className="w-4 h-4 sm:mr-2" /> Pay
-            </TabsTrigger>
-            <TabsTrigger value="history" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
-              <History className="w-4 h-4 sm:mr-2" /> Hist
-            </TabsTrigger>
-            <TabsTrigger value="profile" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
-              <User className="w-4 h-4 sm:mr-2" /> Prof
-            </TabsTrigger>
+            <TabsTrigger value="book" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm"><Car className="w-4 h-4 sm:mr-2" /> Book</TabsTrigger>
+            <TabsTrigger value="active" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm"><Navigation className="w-4 h-4 sm:mr-2" /> Ride</TabsTrigger>
+            <TabsTrigger value="wallet" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm"><Wallet className="w-4 h-4 sm:mr-2" /> Pay</TabsTrigger>
+            <TabsTrigger value="history" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm"><History className="w-4 h-4 sm:mr-2" /> Hist</TabsTrigger>
+            <TabsTrigger value="profile" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm"><User className="w-4 h-4 sm:mr-2" /> Prof</TabsTrigger>
           </TabsList>
 
-          {/* Book Tab */}
+          {/* --- BOOK TAB --- */}
           <TabsContent value="book">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
               <CardHeader>
@@ -984,26 +838,11 @@ const RiderDashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                
                 {/* Pickup */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[#00ff88]">Pickup Location</Label>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-[#00d4ff] h-6"
-                      onClick={getCurrentLocation}
-                    >
-                      <Crosshair className="w-3 h-3 mr-1" /> Use My Location
-                    </Button>
-                  </div>
-                  <LocationInput
-                    value={pickup}
-                    onChange={setPickup}
-                    placeholder="Where to pick you up?"
-                    icon={MapPin}
-                    iconColor="text-[#00ff88]"
-                  />
+                    <Label className="text-[#00ff88]">Pickup</Label>
+                    <LocationInput value={pickup} onChange={setPickup} placeholder="Current Location" icon={MapPin} iconColor="text-[#00ff88]" />
                 </div>
 
                 {/* Stops */}
@@ -1011,204 +850,116 @@ const RiderDashboard = () => {
                   <div key={index} className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-yellow-400">Stop {index + 1}</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-400 h-6"
-                        onClick={() => removeStop(index)}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
+                      <Button variant="ghost" size="sm" className="text-red-400 h-6" onClick={() => removeStop(index)}><X className="w-3 h-3" /></Button>
                     </div>
-                    <LocationInput
-                      value={stop}
-                      onChange={(data) => updateStop(index, data)}
-                      placeholder={`Stop ${index + 1} address`}
-                      icon={MapPin}
-                      iconColor="text-yellow-400"
-                    />
+                    <LocationInput value={stop} onChange={(data) => updateStop(index, data)} placeholder={`Stop ${index + 1}`} icon={MapPin} iconColor="text-yellow-400" />
                   </div>
                 ))}
-
-                {/* Add Stop Button */}
                 {stops.length < 3 && (
-                  <Button
-                    variant="outline"
-                    className="w-full border-dashed border-yellow-400/30 text-yellow-400"
-                    onClick={addStop}
-                  >
-                    <Plus className="w-4 h-4 mr-2" /> Add Stop (+₾{PRICING_RULES[carType]?.stopFee.toFixed(2)})
-                  </Button>
+                   <Button variant="outline" className="w-full border-dashed border-yellow-400/30 text-yellow-400" onClick={addStop}>
+                     <Plus className="w-4 h-4 mr-2" /> Add Stop (+₾{PRICING_RULES[carType]?.stopFee.toFixed(2)})
+                   </Button>
                 )}
 
                 {/* Destination */}
                 <div className="space-y-2">
-                  <Label className="text-[#00d4ff]">Destination</Label>
-                  <LocationInput
-                    value={destination}
-                    onChange={setDestination}
-                    placeholder="Where to go?"
-                    icon={Navigation}
-                    iconColor="text-[#00d4ff]"
-                  />
+                    <Label className="text-[#00d4ff]">Destination</Label>
+                    <LocationInput value={destination} onChange={setDestination} placeholder="Where to?" icon={Navigation} iconColor="text-[#00d4ff]" />
                 </div>
-                
-                {/* Surge Pricing Banner */}
-                {surgeInfo?.is_surge && (
-                  <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500 rounded-xl p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <TrendingUp className="w-5 h-5 text-orange-400 mr-2" />
-                        <div>
-                          <p className="text-orange-400 font-bold">Surge Pricing Active</p>
-                          <p className="text-orange-300/70 text-sm">{surgeInfo.surge_reason}</p>
-                        </div>
-                      </div>
-                      <Badge className="bg-orange-500 text-black text-lg px-3 py-1">
-                        x{surgeInfo.multiplier}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-orange-300/50 mt-2">
-                      Wed 18:00-02:00 • Fri-Sat 18:00-04:00
-                    </p>
-                  </div>
-                )}
 
-                {/* Route Info */}
-                {routeInfo && (
-                  <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-4">
-                    <div className="flex justify-between items-center mb-2 text-[#00ff88]">
-                      <span className="flex items-center"><RouteIcon className="w-4 h-4 mr-1" /> Route</span>
-                      <span className="font-bold">{routeInfo.distance} km • ~{routeInfo.duration} min</span>
+                {/* Fare Breakdown */}
+                {routeInfo && fareEstimate && (
+                  <div className="bg-[#1a1a2e] border border-[#00ff88]/30 rounded-xl overflow-hidden">
+                    <div className="bg-[#00ff88]/10 p-3 flex justify-between items-center border-b border-[#00ff88]/10">
+                       <span className="text-[#00ff88] text-sm font-bold flex items-center">
+                          <TrendingUp className="w-4 h-4 mr-2" /> Fare Breakdown
+                       </span>
+                       <span className="text-white text-xs opacity-70">
+                          {routeInfo.distance}km • {routeInfo.duration}min
+                       </span>
                     </div>
-                    {fareEstimate && (
-                      <>
-                        <Separator className="bg-[#00ff88]/20 my-2" />
-                        <div className="space-y-1 text-white text-sm">
-                          <div className="flex justify-between"><span>Base</span><span>₾{fareEstimate.base.toFixed(2)}</span></div>
-                          <div className="flex justify-between"><span>Distance</span><span>₾{fareEstimate.distance.toFixed(2)}</span></div>
-                          {fareEstimate.stops > 0 && (
-                            <div className="flex justify-between text-yellow-400"><span>Stops ({stops.length})</span><span>₾{fareEstimate.stops.toFixed(2)}</span></div>
-                          )}
-                          {fareEstimate.surgeFee > 0 && (
-                            <>
-                              <div className="flex justify-between text-gray-400"><span>Subtotal</span><span>₾{fareEstimate.subtotal.toFixed(2)}</span></div>
-                              <div className="flex justify-between text-orange-400 font-semibold">
-                                <span className="flex items-center"><Zap className="w-3 h-3 mr-1" /> Surge x{fareEstimate.surgeMultiplier}</span>
-                                <span>+₾{fareEstimate.surgeFee.toFixed(2)}</span>
-                              </div>
-                            </>
-                          )}
-                          <Separator className="bg-[#00ff88]/20 my-2" />
-                          <div className="flex justify-between text-lg text-[#00ff88] font-bold">
-                            <span>Estimated Total</span>
-                            <span>₾{fareEstimate.total.toFixed(2)}</span>
+                    
+                    <div className="p-4 space-y-2 text-sm">
+                       <div className="flex justify-between text-gray-400">
+                          <span>Base Fare</span>
+                          <span>₾{fareEstimate.base.toFixed(2)}</span>
+                       </div>
+                       <div className="flex justify-between text-gray-400">
+                          <span>Mileage ({routeInfo.distance}km)</span>
+                          <span>₾{fareEstimate.distance.toFixed(2)}</span>
+                       </div>
+                       
+                       {fareEstimate.surgeFee > 0 && (
+                          <div className="flex justify-between text-orange-400 font-bold bg-orange-500/10 p-1 rounded">
+                             <span className="flex items-center"><Zap className="w-3 h-3 mr-1" /> Traffic Surcharge</span>
+                             <span>+₾{fareEstimate.surgeFee.toFixed(2)}</span>
                           </div>
-                        </div>
-                      </>
-                    )}
+                       )}
+
+                       <div className="my-2 border-t border-gray-700"></div>
+                       
+                       <div className="flex justify-between items-center">
+                          <span className="text-white font-bold">Total Estimate</span>
+                          <span className="text-[#00ff88] text-xl font-bold">₾{fareEstimate.total.toFixed(2)}</span>
+                       </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Car Type */}
-                <div className="space-y-2">
-                  <Label className="text-[#00ff88]">Vehicle Class {surgeInfo?.is_surge && <span className="text-orange-400 text-xs">(Surge x{surgeInfo.multiplier})</span>}</Label>
-                  <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                    {carTypes.map((type) => {
-                      const typeFare = routeInfo 
-                        ? calculateFare(type.value, routeInfo.distance, 0, 0, stops.length, surgeInfo?.multiplier || 1.0).total 
-                        : type.base * (surgeInfo?.multiplier || 1.0);
-                      return (
+                {/* Car Types */}
+                <div className="grid grid-cols-3 gap-2">
+                    {carTypes.map((type) => (
                         <button
-                          key={type.value}
-                          onClick={() => setCarType(type.value)}
-                          className={`p-3 rounded-xl border-2 transition-all ${
-                            carType === type.value 
-                              ? "border-[#00ff88] bg-[#00ff88]/20" 
-                              : "border-[#00ff88]/20 bg-black/30"
-                          }`}
+                            key={type.value}
+                            onClick={() => setCarType(type.value)}
+                            className={`p-2 rounded-xl border transition-all flex flex-col items-center ${
+                                carType === type.value ? "border-[#00ff88] bg-[#00ff88]/20" : "border-gray-700 bg-black"
+                            }`}
                         >
-                          <div className="text-2xl mb-1">{type.icon}</div>
-                          <div className="text-white font-medium text-xs">{type.label}</div>
-                          <div className={`text-sm ${surgeInfo?.is_surge ? 'text-orange-400' : 'text-[#00ff88]'}`}>
-                            ₾{typeFare.toFixed(2)}
-                          </div>
+                            <span className="text-xl">{type.icon}</span>
+                            <span className="text-white text-xs mt-1">{type.label}</span>
+                            <span className="text-[#00ff88] text-xs font-bold mt-1">
+                                {routeInfo ? `₾${calculateFare(type.value, routeInfo.distance, 0, 0, 0, surgeInfo?.multiplier).total.toFixed(0)}` : `₾${type.base}`}
+                            </span>
                         </button>
-                      );
-                    })}
-                  </div>
+                    ))}
                 </div>
 
                 {/* Payment */}
-                <div className="space-y-2">
-                  <Label className="text-[#00ff88]">Payment Method</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={paymentMethod === "cash" ? "default" : "outline"}
-                      onClick={() => setPaymentMethod("cash")}
-                      className={paymentMethod === "cash" ? "bg-[#00ff88] text-black w-1/2" : "border-[#00ff88]/30 text-white w-1/2"}
-                    >
-                      💵 Cash
-                    </Button>
-                    <Button
-                      variant={paymentMethod === "card" ? "default" : "outline"}
-                      onClick={() => setPaymentMethod("card")}
-                      className={paymentMethod === "card" ? "bg-[#00d4ff] text-black w-1/2" : "border-[#00d4ff]/30 text-white w-1/2"}
-                    >
-                      💳 PayPal / Card
-                    </Button>
-                  </div>
+                <div className="flex gap-2">
+                    <Button variant={paymentMethod === "cash" ? "default" : "outline"} onClick={() => setPaymentMethod("cash")} className={`w-1/2 ${paymentMethod === "cash" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}`}>💵 Cash</Button>
+                    <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")} className={`w-1/2 ${paymentMethod === "card" ? "bg-[#00d4ff] text-black" : "border-[#00d4ff]/30 text-white"}`}>💳 PayPal</Button>
                 </div>
 
-                {paymentMethod === 'cash' ? (
-                   <Button
-                    className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6"
-                    onClick={() => handleBookRide(false)}
-                    disabled={loading || !pickup.lat}
-                  >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />}
-                    Request Ride (Cash)
-                  </Button>
+                {paymentMethod === 'card' ? (
+                   <div className="mt-4 p-2 bg-white rounded-xl">
+                      <PayPalButtons 
+                         style={{ layout: "vertical", shape: "rect", borderRadius: 10 }}
+                         disabled={!fareEstimate || !pickup.lat}
+                         forceReRender={[fareEstimate?.total]}
+                         createOrder={async (data, actions) => actions.order.create({ purchase_units: [{ amount: { value: fareEstimate.total, currency_code: "USD" } }] })}
+                         onApprove={async (data, actions) => { await actions.order.capture(); handleBookRide(true); }}
+                      />
+                   </div>
                 ) : (
-                  <div className="mt-4 p-2 bg-white rounded-xl">
-                     <PayPalButtons 
-                        style={{ layout: "vertical", shape: "rect", borderRadius: 10 }}
-                        disabled={!fareEstimate || !pickup.lat}
-                        forceReRender={[fareEstimate?.total]}
-                        createOrder={async (data, actions) => {
-                           return actions.order.create({
-                               purchase_units: [{
-                                   amount: { value: fareEstimate.total, currency_code: "USD" }
-                               }]
-                           });
-                        }}
-                        onApprove={async (data, actions) => {
-                           await actions.order.capture();
-                           handleBookRide(true);
-                        }}
-                     />
-                  </div>
+                    <Button
+                       className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6 mt-4 shadow-[0_0_20px_rgba(0,255,136,0.3)] hover:shadow-[0_0_30px_rgba(0,255,136,0.5)] transition-all"
+                       onClick={() => handleBookRide(false)}
+                       disabled={loading || !pickup.lat}
+                    >
+                       {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : "REQUEST RIDE"}
+                    </Button>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Active Tab */}
+          {/* --- ACTIVE TAB --- */}
           <TabsContent value="active">
             {activeRide ? (
-              <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="text-[#00d4ff]">Active Ride</CardTitle>
-                    <Badge className={statusColors[activeRide.status]}>
-                      {activeRide.status?.replace(/_/g, ' ').toUpperCase()}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4 text-white">
-                  {/* LIVE MAP Integration */}
-                  {['accepted', 'arrived', 'in_progress'].includes(activeRide.status) && (
-                      <LiveTrackingMap 
+              <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30 overflow-hidden">
+                {['accepted', 'arrived', 'in_progress'].includes(activeRide.status) && (
+                    <LiveTrackingMap 
                         pickup={{ lat: parseFloat(activeRide.pickupLat), lng: parseFloat(activeRide.pickupLng) }}
                         destination={{ lat: parseFloat(activeRide.destinationLat || 0), lng: parseFloat(activeRide.destinationLng || 0) }}
                         driverLocation={{ 
@@ -1216,85 +967,78 @@ const RiderDashboard = () => {
                             lng: activeRide.driver_info?.lng || parseFloat(activeRide.pickupLng) + 0.005 
                         }}
                         status={activeRide.status}
-                      />
-                  )}
-
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-[#00ff88]/60 text-sm">Pickup</p>
-                      <p>{activeRide.pickup}</p>
-                    </div>
-                    {activeRide.stops?.length > 0 && (
-                      <div>
-                        <p className="text-yellow-400/60 text-sm">Stops ({activeRide.stops.length})</p>
-                        {activeRide.stops.map((stop, i) => (
-                          <p key={i} className="text-sm text-yellow-400">• {stop.address}</p>
-                        ))}
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-[#00d4ff]/60 text-sm">Destination</p>
-                      <p>{activeRide.destination || "Open Trip"}</p>
-                    </div>
+                    />
+                )}
+                
+                <CardContent className="space-y-4 pt-4">
+                  <div className="flex justify-between items-center mb-2">
+                     <Badge className={`${statusColors[activeRide.status]} text-sm px-3 py-1`}>
+                        {activeRide.status?.replace(/_/g, ' ').toUpperCase()}
+                     </Badge>
+                     <div className="text-right">
+                        <p className="text-gray-400 text-xs">OTP Code</p>
+                        <p className="text-[#00ff88] font-mono font-bold text-lg tracking-widest">{activeRide.otp || "----"}</p>
+                     </div>
                   </div>
 
                   {activeRide.driver_info && (
-                    <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="text-[#00ff88] font-semibold">Your Driver</p>
-                        
-                        {/* CHAT BUTTON */}
-                        <Sheet>
-                          <SheetTrigger asChild>
-                            <Button size="sm" className="bg-[#00ff88] text-black">
-                              <MessageSquare className="w-4 h-4 mr-1" /> Chat
-                              {activeRide.unread_messages > 0 && (
-                                <Badge className="ml-1 bg-red-500 text-white h-5 w-5 rounded-full p-0 flex items-center justify-center">
-                                  {activeRide.unread_messages}
-                                </Badge>
-                              )}
-                            </Button>
-                          </SheetTrigger>
-                          <SheetContent side="bottom" className="h-[80vh] bg-black border-t border-[#00ff88]/30">
-                            <SheetHeader>
-                              <SheetTitle className="text-[#00ff88]">
-                                Chat with {activeRide.driver_info.name}
-                              </SheetTitle>
-                            </SheetHeader>
-                            <ChatInterface 
-                              rideId={activeRide.id} 
-                              driverName={activeRide.driver_info.name}
-                            />
-                          </SheetContent>
-                        </Sheet>
-                      </div>
-                      
-                      <div className="flex items-center space-x-3">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
-                          <User className="w-7 h-7 text-black" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-lg">{activeRide.driver_info.name}</p>
-                          <p className="text-sm text-gray-400">
-                            {activeRide.driver_info.car_make} {activeRide.driver_info.car_model}
-                          </p>
-                          <p className="text-[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p>
-                        </div>
-                      </div>
+                    <div className="bg-[#1a1a2e] rounded-xl p-4 border border-[#00d4ff]/20 shadow-lg relative overflow-hidden">
+                       <div className="absolute top-0 right-0 p-2 bg-[#00d4ff]/10 rounded-bl-xl text-[#00d4ff] text-xs font-bold">
+                          {activeRide.driver_info.car_make} {activeRide.driver_info.car_model}
+                       </div>
+                       
+                       <div className="flex items-center gap-4 mt-2">
+                          <div className="w-16 h-16 rounded-full bg-gray-700 border-2 border-[#00ff88] flex items-center justify-center overflow-hidden">
+                             <User className="w-8 h-8 text-gray-400" />
+                          </div>
+                          
+                          <div className="flex-1">
+                             <h3 className="text-white font-bold text-lg">{activeRide.driver_info.name}</h3>
+                             <div className="flex items-center text-yellow-400 text-sm">
+                                <Star size={14} fill="currentColor" className="mr-1"/> 4.9 • <span className="text-gray-400 ml-1">1,240 rides</span>
+                             </div>
+                             <div className="mt-2 bg-white text-black font-mono font-bold px-3 py-1 rounded inline-block border-l-4 border-blue-600">
+                                {activeRide.driver_info.license_plate}
+                             </div>
+                          </div>
+                          
+                          <div className="flex flex-col gap-2">
+                             <Button size="icon" className="rounded-full bg-[#00ff88] text-black hover:bg-[#00ff88]/80">
+                                <Phone size={18} />
+                             </Button>
+                             
+                             <Sheet>
+                                <SheetTrigger asChild>
+                                  <Button size="icon" className="rounded-full bg-[#00d4ff] text-black hover:bg-[#00d4ff]/80 relative">
+                                    <MessageSquare size={18} />
+                                    {activeRide.unread_messages > 0 && (
+                                       <span className="absolute -top-1 -right-1 bg-red-500 w-3 h-3 rounded-full border-2 border-black"></span>
+                                    )}
+                                  </Button>
+                                </SheetTrigger>
+                                <SheetContent side="bottom" className="h-[80vh] bg-black border-t border-[#00ff88]/30">
+                                   <ChatInterface rideId={activeRide.id} driverName={activeRide.driver_info.name} />
+                                </SheetContent>
+                             </Sheet>
+                          </div>
+                       </div>
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
-                    <span className="text-[#00ff88]">Estimated Fare</span>
-                    <span className="text-2xl font-bold text-[#00ff88]">
-                      ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
-                    </span>
+                  <div className="space-y-4 px-2 relative">
+                     <div className="absolute left-[19px] top-3 bottom-8 w-0.5 bg-gray-700"></div>
+                     <div className="flex gap-3 relative z-10">
+                        <div className="w-4 h-4 rounded-full bg-[#00ff88] mt-1 shadow-[0_0_10px_#00ff88]"></div>
+                        <div><p className="text-xs text-gray-500">Pick Up</p><p className="text-white text-sm">{activeRide.pickup}</p></div>
+                     </div>
+                     <div className="flex gap-3 relative z-10">
+                        <div className="w-4 h-4 rounded-full bg-[#00d4ff] mt-1 shadow-[0_0_10px_#00d4ff]"></div>
+                        <div><p className="text-xs text-gray-500">Drop Off</p><p className="text-white text-sm">{activeRide.destination || "Set destination in ride"}</p></div>
+                     </div>
                   </div>
 
                   {["searching", "accepted"].includes(activeRide.status) && (
-                    <Button variant="destructive" className="w-full" onClick={handleCancelRide}>
-                      Cancel Ride
-                    </Button>
+                     <Button variant="ghost" className="w-full text-red-500 hover:text-red-400 hover:bg-red-500/10 mt-4" onClick={handleCancelRide}>Cancel Ride</Button>
                   )}
                 </CardContent>
               </Card>
@@ -1302,76 +1046,46 @@ const RiderDashboard = () => {
               <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12">
                 <Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" />
                 <p className="text-[#00ff88]/60 text-lg">No active ride</p>
-                <Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>
-                  Book a Ride
-                </Button>
+                <Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>Book a Ride</Button>
               </Card>
             )}
           </TabsContent>
 
-          {/* Wallet Tab - NEW */}
+          {/* --- WALLET TAB --- */}
           <TabsContent value="wallet">
-             <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
-                <CardHeader>
-                   <CardTitle className="text-[#00ff88]">My Wallet</CardTitle>
-                   <CardDescription>Top up your balance for card rides</CardDescription>
-                </CardHeader>
+              <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
+                <CardHeader><CardTitle className="text-[#00ff88]">My Wallet</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
-                   <div className="text-center p-6 bg-[#00ff88]/10 rounded-xl border border-[#00ff88]/20">
+                    <div className="text-center p-6 bg-[#00ff88]/10 rounded-xl border border-[#00ff88]/20">
                       <p className="text-sm text-gray-400 uppercase">Current Balance</p>
                       <p className="text-4xl font-bold text-[#00ff88]">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
-                   </div>
-
-                   <div className="space-y-2">
-                      <Label>Add Money (Top Up)</Label>
-                      <Input 
-                        type="number" 
-                        placeholder="Enter amount (e.g. 50)" 
-                        value={topupAmount} 
-                        onChange={(e) => setTopupAmount(e.target.value)} 
-                        className="bg-black/50 border-[#00d4ff]/30 text-white"
-                      />
-                   </div>
-
-                   {topupAmount && parseFloat(topupAmount) > 0 && (
-                      <div className="bg-white p-2 rounded-lg">
-                        <PayPalButtons 
-                            style={{ layout: "vertical", shape: "rect" }}
-                            createOrder={(data, actions) => {
-                                return actions.order.create({ purchase_units: [{ amount: { value: topupAmount, currency_code: "USD" } }] });
-                            }}
-                            onApprove={async (data, actions) => {
-                                await actions.order.capture();
-                                handleWalletTopUp(data); // Assume this function updates user balance via API
-                            }}
-                        />
-                      </div>
-                   )}
+                    </div>
+                    <div className="space-y-2">
+                       <Label>Add Money (Top Up)</Label>
+                       <Input type="number" placeholder="Enter amount" value={topupAmount} onChange={(e) => setTopupAmount(e.target.value)} className="bg-black/50 border-[#00d4ff]/30 text-white" />
+                    </div>
+                    {topupAmount && parseFloat(topupAmount) > 0 && (
+                       <div className="bg-white p-2 rounded-lg">
+                          <PayPalButtons style={{ layout: "vertical", shape: "rect" }} createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: topupAmount, currency_code: "USD" } }] })} onApprove={async (data, actions) => { await actions.order.capture(); handleWalletTopUp(data); }} />
+                       </div>
+                    )}
                 </CardContent>
-             </Card>
+              </Card>
           </TabsContent>
 
-          {/* History Tab */}
+          {/* --- HISTORY TAB --- */}
           <TabsContent value="history">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
-              <CardHeader>
-                <CardTitle className="text-[#00ff88]">Ride History</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-[#00ff88]">Ride History</CardTitle></CardHeader>
               <CardContent>
                 <ScrollArea className="h-[400px]">
                   <div className="space-y-3">
-                    {rideHistory.length === 0 && (
-                      <div className="text-center text-gray-500 py-8">No rides yet</div>
-                    )}
+                    {rideHistory.length === 0 && <div className="text-center text-gray-500 py-8">No rides yet</div>}
                     {rideHistory.map(ride => (
                       <div key={ride.id} className="bg-black/50 border border-[#00ff88]/10 rounded-xl p-4 space-y-2">
                         <div className="flex justify-between">
-                          <Badge className={statusColors[ride.status]}>
-                            {ride.status?.replace(/_/g, ' ').toUpperCase()}
-                          </Badge>
-                          <span className="text-gray-400 text-sm">
-                            {ride.created_at ? new Date(ride.created_at).toLocaleDateString() : "N/A"}
-                          </span>
+                          <Badge className={statusColors[ride.status]}>{ride.status?.replace(/_/g, ' ').toUpperCase()}</Badge>
+                          <span className="text-gray-400 text-sm">{ride.created_at ? new Date(ride.created_at).toLocaleDateString() : "N/A"}</span>
                         </div>
                         <div>
                           <p className="text-sm text-[#00ff88]/60">From: {ride.pickup}</p>
@@ -1379,9 +1093,7 @@ const RiderDashboard = () => {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-400 capitalize">{ride.carType}</span>
-                          <span className="text-[#00ff88] font-bold">
-                            ₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}
-                          </span>
+                          <span className="text-[#00ff88] font-bold">₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}</span>
                         </div>
                       </div>
                     ))}
@@ -1391,38 +1103,28 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
 
-          {/* Profile Tab */}
-          <TabsContent value="profile">
-            <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
-              <CardHeader>
-                <CardTitle className="text-[#00ff88]">Profile</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center space-x-4">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
-                    <User className="w-10 h-10 text-black" />
+           {/* --- PROFILE TAB --- */}
+           <TabsContent value="profile">
+              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
+                <CardHeader><CardTitle className="text-[#00ff88]">Profile</CardTitle></CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-10 h-10 text-black" /></div>
+                    <div><h3 className="text-2xl font-bold">{user?.name} {user?.surname}</h3><p className="text-[#00d4ff]">{user?.cellphone}</p></div>
                   </div>
-                  <div>
-                    <h3 className="text-2xl font-bold">{user?.name} {user?.surname}</h3>
-                    <p className="text-[#00d4ff]">{user?.cellphone}</p>
+                  <Separator className="bg-[#00ff88]/20" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center">
+                      <Car className="w-8 h-8 mx-auto text-[#00d4ff] mb-2" /><p className="text-2xl font-bold">{user?.total_rides || 0}</p><p className="text-[#00ff88]/60 text-sm">Total Rides</p>
+                    </div>
+                    <div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center">
+                      <Star className="w-8 h-8 mx-auto text-yellow-400 mb-2" /><p className="text-2xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p><p className="text-[#00ff88]/60 text-sm">Rating</p>
+                    </div>
                   </div>
-                </div>
-                <Separator className="bg-[#00ff88]/20" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center">
-                    <Car className="w-8 h-8 mx-auto text-[#00d4ff] mb-2" />
-                    <p className="text-2xl font-bold">{user?.total_rides || 0}</p>
-                    <p className="text-[#00ff88]/60 text-sm">Total Rides</p>
-                  </div>
-                  <div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center">
-                    <Star className="w-8 h-8 mx-auto text-yellow-400 mb-2" />
-                    <p className="text-2xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p>
-                    <p className="text-[#00ff88]/60 text-sm">Rating</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
           </TabsContent>
+
         </Tabs>
       </main>
     </div>
