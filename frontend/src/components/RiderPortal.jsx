@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import {
@@ -188,7 +188,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       if (place.geometry) {
-        // FIX: Force the input value to match the selection
+        // FIX: Force the input value to match the selection immediately
         if(inputRef.current) {
             inputRef.current.value = place.formatted_address || place.name;
         }
@@ -207,7 +207,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, [inputRef, onPlaceSelect]);
 };
 
-// Map Picker Component (FIXED LAYOUT)
+// Map Picker Component (FIXED LAYOUT - Sticky Button)
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -317,9 +317,9 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   };
   
   const handleConfirm = () => {
-    if (selectedLocation && address) {
+    if (selectedLocation) {
       onLocationSelect({
-        address,
+        address: address || "Selected Location",
         lat: selectedLocation.lat,
         lng: selectedLocation.lng
       });
@@ -333,15 +333,19 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-2xl h-[90vh] flex flex-col p-0 overflow-hidden">
+      <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-2xl h-[90vh] flex flex-col p-0 gap-0">
         <style>{mapStyles}</style>
-        <DialogHeader className="p-4 bg-black/80 z-10 absolute top-0 w-full border-b border-[#00ff88]/20">
+        <DialogHeader className="p-4 bg-black/80 z-10 absolute top-0 w-full border-b border-[#00ff88]/20 flex-none">
           <DialogTitle className="text-[#00ff88] flex items-center">
             <MapPin className="w-5 h-5 mr-2" /> {title || "Select Location"}
           </DialogTitle>
+          <DialogDescription className="text-gray-500 text-xs">
+             Drag map to pin location.
+          </DialogDescription>
         </DialogHeader>
         
-        <div className="flex-1 relative w-full h-full mt-14 mb-32">
+        {/* Map Container - Takes available space */}
+        <div className="flex-1 w-full min-h-0 relative mt-16 mb-20">
           <div ref={mapRef} className="w-full h-full" />
         </div>
         
@@ -362,7 +366,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
                 disabled={loading}
             >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Crosshair className="w-4 h-4 mr-2" />}
-                My GPS
+                GPS
             </Button>
             <Button 
                 className="flex-1 bg-[#00ff88] text-black font-bold"
