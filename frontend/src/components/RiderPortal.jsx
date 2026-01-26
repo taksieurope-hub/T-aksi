@@ -33,18 +33,47 @@ const mapStyles = `
 
 // --- UPDATED PRICING RULES (Matches your Backend) ---
 const PRICING_RULES = {
-  economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗" },
-  comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚙" },
-  suv: { name: 'SUV / XL', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐" },
-  personal: { name: 'Personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "👤" },
-  jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
+  economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
+  comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚙" },
+  suv: { name: 'SUV / XL', base: 3.90, perKm: 0.80, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚐" },
+  personal: { name: 'Personal', base: 4.00, perKm: 0.70, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "👤" },
+  jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "⚡" }
 };
 
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
+  
+  // 1. Distance
   subtotal += distanceKm * rules.perKm;
   
+  // 2. Long Distance Surcharge
+  if (distanceKm > 7) subtotal += (distanceKm - 7) * 0.15;
+  if (distanceKm > 30) subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
+  
+  // 3. Wait Time (The fix: Subtract free wait first)
+  const billableWait = Math.max(0, waitMin - rules.freeWait);
+  subtotal += billableWait * rules.perMinWait;
+  subtotal += stopWaitMin * rules.perMinWait;
+  
+  // 4. Stops
+  subtotal += numStops * rules.stopFee;
+  
+  // 5. Surge
+  const surgeFee = subtotal * (surgeMultiplier - 1.0);
+  const total = subtotal + surgeFee;
+  
+  return {
+    base: rules.base,
+    distance: Math.round(distanceKm * rules.perKm * 100) / 100,
+    wait: Math.round(billableWait * rules.perMinWait * 100) / 100, // Show wait cost
+    stops: numStops * rules.stopFee,
+    subtotal: Math.round(subtotal * 100) / 100,
+    surgeFee: Math.round(surgeFee * 100) / 100,
+    surgeMultiplier,
+    total: Math.round(total * 100) / 100
+  };
+};
   // Long distance
   if (distanceKm > 7) {
     subtotal += (distanceKm - 7) * 0.15;
@@ -52,6 +81,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   if (distanceKm > 30) {
     subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
   }
+
   
   // Wait fees
   const billableWait = Math.max(0, waitMin - rules.freeWait);
@@ -74,7 +104,6 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
     surgeMultiplier,
     total: Math.round(total * 100) / 100
   };
-};
 
 // --- CHAT COMPONENT ---
 const ChatInterface = ({ rideId, driverName, onClose }) => {
@@ -175,10 +204,9 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
   );
 };
 
-// Google Maps Autocomplete Hook (FIXED)
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
-    if (!inputRef.current || !window.google || !window.google.maps || !window.google.maps.places) return;
+    if (!inputRef.current || !window.google) return;
     
     const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: 'ge' },
@@ -188,10 +216,9 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       if (place.geometry) {
-        // FIX: Force the input value to match the selection immediately
-        if(inputRef.current) {
-            inputRef.current.value = place.formatted_address || place.name;
-        }
+        // --- THIS LINE FIXES THE BUG ---
+        if(inputRef.current) inputRef.current.value = place.formatted_address || place.name;
+        // -------------------------------
         
         onPlaceSelect({
           address: place.formatted_address || place.name,
@@ -200,10 +227,6 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
         });
       }
     });
-    
-    return () => {
-      window.google.maps.event.clearInstanceListeners(autocomplete);
-    };
   }, [inputRef, onPlaceSelect]);
 };
 
@@ -430,19 +453,28 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
   );
 };
 
-// Live Tracking Map (NEW)
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const [eta, setEta] = useState(null);
 
   useEffect(() => {
-    if (!window.google || !mapRef.current) return;
+    // SECURITY: Ensure coordinates are numbers before loading map
+    const pLat = parseFloat(pickup?.lat);
+    const pLng = parseFloat(pickup?.lng);
+    const dLat = parseFloat(driverLocation?.lat);
+    const dLng = parseFloat(driverLocation?.lng);
 
-    // 1. Initialize Map
+    // If no valid center, do not load map (prevents crash)
+    const center = (!isNaN(dLat) && !isNaN(dLng)) ? { lat: dLat, lng: dLng } 
+                 : (!isNaN(pLat) && !isNaN(pLng)) ? { lat: pLat, lng: pLng } 
+                 : null;
+
+    if (!window.google || !mapRef.current || !center) return;
+
     const map = new window.google.maps.Map(mapRef.current, {
       zoom: 15,
-      center: pickup, // Start focused on user
+      center: center,
       disableDefaultUI: true,
       styles: [
         { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
@@ -453,6 +485,49 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
         { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
       ]
     });
+
+    const renderer = new window.google.maps.DirectionsRenderer({
+      map: map,
+      suppressMarkers: false,
+      polylineOptions: { strokeColor: status === 'in_progress' ? "#00ff88" : "#00d4ff", strokeWeight: 5 }
+    });
+    directionsRendererRef.current = renderer;
+
+    // Add markers manually
+    if (!isNaN(pLat)) new window.google.maps.Marker({ position: { lat: pLat, lng: pLng }, map, icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#00ff88", fillOpacity: 1, strokeColor: "white", strokeWeight: 2 } });
+    if (destination?.lat) new window.google.maps.Marker({ position: destination, map });
+    if (!isNaN(dLat)) new window.google.maps.Marker({ position: { lat: dLat, lng: dLng }, map, label: "🚖" });
+
+  }, []); // Run once on mount
+
+  // Update Route Logic
+  useEffect(() => {
+    if (!window.google || !directionsRendererRef.current) return;
+    
+    const start = driverLocation || pickup; 
+    const end = status === 'in_progress' ? destination : pickup;
+
+    if (!start?.lat || !end?.lat) return;
+
+    const dirService = new window.google.maps.DirectionsService();
+    dirService.route(
+      { origin: start, destination: end, travelMode: window.google.maps.TravelMode.DRIVING },
+      (result, status) => {
+        if (status === "OK") {
+          directionsRendererRef.current.setDirections(result);
+          if(result.routes[0].legs[0]) setEta(result.routes[0].legs[0].duration.text);
+        }
+      }
+    );
+  }, [driverLocation, status, pickup, destination]);
+
+  return (
+    <div className="relative w-full h-[400px] rounded-xl overflow-hidden border border-[#00ff88]/30 mb-4 bg-gray-900">
+      <div ref={mapRef} className="w-full h-full" />
+      {eta && <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-3 py-1 rounded text-[#00ff88] font-bold z-10">{eta}</div>}
+    </div>
+  );
+};
 
     // 2. Setup Directions Renderer
     const directionsRenderer = new window.google.maps.DirectionsRenderer({
@@ -495,8 +570,6 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
         });
     }
 
-  }, []);
-
   // 5. Update Route
   useEffect(() => {
     if (!window.google || !directionsRendererRef.current) return;
@@ -534,7 +607,6 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
       )}
     </div>
   );
-};
 
 // Auth Component (Unchanged from your logic)
 const RiderAuth = () => {
@@ -670,6 +742,7 @@ const RiderDashboard = () => {
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [activeRide, setActiveRide] = useState(null);
   const [rideHistory, setRideHistory] = useState([]);
+  const [waitTime, setWaitTime] = useState(0);
   
   // Booking state
   const [pickup, setPickup] = useState({ address: "", lat: null, lng: null });
@@ -707,6 +780,22 @@ const RiderDashboard = () => {
     document.head.appendChild(script);
   }, []);
 
+  // Live Wait Time Calculator
+  useEffect(() => {
+      let interval;
+      if (activeRide?.status === 'arrived' && activeRide.arrived_at) {
+          const arrivalTime = new Date(activeRide.arrived_at).getTime();
+          interval = setInterval(() => {
+              const now = Date.now();
+              const diffMinutes = Math.floor((now - arrivalTime) / 60000);
+              setWaitTime(diffMinutes > 0 ? diffMinutes : 0);
+          }, 1000);
+      } else {
+          setWaitTime(0);
+      }
+      return () => clearInterval(interval);
+  }, [activeRide]);
+
   useEffect(() => {
     fetchActiveRide();
     fetchRideHistory();
@@ -731,10 +820,11 @@ const RiderDashboard = () => {
   useEffect(() => {
     if (routeInfo) {
       const surge = surgeInfo?.multiplier || 1.0;
-      const fare = calculateFare(carType, routeInfo.distance, 0, 0, stops.length, surge);
+      // FIX APPLIED HERE: Passed 'waitTime' instead of 0
+      const fare = calculateFare(carType, routeInfo.distance, waitTime, 0, stops.length, surge);
       setFareEstimate(fare);
     }
-  }, [routeInfo, carType, stops.length, surgeInfo]);
+  }, [routeInfo, carType, stops.length, surgeInfo, waitTime]); // FIX APPLIED HERE: Added waitTime dependency
   
   const fetchSurgeStatus = async () => {
     try {
