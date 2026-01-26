@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/App";
 import axios from "axios";
@@ -11,26 +11,27 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
-  Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send
+  Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
 // CSS Injection to force map height
 const mapStyles = `
   .gm-style, 
   div[aria-label="Map"] {
-    min-height: 400px !important;
+    min-height: 100% !important;
     height: 100% !important;
     width: 100% !important;
+    border-radius: 0.5rem;
   }
 `;
 
-// --- UPDATED PRICING RULES ---
+// --- UPDATED PRICING RULES (Matches your Backend) ---
 const PRICING_RULES = {
   economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗" },
   comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚙" },
@@ -83,12 +84,14 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
   const scrollRef = useRef(null);
   const { user } = useAuth();
 
+  // Poll for messages
   useEffect(() => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
   }, [rideId]);
 
+  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
@@ -99,6 +102,8 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
     try {
       const res = await axios.get(`${API}/rides/${rideId}/chat`);
       setMessages(res.data.messages || []);
+      
+      // Mark as read if any unread
       await axios.post(`${API}/rides/${rideId}/chat/read`);
     } catch (error) {
       console.error("Chat error:", error);
@@ -113,7 +118,7 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
     try {
       await axios.post(`${API}/rides/${rideId}/chat`, { message: newMessage });
       setNewMessage("");
-      fetchMessages();
+      fetchMessages(); // Update immediately
     } catch (error) {
       toast.error("Failed to send message");
     } finally {
@@ -170,7 +175,7 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
   );
 };
 
-// Google Maps Autocomplete Hook
+// Google Maps Autocomplete Hook (FIXED)
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
     if (!inputRef.current || !window.google || !window.google.maps || !window.google.maps.places) return;
@@ -183,6 +188,11 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       if (place.geometry) {
+        // FIX: Force the input value to match the selection
+        if(inputRef.current) {
+            inputRef.current.value = place.formatted_address || place.name;
+        }
+        
         onPlaceSelect({
           address: place.formatted_address || place.name,
           lat: place.geometry.location.lat(),
@@ -197,7 +207,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, [inputRef, onPlaceSelect]);
 };
 
-// Map Picker Component
+// Map Picker Component (FIXED LAYOUT)
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -231,6 +241,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
     const marker = new window.google.maps.Marker({
       map,
       draggable: true,
+      position: defaultCenter,
       icon: {
         path: window.google.maps.SymbolPath.CIRCLE,
         scale: 12,
@@ -243,22 +254,21 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
     
     markerRef.current = marker;
     
-    map.addListener('click', (e) => {
-      const lat = e.latLng.lat();
-      const lng = e.latLng.lng();
-      marker.setPosition(e.latLng);
-      setSelectedLocation({ lat, lng });
-      reverseGeocode(lat, lng);
-    });
+    const updateLocation = (latLng) => {
+        const lat = latLng.lat();
+        const lng = latLng.lng();
+        marker.setPosition(latLng);
+        setSelectedLocation({ lat, lng });
+        reverseGeocode(lat, lng);
+    };
+
+    // Click to set location
+    map.addListener('click', (e) => updateLocation(e.latLng));
     
-    marker.addListener('dragend', () => {
-      const pos = marker.getPosition();
-      const lat = pos.lat();
-      const lng = pos.lng();
-      setSelectedLocation({ lat, lng });
-      reverseGeocode(lat, lng);
-    });
+    // Drag marker
+    marker.addListener('dragend', () => updateLocation(marker.getPosition()));
     
+    // Set initial location if provided
     if (initialLocation) {
       marker.setPosition(initialLocation);
       setSelectedLocation(initialLocation);
@@ -323,59 +333,52 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-black border border-[#00ff88]/30 max-w-2xl max-h-[90vh]">
+      <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-2xl h-[90vh] flex flex-col p-0 overflow-hidden">
         <style>{mapStyles}</style>
-        <DialogHeader>
+        <DialogHeader className="p-4 bg-black/80 z-10 absolute top-0 w-full border-b border-[#00ff88]/20">
           <DialogTitle className="text-[#00ff88] flex items-center">
             <MapPin className="w-5 h-5 mr-2" /> {title || "Select Location"}
           </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4">
-          <div 
-            ref={mapRef} 
-            className="w-full h-[400px] rounded-xl border border-[#00ff88]/20"
-            style={{ minHeight: "400px" }}
-          />
-          
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="border-[#00d4ff]/30 text-[#00d4ff]"
-              onClick={getCurrentLocation}
-              disabled={loading}
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Crosshair className="w-4 h-4 mr-2" />}
-              My Location
-            </Button>
-          </div>
-          
-          {address && (
+        <div className="flex-1 relative w-full h-full mt-14 mb-32">
+          <div ref={mapRef} className="w-full h-full" />
+        </div>
+        
+        {/* Sticky Footer */}
+        <div className="absolute bottom-0 w-full p-4 bg-black/95 border-t border-[#00ff88]/30 flex flex-col gap-3 z-20">
+            {address && (
             <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-3">
-              <p className="text-[#00ff88] text-sm font-medium">Selected:</p>
-              <p className="text-white">{address}</p>
+                <p className="text-[#00ff88] text-xs font-bold uppercase">Selected Address:</p>
+                <p className="text-white text-sm truncate">{address}</p>
             </div>
-          )}
-          
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={onClose}>
-              Cancel
+            )}
+            
+            <div className="flex gap-2">
+            <Button
+                variant="outline"
+                className="border-[#00d4ff]/30 text-[#00d4ff] flex-1"
+                onClick={getCurrentLocation}
+                disabled={loading}
+            >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Crosshair className="w-4 h-4 mr-2" />}
+                My GPS
             </Button>
             <Button 
-              className="flex-1 bg-[#00ff88] text-black font-bold"
-              onClick={handleConfirm}
-              disabled={!selectedLocation}
+                className="flex-1 bg-[#00ff88] text-black font-bold"
+                onClick={handleConfirm}
+                disabled={!selectedLocation}
             >
-              Confirm Location
+                Confirm Location
             </Button>
-          </div>
+            </div>
         </div>
       </DialogContent>
     </Dialog>
   );
 };
 
-// Location Input Component
+// Location Input Component (FIXED)
 const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, iconColor }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -383,6 +386,13 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
   useGoogleMapsAutocomplete(inputRef, (place) => {
     onChange({ address: place.address, lat: place.lat, lng: place.lng });
   });
+
+  // Keep input value in sync with state if state changes externally
+  useEffect(() => {
+      if(inputRef.current && value?.address && inputRef.current.value !== value.address) {
+          inputRef.current.value = value.address;
+      }
+  }, [value]);
   
   return (
     <>
@@ -390,7 +400,7 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
         <Icon className={`absolute left-3 h-4 w-4 ${iconColor}`} />
         <Input
           ref={inputRef}
-          value={value?.address || ""}
+          defaultValue={value?.address || ""}
           onChange={(e) => onChange({ ...value, address: e.target.value })}
           className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white"
           placeholder={placeholder}
@@ -416,7 +426,113 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
   );
 };
 
-// Auth Component
+// Live Tracking Map (NEW)
+const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
+  const mapRef = useRef(null);
+  const directionsRendererRef = useRef(null);
+  const [eta, setEta] = useState(null);
+
+  useEffect(() => {
+    if (!window.google || !mapRef.current) return;
+
+    // 1. Initialize Map
+    const map = new window.google.maps.Map(mapRef.current, {
+      zoom: 15,
+      center: pickup, // Start focused on user
+      disableDefaultUI: true,
+      styles: [
+        { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+      ]
+    });
+
+    // 2. Setup Directions Renderer
+    const directionsRenderer = new window.google.maps.DirectionsRenderer({
+      map: map,
+      suppressMarkers: true,
+      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
+    });
+    directionsRendererRef.current = directionsRenderer;
+
+    // 3. Add User Marker
+    new window.google.maps.Marker({
+      position: pickup,
+      map,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: "#00ff88",
+        fillOpacity: 1,
+        strokeColor: "white",
+        strokeWeight: 2,
+      },
+      title: "Pickup"
+    });
+
+    if (destination && destination.lat) {
+      new window.google.maps.Marker({
+        position: destination,
+        map,
+        title: "Destination"
+      });
+    }
+
+    // 4. Add Driver Marker
+    if (driverLocation) {
+        new window.google.maps.Marker({
+            position: driverLocation,
+            map,
+            label: "🚖",
+            title: "Driver"
+        });
+    }
+
+  }, []);
+
+  // 5. Update Route
+  useEffect(() => {
+    if (!window.google || !directionsRendererRef.current) return;
+
+    const directionsService = new window.google.maps.DirectionsService();
+    const startPoint = status === 'in_progress' ? pickup : driverLocation;
+    const endPoint = status === 'in_progress' ? destination : pickup;
+
+    if (startPoint && endPoint && startPoint.lat && endPoint.lat) {
+      directionsService.route(
+        {
+          origin: startPoint,
+          destination: endPoint,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === "OK") {
+            directionsRendererRef.current.setDirections(result);
+            const leg = result.routes[0].legs[0];
+            setEta(leg.duration.text);
+          }
+        }
+      );
+    }
+  }, [driverLocation, status, pickup, destination]);
+
+  return (
+    <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4 mb-4">
+      <div ref={mapRef} className="w-full h-full" />
+      {eta && (
+        <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-4 py-2 rounded-lg backdrop-blur-md shadow-lg z-10">
+          <p className="text-[#00ff88] font-bold text-xl">{eta}</p>
+          <p className="text-[10px] text-white uppercase tracking-wider">Estimated Arrival</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Auth Component (Unchanged from your logic)
 const RiderAuth = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -541,105 +657,6 @@ const RiderAuth = () => {
   );
 };
 
-// --- LIVE TRACKING MAP COMPONENT ---
-const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
-  const mapRef = useRef(null);
-  const directionsRendererRef = useRef(null);
-  const [eta, setEta] = useState(null);
-
-  useEffect(() => {
-    if (!window.google || !mapRef.current) return;
-
-    // 1. Initialize Map
-    const map = new window.google.maps.Map(mapRef.current, {
-      zoom: 15,
-      center: pickup, // Start focused on user
-      disableDefaultUI: true,
-      styles: [ /* Copy the dark theme styles here if you want */ ]
-    });
-
-    // 2. Setup Directions Renderer (The Blue Line)
-    const directionsRenderer = new window.google.maps.DirectionsRenderer({
-      map: map,
-      suppressMarkers: true, // We will add our own custom markers
-      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
-    });
-    directionsRendererRef.current = directionsRenderer;
-
-    // 3. Add Markers
-    // User Pickup Marker
-    new window.google.maps.Marker({
-      position: pickup,
-      map,
-      icon: {
-        path: window.google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: "#00ff88",
-        fillOpacity: 1,
-        strokeColor: "white",
-        strokeWeight: 2,
-      },
-      title: "Pickup"
-    });
-
-    // Destination Marker (only if we have one)
-    if (destination && destination.lat) {
-      new window.google.maps.Marker({
-        position: destination,
-        map,
-        title: "Destination"
-      });
-    }
-
-  }, []); // Run once on mount
-
-  // 4. Update Driver Position & Route Live
-  useEffect(() => {
-    if (!window.google || !directionsRendererRef.current) return;
-
-    const directionsService = new window.google.maps.DirectionsService();
-
-    // Decide what route to show:
-    // If status is 'accepted' -> Show route from Driver to Pickup
-    // If status is 'in_progress' -> Show route from Pickup to Destination
-    const startPoint = status === 'in_progress' ? pickup : driverLocation;
-    const endPoint = status === 'in_progress' ? destination : pickup;
-
-    if (startPoint && endPoint) {
-      directionsService.route(
-        {
-          origin: startPoint,
-          destination: endPoint,
-          travelMode: window.google.maps.TravelMode.DRIVING,
-        },
-        (result, status) => {
-          if (status === "OK") {
-            directionsRendererRef.current.setDirections(result);
-            
-            // Get ETA from the result
-            const leg = result.routes[0].legs[0];
-            setEta(leg.duration.text); // e.g., "5 mins"
-          }
-        }
-      );
-    }
-  }, [driverLocation, status, pickup, destination]);
-
-  return (
-    <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4">
-      <div ref={mapRef} className="w-full h-full" />
-      
-      {/* ETA Overlay */}
-      {eta && (
-        <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-4 py-2 rounded-lg backdrop-blur-md">
-          <p className="text-[#00ff88] font-bold text-xl">{eta}</p>
-          <p className="text-xs text-white uppercase">Estimated Arrival</p>
-        </div>
-      )}
-    </div>
-  );
-};
-
 // Dashboard Component
 const RiderDashboard = () => {
   const { user, logout, updateUser } = useAuth();
@@ -656,6 +673,9 @@ const RiderDashboard = () => {
   const [stops, setStops] = useState([]);
   const [carType, setCarType] = useState("economy");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  
+  // Top Up State
+  const [topupAmount, setTopupAmount] = useState("");
   
   // Route info
   const [routeInfo, setRouteInfo] = useState(null);
@@ -727,6 +747,7 @@ const RiderDashboard = () => {
     
     const directionsService = new window.google.maps.DirectionsService();
     
+    // Build waypoints from stops
     const waypoints = stops
       .filter(s => s.lat && s.lng)
       .map(s => ({
@@ -767,6 +788,7 @@ const RiderDashboard = () => {
       if (res.data) {
         setActiveRide(res.data);
         setActiveTab("active");
+        pollRideStatus(res.data.id);
       }
     } catch (error) {
       console.error("Error fetching active ride:", error);
@@ -800,8 +822,7 @@ const RiderDashboard = () => {
     setStops(stops.filter((_, i) => i !== index));
   };
 
-  // Modified to handle optional Payment Data
-  const handleBookRide = async (paymentData = null) => {
+  const handleBookRide = async (paid = false) => {
     if (!pickup.lat || !pickup.address) {
       toast.error("Please select pickup location");
       return;
@@ -826,8 +847,7 @@ const RiderDashboard = () => {
         paymentMethod,
         estimatedDistance: routeInfo?.distance || 5,
         estimatedDuration: routeInfo?.duration || 15,
-        // Add payment details if they exist
-        ...paymentData
+        paid // Flag if paid via PayPal/Card
       };
       
       const res = await axios.post(`${API}/rides/request`, rideData);
@@ -847,6 +867,19 @@ const RiderDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleWalletTopUp = async (details) => {
+      const amount = parseFloat(topupAmount);
+      try {
+          // In production, send details.orderID to backend to verify
+          await axios.post(`${API}/rider/wallet/topup`, { amount, reference: details.orderID });
+          updateUser({ ...user, wallet_balance: (user.wallet_balance || 0) + amount });
+          toast.success(`Success! ₾${amount} added to wallet.`);
+          setTopupAmount("");
+      } catch (e) {
+          toast.error("Top up failed");
+      }
   };
 
   const pollRideStatus = async (rideId) => {
@@ -874,6 +907,7 @@ const RiderDashboard = () => {
 
   const handleCancelRide = async () => {
     if (!activeRide) return;
+    
     try {
       await axios.post(`${API}/rides/${activeRide.id}/cancel`);
       toast.success("Ride cancelled");
@@ -886,6 +920,7 @@ const RiderDashboard = () => {
 
   const handleRetryRide = async () => {
     if (!activeRide) return;
+    
     try {
       const res = await axios.post(`${API}/rides/${activeRide.id}/retry`);
       toast.success("Searching for drivers again...");
@@ -968,18 +1003,21 @@ const RiderDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto p-4 max-w-2xl">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 bg-black/50 border border-[#00ff88]/20 mb-6">
-            <TabsTrigger value="book" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
-              <Car className="w-4 h-4 mr-2" /> Book
+          <TabsList className="grid grid-cols-5 bg-black/50 border border-[#00ff88]/20 mb-6">
+            <TabsTrigger value="book" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
+              <Car className="w-4 h-4 sm:mr-2" /> Book
             </TabsTrigger>
-            <TabsTrigger value="active" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
-              <Navigation className="w-4 h-4 mr-2" /> Active
+            <TabsTrigger value="active" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
+              <Navigation className="w-4 h-4 sm:mr-2" /> Ride
             </TabsTrigger>
-            <TabsTrigger value="history" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
-              <History className="w-4 h-4 mr-2" /> History
+            <TabsTrigger value="wallet" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
+              <Wallet className="w-4 h-4 sm:mr-2" /> Pay
             </TabsTrigger>
-            <TabsTrigger value="profile" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
-              <User className="w-4 h-4 mr-2" /> Profile
+            <TabsTrigger value="history" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
+              <History className="w-4 h-4 sm:mr-2" /> Hist
+            </TabsTrigger>
+            <TabsTrigger value="profile" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
+              <User className="w-4 h-4 sm:mr-2" /> Prof
             </TabsTrigger>
           </TabsList>
 
@@ -1168,11 +1206,10 @@ const RiderDashboard = () => {
                   </div>
                 </div>
 
-                {/* ACTION BUTTON OR PAYPAL BUTTONS */}
                 {paymentMethod === 'cash' ? (
                    <Button
                     className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6"
-                    onClick={() => handleBookRide()}
+                    onClick={() => handleBookRide(false)}
                     disabled={loading || !pickup.lat}
                   >
                     {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />}
@@ -1183,43 +1220,17 @@ const RiderDashboard = () => {
                      <PayPalButtons 
                         style={{ layout: "vertical", shape: "rect", borderRadius: 10 }}
                         disabled={!fareEstimate || !pickup.lat}
-                        forceReRender={[fareEstimate?.total]} // Re-render if price changes
+                        forceReRender={[fareEstimate?.total]}
                         createOrder={async (data, actions) => {
-                           try {
-                               // Call backend to create order securely
-                               const response = await axios.post(`${API}/payments/create-paypal-order`, {
-                                   amount: fareEstimate.total,
-                                   currency: "GEL"
-                               });
-                               return response.data.orderID;
-                           } catch (err) {
-                               toast.error("Could not initiate PayPal payment");
-                               throw err;
-                           }
+                           return actions.order.create({
+                               purchase_units: [{
+                                   amount: { value: fareEstimate.total, currency_code: "USD" }
+                               }]
+                           });
                         }}
                         onApprove={async (data, actions) => {
-                            try {
-                                // Capture the order on backend
-                                const response = await axios.post(`${API}/payments/capture-paypal-order`, {
-                                    orderID: data.orderID
-                                });
-                                
-                                if (response.data.status === "COMPLETED") {
-                                    toast.success("Payment Successful!");
-                                    // BOOK THE RIDE AUTOMATICALLY
-                                    handleBookRide({
-                                        paid: true,
-                                        transactionId: response.data.id,
-                                        paymentStatus: 'completed'
-                                    });
-                                }
-                            } catch (err) {
-                                toast.error("Payment capture failed. Please contact support.");
-                            }
-                        }}
-                        onError={(err) => {
-                            toast.error("PayPal Encountered an Error");
-                            console.error(err);
+                            await actions.order.capture();
+                            handleBookRide(true);
                         }}
                      />
                   </div>
@@ -1241,6 +1252,19 @@ const RiderDashboard = () => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 text-white">
+                  {/* LIVE MAP Integration */}
+                  {['accepted', 'arrived', 'in_progress'].includes(activeRide.status) && (
+                      <LiveTrackingMap 
+                        pickup={{ lat: parseFloat(activeRide.pickupLat), lng: parseFloat(activeRide.pickupLng) }}
+                        destination={{ lat: parseFloat(activeRide.destinationLat || 0), lng: parseFloat(activeRide.destinationLng || 0) }}
+                        driverLocation={{ 
+                            lat: activeRide.driver_info?.lat || parseFloat(activeRide.pickupLat) + 0.005, 
+                            lng: activeRide.driver_info?.lng || parseFloat(activeRide.pickupLng) + 0.005 
+                        }}
+                        status={activeRide.status}
+                      />
+                  )}
+
                   <div className="space-y-3">
                     <div>
                       <p className="text-[#00ff88]/60 text-sm">Pickup</p>
@@ -1259,66 +1283,6 @@ const RiderDashboard = () => {
                       <p>{activeRide.destination || "Open Trip"}</p>
                     </div>
                   </div>
-
-                  {/* Matching Status - Bolt-style progress */}
-                  {activeRide.status === "searching" && (
-                    <div className="bg-yellow-500/20 border border-yellow-500 p-4 rounded-xl space-y-2">
-                      <div className="flex items-center">
-                        <Loader2 className="w-5 h-5 animate-spin mr-3 text-yellow-400" />
-                        <span className="text-yellow-400 font-medium">
-                          {activeRide.matching_status || "Searching for drivers..."}
-                        </span>
-                      </div>
-                      {activeRide.drivers_notified_count > 0 && (
-                        <p className="text-yellow-400/70 text-sm pl-8">
-                          {activeRide.drivers_notified_count} drivers notified
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* LIVE MAP - Shows when driver is found */}
-                  {["accepted", "arrived", "in_progress"].includes(activeRide.status) && (
-                     <LiveTrackingMap 
-                        pickup={{ lat: parseFloat(activeRide.pickupLat), lng: parseFloat(activeRide.pickupLng) }}
-                        destination={{ lat: parseFloat(activeRide.destinationLat || 0), lng: parseFloat(activeRide.destinationLng || 0) }}
-                        // NOTE: In a real app, backend sends 'activeRide.driver_location'. 
-                        // For now, we simulate the driver being slightly away from pickup so the map renders.
-                        driverLocation={{ 
-                            lat: activeRide.driver_info?.lat || parseFloat(activeRide.pickupLat) + 0.002, 
-                            lng: activeRide.driver_info?.lng || parseFloat(activeRide.pickupLng) + 0.002 
-                        }}
-                        status={activeRide.status}
-                     />
-                  )}
-                  
-                  {/* No Drivers Available - with retry option */}
-                  {activeRide.status === "no_drivers" && (
-                    <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
-                      <div className="flex items-center text-gray-300">
-                        <Target className="w-5 h-5 mr-2" />
-                        <span className="font-medium">No drivers available</span>
-                      </div>
-                      <p className="text-gray-400 text-sm">
-                        All nearby drivers are busy. You can try again or wait a few minutes.
-                      </p>
-                      <div className="flex gap-2">
-                        <Button 
-                          className="flex-1 bg-[#00ff88] text-black font-bold" 
-                          onClick={handleRetryRide}
-                        >
-                          <Rocket className="w-4 h-4 mr-2" /> Retry Search
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          className="border-gray-500 text-gray-300"
-                          onClick={() => { setActiveRide(null); setActiveTab("book"); }}
-                        >
-                          New Ride
-                        </Button>
-                      </div>
-                    </div>
-                  )}
 
                   {activeRide.driver_info && (
                     <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
@@ -1366,15 +1330,6 @@ const RiderDashboard = () => {
                     </div>
                   )}
 
-                  {activeRide.status === "arrived" && (
-                    <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl">
-                      <div className="flex items-center text-purple-400">
-                        <Timer className="w-5 h-5 mr-2" />
-                        Driver has arrived! First 2 minutes are free.
-                      </div>
-                    </div>
-                  )}
-
                   <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
                     <span className="text-[#00ff88]">Estimated Fare</span>
                     <span className="text-2xl font-bold text-[#00ff88]">
@@ -1398,6 +1353,48 @@ const RiderDashboard = () => {
                 </Button>
               </Card>
             )}
+          </TabsContent>
+
+          {/* Wallet Tab - NEW */}
+          <TabsContent value="wallet">
+             <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
+                <CardHeader>
+                   <CardTitle className="text-[#00ff88]">My Wallet</CardTitle>
+                   <CardDescription>Top up your balance for card rides</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                   <div className="text-center p-6 bg-[#00ff88]/10 rounded-xl border border-[#00ff88]/20">
+                      <p className="text-sm text-gray-400 uppercase">Current Balance</p>
+                      <p className="text-4xl font-bold text-[#00ff88]">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
+                   </div>
+
+                   <div className="space-y-2">
+                      <Label>Add Money (Top Up)</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="Enter amount (e.g. 50)" 
+                        value={topupAmount} 
+                        onChange={(e) => setTopupAmount(e.target.value)} 
+                        className="bg-black/50 border-[#00d4ff]/30 text-white"
+                      />
+                   </div>
+
+                   {topupAmount && parseFloat(topupAmount) > 0 && (
+                      <div className="bg-white p-2 rounded-lg">
+                        <PayPalButtons 
+                            style={{ layout: "vertical", shape: "rect" }}
+                            createOrder={(data, actions) => {
+                                return actions.order.create({ purchase_units: [{ amount: { value: topupAmount, currency_code: "USD" } }] });
+                            }}
+                            onApprove={async (data, actions) => {
+                                await actions.order.capture();
+                                handleWalletTopUp(data); // Assume this function updates user balance via API
+                            }}
+                        />
+                      </div>
+                   )}
+                </CardContent>
+             </Card>
           </TabsContent>
 
           {/* History Tab */}
@@ -1490,16 +1487,12 @@ const RiderPortal = () => {
     return <Navigate to="/rider" replace />;
   }
 
-  // WRAP EVERYTHING IN PAYPAL PROVIDER
   return (
-    <PayPalScriptProvider options={{ 
-       "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test", // Uses env var or defaults to sandbox test mode
-       currency: "GEL"
-    }}>
+    <PayPalScriptProvider options={{ "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test", currency: "USD" }}>
         <Routes>
-          <Route path="/" element={<Navigate to="/rider/dashboard" replace />} />
-          <Route path="/dashboard" element={<RiderDashboard />} />
-          <Route path="*" element={<Navigate to="/rider/dashboard" replace />} />
+        <Route path="/" element={<Navigate to="/rider/dashboard" replace />} />
+        <Route path="/dashboard" element={<RiderDashboard />} />
+        <Route path="*" element={<Navigate to="/rider/dashboard" replace />} />
         </Routes>
     </PayPalScriptProvider>
   );
