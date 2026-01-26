@@ -20,10 +20,8 @@ import {
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
-// CSS Injection to force map height
 const mapStyles = `
-  .gm-style, 
-  div[aria-label="Map"] {
+  .gm-style, div[aria-label="Map"] {
     min-height: 100% !important;
     height: 100% !important;
     width: 100% !important;
@@ -39,37 +37,27 @@ const PRICING_RULES = {
   jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
-/**
- * FIXED FARE CALCULATION
- * Merged all your loose logic blocks into one functional unit.
- */
+// --- CALCULATE FARE (FIXED BRACING) ---
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
 
-  // 1. Distance Calculation
   subtotal += distanceKm * rules.perKm;
-  
-  // 2. Long Distance Surcharges
   if (distanceKm > 7) subtotal += (distanceKm - 7) * 0.15;
   if (distanceKm > 30) subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
 
-  // 3. Wait Fees (Initial pickup wait + intermediate stop wait)
-  const billableInitialWait = Math.max(0, waitMin - rules.freeWait);
-  const totalBillableWait = billableInitialWait + stopWaitMin;
-  subtotal += totalBillableWait * rules.perMinWait;
-  
-  // 4. Stop Fees
+  const billableWait = Math.max(0, waitMin - rules.freeWait);
+  const totalWait = billableWait + stopWaitMin;
+  subtotal += totalWait * rules.perMinWait;
   subtotal += numStops * rules.stopFee;
-  
-  // 5. Surge Application
+
   const surgeFee = subtotal * (surgeMultiplier - 1.0);
   const total = subtotal + surgeFee;
-  
+
   return {
     base: rules.base,
     distance: Math.round(distanceKm * rules.perKm * 100) / 100,
-    wait: Math.round(totalBillableWait * rules.perMinWait * 100) / 100,
+    wait: Math.round(totalWait * rules.perMinWait * 100) / 100,
     stops: numStops * rules.stopFee,
     subtotal: Math.round(subtotal * 100) / 100,
     surgeFee: Math.round(surgeFee * 100) / 100,
@@ -78,8 +66,8 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// --- CHAT COMPONENT ---
-const ChatInterface = ({ rideId, driverName, onClose }) => {
+// --- CHAT INTERFACE (FIXED BRACING) ---
+const ChatInterface = ({ rideId, driverName }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -88,110 +76,53 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
 
   const fetchMessages = async () => {
     try {
-      const res = await axios.get(`${API}/rides/${rideId}/messages`);
-      setMessages(res.data || []);
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-    }
+      const res = await axios.get(`${API}/rides/${rideId}/chat`);
+      setMessages(res.data.messages || []);
+      await axios.post(`${API}/rides/${rideId}/chat/read`);
+    } catch (error) { console.error("Chat error:", error); }
   };
 
-  // Poll for messages
   useEffect(() => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
   }, [rideId]);
 
-  // Logic for sending messages and UI would follow here
-  return (
-    <div className="flex flex-col h-full bg-black">
-       {/* UI implementation goes here */}
-    </div>
-  );
-};
-
-  // Auto-scroll to bottom
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  const fetchMessages = async () => {
-    try {
-      const res = await axios.get(`${API}/rides/${rideId}/chat`);
-      setMessages(res.data.messages || []);
-      
-      // Mark as read if any unread
-      await axios.post(`${API}/rides/${rideId}/chat/read`);
-    } catch (error) {
-      console.error("Chat error:", error);
-    }
-  };
 
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
-
     setSending(true);
     try {
       await axios.post(`${API}/rides/${rideId}/chat`, { message: newMessage });
       setNewMessage("");
-      fetchMessages(); // Update immediately
-    } catch (error) {
-      toast.error("Failed to send message");
-    } finally {
-      setSending(false);
-    }
+      fetchMessages();
+    } catch (error) { toast.error("Failed to send"); }
+    finally { setSending(false); }
   };
 
   return (
     <div className="flex flex-col h-[500px]">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
-          <div className="text-center text-gray-500 mt-10">
-            <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-20" />
-            <p>Start conversation with {driverName}</p>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black">
+        {messages.map((msg) => (
+          <div key={msg.id} className={`flex ${msg.sender_id === user.id ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[80%] rounded-2xl p-3 ${msg.sender_id === user.id ? "bg-[#00ff88] text-black" : "bg-[#1a1a2e] text-white"}`}>
+              <p className="text-sm">{msg.message}</p>
+            </div>
           </div>
-        ) : (
-          messages.map((msg) => {
-            const isMe = msg.sender_id === user.id;
-            return (
-              <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                <div 
-                  className={`max-w-[80%] rounded-2xl p-3 ${
-                    isMe 
-                      ? "bg-[#00ff88] text-black rounded-tr-none" 
-                      : "bg-[#1a1a2e] border border-[#00ff88]/30 text-white rounded-tl-none"
-                  }`}
-                >
-                  <p className="text-sm">{msg.message}</p>
-                  <p className={`text-[10px] mt-1 text-right ${isMe ? "text-black/60" : "text-gray-400"}`}>
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-              </div>
-            );
-          })
-        )}
+        ))}
         <div ref={scrollRef} />
       </div>
-      
-      <div className="p-4 border-t border-[#00ff88]/20 bg-black/50">
-        <form onSubmit={sendMessage} className="flex gap-2">
-          <Input 
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
-            className="bg-[#1a1a2e] border-[#00ff88]/30 text-white"
-          />
-          <Button type="submit" size="icon" className="bg-[#00ff88] text-black" disabled={sending}>
-            <Send className="w-4 h-4" />
-          </Button>
-        </form>
-      </div>
+      <form onSubmit={sendMessage} className="p-4 border-t border-[#00ff88]/20 flex gap-2">
+        <Input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Message..." className="bg-black text-white" />
+        <Button type="submit" disabled={sending} className="bg-[#00ff88] text-black"><Send className="w-4 h-4" /></Button>
+      </form>
     </div>
   );
+};
 
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
