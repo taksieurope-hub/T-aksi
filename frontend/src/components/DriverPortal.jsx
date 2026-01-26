@@ -12,17 +12,129 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, DollarSign, Loader2,
   CheckCircle2, XCircle, AlertTriangle, Banknote, Rocket,
   ExternalLink, CreditCard, Plus, Activity, Timer, Crosshair,
-  Route as RouteIcon, Play, Square, MapPinned
+  Route as RouteIcon, Play, Square, MapPinned, MessageSquare, Send
 } from "lucide-react";
 
-const DRIVER_COMMISSION_RATE = 0.23;
-const PAYMENT_LINK = "https://egreve.bog.ge//Taksi";
-const LOCATION_UPDATE_INTERVAL = 5000; // 5 seconds
+const DRIVER_COMMISSION_RATE = 0.23; // 23%
+const MINIMUM_BALANCE_FOR_CASH = 0.00; // Hard limit: If balance < commission, cash is blocked
+const WITHDRAWAL_FEE = 1.00; // 1 GEL fee per withdrawal
+const LOCATION_UPDATE_INTERVAL = 5000;
+
+// CSS for Map
+const mapStyles = `
+  .gm-style, div[aria-label="Map"] {
+    min-height: 400px !important;
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 0.75rem;
+  }
+`;
+
+// --- CHAT COMPONENT ---
+const ChatInterface = ({ rideId, riderName, onClose }) => {
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef(null);
+  const { user } = useAuth();
+
+  // Poll for messages
+  useEffect(() => {
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(interval);
+  }, [rideId]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  const fetchMessages = async () => {
+    try {
+      const res = await axios.get(`${API}/rides/${rideId}/chat`);
+      setMessages(res.data.messages || []);
+      
+      // Mark as read if any unread
+      await axios.post(`${API}/rides/${rideId}/chat/read`);
+    } catch (error) {
+      console.error("Chat error:", error);
+    }
+  };
+
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+
+    setSending(true);
+    try {
+      await axios.post(`${API}/rides/${rideId}/chat`, { message: newMessage });
+      setNewMessage("");
+      fetchMessages(); // Update immediately
+    } catch (error) {
+      toast.error("Failed to send message");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-[500px]">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 ? (
+          <div className="text-center text-gray-500 mt-10">
+            <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-20" />
+            <p>Start conversation with {riderName}</p>
+          </div>
+        ) : (
+          messages.map((msg) => {
+            const isMe = msg.sender_id === user.id;
+            return (
+              <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                <div 
+                  className={`max-w-[80%] rounded-2xl p-3 ${
+                    isMe 
+                      ? "bg-[#00d4ff] text-black rounded-tr-none" 
+                      : "bg-[#1a1a2e] border border-[#00d4ff]/30 text-white rounded-tl-none"
+                  }`}
+                >
+                  <p className="text-sm">{msg.message}</p>
+                  <p className={`text-[10px] mt-1 text-right ${isMe ? "text-black/60" : "text-gray-400"}`}>
+                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={scrollRef} />
+      </div>
+      
+      <div className="p-4 border-t border-[#00d4ff]/20 bg-black/50">
+        <form onSubmit={sendMessage} className="flex gap-2">
+          <Input 
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="bg-[#1a1a2e] border-[#00d4ff]/30 text-white"
+          />
+          <Button type="submit" size="icon" className="bg-[#00d4ff] text-black" disabled={sending}>
+            <Send className="w-4 h-4" />
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 // Driver Auth Component
 const DriverAuth = () => {
@@ -219,12 +331,12 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
         center,
         zoom: 15,
         styles: [
-          { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-          { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-          { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-          { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-          { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
-          { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
+            { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
         ],
         disableDefaultUI: true,
         zoomControl: true
@@ -234,8 +346,8 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
         map: mapInstanceRef.current,
         suppressMarkers: false,
         polylineOptions: {
-          strokeColor: "#00ff88",
-          strokeWeight: 4
+          strokeColor: "#00d4ff",
+          strokeWeight: 6
         }
       });
     }
@@ -248,7 +360,7 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
           icon: {
             path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
             scale: 6,
-            fillColor: "#00d4ff",
+            fillColor: "#00ff88",
             fillOpacity: 1,
             strokeColor: "#ffffff",
             strokeWeight: 2,
@@ -273,17 +385,23 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
       const directionsService = new window.google.maps.DirectionsService();
       
       let destination;
-      if (activeRide.status === "accepted" || activeRide.status === "arrived") {
-        // Navigate to pickup
-        destination = { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng };
+      let origin = { lat: driverLocation.lat, lng: driverLocation.lng };
+
+      if (activeRide.status === "accepted") {
+        // Navigate Driver -> Pickup
+        destination = { lat: parseFloat(activeRide.pickupLat), lng: parseFloat(activeRide.pickupLng) };
+      } else if (activeRide.status === "arrived") {
+        // Driver is at pickup, show route to destination
+         destination = { lat: parseFloat(activeRide.destinationLat), lng: parseFloat(activeRide.destinationLng) };
+         origin = { lat: parseFloat(activeRide.pickupLat), lng: parseFloat(activeRide.pickupLng) };
       } else if (activeRide.status === "in_progress") {
-        // Navigate to destination or next stop
-        destination = { lat: activeRide.destination_lat, lng: activeRide.destination_lng };
+        // Navigate Driver (moving) -> Destination
+        destination = { lat: parseFloat(activeRide.destinationLat), lng: parseFloat(activeRide.destinationLng) };
       }
       
       if (destination && destination.lat) {
         directionsService.route({
-          origin: new window.google.maps.LatLng(driverLocation.lat, driverLocation.lng),
+          origin: new window.google.maps.LatLng(origin.lat, origin.lng),
           destination: new window.google.maps.LatLng(destination.lat, destination.lng),
           travelMode: window.google.maps.TravelMode.DRIVING
         }, (result, status) => {
@@ -329,7 +447,6 @@ const DriverDashboard = () => {
   
   // Top-up
   const [topupAmount, setTopupAmount] = useState("");
-  const [topupReference, setTopupReference] = useState("");
   
   // Withdrawal
   const [withdrawalData, setWithdrawalData] = useState({ amount: "", bank_details: "" });
@@ -345,6 +462,11 @@ const DriverDashboard = () => {
       return;
     }
     
+    if (!GOOGLE_MAPS_API_KEY) {
+      console.error("Google Maps API Key is missing!");
+      return;
+    }
+
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
     script.async = true;
@@ -504,13 +626,16 @@ const DriverDashboard = () => {
     }
   };
 
-  const handleAcceptRide = async (rideId, estimatedFare) => {
+  const handleAcceptRide = async (rideId, estimatedFare, paymentMethod) => {
     const commission = estimatedFare * DRIVER_COMMISSION_RATE;
-    
-    if (balance < commission) {
-      toast.error(`Insufficient balance! Need ₾${commission.toFixed(2)}`);
-      setActiveTab("earnings");
-      return;
+    const finalBalance = balance - commission;
+
+    // SMART FILTERING LOGIC
+    // If it's a cash ride, and after commission they would have less than 0, BLOCK IT.
+    if (paymentMethod === 'cash' && finalBalance < 0) {
+        toast.error("Insufficient balance for Cash order commission.");
+        setActiveTab("earnings");
+        return;
     }
     
     setLoading(true);
@@ -581,44 +706,37 @@ const DriverDashboard = () => {
     }
   };
 
-  const handleRequestTopup = async () => {
-    if (!topupAmount || parseFloat(topupAmount) <= 0) {
-      toast.error("Please enter a valid amount");
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      const res = await axios.post(`${API}/driver/topup/request`, {
-        amount: parseFloat(topupAmount),
-        payment_reference: topupReference
-      });
-      
-      toast.success(res.data.message);
-      setTopupAmount("");
-      setTopupReference("");
-      window.open(PAYMENT_LINK, "_blank");
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to request top-up");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // WITHDRAWAL LOGIC WITH FEE
   const handleWithdrawal = async () => {
-    if (!withdrawalData.amount || !withdrawalData.bank_details) {
+    const amount = parseFloat(withdrawalData.amount);
+    if (!amount || !withdrawalData.bank_details) {
       toast.error("Please fill all fields");
       return;
+    }
+
+    const totalDeduction = amount + WITHDRAWAL_FEE;
+
+    if (balance < totalDeduction) {
+        toast.error(`Insufficient balance. You need ₾${totalDeduction.toFixed(2)} (incl. 1₾ fee)`);
+        return;
     }
     
     setLoading(true);
     try {
       await axios.post(`${API}/driver/withdraw`, {
-        amount: parseFloat(withdrawalData.amount),
+        amount: amount, // Backend should handle fee deduction if logic is there, or we check here
         bank_details: withdrawalData.bank_details
       });
+      // Simulating immediate client update for fee
+      updateUser({
+          ...user,
+          earnings: {
+              ...user.earnings,
+              balance: balance - totalDeduction
+          }
+      });
       
-      toast.success("Withdrawal request submitted!");
+      toast.success(`Withdrawal requested! ₾${WITHDRAWAL_FEE.toFixed(2)} fee deducted.`);
       setWithdrawalData({ amount: "", bank_details: "" });
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to request withdrawal");
@@ -645,7 +763,7 @@ const DriverDashboard = () => {
 
   return (
     <div className="min-h-screen bg-black">
-      {/* Header */}
+        <style>{mapStyles}</style>
       <header className="bg-black/50 backdrop-blur-xl border-b border-[#00d4ff]/20 p-4 sticky top-0 z-50">
         <div className="container mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -658,11 +776,12 @@ const DriverDashboard = () => {
                 <Badge className={statusColors[registrationStatus] || "bg-gray-500"}>
                   {registrationStatus?.replace(/_/g, " ").toUpperCase()}
                 </Badge>
-                <span className="text-[#00ff88] text-sm font-bold">₾{balance.toFixed(2)}</span>
+                <span className={`text-sm font-bold ${balance < 5 ? 'text-red-500' : 'text-[#00ff88]'}`}>
+                    ₾{balance.toFixed(2)}
+                </span>
               </div>
             </div>
           </div>
-          
           <div className="flex items-center space-x-4">
             {registrationStatus === "approved" && (
               <div className="flex items-center space-x-2">
@@ -676,9 +795,6 @@ const DriverDashboard = () => {
                 />
               </div>
             )}
-            <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={() => navigate("/")}>
-              <Home className="w-5 h-5" />
-            </Button>
             <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={logout}>
               <LogOut className="w-5 h-5" />
             </Button>
@@ -698,12 +814,12 @@ const DriverDashboard = () => {
       )}
 
       {/* Balance Warning */}
-      {balance < 5 && registrationStatus === "approved" && (
+      {balance < MINIMUM_BALANCE_FOR_CASH && registrationStatus === "approved" && (
         <div className="bg-yellow-500/20 border-b border-yellow-500 px-4 py-3">
           <div className="container mx-auto flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-5 h-5 text-yellow-500" />
-              <span className="text-yellow-400">Low balance! Top up to accept rides.</span>
+              <span className="text-yellow-400 text-sm">Low balance. Cash orders restricted.</span>
             </div>
             <Button size="sm" onClick={() => setActiveTab("earnings")} className="bg-yellow-500 text-black">
               Top Up
@@ -753,7 +869,34 @@ const DriverDashboard = () => {
 
                   {/* Ride Details */}
                   <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                    <div className="space-y-3">
+                    <div className="flex justify-between items-start mb-2">
+                        <p className="text-[#00ff88] font-bold">Rider</p>
+                        <Sheet>
+                          <SheetTrigger asChild>
+                            <Button size="sm" className="bg-[#00d4ff] text-black">
+                              <MessageSquare className="w-4 h-4 mr-1" /> Chat
+                              {activeRide.unread_messages > 0 && (
+                                <Badge className="ml-1 bg-red-500 text-white h-5 w-5 rounded-full p-0 flex items-center justify-center">
+                                  {activeRide.unread_messages}
+                                </Badge>
+                              )}
+                            </Button>
+                          </SheetTrigger>
+                          <SheetContent side="bottom" className="h-[80vh] bg-black border-t border-[#00d4ff]/30">
+                            <SheetHeader>
+                              <SheetTitle className="text-[#00d4ff]">
+                                Chat with Rider
+                              </SheetTitle>
+                            </SheetHeader>
+                            <ChatInterface 
+                              rideId={activeRide.id} 
+                              riderName={activeRide.rider_name || "Rider"}
+                            />
+                          </SheetContent>
+                        </Sheet>
+                    </div>
+                    
+                    <div className="space-y-3 mt-4">
                       <div className="flex items-start">
                         <MapPin className="w-5 h-5 text-[#00ff88] mr-2 mt-0.5" />
                         <div>
@@ -761,18 +904,6 @@ const DriverDashboard = () => {
                           <p className="font-medium">{activeRide.pickup}</p>
                         </div>
                       </div>
-                      
-                      {activeRide.stops?.length > 0 && (
-                        <div className="flex items-start">
-                          <MapPinned className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" />
-                          <div>
-                            <p className="text-yellow-400/60 text-xs">STOPS ({activeRide.stops.length})</p>
-                            {activeRide.stops.map((stop, i) => (
-                              <p key={i} className="text-sm text-yellow-400">• {stop.address}</p>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                       
                       <div className="flex items-start">
                         <Navigation className="w-5 h-5 text-[#00d4ff] mr-2 mt-0.5" />
@@ -783,26 +914,6 @@ const DriverDashboard = () => {
                       </div>
                     </div>
                   </div>
-
-                  {/* Live Tracking Stats */}
-                  {(activeRide.status === "arrived" || activeRide.status === "in_progress") && (
-                    <div className="grid grid-cols-2 gap-4">
-                      {activeRide.status === "arrived" && (
-                        <div className="bg-purple-500/20 border border-purple-500 rounded-xl p-4 text-center">
-                          <Timer className="w-6 h-6 mx-auto text-purple-400 mb-1" />
-                          <p className="text-2xl font-bold text-purple-400">{waitTimer} min</p>
-                          <p className="text-xs text-purple-400/70">Wait Time (2 free)</p>
-                        </div>
-                      )}
-                      {activeRide.status === "in_progress" && (
-                        <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center">
-                          <RouteIcon className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
-                          <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(1)} km</p>
-                          <p className="text-xs text-[#00ff88]/70">Distance Traveled</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
 
                   {/* Fare */}
                   <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
@@ -846,31 +957,8 @@ const DriverDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-            ) : registrationStatus !== "approved" ? (
-              <Card className="bg-black/60 backdrop-blur-xl border border-yellow-500/30 text-center py-12">
-                <AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
-                <p className="text-yellow-400 text-lg font-semibold">Account Pending</p>
-                <p className="text-gray-500 mt-2">
-                  {registrationStatus === "pending_vehicle" 
-                    ? "Please register your vehicle" 
-                    : "Under review"}
-                </p>
-                {registrationStatus === "pending_vehicle" && (
-                  <Button className="mt-4" onClick={() => setActiveTab("vehicle")}>
-                    Register Vehicle
-                  </Button>
-                )}
-              </Card>
-            ) : !isOnline ? (
-              <Card className="bg-black/60 backdrop-blur-xl border border-gray-500/30 text-center py-12">
-                <Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" />
-                <p className="text-gray-400 text-lg">You are offline</p>
-                <Button className="mt-4 bg-[#00ff88] text-black" onClick={() => handleToggleOnline(true)}>
-                  Go Online
-                </Button>
-              </Card>
             ) : availableRides.length === 0 ? (
-              <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30 text-center py-12">
+               <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30 text-center py-12">
                 <Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" />
                 <p className="text-[#00d4ff]/70 text-lg">Searching for rides...</p>
               </Card>
@@ -878,7 +966,8 @@ const DriverDashboard = () => {
               <div className="space-y-4">
                 {availableRides.map(ride => {
                   const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
-                  const canAccept = balance >= commission;
+                  // Allow accept if: Method is NOT cash OR Balance covers commission
+                  const canAccept = (ride.payment_method !== 'cash') || (balance >= commission);
                   
                   return (
                     <Card key={ride.id} className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
@@ -886,41 +975,29 @@ const DriverDashboard = () => {
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex-1">
                             <p className="text-[#00ff88] font-semibold">{ride.pickup}</p>
-                            {ride.stops?.length > 0 && (
-                              <p className="text-yellow-400/70 text-sm">+{ride.stops.length} stops</p>
-                            )}
                             <p className="text-[#00d4ff]/70 text-sm">→ {ride.destination || "Open"}</p>
+                            <div className="flex gap-2 mt-1">
+                                {ride.payment_method === 'cash' ? (
+                                    <Badge variant="outline" className="text-yellow-400 border-yellow-400">💵 Cash</Badge>
+                                ) : (
+                                    <Badge variant="outline" className="text-[#00d4ff] border-[#00d4ff]">💳 Card</Badge>
+                                )}
+                            </div>
                           </div>
                           <div className="text-right">
                             <p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
                             <p className="text-xs text-gray-500">Comm: ₾{commission.toFixed(2)}</p>
                           </div>
                         </div>
-                        
-                        {ride.distance_to_pickup !== undefined && (
-                          <div className="flex items-center text-sm text-gray-400 mb-3">
-                            <MapPin className="w-3 h-3 mr-1" />
-                            {ride.distance_to_pickup.toFixed(1)} km away
-                          </div>
-                        )}
-                        
                         <div className="flex gap-2">
                           <Button
                             className="flex-1 bg-[#00ff88] text-black font-bold h-12"
-                            onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}
+                            onClick={() => handleAcceptRide(ride.id, ride.estimated_fare, ride.payment_method)}
                             disabled={loading || !canAccept}
                           >
-                            {canAccept ? (
-                              <><CheckCircle2 className="w-4 h-4 mr-2" /> Accept</>
-                            ) : (
-                              "Low Balance"
-                            )}
+                            {canAccept ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Accept</> : "Low Balance (Card Only)"}
                           </Button>
-                          <Button
-                            variant="outline"
-                            className="border-red-500 text-red-500 h-12"
-                            onClick={() => handleDeclineRide(ride.id)}
-                          >
+                          <Button variant="outline" className="border-red-500 text-red-500 h-12" onClick={() => handleDeclineRide(ride.id)}>
                             <XCircle className="w-5 h-5" />
                           </Button>
                         </div>
@@ -932,8 +1009,108 @@ const DriverDashboard = () => {
             )}
           </TabsContent>
 
-          {/* Nearby Rides Tab - Discover rides in your area */}
-          <TabsContent value="nearby">
+          {/* Earnings Tab with PayPal Top Up */}
+          <TabsContent value="earnings">
+            <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="bg-black/60 border border-[#00ff88]/30 p-4 text-center">
+                    <p className="text-xs text-gray-500 uppercase">Balance</p>
+                    <p className="text-2xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
+                  </Card>
+                  <Card className="bg-black/60 border border-red-500/30 p-4 text-center">
+                    <p className="text-xs text-gray-500 uppercase">Withdrawn</p>
+                    <p className="text-2xl font-bold text-red-400">₾{(user?.earnings?.total_withdrawn || 0).toFixed(0)}</p>
+                  </Card>
+                </div>
+
+                {/* PAYPAL TOP UP */}
+                <Card className="bg-black/60 border border-[#00ff88]/30">
+                  <CardHeader>
+                    <CardTitle className="text-[#00ff88] flex items-center">
+                      <CreditCard className="w-5 h-5 mr-2" /> Instant Top Up
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                     <div className="space-y-2">
+                        <Label className="text-[#00ff88]">Amount to Add (₾)</Label>
+                        <Input 
+                            type="number" 
+                            value={topupAmount} 
+                            onChange={(e) => setTopupAmount(e.target.value)} 
+                            className="bg-black/50 border-[#00ff88]/30 text-white" 
+                            placeholder="50"
+                        />
+                     </div>
+                     {topupAmount && parseFloat(topupAmount) > 0 ? (
+                        <PayPalButtons 
+                            style={{ layout: "vertical", shape: "rect" }}
+                            createOrder={(data, actions) => {
+                                return actions.order.create({
+                                    purchase_units: [{
+                                        amount: { value: topupAmount, currency_code: "USD" } // PayPal might need USD/EUR if GEL not supported directly in sandbox
+                                    }]
+                                });
+                            }}
+                            onApprove={async (data, actions) => {
+                                // Simulate backend verification
+                                const amount = parseFloat(topupAmount);
+                                try {
+                                    // Normally you call backend here to verify
+                                    await axios.post(`${API}/driver/topup/request`, {
+                                        amount: amount,
+                                        payment_reference: data.orderID
+                                    });
+                                    
+                                    // Update local state instantly
+                                    const newBalance = (user.earnings?.balance || 0) + amount;
+                                    updateUser({ ...user, earnings: { ...user.earnings, balance: newBalance }});
+                                    toast.success(`Success! ₾${amount} added.`);
+                                    setTopupAmount("");
+                                } catch (err) {
+                                    toast.error("Error updating balance");
+                                }
+                            }}
+                        />
+                     ) : (
+                         <p className="text-sm text-gray-500 text-center">Enter amount to see payment options</p>
+                     )}
+                  </CardContent>
+                </Card>
+
+                {/* WITHDRAWAL */}
+                <Card className="bg-black/60 border border-red-500/30">
+                    <CardHeader>
+                        <CardTitle className="text-red-400">Withdraw Earnings</CardTitle>
+                        <CardDescription> Fee: ₾{WITHDRAWAL_FEE.toFixed(2)} per transaction</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <Input 
+                            type="number"
+                            placeholder="Amount (₾)"
+                            value={withdrawalData.amount}
+                            onChange={(e) => setWithdrawalData({...withdrawalData, amount: e.target.value})}
+                            className="bg-black/50 border-red-500/30 text-white"
+                        />
+                        <Input 
+                            placeholder="IBAN / Bank Details"
+                            value={withdrawalData.bank_details}
+                            onChange={(e) => setWithdrawalData({...withdrawalData, bank_details: e.target.value})}
+                            className="bg-black/50 border-red-500/30 text-white"
+                        />
+                        <Button 
+                            className="w-full bg-red-500 text-white font-bold"
+                            onClick={handleWithdrawal}
+                            disabled={loading || balance < (parseFloat(withdrawalData.amount || 0) + WITHDRAWAL_FEE)}
+                        >
+                            Withdraw {withdrawalData.amount ? `(Total: ₾${(parseFloat(withdrawalData.amount) + WITHDRAWAL_FEE).toFixed(2)})` : ""}
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+          </TabsContent>
+          
+          {/* Nearby Rides Tab */}
+           <TabsContent value="nearby">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30 mb-4">
               <CardHeader className="pb-2">
                 <CardTitle className="text-[#00ff88] flex items-center justify-between">
@@ -979,7 +1156,7 @@ const DriverDashboard = () => {
               <div className="space-y-4">
                 {nearbyRides.map(ride => {
                   const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
-                  const canAccept = balance >= commission;
+                  const canAccept = (ride.payment_method !== 'cash') || (balance >= commission);
                   const wasNotified = ride.was_notified;
                   const hasDeclined = ride.has_declined;
                   
@@ -1004,17 +1181,6 @@ const DriverDashboard = () => {
                           </div>
                         </div>
                         
-                        <div className="flex items-center justify-between text-sm text-gray-400 mb-3">
-                          <div className="flex items-center">
-                            <MapPin className="w-3 h-3 mr-1" />
-                            {ride.distance_to_pickup?.toFixed(1)} km away
-                          </div>
-                          <div className="flex items-center">
-                            <Activity className="w-3 h-3 mr-1" />
-                            Searching {ride.matching_radius}km
-                          </div>
-                        </div>
-                        
                         {hasDeclined ? (
                           <Badge className="w-full justify-center py-2 bg-gray-700 text-gray-400">
                             You declined this ride
@@ -1023,20 +1189,12 @@ const DriverDashboard = () => {
                           <div className="flex gap-2">
                             <Button
                               className="flex-1 bg-[#00ff88] text-black font-bold h-12"
-                              onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}
+                              onClick={() => handleAcceptRide(ride.id, ride.estimated_fare, ride.payment_method)}
                               disabled={loading || !canAccept}
                             >
-                              {canAccept ? (
-                                <><CheckCircle2 className="w-4 h-4 mr-2" /> Accept</>
-                              ) : (
-                                "Low Balance"
-                              )}
+                              {canAccept ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Accept</> : "Low Balance"}
                             </Button>
-                            <Button
-                              variant="outline"
-                              className="border-red-500 text-red-500 h-12"
-                              onClick={() => handleDeclineRide(ride.id)}
-                            >
+                            <Button variant="outline" className="border-red-500 text-red-500 h-12" onClick={() => handleDeclineRide(ride.id)}>
                               <XCircle className="w-5 h-5" />
                             </Button>
                           </div>
@@ -1046,11 +1204,7 @@ const DriverDashboard = () => {
                             onClick={() => handleRequestToJoin(ride.id)}
                             disabled={loading || !canAccept}
                           >
-                            {canAccept ? (
-                              <><Plus className="w-4 h-4 mr-2" /> Request to Accept</>
-                            ) : (
-                              "Low Balance - Top Up First"
-                            )}
+                            {canAccept ? <><Plus className="w-4 h-4 mr-2" /> Request to Accept</> : "Low Balance - Top Up First"}
                           </Button>
                         )}
                       </CardContent>
@@ -1059,255 +1213,54 @@ const DriverDashboard = () => {
                 })}
               </div>
             )}
-          </TabsContent>
+           </TabsContent>
 
-          {/* Vehicle Tab */}
-          <TabsContent value="vehicle">
-            <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
-              <CardHeader>
-                <CardTitle className="text-[#00d4ff] flex items-center">
-                  <Car className="w-5 h-5 mr-2" /> Vehicle
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {hasVehicle ? (
-                  <div className="space-y-4 text-white">
-                    <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                      <p className="text-[#00ff88] font-semibold mb-2">Registered Vehicle</p>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div><p className="text-gray-500">Make</p><p>{user.driver_info.vehicle.car_make}</p></div>
-                        <div><p className="text-gray-500">Model</p><p>{user.driver_info.vehicle.car_model}</p></div>
-                        <div><p className="text-gray-500">Year</p><p>{user.driver_info.vehicle.car_year}</p></div>
-                        <div><p className="text-gray-500">Color</p><p>{user.driver_info.vehicle.car_color}</p></div>
-                        <div className="col-span-2">
-                          <p className="text-gray-500">License Plate</p>
-                          <p className="text-lg font-mono">{user.driver_info.vehicle.license_plate}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <Badge className="bg-gradient-to-r from-purple-500 to-[#00d4ff] text-white">
-                      Tier: {user.driver_info.vehicle_tier?.toUpperCase()}
-                    </Badge>
-                  </div>
-                ) : (
-                  <form onSubmit={handleRegisterVehicle} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-[#00d4ff]">Make</Label>
-                        <Input
-                          value={vehicleData.car_make}
-                          onChange={e => setVehicleData({...vehicleData, car_make: e.target.value})}
-                          className="bg-black/50 border-[#00d4ff]/30 text-white"
-                          placeholder="Toyota"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[#00d4ff]">Model</Label>
-                        <Input
-                          value={vehicleData.car_model}
-                          onChange={e => setVehicleData({...vehicleData, car_model: e.target.value})}
-                          className="bg-black/50 border-[#00d4ff]/30 text-white"
-                          placeholder="Camry"
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-[#00d4ff]">Year</Label>
-                        <Input
-                          type="number"
-                          value={vehicleData.car_year}
-                          onChange={e => setVehicleData({...vehicleData, car_year: e.target.value})}
-                          className="bg-black/50 border-[#00d4ff]/30 text-white"
-                          placeholder="2020"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[#00d4ff]">Color</Label>
-                        <Input
-                          value={vehicleData.car_color}
-                          onChange={e => setVehicleData({...vehicleData, car_color: e.target.value})}
-                          className="bg-black/50 border-[#00d4ff]/30 text-white"
-                          placeholder="Black"
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-[#00d4ff]">License Plate</Label>
-                      <Input
-                        value={vehicleData.license_plate}
-                        onChange={e => setVehicleData({...vehicleData, license_plate: e.target.value.toUpperCase()})}
-                        className="bg-black/50 border-[#00d4ff]/30 text-white font-mono"
-                        placeholder="AA-123-BB"
-                        required
-                      />
-                    </div>
-                    <Button type="submit" className="w-full bg-[#00d4ff] text-black font-bold" disabled={loading}>
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                      Register Vehicle
-                    </Button>
-                  </form>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Earnings Tab */}
-          <TabsContent value="earnings">
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="bg-black/60 border border-[#00ff88]/30 p-4 text-center">
-                  <p className="text-xs text-gray-500 uppercase">Available</p>
-                  <p className="text-2xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
-                </Card>
-                <Card className="bg-black/60 border border-[#00d4ff]/30 p-4 text-center">
-                  <p className="text-xs text-gray-500 uppercase">Total Earned</p>
-                  <p className="text-2xl font-bold text-[#00d4ff]">₾{(user?.earnings?.total_earned || 0).toFixed(0)}</p>
-                </Card>
-                <Card className="bg-black/60 border border-purple-500/30 p-4 text-center">
-                  <p className="text-xs text-gray-500 uppercase">Topped Up</p>
-                  <p className="text-2xl font-bold text-purple-400">₾{(user?.earnings?.total_topped_up || 0).toFixed(0)}</p>
-                </Card>
-                <Card className="bg-black/60 border border-red-500/30 p-4 text-center">
-                  <p className="text-xs text-gray-500 uppercase">Withdrawn</p>
-                  <p className="text-2xl font-bold text-red-400">₾{(user?.earnings?.total_withdrawn || 0).toFixed(0)}</p>
-                </Card>
-              </div>
-
-              <Card className="bg-gradient-to-br from-[#00ff88]/10 to-transparent border border-[#00ff88]/30">
-                <CardHeader>
-                  <CardTitle className="text-[#00ff88] flex items-center">
-                    <CreditCard className="w-5 h-5 mr-2" /> Top Up Balance
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-[#00ff88]">Amount (₾)</Label>
-                      <Input
-                        type="number"
-                        value={topupAmount}
-                        onChange={e => setTopupAmount(e.target.value)}
-                        className="bg-black/50 border-[#00ff88]/30 text-white"
-                        placeholder="50.00"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-[#00ff88]">Reference (optional)</Label>
-                      <Input
-                        value={topupReference}
-                        onChange={e => setTopupReference(e.target.value)}
-                        className="bg-black/50 border-[#00ff88]/30 text-white"
-                      />
-                    </div>
-                  </div>
-                  <Button
-                    className="w-full bg-[#00ff88] text-black font-bold h-12"
-                    onClick={handleRequestTopup}
-                    disabled={loading || !topupAmount}
-                  >
-                    Submit Request & Pay
-                  </Button>
-                  <a href={PAYMENT_LINK} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 text-[#00d4ff] hover:underline">
-                    <ExternalLink className="w-4 h-4" /> Bank of Georgia
-                  </a>
-                </CardContent>
-              </Card>
-
+           {/* Vehicle Tab */}
+           <TabsContent value="vehicle">
               <Card className="bg-black/60 border border-[#00d4ff]/30">
-                <CardHeader>
-                  <CardTitle className="text-[#00d4ff] flex items-center">
-                    <Banknote className="w-5 h-5 mr-2" /> Withdraw
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label className="text-[#00d4ff]">Amount (₾)</Label>
-                    <Input
-                      type="number"
-                      value={withdrawalData.amount}
-                      onChange={e => setWithdrawalData({...withdrawalData, amount: e.target.value})}
-                      className="bg-black/50 border-[#00d4ff]/30 text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-[#00d4ff]">Bank Details / IBAN</Label>
-                    <Input
-                      value={withdrawalData.bank_details}
-                      onChange={e => setWithdrawalData({...withdrawalData, bank_details: e.target.value})}
-                      className="bg-black/50 border-[#00d4ff]/30 text-white"
-                    />
-                  </div>
-                  <Button
-                    className="w-full bg-[#00d4ff] text-black font-bold"
-                    onClick={handleWithdrawal}
-                    disabled={loading || balance <= 0}
-                  >
-                    Request Withdrawal
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-black/60 border border-gray-500/30">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between text-gray-400">
-                    <span>Commission Rate</span>
-                    <span className="text-[#00ff88] font-bold">23%</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* History Tab */}
-          <TabsContent value="history">
-            <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
-              <CardHeader>
-                <CardTitle className="text-[#00d4ff]">Ride History</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[400px]">
-                  {rideHistory.length === 0 ? (
-                    <div className="text-center text-gray-500 py-12">No rides yet</div>
-                  ) : (
-                    <div className="space-y-3">
-                      {rideHistory.map(ride => (
-                        <div key={ride.id} className="bg-black/50 border border-[#00d4ff]/10 rounded-xl p-4">
-                          <div className="flex justify-between items-start mb-2">
-                            <Badge className={rideStatusColors[ride.status]}>
-                              {ride.status?.replace(/_/g, " ").toUpperCase()}
-                            </Badge>
-                            <span className="text-gray-500 text-sm">
-                              {ride.created_at ? new Date(ride.created_at).toLocaleDateString() : "N/A"}
-                            </span>
+                  <CardHeader><CardTitle className="text-[#00d4ff]">My Vehicle</CardTitle></CardHeader>
+                  <CardContent>
+                      {hasVehicle ? (
+                          <div className="text-white">
+                              <p>Plate: {user.driver_info.vehicle.license_plate}</p>
+                              <p>Car: {user.driver_info.vehicle.car_make} {user.driver_info.vehicle.car_model}</p>
+                              <Badge className="mt-2">Tier: {user.driver_info.vehicle_tier}</Badge>
                           </div>
-                          <p className="text-white text-sm">{ride.pickup}</p>
-                          <p className="text-gray-500 text-xs">→ {ride.destination || "Open"}</p>
-                          <div className="flex justify-between items-center mt-2">
-                            <span className="text-gray-400 capitalize text-sm">{ride.carType}</span>
-                            <span className="text-[#00ff88] font-bold">
-                              ₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      ) : (
+                          <form onSubmit={handleRegisterVehicle} className="space-y-4">
+                              <Input placeholder="License Plate" value={vehicleData.license_plate} onChange={e=>setVehicleData({...vehicleData, license_plate: e.target.value})} className="bg-black/50 text-white" />
+                              <Input placeholder="Make (Toyota)" value={vehicleData.car_make} onChange={e=>setVehicleData({...vehicleData, car_make: e.target.value})} className="bg-black/50 text-white" />
+                              <Input placeholder="Model (Prius)" value={vehicleData.car_model} onChange={e=>setVehicleData({...vehicleData, car_model: e.target.value})} className="bg-black/50 text-white" />
+                              <Input placeholder="Year" type="number" value={vehicleData.car_year} onChange={e=>setVehicleData({...vehicleData, car_year: e.target.value})} className="bg-black/50 text-white" />
+                              <Input placeholder="Color" value={vehicleData.car_color} onChange={e=>setVehicleData({...vehicleData, car_color: e.target.value})} className="bg-black/50 text-white" />
+                              <Button type="submit" className="w-full bg-[#00d4ff] text-black">Register Vehicle</Button>
+                          </form>
+                      )}
+                  </CardContent>
+              </Card>
+           </TabsContent>
+
+           {/* History Tab */}
+           <TabsContent value="history">
+               <ScrollArea className="h-[400px]">
+                   {rideHistory.map(ride => (
+                       <div key={ride.id} className="bg-black/50 border border-[#00d4ff]/20 p-4 rounded mb-2">
+                           <div className="flex justify-between">
+                               <span className="text-gray-400">{new Date(ride.created_at).toLocaleDateString()}</span>
+                               <span className="text-[#00ff88] font-bold">₾{ride.final_fare?.toFixed(2)}</span>
+                           </div>
+                           <p className="text-white text-sm">{ride.pickup} - {ride.destination}</p>
+                       </div>
+                   ))}
+               </ScrollArea>
+           </TabsContent>
         </Tabs>
       </main>
     </div>
   );
 };
 
-// Main Router
+// Main Router Wrapper
 const DriverPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
@@ -1319,12 +1272,18 @@ const DriverPortal = () => {
     return <Navigate to="/driver" replace />;
   }
 
+  // Wrap in PayPal Provider
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/driver/dashboard" replace />} />
-      <Route path="/dashboard" element={<DriverDashboard />} />
-      <Route path="*" element={<Navigate to="/driver/dashboard" replace />} />
-    </Routes>
+    <PayPalScriptProvider options={{ 
+       "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test",
+       currency: "USD" 
+    }}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/driver/dashboard" replace />} />
+          <Route path="/dashboard" element={<DriverDashboard />} />
+          <Route path="*" element={<Navigate to="/driver/dashboard" replace />} />
+        </Routes>
+    </PayPalScriptProvider>
   );
 };
 
