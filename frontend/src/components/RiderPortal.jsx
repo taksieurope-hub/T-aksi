@@ -746,6 +746,9 @@ const RiderDashboard = () => {
   const [activeRide, setActiveRide] = useState(null);
   const [rideHistory, setRideHistory] = useState([]);
   const [waitTime, setWaitTime] = useState(0);
+
+  // Polling Reference (Fix for multiple intervals)
+  const pollRef = useRef(null);
   
   // Booking state
   const [pickup, setPickup] = useState({ address: "", lat: null, lng: null });
@@ -763,6 +766,13 @@ const RiderDashboard = () => {
   
   // Surge pricing
   const [surgeInfo, setSurgeInfo] = useState(null);
+
+  // Cleanup polling on unmount (Fix for memory leaks)
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   // Load Google Maps
   useEffect(() => {
@@ -823,11 +833,10 @@ const RiderDashboard = () => {
   useEffect(() => {
     if (routeInfo) {
       const surge = surgeInfo?.multiplier || 1.0;
-      // FIX APPLIED HERE: Passed 'waitTime' instead of 0
       const fare = calculateFare(carType, routeInfo.distance, waitTime, 0, stops.length, surge);
       setFareEstimate(fare);
     }
-  }, [routeInfo, carType, stops.length, surgeInfo, waitTime]); // FIX APPLIED HERE: Added waitTime dependency
+  }, [routeInfo, carType, stops.length, surgeInfo, waitTime]);
   
   const fetchSurgeStatus = async () => {
     try {
@@ -979,14 +988,21 @@ const RiderDashboard = () => {
       }
   };
 
+  // FIXED POLLING FUNCTION
   const pollRideStatus = async (rideId) => {
-    const interval = setInterval(async () => {
+    // 1. Clear existing interval
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    // 2. Start new interval
+    pollRef.current = setInterval(async () => {
       try {
         const res = await axios.get(`${API}/rides/${rideId}`);
         setActiveRide(res.data);
         
         if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
-          clearInterval(interval);
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          
           if (res.data.status === "completed") {
             toast.success("Ride completed!");
             fetchRideHistory();
@@ -994,10 +1010,14 @@ const RiderDashboard = () => {
             toast.error("No drivers available. Please try again.");
           }
         } else if (res.data.status === "accepted" && res.data.driver_info) {
-          toast.success(`Driver ${res.data.driver_info.name} is coming!`);
+          // Optional: You can move this toast to a useEffect looking at status changes to avoid spam
+          // toast.success(`Driver ${res.data.driver_info.name} is coming!`);
         }
       } catch (error) {
-        clearInterval(interval);
+        // Stop polling on 404 or persistent errors
+        if (error.response?.status === 404) {
+             clearInterval(pollRef.current);
+        }
       }
     }, 3000);
   };
@@ -1007,6 +1027,10 @@ const RiderDashboard = () => {
     
     try {
       await axios.post(`${API}/rides/${activeRide.id}/cancel`);
+      
+      // Stop polling immediately
+      if (pollRef.current) clearInterval(pollRef.current);
+
       toast.success("Ride cancelled");
       setActiveRide(null);
       setActiveTab("book");
@@ -1326,8 +1350,8 @@ const RiderDashboard = () => {
                            });
                         }}
                         onApprove={async (data, actions) => {
-                            await actions.order.capture();
-                            handleBookRide(true);
+                           await actions.order.capture();
+                           handleBookRide(true);
                         }}
                      />
                   </div>
