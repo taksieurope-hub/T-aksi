@@ -373,16 +373,16 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
   );
 };
 
-// --- LIVE TRACKING MAP (FIXED BRACING) ---
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const rendererRef = useRef(null);
   const [eta, setEta] = useState(null);
 
-  // Initialize Map
+  // 1. Initialize Map
   useEffect(() => {
     if (!window.google || !mapRef.current) return;
     
+    // Fallback coordinates if locations are missing
     const initialCenter = driverLocation?.lat ? driverLocation : (pickup?.lat ? pickup : { lat: 41.7151, lng: 44.8271 });
     
     const map = new window.google.maps.Map(mapRef.current, { 
@@ -403,7 +403,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     });
   }, []);
 
-  // Update Routing & ETA
+  // 2. Handle Routing Logic
   useEffect(() => {
     if (!window.google || !rendererRef.current) return;
     
@@ -415,8 +415,8 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     const directionsService = new window.google.maps.DirectionsService();
     directionsService.route(
       { 
-        origin: new window.google.maps.LatLng(start.lat, start.lng), 
-        destination: new window.google.maps.LatLng(end.lat, end.lng), 
+        origin: new window.google.maps.LatLng(parseFloat(start.lat), parseFloat(start.lng)), 
+        destination: new window.google.maps.LatLng(parseFloat(end.lat), parseFloat(end.lng)), 
         travelMode: window.google.maps.TravelMode.DRIVING 
       },
       (res, stat) => {
@@ -430,19 +430,19 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     );
   }, [driverLocation, status, pickup, destination]);
 
-  // THIS RETURN IS NOW INSIDE THE FUNCTION
+  // THIS RETURN IS NOW PROPERLY INSIDE THE FUNCTION SCOPE
   return (
     <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4 mb-4">
       <div ref={mapRef} className="w-full h-full" />
       {eta && (
-        <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-4 py-2 rounded-lg backdrop-blur-md z-10">
+        <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-4 py-2 rounded-lg backdrop-blur-md z-10 shadow-[0_0_15px_rgba(0,255,136,0.3)]">
           <p className="text-[#00ff88] font-bold text-xl">{eta}</p>
-          <p className="text-[10px] text-white uppercase tracking-wider">Arrival</p>
+          <p className="text-[10px] text-white uppercase tracking-wider">Estimated Arrival</p>
         </div>
       )}
     </div>
   );
-};
+}; // <--- MAKE SURE THIS BRACE EXISTS HERE
 
     // 2. Setup Directions Renderer
     const directionsRenderer = new window.google.maps.DirectionsRenderer({
