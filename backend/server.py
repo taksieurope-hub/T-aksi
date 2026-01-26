@@ -473,6 +473,25 @@ def calculate_fare(car_type: str, distance_km: float, wait_minutes: int = 0,
             'free_wait_minutes': rules['free_wait_minutes']
         }
     }
+async def get_paypal_token():
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        logger.error("PayPal credentials missing")
+        return None
+        
+    auth_str = f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{PAYPAL_API_BASE}/v1/oauth2/token",
+                headers={"Authorization": f"Basic {b64_auth}"},
+                data={"grant_type": "client_credentials"}
+            )
+            return response.json().get("access_token")
+        except Exception as e:
+            logger.error(f"PayPal Token Error: {e}")
+            return None
 
 # --- AUTH ROUTES ---
 
@@ -1439,6 +1458,27 @@ async def stop_reached(ride_id: str, stop_index: int, wait_minutes: int = 0, use
     
     return {"message": f"Stop {stop_index} completed, wait time: {wait_minutes} minutes"}
 
+# --- PAYPAL HELPER (Required for complete_ride) ---
+async def get_paypal_token():
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        logger.error("PayPal credentials missing")
+        return None
+        
+    auth_str = f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{PAYPAL_API_BASE}/v1/oauth2/token",
+                headers={"Authorization": f"Basic {b64_auth}"},
+                data={"grant_type": "client_credentials"}
+            )
+            return response.json().get("access_token")
+        except Exception as e:
+            logger.error(f"PayPal Token Error: {e}")
+            return None
+
 @app.post("/api/rides/{ride_id}/complete", tags=["Rides"])
 async def complete_ride(
     ride_id: str,
@@ -1454,50 +1494,94 @@ async def complete_ride(
     
     ride_data = ride_doc.to_dict()
     
-    # SMART DISTANCE CHECK:
-    # If the driver app sends 0 or extremely low distance (GPS error), 
-    # fall back to the Google Maps estimate calculated at booking.
+    # 1. SMART DISTANCE CHECK
     estimated = ride_data.get('estimated_distance', 5)
     reported = final_distance if final_distance is not None else 0
     
-    # If reported distance is less than 10% of estimate, assume GPS fail and use estimate
     if reported < (estimated * 0.1):
         actual_distance = estimated
         logger.warning(f"Ride {ride_id}: GPS distance {reported}km seems wrong. Using estimate {estimated}km")
     else:
         actual_distance = reported
 
-    # Calculate Wait Times
-    # We prefer the server-side calculated wait (pickup_wait_minutes)
+    # 2. CALCULATE FINAL FARE
     pickup_wait = ride_data.get('pickup_wait_minutes', 0)
     stop_wait = ride_data.get('stop_wait_minutes', 0)
-    
     num_stops = ride_data.get('num_stops', 0)
     car_type = ride_data.get('carType', 'economy')
+    surge_multiplier = ride_data.get('surge_multiplier', 1.0)
     
-    # Recalculate Final Fare
-    final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops)
+    final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops, surge_multiplier)
     
-    driver_id = ride_data.get('driver_id')
-    
+    # 3. PAYMENT CAPTURE LOGIC (The "Hold & Capture")
+    payment_status = "cash_pending"
+    payment_method = ride_data.get('payment_method', 'cash')
+    order_id = ride_data.get('payment_order_id')
+
+    if payment_method == 'card' and order_id:
+        try:
+            logger.info(f"Attempting to capture PayPal order: {order_id}")
+            access_token = await get_paypal_token()
+            
+            if access_token:
+                async with httpx.AsyncClient() as client:
+                    capture_response = await client.post(
+                        f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}/capture",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {access_token}"
+                        },
+                        json={
+                            "note_to_payer": "Thanks for riding with T'aksi!"
+                        }
+                    )
+                    
+                    if capture_response.status_code in [200, 201]:
+                        payment_status = "paid"
+                        logger.info(f"Payment captured successfully for ride {ride_id}")
+                    else:
+                        error_detail = capture_response.text
+                        logger.error(f"PayPal Capture Failed: {error_detail}")
+                        payment_status = "failed"
+            else:
+                payment_status = "auth_error"
+                
+        except Exception as e:
+            logger.error(f"Payment Exception: {e}")
+            payment_status = "error"
+    elif payment_method == 'cash':
+        payment_status = "cash_collected"
+
+    # 4. UPDATE DATABASE
     db.collection('rides').document(ride_id).update({
         "status": "completed",
         "actual_distance": actual_distance,
         "final_fare": final_fare['total'],
         "final_fare_breakdown": final_fare,
+        "payment_status": payment_status,
         "completed_at": firestore.SERVER_TIMESTAMP
     })
     
-    # Update driver earnings
+    # 5. UPDATE DRIVER EARNINGS
+    driver_id = ride_data.get('driver_id')
     if driver_id:
         commission = final_fare['total'] * DRIVER_COMMISSION_RATE
         driver_earnings = final_fare['total'] - commission
-        db.collection('users').document(driver_id).update({
+        
+        updates = {
             "earnings.total_earned": firestore.Increment(driver_earnings),
             "total_rides": firestore.Increment(1)
-        })
+        }
+        
+        # Balance Logic
+        if payment_method == 'cash':
+            updates["earnings.balance"] = firestore.Increment(-commission)
+        elif payment_status == 'paid': 
+            updates["earnings.balance"] = firestore.Increment(driver_earnings)
+
+        db.collection('users').document(driver_id).update(updates)
     
-    # Update rider stats
+    # Update Rider Stats
     rider_id = ride_data.get('userId')
     if rider_id:
         db.collection('users').document(rider_id).update({
@@ -1506,6 +1590,7 @@ async def complete_ride(
     
     return {
         "message": "Ride completed",
+        "payment_status": payment_status,
         "final_fare": final_fare['total'],
         "fare_breakdown": final_fare
     }
