@@ -207,59 +207,59 @@ class UpdateRideFare(BaseModel):
 # --- PRICING LOGIC ---
 PRICING_RULES = {
     'economy': {
-        'base': 2.00,
-        'per_km': 0.50,
-        'per_minute_wait': 0.40,
-        'free_wait_minutes': 2,
+        'base': 2.00,          # Original Base
+        'per_km': 0.50,        # Original Per KM
+        'per_minute_wait': 0.50, # FIXED: 0.50/min
+        'free_wait_minutes': 2,  # FIXED: 2 mins free
+        'stop_fee': 0.00,      # FIXED: 0 fee
         'long_distance_threshold': 7.0,
         'long_distance_fee_per_km': 0.15,
         'very_long_threshold': 30.0,
-        'very_long_surcharge_per_15km': 5.00,
-        'stop_fee': 1.00
+        'very_long_surcharge_per_15km': 5.00
     },
     'comfort': {
-        'base': 2.50,
+        'base': 2.50,          # Original Base
         'per_km': 0.55,
-        'per_minute_wait': 0.45,
+        'per_minute_wait': 0.50, # FIXED: 0.50/min
         'free_wait_minutes': 2,
+        'stop_fee': 0.00,      # FIXED: 0 fee
         'long_distance_threshold': 7.0,
         'long_distance_fee_per_km': 0.18,
         'very_long_threshold': 30.0,
-        'very_long_surcharge_per_15km': 6.00,
-        'stop_fee': 1.50
+        'very_long_surcharge_per_15km': 6.00
     },
     'suv': {
-        'base': 3.90,
+        'base': 3.90,          # Original Base
         'per_km': 0.80,
-        'per_minute_wait': 0.50,
+        'per_minute_wait': 0.50, # FIXED: 0.50/min
         'free_wait_minutes': 2,
+        'stop_fee': 0.00,      # FIXED: 0 fee
         'long_distance_threshold': 7.0,
         'long_distance_fee_per_km': 0.25,
         'very_long_threshold': 30.0,
-        'very_long_surcharge_per_15km': 8.00,
-        'stop_fee': 2.00
+        'very_long_surcharge_per_15km': 8.00
     },
     'personal': {
-        'base': 4.00,
+        'base': 4.00,          # Original Base
         'per_km': 0.70,
-        'per_minute_wait': 0.50,
-        'free_wait_minutes': 3,
+        'per_minute_wait': 0.50, # FIXED: 0.50/min
+        'free_wait_minutes': 2,  # FIXED: Changed from 3 to 2 per request
+        'stop_fee': 0.00,      # FIXED: 0 fee
         'long_distance_threshold': 7.0,
         'long_distance_fee_per_km': 0.20,
         'very_long_threshold': 30.0,
-        'very_long_surcharge_per_15km': 7.00,
-        'stop_fee': 1.50
+        'very_long_surcharge_per_15km': 7.00
     },
     'jumpstart': {
         'base': 4.50,
         'per_km': 0.00,
         'per_minute_wait': 0.00,
         'free_wait_minutes': 999,
+        'stop_fee': 0.00,
         'long_distance_threshold': 999.0,
         'long_distance_fee_per_km': 0.00,
         'very_long_threshold': 999.0,
-        'very_long_surcharge_per_15km': 0.00,
-        'stop_fee': 0.00
+        'very_long_surcharge_per_15km': 0.00
     }
 }
 
@@ -1445,14 +1445,28 @@ async def complete_ride(
     
     ride_data = ride_doc.to_dict()
     
-    # Use actual distance if provided, otherwise estimate
-    actual_distance = final_distance or ride_data.get('estimated_distance', 5)
+    # SMART DISTANCE CHECK:
+    # If the driver app sends 0 or extremely low distance (GPS error), 
+    # fall back to the Google Maps estimate calculated at booking.
+    estimated = ride_data.get('estimated_distance', 5)
+    reported = final_distance if final_distance is not None else 0
+    
+    # If reported distance is less than 10% of estimate, assume GPS fail and use estimate
+    if reported < (estimated * 0.1):
+        actual_distance = estimated
+        logger.warning(f"Ride {ride_id}: GPS distance {reported}km seems wrong. Using estimate {estimated}km")
+    else:
+        actual_distance = reported
+
+    # Calculate Wait Times
+    # We prefer the server-side calculated wait (pickup_wait_minutes)
     pickup_wait = ride_data.get('pickup_wait_minutes', 0)
     stop_wait = ride_data.get('stop_wait_minutes', 0)
+    
     num_stops = ride_data.get('num_stops', 0)
     car_type = ride_data.get('carType', 'economy')
     
-    # Calculate final fare
+    # Recalculate Final Fare
     final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops)
     
     driver_id = ride_data.get('driver_id')
