@@ -31,13 +31,12 @@ const mapStyles = `
   }
 `;
 
-// --- UPDATED PRICING RULES (Matches your Backend) ---
 const PRICING_RULES = {
   economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
   comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚙" },
   suv: { name: 'SUV / XL', base: 3.90, perKm: 0.80, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚐" },
   personal: { name: 'Personal', base: 4.00, perKm: 0.70, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "👤" },
-  jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "⚡" }
+  jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
@@ -459,18 +458,21 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const [eta, setEta] = useState(null);
 
   useEffect(() => {
-    // SECURITY: Ensure coordinates are numbers before loading map
+    // 1. SAFETY: Convert to numbers. If data is missing/invalid, STOP.
     const pLat = parseFloat(pickup?.lat);
     const pLng = parseFloat(pickup?.lng);
     const dLat = parseFloat(driverLocation?.lat);
     const dLng = parseFloat(driverLocation?.lng);
 
-    // If no valid center, do not load map (prevents crash)
+    // Prevent map from loading with invalid data (Fixes White Screen)
+    if (!window.google || !mapRef.current) return;
+    
+    // Determine center: Prioritize Driver, then Pickup
     const center = (!isNaN(dLat) && !isNaN(dLng)) ? { lat: dLat, lng: dLng } 
                  : (!isNaN(pLat) && !isNaN(pLng)) ? { lat: pLat, lng: pLng } 
                  : null;
 
-    if (!window.google || !mapRef.current || !center) return;
+    if (!center) return;
 
     const map = new window.google.maps.Map(mapRef.current, {
       zoom: 15,
@@ -493,21 +495,22 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     });
     directionsRendererRef.current = renderer;
 
-    // Add markers manually
-    if (!isNaN(pLat)) new window.google.maps.Marker({ position: { lat: pLat, lng: pLng }, map, icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#00ff88", fillOpacity: 1, strokeColor: "white", strokeWeight: 2 } });
-    if (destination?.lat) new window.google.maps.Marker({ position: destination, map });
-    if (!isNaN(dLat)) new window.google.maps.Marker({ position: { lat: dLat, lng: dLng }, map, label: "🚖" });
+    // Add Markers manually
+    if (!isNaN(pLat)) new window.google.maps.Marker({ position: { lat: pLat, lng: pLng }, map, icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#00ff88", fillOpacity: 1, strokeColor: "white", strokeWeight: 2 }, title: "Pickup" });
+    if (destination?.lat) new window.google.maps.Marker({ position: destination, map, title: "Destination" });
+    if (!isNaN(dLat)) new window.google.maps.Marker({ position: { lat: dLat, lng: dLng }, map, icon: { path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 6, fillColor: "#00d4ff", fillOpacity: 1, strokeColor: "white", strokeWeight: 2, rotation: driverLocation.heading || 0 }, title: "Driver" });
 
   }, []); // Run once on mount
 
-  // Update Route Logic
+  // Update Route/Lines
   useEffect(() => {
     if (!window.google || !directionsRendererRef.current) return;
     
     const start = driverLocation || pickup; 
     const end = status === 'in_progress' ? destination : pickup;
 
-    if (!start?.lat || !end?.lat) return;
+    // Ensure we have valid coordinates before routing
+    if (!start?.lat || !end?.lat || isNaN(parseFloat(start.lat)) || isNaN(parseFloat(end.lat))) return;
 
     const dirService = new window.google.maps.DirectionsService();
     dirService.route(
@@ -522,7 +525,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   }, [driverLocation, status, pickup, destination]);
 
   return (
-    <div className="relative w-full h-[400px] rounded-xl overflow-hidden border border-[#00ff88]/30 mb-4 bg-gray-900">
+    <div className="relative w-full h-[350px] rounded-xl overflow-hidden border border-[#00ff88]/30 mb-4 bg-gray-900">
       <div ref={mapRef} className="w-full h-full" />
       {eta && <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-3 py-1 rounded text-[#00ff88] font-bold z-10">{eta}</div>}
     </div>
