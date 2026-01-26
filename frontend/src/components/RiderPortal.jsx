@@ -729,17 +729,41 @@ const RiderDashboard = () => {
   };
 
   const pollRideStatus = async (rideId) => {
+    // 1. Clear existing interval
     if (pollRef.current) clearInterval(pollRef.current);
+
+    // 2. Start new interval
     pollRef.current = setInterval(async () => {
       try {
         const res = await axios.get(`${API}/rides/${rideId}`);
         setActiveRide(res.data);
+        
+        // CHECK FOR TERMINAL STATES
         if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
-          clearInterval(pollRef.current); pollRef.current = null;
-          if (res.data.status === "completed") { toast.success("Ride completed!"); fetchRideHistory(); }
-          else if (res.data.status === "no_drivers") { toast.error("No drivers available. Please try again."); }
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          
+          if (res.data.status === "completed") {
+            // *** THIS IS THE NEW PART ***
+            // Instead of just a toast, we open the Rating Modal
+            setCompletedRideInfo(res.data); 
+            setShowRatingModal(true);
+            fetchRideHistory();
+            // ****************************
+          } else if (res.data.status === "no_drivers") {
+            toast.error("No drivers available. Please try again.");
+            setActiveRide(null); // Reset UI so they can try again
+          } else if (res.data.status === "cancelled") {
+            toast.info("Ride was cancelled.");
+            setActiveRide(null);
+          }
         }
-      } catch (error) { if (error.response?.status === 404) clearInterval(pollRef.current); }
+      } catch (error) {
+        // Stop polling on 404 (ride deleted/lost)
+        if (error.response?.status === 404) {
+             clearInterval(pollRef.current);
+        }
+      }
     }, 3000);
   };
 

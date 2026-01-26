@@ -1009,13 +1009,16 @@ const DriverDashboard = () => {
             )}
           </TabsContent>
 
-          {/* Earnings Tab with PayPal Top Up */}
+          {/* Earnings Tab with Saved Methods */}
           <TabsContent value="earnings">
             <div className="space-y-6">
+                {/* 1. Summary Cards */}
                 <div className="grid grid-cols-2 gap-4">
                   <Card className="bg-black/60 border border-[#00ff88]/30 p-4 text-center">
                     <p className="text-xs text-gray-500 uppercase">Balance</p>
-                    <p className="text-2xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
+                    <p className={`text-2xl font-bold ${balance < 0 ? "text-red-500" : "text-[#00ff88]"}`}>
+                       ₾{balance.toFixed(2)}
+                    </p>
                   </Card>
                   <Card className="bg-black/60 border border-red-500/30 p-4 text-center">
                     <p className="text-xs text-gray-500 uppercase">Withdrawn</p>
@@ -1023,86 +1026,129 @@ const DriverDashboard = () => {
                   </Card>
                 </div>
 
-                {/* PAYPAL TOP UP */}
+                {/* 2. SAVED BANK DETAILS (New!) */}
+                <Card className="bg-black/60 border border-[#00d4ff]/30">
+                   <CardHeader className="pb-2">
+                      <CardTitle className="text-white text-base flex justify-between">
+                         <span><Banknote className="w-4 h-4 inline mr-2 text-[#00d4ff]"/> Payout Method</span>
+                         <Button variant="ghost" size="sm" className="h-6 text-[#00d4ff] text-xs">Edit</Button>
+                      </CardTitle>
+                   </CardHeader>
+                   <CardContent>
+                      {user?.driver_info?.bank_details ? (
+                         <div className="flex items-center justify-between bg-[#00d4ff]/10 p-3 rounded-lg border border-[#00d4ff]/20">
+                            <div>
+                               <p className="text-sm font-bold text-white">Bank Transfer</p>
+                               <p className="text-xs text-[#00d4ff] font-mono">{user.driver_info.bank_details}</p>
+                            </div>
+                            <CheckCircle2 className="w-5 h-5 text-[#00ff88]" />
+                         </div>
+                      ) : (
+                         <div className="text-center py-2">
+                            <p className="text-gray-500 text-sm mb-2">No bank account linked</p>
+                            <Button variant="outline" size="sm" className="border-dashed border-gray-600 text-gray-400 w-full">
+                               + Add Bank Account
+                            </Button>
+                         </div>
+                      )}
+                   </CardContent>
+                </Card>
+
+                {/* 3. INSTANT TOP UP (PayPal) */}
                 <Card className="bg-black/60 border border-[#00ff88]/30">
                   <CardHeader>
-                    <CardTitle className="text-[#00ff88] flex items-center">
-                      <CreditCard className="w-5 h-5 mr-2" /> Instant Top Up
+                    <CardTitle className="text-[#00ff88] flex items-center text-base">
+                      <CreditCard className="w-5 h-5 mr-2" /> Top Up Balance
                     </CardTitle>
+                    <CardDescription>Pay commission to accept cash rides</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                     <div className="space-y-2">
-                        <Label className="text-[#00ff88]">Amount to Add (₾)</Label>
+                      <div className="space-y-2">
+                        <Label className="text-[#00ff88]">Amount (₾)</Label>
+                        <div className="grid grid-cols-4 gap-2 mb-2">
+                           {[10, 20, 50, 100].map(amt => (
+                              <button 
+                                key={amt}
+                                onClick={() => setTopupAmount(amt.toString())}
+                                className={`py-1 rounded border text-sm font-bold transition-all ${
+                                   topupAmount === amt.toString() 
+                                   ? "bg-[#00ff88] text-black border-[#00ff88]" 
+                                   : "bg-black border-gray-700 text-white hover:border-[#00ff88]"
+                                }`}
+                              >
+                                 {amt}
+                              </button>
+                           ))}
+                        </div>
                         <Input 
                             type="number" 
                             value={topupAmount} 
                             onChange={(e) => setTopupAmount(e.target.value)} 
                             className="bg-black/50 border-[#00ff88]/30 text-white" 
-                            placeholder="50"
+                            placeholder="Custom Amount"
                         />
-                     </div>
-                     {topupAmount && parseFloat(topupAmount) > 0 ? (
-                        <PayPalButtons 
-                            style={{ layout: "vertical", shape: "rect" }}
-                            createOrder={(data, actions) => {
-                                return actions.order.create({
-                                    purchase_units: [{
-                                        amount: { value: topupAmount, currency_code: "USD" } // PayPal might need USD/EUR if GEL not supported directly in sandbox
-                                    }]
-                                });
-                            }}
-                            onApprove={async (data, actions) => {
-                                // Simulate backend verification
-                                const amount = parseFloat(topupAmount);
-                                try {
-                                    // Normally you call backend here to verify
-                                    await axios.post(`${API}/driver/topup/request`, {
-                                        amount: amount,
-                                        payment_reference: data.orderID
-                                    });
-                                    
-                                    // Update local state instantly
-                                    const newBalance = (user.earnings?.balance || 0) + amount;
-                                    updateUser({ ...user, earnings: { ...user.earnings, balance: newBalance }});
-                                    toast.success(`Success! ₾${amount} added.`);
-                                    setTopupAmount("");
-                                } catch (err) {
-                                    toast.error("Error updating balance");
-                                }
-                            }}
-                        />
-                     ) : (
-                         <p className="text-sm text-gray-500 text-center">Enter amount to see payment options</p>
-                     )}
+                      </div>
+                      
+                      {topupAmount && parseFloat(topupAmount) > 0 ? (
+                        <div className="bg-white p-2 rounded-xl">
+                           <PayPalButtons 
+                               style={{ layout: "vertical", shape: "rect" }}
+                               createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: topupAmount, currency_code: "USD" } }] })}
+                               onApprove={async (data, actions) => {
+                                   await actions.order.capture();
+                                   // In production: await axios.post('/driver/topup', { ... })
+                                   updateUser({ ...user, earnings: { ...user.earnings, balance: (user.earnings?.balance || 0) + parseFloat(topupAmount) }});
+                                   toast.success(`Success! ₾${topupAmount} added.`);
+                                   setTopupAmount("");
+                               }}
+                           />
+                        </div>
+                      ) : (
+                          <Button disabled className="w-full bg-gray-800 text-gray-500">Enter Amount to Pay</Button>
+                      )}
                   </CardContent>
                 </Card>
 
-                {/* WITHDRAWAL */}
+                {/* 4. WITHDRAWAL FORM */}
                 <Card className="bg-black/60 border border-red-500/30">
                     <CardHeader>
-                        <CardTitle className="text-red-400">Withdraw Earnings</CardTitle>
-                        <CardDescription> Fee: ₾{WITHDRAWAL_FEE.toFixed(2)} per transaction</CardDescription>
+                        <CardTitle className="text-red-400 text-base">Withdraw Earnings</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <Input 
-                            type="number"
-                            placeholder="Amount (₾)"
-                            value={withdrawalData.amount}
-                            onChange={(e) => setWithdrawalData({...withdrawalData, amount: e.target.value})}
-                            className="bg-black/50 border-red-500/30 text-white"
-                        />
-                        <Input 
-                            placeholder="IBAN / Bank Details"
-                            value={withdrawalData.bank_details}
-                            onChange={(e) => setWithdrawalData({...withdrawalData, bank_details: e.target.value})}
-                            className="bg-black/50 border-red-500/30 text-white"
-                        />
+                        <div className="space-y-2">
+                           <Label>Amount to Withdraw</Label>
+                           <Input 
+                               type="number"
+                               placeholder="Min ₾10"
+                               value={withdrawalData.amount}
+                               onChange={(e) => setWithdrawalData({...withdrawalData, amount: e.target.value})}
+                               className="bg-black/50 border-red-500/30 text-white"
+                           />
+                           <p className="text-xs text-gray-500 flex justify-between">
+                              <span>Fee: ₾{WITHDRAWAL_FEE.toFixed(2)}</span>
+                              <span>Max: ₾{(balance - WITHDRAWAL_FEE).toFixed(2)}</span>
+                           </p>
+                        </div>
+
+                        {/* If they have a saved bank, use it automatically */}
+                        {!user?.driver_info?.bank_details && (
+                           <div className="space-y-2">
+                              <Label>Bank IBAN</Label>
+                              <Input 
+                                  placeholder="GE00TB000000000000"
+                                  value={withdrawalData.bank_details}
+                                  onChange={(e) => setWithdrawalData({...withdrawalData, bank_details: e.target.value})}
+                                  className="bg-black/50 border-red-500/30 text-white"
+                              />
+                           </div>
+                        )}
+
                         <Button 
-                            className="w-full bg-red-500 text-white font-bold"
+                            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold"
                             onClick={handleWithdrawal}
                             disabled={loading || balance < (parseFloat(withdrawalData.amount || 0) + WITHDRAWAL_FEE)}
                         >
-                            Withdraw {withdrawalData.amount ? `(Total: ₾${(parseFloat(withdrawalData.amount) + WITHDRAWAL_FEE).toFixed(2)})` : ""}
+                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Request Withdrawal"}
                         </Button>
                     </CardContent>
                 </Card>
@@ -1239,6 +1285,62 @@ const DriverDashboard = () => {
                   </CardContent>
               </Card>
            </TabsContent>
+
+           {/* RATING MODAL */}
+      <Dialog open={showRatingModal} onOpenChange={setShowRatingModal}>
+        <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/20 text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center text-2xl font-bold text-[#00ff88]">
+              Ride Completed!
+            </DialogTitle>
+            <DialogDescription className="text-center text-gray-400">
+              How was your ride with {completedRideInfo?.driver_info?.name}?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col items-center space-y-6 py-4">
+            {/* Driver Avatar */}
+            <div className="w-20 h-20 rounded-full bg-gray-700 border-2 border-[#00ff88] flex items-center justify-center overflow-hidden">
+                <User className="w-10 h-10 text-gray-400" />
+            </div>
+
+            {/* Star Inputs */}
+            <div className="flex space-x-2">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setRating(star)}
+                  className="transition-transform hover:scale-110 focus:outline-none"
+                >
+                  <Star 
+                    className={`w-10 h-10 ${star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-600"}`} 
+                  />
+                </button>
+              ))}
+            </div>
+            
+            <p className="text-yellow-400 font-semibold text-lg">
+              {rating === 5 ? "Excellent!" : rating > 3 ? "Good" : rating > 0 ? "Rated" : "Tap a star"}
+            </p>
+
+            {/* Review Text */}
+            <Textarea 
+              placeholder="Write a compliment or complaint..." 
+              value={review}
+              onChange={(e) => setReview(e.target.value)}
+              className="bg-black/50 border-gray-700 text-white min-h-[80px]"
+            />
+
+            <Button 
+              className="w-full bg-[#00ff88] text-black font-bold text-lg"
+              onClick={submitRating}
+              disabled={rating === 0}
+            >
+              Submit Feedback
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
            {/* History Tab */}
            <TabsContent value="history">
