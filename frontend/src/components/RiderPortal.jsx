@@ -11,19 +11,30 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
-  Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp
+  Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send
 } from "lucide-react";
 
-// Pricing Rules
+// CSS Injection to force map height
+const mapStyles = `
+  .gm-style, 
+  div[aria-label="Map"] {
+    min-height: 400px !important;
+    height: 100% !important;
+    width: 100% !important;
+  }
+`;
+
+// --- UPDATED PRICING RULES (Matches your Backend) ---
 const PRICING_RULES = {
-  economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 1.00, icon: "🚗" },
-  comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.45, freeWait: 2, stopFee: 1.50, icon: "🚙" },
-  suv: { name: 'SUV / XL', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 2.00, icon: "🚐" },
-  personal: { name: 'Personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 3, stopFee: 1.50, icon: "👤" },
+  economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗" },
+  comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚙" },
+  suv: { name: 'SUV / XL', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐" },
+  personal: { name: 'Personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "👤" },
   jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
@@ -63,10 +74,109 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
+// --- CHAT COMPONENT ---
+const ChatInterface = ({ rideId, driverName, onClose }) => {
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef(null);
+  const { user } = useAuth();
+
+  // Poll for messages
+  useEffect(() => {
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(interval);
+  }, [rideId]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  const fetchMessages = async () => {
+    try {
+      const res = await axios.get(`${API}/rides/${rideId}/chat`);
+      setMessages(res.data.messages || []);
+      
+      // Mark as read if any unread
+      await axios.post(`${API}/rides/${rideId}/chat/read`);
+    } catch (error) {
+      console.error("Chat error:", error);
+    }
+  };
+
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+
+    setSending(true);
+    try {
+      await axios.post(`${API}/rides/${rideId}/chat`, { message: newMessage });
+      setNewMessage("");
+      fetchMessages(); // Update immediately
+    } catch (error) {
+      toast.error("Failed to send message");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-[500px]">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 ? (
+          <div className="text-center text-gray-500 mt-10">
+            <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-20" />
+            <p>Start conversation with {driverName}</p>
+          </div>
+        ) : (
+          messages.map((msg) => {
+            const isMe = msg.sender_id === user.id;
+            return (
+              <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                <div 
+                  className={`max-w-[80%] rounded-2xl p-3 ${
+                    isMe 
+                      ? "bg-[#00ff88] text-black rounded-tr-none" 
+                      : "bg-[#1a1a2e] border border-[#00ff88]/30 text-white rounded-tl-none"
+                  }`}
+                >
+                  <p className="text-sm">{msg.message}</p>
+                  <p className={`text-[10px] mt-1 text-right ${isMe ? "text-black/60" : "text-gray-400"}`}>
+                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={scrollRef} />
+      </div>
+      
+      <div className="p-4 border-t border-[#00ff88]/20 bg-black/50">
+        <form onSubmit={sendMessage} className="flex gap-2">
+          <Input 
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="bg-[#1a1a2e] border-[#00ff88]/30 text-white"
+          />
+          <Button type="submit" size="icon" className="bg-[#00ff88] text-black" disabled={sending}>
+            <Send className="w-4 h-4" />
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 // Google Maps Autocomplete Hook
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
-    if (!inputRef.current || !window.google) return;
+    if (!inputRef.current || !window.google || !window.google.maps || !window.google.maps.places) return;
     
     const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: 'ge' },
@@ -220,6 +330,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-black border border-[#00ff88]/30 max-w-2xl max-h-[90vh]">
+        <style>{mapStyles}</style>
         <DialogHeader>
           <DialogTitle className="text-[#00ff88] flex items-center">
             <MapPin className="w-5 h-5 mr-2" /> {title || "Select Location"}
@@ -230,6 +341,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
           <div 
             ref={mapRef} 
             className="w-full h-[400px] rounded-xl border border-[#00ff88]/20"
+            style={{ minHeight: "400px" }}
           />
           
           <div className="flex gap-2">
@@ -466,6 +578,11 @@ const RiderDashboard = () => {
       return;
     }
     
+    if (!GOOGLE_MAPS_API_KEY) {
+      console.error("Google Maps API Key is missing!");
+      return;
+    }
+
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
     script.async = true;
@@ -731,6 +848,8 @@ const RiderDashboard = () => {
 
   return (
     <div className="min-h-screen bg-black">
+      <style>{mapStyles}</style>
+      
       {/* Header */}
       <header className="bg-black/50 backdrop-blur-xl border-b border-[#00ff88]/20 p-4 sticky top-0 z-50">
         <div className="container mx-auto flex items-center justify-between">
@@ -1048,7 +1167,35 @@ const RiderDashboard = () => {
 
                   {activeRide.driver_info && (
                     <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                      <p className="text-[#00ff88] font-semibold mb-2">Your Driver</p>
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="text-[#00ff88] font-semibold">Your Driver</p>
+                        
+                        {/* CHAT BUTTON */}
+                        <Sheet>
+                          <SheetTrigger asChild>
+                            <Button size="sm" className="bg-[#00ff88] text-black">
+                              <MessageSquare className="w-4 h-4 mr-1" /> Chat
+                              {activeRide.unread_messages > 0 && (
+                                <Badge className="ml-1 bg-red-500 text-white h-5 w-5 rounded-full p-0 flex items-center justify-center">
+                                  {activeRide.unread_messages}
+                                </Badge>
+                              )}
+                            </Button>
+                          </SheetTrigger>
+                          <SheetContent side="bottom" className="h-[80vh] bg-black border-t border-[#00ff88]/30">
+                            <SheetHeader>
+                              <SheetTitle className="text-[#00ff88]">
+                                Chat with {activeRide.driver_info.name}
+                              </SheetTitle>
+                            </SheetHeader>
+                            <ChatInterface 
+                              rideId={activeRide.id} 
+                              driverName={activeRide.driver_info.name}
+                            />
+                          </SheetContent>
+                        </Sheet>
+                      </div>
+                      
                       <div className="flex items-center space-x-3">
                         <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
                           <User className="w-7 h-7 text-black" />
