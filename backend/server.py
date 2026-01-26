@@ -14,6 +14,13 @@ from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import bcrypt
 import jwt
+import httpx # You already have this in requirements.txt
+import base64
+
+# Load PayPal Secrets
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID")
+PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET")
+PAYPAL_API_BASE = "https://api-m.paypal.com" # Use "https://api-m.sandbox.paypal.com" for testing
 
 # Load environment variables
 ROOT_DIR = Path(__file__).parent
@@ -173,11 +180,13 @@ class RideRequest(BaseModel):
     destination_lng: Optional[float] = Field(None, alias="destinationLng")
     stops: List[StopLocation] = []
     payment_method: Optional[str] = Field("cash", alias="paymentMethod")
+    # --- NEW FIELD FOR PAYPAL ---
+    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId") 
+    # ----------------------------
     estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
     estimated_duration: Optional[int] = Field(0, alias="estimatedDuration")
     
     model_config = ConfigDict(populate_by_name=True)
-
 class TopUpRequest(BaseModel):
     amount: float = Field(gt=0)
     payment_reference: Optional[str] = None
@@ -207,59 +216,59 @@ class UpdateRideFare(BaseModel):
 # --- PRICING LOGIC ---
 PRICING_RULES = {
     'economy': {
-        'base': 2.00,
-        'per_km': 0.50,
-        'per_minute_wait': 0.40,
-        'free_wait_minutes': 2,
+        'base': 2.00,          # Original Base
+        'per_km': 0.50,        # Original Per KM
+        'per_minute_wait': 0.50, # FIXED: 0.50/min
+        'free_wait_minutes': 2,  # FIXED: 2 mins free
+        'stop_fee': 0.00,      # FIXED: 0 fee
         'long_distance_threshold': 7.0,
         'long_distance_fee_per_km': 0.15,
         'very_long_threshold': 30.0,
-        'very_long_surcharge_per_15km': 5.00,
-        'stop_fee': 1.00
+        'very_long_surcharge_per_15km': 5.00
     },
     'comfort': {
-        'base': 2.50,
+        'base': 2.50,          # Original Base
         'per_km': 0.55,
-        'per_minute_wait': 0.45,
+        'per_minute_wait': 0.50, # FIXED: 0.50/min
         'free_wait_minutes': 2,
+        'stop_fee': 0.00,      # FIXED: 0 fee
         'long_distance_threshold': 7.0,
         'long_distance_fee_per_km': 0.18,
         'very_long_threshold': 30.0,
-        'very_long_surcharge_per_15km': 6.00,
-        'stop_fee': 1.50
+        'very_long_surcharge_per_15km': 6.00
     },
     'suv': {
-        'base': 3.90,
+        'base': 3.90,          # Original Base
         'per_km': 0.80,
-        'per_minute_wait': 0.50,
+        'per_minute_wait': 0.50, # FIXED: 0.50/min
         'free_wait_minutes': 2,
+        'stop_fee': 0.00,      # FIXED: 0 fee
         'long_distance_threshold': 7.0,
         'long_distance_fee_per_km': 0.25,
         'very_long_threshold': 30.0,
-        'very_long_surcharge_per_15km': 8.00,
-        'stop_fee': 2.00
+        'very_long_surcharge_per_15km': 8.00
     },
     'personal': {
-        'base': 4.00,
+        'base': 4.00,          # Original Base
         'per_km': 0.70,
-        'per_minute_wait': 0.50,
-        'free_wait_minutes': 3,
+        'per_minute_wait': 0.50, # FIXED: 0.50/min
+        'free_wait_minutes': 2,  # FIXED: Changed from 3 to 2 per request
+        'stop_fee': 0.00,      # FIXED: 0 fee
         'long_distance_threshold': 7.0,
         'long_distance_fee_per_km': 0.20,
         'very_long_threshold': 30.0,
-        'very_long_surcharge_per_15km': 7.00,
-        'stop_fee': 1.50
+        'very_long_surcharge_per_15km': 7.00
     },
     'jumpstart': {
         'base': 4.50,
         'per_km': 0.00,
-        'per_minute_wait': 0.00,
+        'per_minute_wait': 0.50,
         'free_wait_minutes': 999,
+        'stop_fee': 0.00,
         'long_distance_threshold': 999.0,
         'long_distance_fee_per_km': 0.00,
         'very_long_threshold': 999.0,
-        'very_long_surcharge_per_15km': 0.00,
-        'stop_fee': 0.00
+        'very_long_surcharge_per_15km': 0.00
     }
 }
 
@@ -464,6 +473,25 @@ def calculate_fare(car_type: str, distance_km: float, wait_minutes: int = 0,
             'free_wait_minutes': rules['free_wait_minutes']
         }
     }
+async def get_paypal_token():
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        logger.error("PayPal credentials missing")
+        return None
+        
+    auth_str = f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{PAYPAL_API_BASE}/v1/oauth2/token",
+                headers={"Authorization": f"Basic {b64_auth}"},
+                data={"grant_type": "client_credentials"}
+            )
+            return response.json().get("access_token")
+        except Exception as e:
+            logger.error(f"PayPal Token Error: {e}")
+            return None
 
 # --- AUTH ROUTES ---
 
@@ -1430,6 +1458,27 @@ async def stop_reached(ride_id: str, stop_index: int, wait_minutes: int = 0, use
     
     return {"message": f"Stop {stop_index} completed, wait time: {wait_minutes} minutes"}
 
+# --- PAYPAL HELPER (Required for complete_ride) ---
+async def get_paypal_token():
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        logger.error("PayPal credentials missing")
+        return None
+        
+    auth_str = f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{PAYPAL_API_BASE}/v1/oauth2/token",
+                headers={"Authorization": f"Basic {b64_auth}"},
+                data={"grant_type": "client_credentials"}
+            )
+            return response.json().get("access_token")
+        except Exception as e:
+            logger.error(f"PayPal Token Error: {e}")
+            return None
+
 @app.post("/api/rides/{ride_id}/complete", tags=["Rides"])
 async def complete_ride(
     ride_id: str,
@@ -1445,36 +1494,94 @@ async def complete_ride(
     
     ride_data = ride_doc.to_dict()
     
-    # Use actual distance if provided, otherwise estimate
-    actual_distance = final_distance or ride_data.get('estimated_distance', 5)
+    # 1. SMART DISTANCE CHECK
+    estimated = ride_data.get('estimated_distance', 5)
+    reported = final_distance if final_distance is not None else 0
+    
+    if reported < (estimated * 0.1):
+        actual_distance = estimated
+        logger.warning(f"Ride {ride_id}: GPS distance {reported}km seems wrong. Using estimate {estimated}km")
+    else:
+        actual_distance = reported
+
+    # 2. CALCULATE FINAL FARE
     pickup_wait = ride_data.get('pickup_wait_minutes', 0)
     stop_wait = ride_data.get('stop_wait_minutes', 0)
     num_stops = ride_data.get('num_stops', 0)
     car_type = ride_data.get('carType', 'economy')
+    surge_multiplier = ride_data.get('surge_multiplier', 1.0)
     
-    # Calculate final fare
-    final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops)
+    final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops, surge_multiplier)
     
-    driver_id = ride_data.get('driver_id')
-    
+    # 3. PAYMENT CAPTURE LOGIC (The "Hold & Capture")
+    payment_status = "cash_pending"
+    payment_method = ride_data.get('payment_method', 'cash')
+    order_id = ride_data.get('payment_order_id')
+
+    if payment_method == 'card' and order_id:
+        try:
+            logger.info(f"Attempting to capture PayPal order: {order_id}")
+            access_token = await get_paypal_token()
+            
+            if access_token:
+                async with httpx.AsyncClient() as client:
+                    capture_response = await client.post(
+                        f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}/capture",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {access_token}"
+                        },
+                        json={
+                            "note_to_payer": "Thanks for riding with T'aksi!"
+                        }
+                    )
+                    
+                    if capture_response.status_code in [200, 201]:
+                        payment_status = "paid"
+                        logger.info(f"Payment captured successfully for ride {ride_id}")
+                    else:
+                        error_detail = capture_response.text
+                        logger.error(f"PayPal Capture Failed: {error_detail}")
+                        payment_status = "failed"
+            else:
+                payment_status = "auth_error"
+                
+        except Exception as e:
+            logger.error(f"Payment Exception: {e}")
+            payment_status = "error"
+    elif payment_method == 'cash':
+        payment_status = "cash_collected"
+
+    # 4. UPDATE DATABASE
     db.collection('rides').document(ride_id).update({
         "status": "completed",
         "actual_distance": actual_distance,
         "final_fare": final_fare['total'],
         "final_fare_breakdown": final_fare,
+        "payment_status": payment_status,
         "completed_at": firestore.SERVER_TIMESTAMP
     })
     
-    # Update driver earnings
+    # 5. UPDATE DRIVER EARNINGS
+    driver_id = ride_data.get('driver_id')
     if driver_id:
         commission = final_fare['total'] * DRIVER_COMMISSION_RATE
         driver_earnings = final_fare['total'] - commission
-        db.collection('users').document(driver_id).update({
+        
+        updates = {
             "earnings.total_earned": firestore.Increment(driver_earnings),
             "total_rides": firestore.Increment(1)
-        })
+        }
+        
+        # Balance Logic
+        if payment_method == 'cash':
+            updates["earnings.balance"] = firestore.Increment(-commission)
+        elif payment_status == 'paid': 
+            updates["earnings.balance"] = firestore.Increment(driver_earnings)
+
+        db.collection('users').document(driver_id).update(updates)
     
-    # Update rider stats
+    # Update Rider Stats
     rider_id = ride_data.get('userId')
     if rider_id:
         db.collection('users').document(rider_id).update({
@@ -1483,6 +1590,7 @@ async def complete_ride(
     
     return {
         "message": "Ride completed",
+        "payment_status": payment_status,
         "final_fare": final_fare['total'],
         "fare_breakdown": final_fare
     }
