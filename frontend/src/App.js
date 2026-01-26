@@ -15,7 +15,10 @@ import AdminPortal from "@/components/AdminPortal";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 export { useLanguage } from "@/i18n/LanguageContext";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = import.meta.env.PROD 
+  ? "https://t-aksi.onrender.com" 
+  : "http://localhost:8000";
+
 export const API = `${BACKEND_URL}/api`;
 export const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "AIzaSyC2gkANH8GJOZNDdibTCKNEOWiuf580bxA";
 
