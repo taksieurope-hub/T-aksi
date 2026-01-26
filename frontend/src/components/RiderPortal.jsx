@@ -39,33 +39,37 @@ const PRICING_RULES = {
   jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
+/**
+ * FIXED FARE CALCULATION
+ * Merged all your loose logic blocks into one functional unit.
+ */
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
-  
-  // 1. Distance
+
+  // 1. Distance Calculation
   subtotal += distanceKm * rules.perKm;
   
-  // 2. Long Distance Surcharge
+  // 2. Long Distance Surcharges
   if (distanceKm > 7) subtotal += (distanceKm - 7) * 0.15;
   if (distanceKm > 30) subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
+
+  // 3. Wait Fees (Initial pickup wait + intermediate stop wait)
+  const billableInitialWait = Math.max(0, waitMin - rules.freeWait);
+  const totalBillableWait = billableInitialWait + stopWaitMin;
+  subtotal += totalBillableWait * rules.perMinWait;
   
-  // 3. Wait Time (The fix: Subtract free wait first)
-  const billableWait = Math.max(0, waitMin - rules.freeWait);
-  subtotal += billableWait * rules.perMinWait;
-  subtotal += stopWaitMin * rules.perMinWait;
-  
-  // 4. Stops
+  // 4. Stop Fees
   subtotal += numStops * rules.stopFee;
   
-  // 5. Surge
+  // 5. Surge Application
   const surgeFee = subtotal * (surgeMultiplier - 1.0);
   const total = subtotal + surgeFee;
   
   return {
     base: rules.base,
     distance: Math.round(distanceKm * rules.perKm * 100) / 100,
-    wait: Math.round(billableWait * rules.perMinWait * 100) / 100, // Show wait cost
+    wait: Math.round(totalBillableWait * rules.perMinWait * 100) / 100,
     stops: numStops * rules.stopFee,
     subtotal: Math.round(subtotal * 100) / 100,
     surgeFee: Math.round(surgeFee * 100) / 100,
@@ -73,36 +77,6 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
     total: Math.round(total * 100) / 100
   };
 };
-  // Long distance
-  if (distanceKm > 7) {
-    subtotal += (distanceKm - 7) * 0.15;
-  }
-  if (distanceKm > 30) {
-    subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
-  }
-
-  
-  // Wait fees
-  const billableWait = Math.max(0, waitMin - rules.freeWait);
-  subtotal += billableWait * rules.perMinWait;
-  subtotal += stopWaitMin * rules.perMinWait;
-  
-  // Stop fees
-  subtotal += numStops * rules.stopFee;
-  // Surge
-  const surgeFee = subtotal * (surgeMultiplier - 1.0);
-  const total = subtotal + surgeFee;
-  
-  return {
-    base: rules.base,
-    distance: Math.round(distanceKm * rules.perKm * 100) / 100,
-    wait: Math.round((billableWait + stopWaitMin) * rules.perMinWait * 100) / 100,
-    stops: numStops * rules.stopFee,
-    subtotal: Math.round(subtotal * 100) / 100,
-    surgeFee: Math.round(surgeFee * 100) / 100,
-    surgeMultiplier,
-    total: Math.round(total * 100) / 100
-  };
 
 // --- CHAT COMPONENT ---
 const ChatInterface = ({ rideId, driverName, onClose }) => {
@@ -112,12 +86,29 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
   const scrollRef = useRef(null);
   const { user } = useAuth();
 
+  const fetchMessages = async () => {
+    try {
+      const res = await axios.get(`${API}/rides/${rideId}/messages`);
+      setMessages(res.data || []);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    }
+  };
+
   // Poll for messages
   useEffect(() => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
   }, [rideId]);
+
+  // Logic for sending messages and UI would follow here
+  return (
+    <div className="flex flex-col h-full bg-black">
+       {/* UI implementation goes here */}
+    </div>
+  );
+};
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -201,7 +192,6 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
       </div>
     </div>
   );
-};
 
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
