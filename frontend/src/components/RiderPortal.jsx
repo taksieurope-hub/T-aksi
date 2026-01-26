@@ -373,82 +373,73 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
   );
 };
 
+// --- LIVE TRACKING MAP (FIXED BRACING) ---
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
-  const directionsRendererRef = useRef(null);
+  const rendererRef = useRef(null);
   const [eta, setEta] = useState(null);
 
+  // Initialize Map
   useEffect(() => {
-    // 1. SAFETY: Convert to numbers. If data is missing/invalid, STOP.
-    const pLat = parseFloat(pickup?.lat);
-    const pLng = parseFloat(pickup?.lng);
-    const dLat = parseFloat(driverLocation?.lat);
-    const dLng = parseFloat(driverLocation?.lng);
-
-    // Prevent map from loading with invalid data (Fixes White Screen)
     if (!window.google || !mapRef.current) return;
     
-    // Determine center: Prioritize Driver, then Pickup
-    const center = (!isNaN(dLat) && !isNaN(dLng)) ? { lat: dLat, lng: dLng } 
-                 : (!isNaN(pLat) && !isNaN(pLng)) ? { lat: pLat, lng: pLng } 
-                 : null;
-
-    if (!center) return;
-
-    const map = new window.google.maps.Map(mapRef.current, {
-      zoom: 15,
-      center: center,
+    const initialCenter = driverLocation?.lat ? driverLocation : (pickup?.lat ? pickup : { lat: 41.7151, lng: 44.8271 });
+    
+    const map = new window.google.maps.Map(mapRef.current, { 
+      zoom: 15, 
+      center: initialCenter, 
       disableDefaultUI: true,
       styles: [
         { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
         { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] }
       ]
     });
-
-    const renderer = new window.google.maps.DirectionsRenderer({
-      map: map,
-      suppressMarkers: false,
-      polylineOptions: { strokeColor: status === 'in_progress' ? "#00ff88" : "#00d4ff", strokeWeight: 5 }
-    });
-    directionsRendererRef.current = renderer;
-
-    // Add Markers manually
-    if (!isNaN(pLat)) new window.google.maps.Marker({ position: { lat: pLat, lng: pLng }, map, icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#00ff88", fillOpacity: 1, strokeColor: "white", strokeWeight: 2 }, title: "Pickup" });
-    if (destination?.lat) new window.google.maps.Marker({ position: destination, map, title: "Destination" });
-    if (!isNaN(dLat)) new window.google.maps.Marker({ position: { lat: dLat, lng: dLng }, map, icon: { path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 6, fillColor: "#00d4ff", fillOpacity: 1, strokeColor: "white", strokeWeight: 2, rotation: driverLocation.heading || 0 }, title: "Driver" });
-
-  }, []); // Run once on mount
-
-  // Update Route/Lines
-  useEffect(() => {
-    if (!window.google || !directionsRendererRef.current) return;
     
-    const start = driverLocation || pickup; 
+    rendererRef.current = new window.google.maps.DirectionsRenderer({ 
+      map, 
+      suppressMarkers: false,
+      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
+    });
+  }, []);
+
+  // Update Routing & ETA
+  useEffect(() => {
+    if (!window.google || !rendererRef.current) return;
+    
+    const start = driverLocation?.lat ? driverLocation : pickup;
     const end = status === 'in_progress' ? destination : pickup;
+    
+    if (!start?.lat || !end?.lat) return;
 
-    // Ensure we have valid coordinates before routing
-    if (!start?.lat || !end?.lat || isNaN(parseFloat(start.lat)) || isNaN(parseFloat(end.lat))) return;
-
-    const dirService = new window.google.maps.DirectionsService();
-    dirService.route(
-      { origin: start, destination: end, travelMode: window.google.maps.TravelMode.DRIVING },
-      (result, status) => {
-        if (status === "OK") {
-          directionsRendererRef.current.setDirections(result);
-          if(result.routes[0].legs[0]) setEta(result.routes[0].legs[0].duration.text);
+    const directionsService = new window.google.maps.DirectionsService();
+    directionsService.route(
+      { 
+        origin: new window.google.maps.LatLng(start.lat, start.lng), 
+        destination: new window.google.maps.LatLng(end.lat, end.lng), 
+        travelMode: window.google.maps.TravelMode.DRIVING 
+      },
+      (res, stat) => {
+        if (stat === "OK") {
+          rendererRef.current.setDirections(res);
+          if (res.routes[0].legs[0]) {
+            setEta(res.routes[0].legs[0].duration.text);
+          }
         }
       }
     );
   }, [driverLocation, status, pickup, destination]);
 
+  // THIS RETURN IS NOW INSIDE THE FUNCTION
   return (
-    <div className="relative w-full h-[350px] rounded-xl overflow-hidden border border-[#00ff88]/30 mb-4 bg-gray-900">
+    <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4 mb-4">
       <div ref={mapRef} className="w-full h-full" />
-      {eta && <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-3 py-1 rounded text-[#00ff88] font-bold z-10">{eta}</div>}
+      {eta && (
+        <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-4 py-2 rounded-lg backdrop-blur-md z-10">
+          <p className="text-[#00ff88] font-bold text-xl">{eta}</p>
+          <p className="text-[10px] text-white uppercase tracking-wider">Arrival</p>
+        </div>
+      )}
     </div>
   );
 };
