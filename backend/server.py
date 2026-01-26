@@ -253,7 +253,7 @@ PRICING_RULES = {
     'jumpstart': {
         'base': 4.50,
         'per_km': 0.00,
-        'per_minute_wait': 0.00,
+        'per_minute_wait': 0.50,
         'free_wait_minutes': 999,
         'stop_fee': 0.00,
         'long_distance_threshold': 999.0,
