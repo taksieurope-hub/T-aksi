@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/App";
 import axios from "axios";
@@ -11,8 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
@@ -29,7 +30,7 @@ const mapStyles = `
   }
 `;
 
-// --- UPDATED PRICING RULES (Matches your Backend) ---
+// --- UPDATED PRICING RULES ---
 const PRICING_RULES = {
   economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗" },
   comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚙" },
@@ -82,14 +83,12 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
   const scrollRef = useRef(null);
   const { user } = useAuth();
 
-  // Poll for messages
   useEffect(() => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
   }, [rideId]);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
@@ -100,8 +99,6 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
     try {
       const res = await axios.get(`${API}/rides/${rideId}/chat`);
       setMessages(res.data.messages || []);
-      
-      // Mark as read if any unread
       await axios.post(`${API}/rides/${rideId}/chat/read`);
     } catch (error) {
       console.error("Chat error:", error);
@@ -116,7 +113,7 @@ const ChatInterface = ({ rideId, driverName, onClose }) => {
     try {
       await axios.post(`${API}/rides/${rideId}/chat`, { message: newMessage });
       setNewMessage("");
-      fetchMessages(); // Update immediately
+      fetchMessages();
     } catch (error) {
       toast.error("Failed to send message");
     } finally {
@@ -246,7 +243,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
     
     markerRef.current = marker;
     
-    // Click to set location
     map.addListener('click', (e) => {
       const lat = e.latLng.lat();
       const lng = e.latLng.lng();
@@ -255,7 +251,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       reverseGeocode(lat, lng);
     });
     
-    // Drag marker
     marker.addListener('dragend', () => {
       const pos = marker.getPosition();
       const lat = pos.lat();
@@ -264,7 +259,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       reverseGeocode(lat, lng);
     });
     
-    // Set initial location if provided
     if (initialLocation) {
       marker.setPosition(initialLocation);
       setSelectedLocation(initialLocation);
@@ -547,6 +541,105 @@ const RiderAuth = () => {
   );
 };
 
+// --- LIVE TRACKING MAP COMPONENT ---
+const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
+  const mapRef = useRef(null);
+  const directionsRendererRef = useRef(null);
+  const [eta, setEta] = useState(null);
+
+  useEffect(() => {
+    if (!window.google || !mapRef.current) return;
+
+    // 1. Initialize Map
+    const map = new window.google.maps.Map(mapRef.current, {
+      zoom: 15,
+      center: pickup, // Start focused on user
+      disableDefaultUI: true,
+      styles: [ /* Copy the dark theme styles here if you want */ ]
+    });
+
+    // 2. Setup Directions Renderer (The Blue Line)
+    const directionsRenderer = new window.google.maps.DirectionsRenderer({
+      map: map,
+      suppressMarkers: true, // We will add our own custom markers
+      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
+    });
+    directionsRendererRef.current = directionsRenderer;
+
+    // 3. Add Markers
+    // User Pickup Marker
+    new window.google.maps.Marker({
+      position: pickup,
+      map,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: "#00ff88",
+        fillOpacity: 1,
+        strokeColor: "white",
+        strokeWeight: 2,
+      },
+      title: "Pickup"
+    });
+
+    // Destination Marker (only if we have one)
+    if (destination && destination.lat) {
+      new window.google.maps.Marker({
+        position: destination,
+        map,
+        title: "Destination"
+      });
+    }
+
+  }, []); // Run once on mount
+
+  // 4. Update Driver Position & Route Live
+  useEffect(() => {
+    if (!window.google || !directionsRendererRef.current) return;
+
+    const directionsService = new window.google.maps.DirectionsService();
+
+    // Decide what route to show:
+    // If status is 'accepted' -> Show route from Driver to Pickup
+    // If status is 'in_progress' -> Show route from Pickup to Destination
+    const startPoint = status === 'in_progress' ? pickup : driverLocation;
+    const endPoint = status === 'in_progress' ? destination : pickup;
+
+    if (startPoint && endPoint) {
+      directionsService.route(
+        {
+          origin: startPoint,
+          destination: endPoint,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === "OK") {
+            directionsRendererRef.current.setDirections(result);
+            
+            // Get ETA from the result
+            const leg = result.routes[0].legs[0];
+            setEta(leg.duration.text); // e.g., "5 mins"
+          }
+        }
+      );
+    }
+  }, [driverLocation, status, pickup, destination]);
+
+  return (
+    <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4">
+      <div ref={mapRef} className="w-full h-full" />
+      
+      {/* ETA Overlay */}
+      {eta && (
+        <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-4 py-2 rounded-lg backdrop-blur-md">
+          <p className="text-[#00ff88] font-bold text-xl">{eta}</p>
+          <p className="text-xs text-white uppercase">Estimated Arrival</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Dashboard Component
 const RiderDashboard = () => {
   const { user, logout, updateUser } = useAuth();
@@ -634,7 +727,6 @@ const RiderDashboard = () => {
     
     const directionsService = new window.google.maps.DirectionsService();
     
-    // Build waypoints from stops
     const waypoints = stops
       .filter(s => s.lat && s.lng)
       .map(s => ({
@@ -708,7 +800,8 @@ const RiderDashboard = () => {
     setStops(stops.filter((_, i) => i !== index));
   };
 
-  const handleBookRide = async () => {
+  // Modified to handle optional Payment Data
+  const handleBookRide = async (paymentData = null) => {
     if (!pickup.lat || !pickup.address) {
       toast.error("Please select pickup location");
       return;
@@ -732,7 +825,9 @@ const RiderDashboard = () => {
         carType,
         paymentMethod,
         estimatedDistance: routeInfo?.distance || 5,
-        estimatedDuration: routeInfo?.duration || 15
+        estimatedDuration: routeInfo?.duration || 15,
+        // Add payment details if they exist
+        ...paymentData
       };
       
       const res = await axios.post(`${API}/rides/request`, rideData);
@@ -779,7 +874,6 @@ const RiderDashboard = () => {
 
   const handleCancelRide = async () => {
     if (!activeRide) return;
-    
     try {
       await axios.post(`${API}/rides/${activeRide.id}/cancel`);
       toast.success("Ride cancelled");
@@ -792,7 +886,6 @@ const RiderDashboard = () => {
 
   const handleRetryRide = async () => {
     if (!activeRide) return;
-    
     try {
       const res = await axios.post(`${API}/rides/${activeRide.id}/retry`);
       toast.success("Searching for drivers again...");
@@ -809,7 +902,6 @@ const RiderDashboard = () => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         
-        // Reverse geocode
         if (window.google) {
           const geocoder = new window.google.maps.Geocoder();
           geocoder.geocode({ location: { lat, lng } }, (results, status) => {
@@ -1057,33 +1149,81 @@ const RiderDashboard = () => {
 
                 {/* Payment */}
                 <div className="space-y-2">
-                  <Label className="text-[#00ff88]">Payment</Label>
+                  <Label className="text-[#00ff88]">Payment Method</Label>
                   <div className="flex gap-2">
                     <Button
                       variant={paymentMethod === "cash" ? "default" : "outline"}
                       onClick={() => setPaymentMethod("cash")}
-                      className={paymentMethod === "cash" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}
+                      className={paymentMethod === "cash" ? "bg-[#00ff88] text-black w-1/2" : "border-[#00ff88]/30 text-white w-1/2"}
                     >
                       💵 Cash
                     </Button>
                     <Button
                       variant={paymentMethod === "card" ? "default" : "outline"}
                       onClick={() => setPaymentMethod("card")}
-                      className={paymentMethod === "card" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}
+                      className={paymentMethod === "card" ? "bg-[#00d4ff] text-black w-1/2" : "border-[#00d4ff]/30 text-white w-1/2"}
                     >
-                      💳 Card
+                      💳 PayPal / Card
                     </Button>
                   </div>
                 </div>
 
-                <Button
-                  className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6"
-                  onClick={handleBookRide}
-                  disabled={loading || !pickup.lat}
-                >
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />}
-                  Request Ride {fareEstimate ? `- ₾${fareEstimate.total.toFixed(2)}` : ""}
-                </Button>
+                {/* ACTION BUTTON OR PAYPAL BUTTONS */}
+                {paymentMethod === 'cash' ? (
+                   <Button
+                    className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6"
+                    onClick={() => handleBookRide()}
+                    disabled={loading || !pickup.lat}
+                  >
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />}
+                    Request Ride (Cash)
+                  </Button>
+                ) : (
+                  <div className="mt-4 p-2 bg-white rounded-xl">
+                     <PayPalButtons 
+                        style={{ layout: "vertical", shape: "rect", borderRadius: 10 }}
+                        disabled={!fareEstimate || !pickup.lat}
+                        forceReRender={[fareEstimate?.total]} // Re-render if price changes
+                        createOrder={async (data, actions) => {
+                           try {
+                               // Call backend to create order securely
+                               const response = await axios.post(`${API}/payments/create-paypal-order`, {
+                                   amount: fareEstimate.total,
+                                   currency: "GEL"
+                               });
+                               return response.data.orderID;
+                           } catch (err) {
+                               toast.error("Could not initiate PayPal payment");
+                               throw err;
+                           }
+                        }}
+                        onApprove={async (data, actions) => {
+                            try {
+                                // Capture the order on backend
+                                const response = await axios.post(`${API}/payments/capture-paypal-order`, {
+                                    orderID: data.orderID
+                                });
+                                
+                                if (response.data.status === "COMPLETED") {
+                                    toast.success("Payment Successful!");
+                                    // BOOK THE RIDE AUTOMATICALLY
+                                    handleBookRide({
+                                        paid: true,
+                                        transactionId: response.data.id,
+                                        paymentStatus: 'completed'
+                                    });
+                                }
+                            } catch (err) {
+                                toast.error("Payment capture failed. Please contact support.");
+                            }
+                        }}
+                        onError={(err) => {
+                            toast.error("PayPal Encountered an Error");
+                            console.error(err);
+                        }}
+                     />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1137,6 +1277,21 @@ const RiderDashboard = () => {
                     </div>
                   )}
 
+                  {/* LIVE MAP - Shows when driver is found */}
+                  {["accepted", "arrived", "in_progress"].includes(activeRide.status) && (
+                     <LiveTrackingMap 
+                        pickup={{ lat: parseFloat(activeRide.pickupLat), lng: parseFloat(activeRide.pickupLng) }}
+                        destination={{ lat: parseFloat(activeRide.destinationLat || 0), lng: parseFloat(activeRide.destinationLng || 0) }}
+                        // NOTE: In a real app, backend sends 'activeRide.driver_location'. 
+                        // For now, we simulate the driver being slightly away from pickup so the map renders.
+                        driverLocation={{ 
+                            lat: activeRide.driver_info?.lat || parseFloat(activeRide.pickupLat) + 0.002, 
+                            lng: activeRide.driver_info?.lng || parseFloat(activeRide.pickupLng) + 0.002 
+                        }}
+                        status={activeRide.status}
+                     />
+                  )}
+                  
                   {/* No Drivers Available - with retry option */}
                   {activeRide.status === "no_drivers" && (
                     <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
@@ -1335,12 +1490,18 @@ const RiderPortal = () => {
     return <Navigate to="/rider" replace />;
   }
 
+  // WRAP EVERYTHING IN PAYPAL PROVIDER
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/rider/dashboard" replace />} />
-      <Route path="/dashboard" element={<RiderDashboard />} />
-      <Route path="*" element={<Navigate to="/rider/dashboard" replace />} />
-    </Routes>
+    <PayPalScriptProvider options={{ 
+       "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test", // Uses env var or defaults to sandbox test mode
+       currency: "GEL"
+    }}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/rider/dashboard" replace />} />
+          <Route path="/dashboard" element={<RiderDashboard />} />
+          <Route path="*" element={<Navigate to="/rider/dashboard" replace />} />
+        </Routes>
+    </PayPalScriptProvider>
   );
 };
 
