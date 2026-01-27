@@ -1167,6 +1167,7 @@ const DriverDashboard = () => {
                             <div className="bg-white p-2 rounded-xl">
                                <PayPalButtons 
                                    style={{ layout: "vertical", shape: "rect" }}
+                                   forceReRender={[topupAmount]} 
                                    createOrder={(data, actions) => {
                                       // Convert GEL input to USD for PayPal
                                       const usdAmount = (parseFloat(topupAmount) * GEL_TO_USD_RATE).toFixed(2);
@@ -1448,7 +1449,7 @@ const DriverDashboard = () => {
             </div>
             
             <div className="space-y-2">
-                <Label>IBAN Number</Label>
+                <Label>IBAN / Account Number</Label>
                 <Input 
                     value={newBankIban} 
                     onChange={(e) => setNewBankIban(e.target.value)}
@@ -1507,7 +1508,10 @@ const DriverPortal = () => {
   return (
     <PayPalScriptProvider options={{ 
        "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test",
-       currency: "USD" 
+       currency: "USD",
+       intent: "capture",
+       locale: "en_US", // <--- FIX: Prevents 404 error on "Add Card"
+       components: "buttons",
     }}>
         <Routes>
           <Route path="/" element={<Navigate to="/driver/dashboard" replace />} />
