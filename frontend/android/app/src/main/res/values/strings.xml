@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">T-Aksi</string>
+    <string name="title_activity_main">T-Aksi</string>
+    <string name="package_name">com.taksi.driver</string>
+    <string name="custom_url_scheme">com.taksi.driver</string>
+</resources>
