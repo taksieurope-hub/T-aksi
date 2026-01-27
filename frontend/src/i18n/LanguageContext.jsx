@@ -5,20 +5,16 @@ const LanguageContext = createContext();
 
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguage] = useState(() => {
-    // Check localStorage first, then browser language, then default to Georgian
+    // 1. Check if user already picked a language before
     const saved = localStorage.getItem('taksi_language');
     if (saved && translations[saved]) return saved;
     
-    // Try to detect browser language
-    const browserLang = navigator.language?.slice(0, 2);
-    if (browserLang && translations[browserLang]) return browserLang;
-    
-    return defaultLanguage; // Default to Georgian
+    // 2. FORCE GEORGIAN DEFAULT (Ignore phone settings)
+    return "ka"; 
   });
 
   useEffect(() => {
     localStorage.setItem('taksi_language', language);
-    // Update HTML lang attribute for accessibility
     document.documentElement.lang = language;
   }, [language]);
 
@@ -26,16 +22,10 @@ export const LanguageProvider = ({ children }) => {
     return translations[language]?.[key] || translations.en?.[key] || key;
   };
 
-  const changeLanguage = (lang) => {
-    if (translations[lang]) {
-      setLanguage(lang);
-    }
-  };
-
   return (
     <LanguageContext.Provider value={{ 
       language, 
-      setLanguage: changeLanguage, 
+      setLanguage, 
       t, 
       languages: languageNames,
       availableLanguages: Object.keys(translations)
@@ -47,9 +37,7 @@ export const LanguageProvider = ({ children }) => {
 
 export const useLanguage = () => {
   const context = useContext(LanguageContext);
-  if (!context) {
-    throw new Error('useLanguage must be used within a LanguageProvider');
-  }
+  if (!context) throw new Error('useLanguage error');
   return context;
 };
 
