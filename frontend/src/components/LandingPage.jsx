@@ -14,17 +14,26 @@ const LandingPage = () => {
     <div className="min-h-screen bg-black text-white overflow-hidden">
       {/* Hero Section */}
       <div className="relative">
-        {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#00ff88]/10 via-transparent to-black pointer-events-none" />
         
         {/* Header */}
         <header className="relative z-10 flex items-center justify-between p-6 max-w-7xl mx-auto">
           <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
-              <Rocket className="w-6 h-6 text-black" />
+            {/* --- LOGO FIX START --- */}
+            <div className="w-14 h-14 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
+              <img 
+                src="/logo.png" 
+                alt="T'aksi Logo" 
+                className="w-full h-full object-cover"
+                onError={(e) => e.target.src = "https://via.placeholder.com/150?text=TAKSI"} 
+              />
             </div>
-            <span className="text-2xl font-black tracking-tight">{t('app_name')}</span>
-            <span className="text-xs text-[#00ff88] uppercase tracking-widest">{t('app_tagline')}</span>
+            {/* --- LOGO FIX END --- */}
+            
+            <div className="flex flex-col">
+              <span className="text-2xl font-black tracking-tight leading-none">{t('app_name')}</span>
+              <span className="text-[10px] text-[#00ff88] uppercase tracking-[0.2em] mt-1">{t('app_tagline')}</span>
+            </div>
           </div>
           
           <div className="flex items-center space-x-4">
