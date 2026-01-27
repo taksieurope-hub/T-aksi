@@ -20,7 +20,7 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription,
-  DialogFooter // Added for completeness
+  DialogFooter
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -31,10 +31,12 @@ import {
   Route as RouteIcon, Play, Square, MapPinned, MessageSquare, Send
 } from "lucide-react";
 
+// --- CONFIGURATION ---
 const DRIVER_COMMISSION_RATE = 0.23; // 23%
 const MINIMUM_BALANCE_FOR_CASH = 0.00; // Hard limit
 const WITHDRAWAL_FEE = 1.00; // 1 GEL fee per withdrawal
 const LOCATION_UPDATE_INTERVAL = 5000;
+const GEL_TO_USD_RATE = 0.37; // 1 GEL ≈ 0.37 USD (Update this as needed)
 
 // CSS for Map
 const mapStyles = `
@@ -435,11 +437,15 @@ const DriverDashboard = () => {
   const [driverLocation, setDriverLocation] = useState(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
   
-  // Rating Modal State (Fixed: Added missing state)
+  // Rating Modal State
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [review, setReview] = useState("");
   const [completedRideInfo, setCompletedRideInfo] = useState(null);
+
+  // Bank Account Modal State
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [newBankIban, setNewBankIban] = useState("");
 
   // Ride tracking state
   const [rideStartTime, setRideStartTime] = useState(null);
@@ -717,7 +723,39 @@ const DriverDashboard = () => {
     }
   };
 
-  // Submitting Rating (Fixed: Added function)
+  // Saving Bank Details
+  const handleSaveBank = async () => {
+      if (!newBankIban) {
+        toast.error("Please enter a valid IBAN");
+        return;
+      }
+      
+      setLoading(true);
+      try {
+        // Saving bank details to backend
+        await axios.post(`${API}/driver/bank-details`, { bank_details: newBankIban });
+        
+        // Update local user state immediately so UI reflects change
+        const updatedUser = { 
+            ...user, 
+            driver_info: { 
+                ...user.driver_info, 
+                bank_details: newBankIban 
+            } 
+        };
+        updateUser(updatedUser);
+        
+        toast.success("Bank details linked successfully!");
+        setShowBankModal(false);
+        setNewBankIban("");
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to save bank details. Try again.");
+      } finally {
+        setLoading(false);
+      }
+  };
+
   const submitRating = async () => {
       // Logic to send rating to backend would go here
       // await axios.post(`${API}/rides/${completedRideInfo.id}/rate`, { rating, review });
@@ -1048,7 +1086,14 @@ const DriverDashboard = () => {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-white text-base flex justify-between">
                           <span><Banknote className="w-4 h-4 inline mr-2 text-[#00d4ff]"/> Payout Method</span>
-                          <Button variant="ghost" size="sm" className="h-6 text-[#00d4ff] text-xs">Edit</Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 text-[#00d4ff] text-xs"
+                            onClick={() => setShowBankModal(true)}
+                          >
+                              Edit
+                          </Button>
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -1063,7 +1108,12 @@ const DriverDashboard = () => {
                       ) : (
                           <div className="text-center py-2">
                             <p className="text-gray-500 text-sm mb-2">No bank account linked</p>
-                            <Button variant="outline" size="sm" className="border-dashed border-gray-600 text-gray-400 w-full">
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="border-dashed border-gray-600 text-gray-400 w-full"
+                                onClick={() => setShowBankModal(true)}
+                            >
                                + Add Bank Account
                             </Button>
                           </div>
@@ -1076,11 +1126,15 @@ const DriverDashboard = () => {
                     <CardTitle className="text-[#00ff88] flex items-center text-base">
                       <CreditCard className="w-5 h-5 mr-2" /> Top Up Balance
                     </CardTitle>
-                    <CardDescription>Pay commission to accept cash rides</CardDescription>
+                    <CardDescription>
+                       We convert your GEL to USD for payment.
+                       <br/>
+                       Rate: 1 GEL ≈ ${GEL_TO_USD_RATE.toFixed(2)} USD
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                       <div className="space-y-2">
-                        <Label className="text-[#00ff88]">Amount (₾)</Label>
+                        <Label className="text-[#00ff88]">Amount (₾ GEL)</Label>
                         <div className="grid grid-cols-4 gap-2 mb-2">
                            {[10, 20, 50, 100].map(amt => (
                              <button 
@@ -1101,22 +1155,41 @@ const DriverDashboard = () => {
                             value={topupAmount} 
                             onChange={(e) => setTopupAmount(e.target.value)} 
                             className="bg-black/50 border-[#00ff88]/30 text-white" 
-                            placeholder="Custom Amount"
+                            placeholder="Amount in GEL"
                         />
                       </div>
                       
                       {topupAmount && parseFloat(topupAmount) > 0 ? (
-                        <div className="bg-white p-2 rounded-xl">
-                           <PayPalButtons 
-                               style={{ layout: "vertical", shape: "rect" }}
-                               createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: topupAmount, currency_code: "USD" } }] })}
-                               onApprove={async (data, actions) => {
-                                   await actions.order.capture();
-                                   updateUser({ ...user, earnings: { ...user.earnings, balance: (user.earnings?.balance || 0) + parseFloat(topupAmount) }});
-                                   toast.success(`Success! ₾${topupAmount} added.`);
-                                   setTopupAmount("");
-                               }}
-                           />
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-400 text-center">
+                                You will be charged: <span className="text-white font-bold">${(parseFloat(topupAmount) * GEL_TO_USD_RATE).toFixed(2)} USD</span>
+                            </p>
+                            <div className="bg-white p-2 rounded-xl">
+                               <PayPalButtons 
+                                   style={{ layout: "vertical", shape: "rect" }}
+                                   createOrder={(data, actions) => {
+                                      // Convert GEL input to USD for PayPal
+                                      const usdAmount = (parseFloat(topupAmount) * GEL_TO_USD_RATE).toFixed(2);
+                                      return actions.order.create({ 
+                                          purchase_units: [{ amount: { value: usdAmount, currency_code: "USD" } }] 
+                                      });
+                                   }}
+                                   onApprove={async (data, actions) => {
+                                       await actions.order.capture();
+                                       // Update balance with the ORIGINAL GEL amount
+                                       const addedGel = parseFloat(topupAmount);
+                                       const newBalance = (user.earnings?.balance || 0) + addedGel;
+                                       
+                                       updateUser({ 
+                                           ...user, 
+                                           earnings: { ...user.earnings, balance: newBalance }
+                                       });
+                                       
+                                       toast.success(`Success! ₾${addedGel} added.`);
+                                       setTopupAmount("");
+                                   }}
+                               />
+                            </div>
                         </div>
                       ) : (
                           <Button disabled className="w-full bg-gray-800 text-gray-500">Enter Amount to Pay</Button>
@@ -1299,7 +1372,7 @@ const DriverDashboard = () => {
               </Card>
            </TabsContent>
 
-           {/* RATING MODAL (Restored functionality) */}
+           {/* RATING MODAL */}
       <Dialog open={showRatingModal} onOpenChange={setShowRatingModal}>
         <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/20 text-white sm:max-w-md">
           <DialogHeader>
@@ -1312,12 +1385,10 @@ const DriverDashboard = () => {
           </DialogHeader>
 
           <div className="flex flex-col items-center space-y-6 py-4">
-            {/* Driver Avatar */}
             <div className="w-20 h-20 rounded-full bg-gray-700 border-2 border-[#00ff88] flex items-center justify-center overflow-hidden">
                 <User className="w-10 h-10 text-gray-400" />
             </div>
 
-            {/* Star Inputs */}
             <div className="flex space-x-2">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
@@ -1336,7 +1407,6 @@ const DriverDashboard = () => {
               {rating === 5 ? "Excellent!" : rating > 3 ? "Good" : rating > 0 ? "Rated" : "Tap a star"}
             </p>
 
-            {/* Review Text */}
             <Textarea 
               placeholder="Write a compliment or complaint..." 
               value={review}
@@ -1352,6 +1422,52 @@ const DriverDashboard = () => {
               Submit Feedback
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* BANK ACCOUNT MODAL */}
+      <Dialog open={showBankModal} onOpenChange={setShowBankModal}>
+        <DialogContent className="bg-[#1a1a2e] border border-[#00d4ff]/20 text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[#00d4ff] flex items-center gap-2">
+                <Banknote className="w-5 h-5" /> Link Bank Account
+            </DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Enter your IBAN to receive earnings payouts.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+                <Label>Account Holder Name</Label>
+                <Input 
+                    value={`${user?.name} ${user?.surname}`} 
+                    disabled 
+                    className="bg-black/20 border-gray-700 text-gray-500 cursor-not-allowed"
+                />
+            </div>
+            
+            <div className="space-y-2">
+                <Label>IBAN Number</Label>
+                <Input 
+                    value={newBankIban} 
+                    onChange={(e) => setNewBankIban(e.target.value)}
+                    placeholder="GE00TB0000000000000000"
+                    className="bg-black/50 border-[#00d4ff]/30 text-white font-mono uppercase"
+                />
+                <p className="text-xs text-gray-500">Only Georgian bank accounts supported currently.</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+             <Button 
+                onClick={handleSaveBank} 
+                disabled={loading || !newBankIban}
+                className="bg-[#00d4ff] text-black w-full"
+            >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Bank Details"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
