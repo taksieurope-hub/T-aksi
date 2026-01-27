@@ -78,3 +78,14 @@ agenthub/agents/youtube/db
 
 # Mobile development
 android-sdk/ 
+# --- Capacitor / Android Specifics ---
+android/app/build
+android/.gradle
+android/local.properties
+android/app/src/main/assets/public
+android/app/src/main/res/drawable/
+android/app/src/main/res/mipmap/
+android/app/src/main/res/values/
+android/app/src/main/res/xml/
+node_modules
+dist
