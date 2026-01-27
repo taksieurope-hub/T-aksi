@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
-import { App as CapApp } from '@capacitor/app'; // <--- NEW: Import Capacitor App
+import { App as CapApp } from '@capacitor/app';
 
 // Components
 import LandingPage from "@/components/LandingPage";
@@ -16,27 +16,69 @@ import AdminPortal from "@/components/AdminPortal";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 export { useLanguage } from "@/i18n/LanguageContext";
 
-// ... [Keep your existing API and Axios Interceptor code exactly as it is] ...
+// --- EXPORTS ---
+export const BACKEND_URL = import.meta.env.PROD 
+  ? "https://t-aksi.onrender.com" 
+  : "http://localhost:8000";
 
-// Helper component to handle the back button (since it needs access to React Router)
+export const API = `${BACKEND_URL}/api`;
+export const GOOGLE_MAPS_API_KEY = "AIzaSyB3Sx7MOC6eSo7or6lUIHGXjCSJRr4pNZo";
+
+export const AuthContext = createContext(null);
+
+// This is the specific line RiderPortal was screaming about!
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within AuthProvider");
+  }
+  return context;
+};
+
+// --- AXIOS INTERCEPTORS ---
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem("taksi_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// --- HELPER COMPONENTS ---
+const StarsBackground = () => {
+  return (
+    <div className="fixed inset-0 overflow-hidden pointer-events-none">
+      {[...Array(100)].map((_, i) => (
+        <div
+          key={i}
+          className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
+          style={{
+            top: `${Math.random() * 100}%`,
+            left: `${Math.random() * 100}%`,
+            animationDelay: `${Math.random() * 3}s`,
+            animationDuration: `${2 + Math.random() * 3}s`,
+            opacity: Math.random() * 0.7 + 0.3,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
 const BackButtonHandler = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
     const backListener = CapApp.addListener('backButton', ({ canGoBack }) => {
-      // If we are on a main dashboard or the landing page, don't let the app close
       const isMainScreen = location.pathname === '/' || 
-                           location.pathname === '/driver' || 
-                           location.pathname === '/rider';
+                           location.pathname === '/driver/dashboard' || 
+                           location.pathname === '/rider/dashboard';
 
       if (isMainScreen) {
-        // Option: toast.info("Press home to exit"); or do nothing
-        console.log("On main screen, back button exit prevented.");
-      } else if (canGoBack) {
-        window.history.back();
+        console.log("Exit prevented on main screen.");
       } else {
-        navigate(-1); // Fallback to go back in React Router
+        window.history.back();
       }
     });
 
@@ -45,22 +87,58 @@ const BackButtonHandler = () => {
     };
   }, [location, navigate]);
 
-  return null; // This component doesn't render anything
+  return null;
 };
 
+// --- MAIN APP COMPONENT ---
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ... [Keep your existing useEffect for Auth, login, logout, and updateUser functions] ...
+  useEffect(() => {
+    const initAuth = async () => {
+      const savedUser = localStorage.getItem("taksi_user");
+      const token = localStorage.getItem("taksi_token");
+
+      if (savedUser && token) {
+        try {
+          const res = await axios.get(`${API}/auth/me`);
+          setUser(res.data);
+          localStorage.setItem("taksi_user", JSON.stringify(res.data));
+        } catch (e) {
+          localStorage.removeItem("taksi_token");
+          localStorage.removeItem("taksi_user");
+          setUser(null);
+        }
+      }
+      setLoading(false);
+    };
+    initAuth();
+  }, []);
+
+  const login = (token, userData) => {
+    localStorage.setItem("taksi_token", token);
+    localStorage.setItem("taksi_user", JSON.stringify(userData));
+    setUser(userData);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("taksi_token");
+    localStorage.removeItem("taksi_user");
+    setUser(null);
+    toast.success("Logged out successfully");
+  };
+
+  const updateUser = (newData) => {
+    const updated = { ...user, ...newData };
+    setUser(updated);
+    localStorage.setItem("taksi_user", JSON.stringify(updated));
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-[#00ff88] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-[#00ff88]">Initializing T'aksi...</p>
-        </div>
+        <div className="w-16 h-16 border-4 border-[#00ff88] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -72,7 +150,7 @@ function App() {
           <StarsBackground />
           <div className="relative z-10">
             <BrowserRouter>
-              <BackButtonHandler /> {/* <--- NEW: This handles the Android Back Button */}
+              <BackButtonHandler />
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/rider/*" element={<RiderPortal />} />
