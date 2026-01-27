@@ -3,13 +3,12 @@ import ReactDOM from "react-dom/client";
 import "@/index.css";
 import App from './App.jsx';
 
-// Import YOUR custom provider - this is the one that uses your translations.js
-import { LanguageProvider } from './LanguageContext.jsx'; 
+// FIXED PATH: Points to the i18n folder
+import { LanguageProvider } from "./i18n/LanguageContext"; 
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
-    {/* Use YOUR provider, not the i18next one */}
     <LanguageProvider>
       <App />
     </LanguageProvider>
