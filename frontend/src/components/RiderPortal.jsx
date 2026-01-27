@@ -37,7 +37,7 @@ const PRICING_RULES = {
   jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
-// --- CALCULATE FARE (FIXED BRACING) ---
+// --- CALCULATE FARE ---
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
@@ -66,7 +66,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// --- CHAT INTERFACE (FIXED BRACING) ---
+// --- CHAT INTERFACE ---
 const ChatInterface = ({ rideId, driverName }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -136,9 +136,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       if (place.geometry) {
-        // --- THIS LINE FIXES THE BUG ---
         if(inputRef.current) inputRef.current.value = place.formatted_address || place.name;
-        // -------------------------------
         
         onPlaceSelect({
           address: place.formatted_address || place.name,
@@ -150,7 +148,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, [inputRef, onPlaceSelect]);
 };
 
-// Map Picker Component (FIXED LAYOUT - Sticky Button)
+// Map Picker Component
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -205,13 +203,9 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         reverseGeocode(lat, lng);
     };
 
-    // Click to set location
     map.addListener('click', (e) => updateLocation(e.latLng));
-    
-    // Drag marker
     marker.addListener('dragend', () => updateLocation(marker.getPosition()));
     
-    // Set initial location if provided
     if (initialLocation) {
       marker.setPosition(initialLocation);
       setSelectedLocation(initialLocation);
@@ -222,7 +216,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   
   const reverseGeocode = async (lat, lng) => {
     if (!window.google) return;
-    
     const geocoder = new window.google.maps.Geocoder();
     geocoder.geocode({ location: { lat, lng } }, (results, status) => {
       if (status === 'OK' && results[0]) {
@@ -283,16 +276,14 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
             <MapPin className="w-5 h-5 mr-2" /> {title || "Select Location"}
           </DialogTitle>
           <DialogDescription className="text-gray-500 text-xs">
-             Drag map to pin location.
+              Drag map to pin location.
           </DialogDescription>
         </DialogHeader>
         
-        {/* Map Container - Takes available space */}
         <div className="flex-1 w-full min-h-[300px] relative">
           <div ref={mapRef} className="w-full h-full" />
         </div>
         
-        {/* Sticky Footer */}
         <div className="w-full p-4 bg-black border-t border-[#00ff88]/30 flex flex-col gap-3 flex-none">
             {address && (
             <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-3">
@@ -325,7 +316,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// Location Input Component (FIXED)
+// Location Input Component (CLEANED)
 const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, iconColor }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -334,7 +325,6 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
     onChange({ address: place.address, lat: place.lat, lng: place.lng });
   });
 
-  // Keep input value in sync with state if state changes externally
   useEffect(() => {
       if(inputRef.current && value?.address && inputRef.current.value !== value.address) {
           inputRef.current.value = value.address;
@@ -378,11 +368,9 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const rendererRef = useRef(null);
   const [eta, setEta] = useState(null);
 
-  // 1. Initialize Map
   useEffect(() => {
     if (!window.google || !mapRef.current) return;
     
-    // Fallback coordinates if locations are missing
     const initialCenter = driverLocation?.lat ? driverLocation : (pickup?.lat ? pickup : { lat: 41.7151, lng: 44.8271 });
     
     const map = new window.google.maps.Map(mapRef.current, { 
@@ -403,7 +391,6 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     });
   }, []);
 
-  // 2. Handle Routing Logic
   useEffect(() => {
     if (!window.google || !rendererRef.current) return;
     
@@ -430,7 +417,6 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     );
   }, [driverLocation, status, pickup, destination]);
 
-  // THIS RETURN IS NOW PROPERLY INSIDE THE FUNCTION SCOPE
   return (
     <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4 mb-4">
       <div ref={mapRef} className="w-full h-full" />
@@ -442,9 +428,9 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
       )}
     </div>
   );
-}; // <--- MAKE SURE THIS BRACE EXISTS HERE
+};
 
-// Auth Component (Unchanged from your logic)
+// Auth Component
 const RiderAuth = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -598,6 +584,12 @@ const RiderDashboard = () => {
   const [fareEstimate, setFareEstimate] = useState(null);
   const [surgeInfo, setSurgeInfo] = useState(null);
 
+  // Rating State (MOVED HERE)
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [review, setReview] = useState("");
+  const [completedRideInfo, setCompletedRideInfo] = useState(null);
+
   // Cleanup
   useEffect(() => {
     return () => {
@@ -729,40 +721,30 @@ const RiderDashboard = () => {
   };
 
   const pollRideStatus = async (rideId) => {
-    // 1. Clear existing interval
     if (pollRef.current) clearInterval(pollRef.current);
-
-    // 2. Start new interval
     pollRef.current = setInterval(async () => {
       try {
         const res = await axios.get(`${API}/rides/${rideId}`);
         setActiveRide(res.data);
         
-        // CHECK FOR TERMINAL STATES
         if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
           clearInterval(pollRef.current);
           pollRef.current = null;
           
           if (res.data.status === "completed") {
-            // *** THIS IS THE NEW PART ***
-            // Instead of just a toast, we open the Rating Modal
             setCompletedRideInfo(res.data); 
             setShowRatingModal(true);
             fetchRideHistory();
-            // ****************************
           } else if (res.data.status === "no_drivers") {
             toast.error("No drivers available. Please try again.");
-            setActiveRide(null); // Reset UI so they can try again
+            setActiveRide(null); 
           } else if (res.data.status === "cancelled") {
             toast.info("Ride was cancelled.");
             setActiveRide(null);
           }
         }
       } catch (error) {
-        // Stop polling on 404 (ride deleted/lost)
-        if (error.response?.status === 404) {
-             clearInterval(pollRef.current);
-        }
+        if (error.response?.status === 404) clearInterval(pollRef.current);
       }
     }, 3000);
   };
@@ -771,30 +753,20 @@ const RiderDashboard = () => {
     if (!activeRide) return;
     try { await axios.post(`${API}/rides/${activeRide.id}/cancel`); if (pollRef.current) clearInterval(pollRef.current); toast.success("Ride cancelled"); setActiveRide(null); setActiveTab("book"); } catch (error) { toast.error("Failed to cancel ride"); }
   };
-  
-  const handleRetryRide = async () => {
-    if (!activeRide) return;
-    try {
-      await axios.post(`${API}/rides/${activeRide.id}/retry`);
-      toast.success("Searching for drivers again...");
-      setActiveRide(prev => ({ ...prev, status: 'searching' }));
-      pollRideStatus(activeRide.id);
-    } catch (error) { toast.error(error.response?.data?.detail || "Failed to retry ride"); }
-  };
 
-  const getCurrentLocation = () => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude; const lng = position.coords.longitude;
-        if (window.google) {
-          const geocoder = new window.google.maps.Geocoder();
-          geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-            if (status === 'OK' && results[0]) { setPickup({ address: results[0].formatted_address, lat, lng }); toast.success("Location detected!"); }
-          });
-        }
-      },
-      () => toast.error("Could not get location"), { enableHighAccuracy: true }
-    );
+  const submitRating = async () => {
+    try {
+      await axios.post(`${API}/rides/${completedRideInfo.id}/rate-rider`, {
+        rating,
+        review,
+      });
+      toast.success("Feedback submitted!");
+      setShowRatingModal(false);
+      setRating(0);
+      setReview("");
+    } catch (error) {
+      toast.error("Failed to submit rating");
+    }
   };
 
   // --- UI CONSTANTS ---
@@ -880,9 +852,9 @@ const RiderDashboard = () => {
                   </div>
                 ))}
                 {stops.length < 3 && (
-                   <Button variant="outline" className="w-full border-dashed border-yellow-400/30 text-yellow-400" onClick={addStop}>
-                     <Plus className="w-4 h-4 mr-2" /> Add Stop (+₾{PRICING_RULES[carType]?.stopFee.toFixed(2)})
-                   </Button>
+                    <Button variant="outline" className="w-full border-dashed border-yellow-400/30 text-yellow-400" onClick={addStop}>
+                      <Plus className="w-4 h-4 mr-2" /> Add Stop (+₾{PRICING_RULES[carType]?.stopFee.toFixed(2)})
+                    </Button>
                 )}
 
                 {/* Destination */}
@@ -996,74 +968,74 @@ const RiderDashboard = () => {
                 
                 <CardContent className="space-y-4 pt-4">
                   <div className="flex justify-between items-center mb-2">
-                     <Badge className={`${statusColors[activeRide.status]} text-sm px-3 py-1`}>
-                        {activeRide.status?.replace(/_/g, ' ').toUpperCase()}
-                     </Badge>
-                     <div className="text-right">
-                        <p className="text-gray-400 text-xs">OTP Code</p>
-                        <p className="text-[#00ff88] font-mono font-bold text-lg tracking-widest">{activeRide.otp || "----"}</p>
-                     </div>
-                  </div>
+                      <Badge className={`${statusColors[activeRide.status]} text-sm px-3 py-1`}>
+                         {activeRide.status?.replace(/_/g, ' ').toUpperCase()}
+                      </Badge>
+                      <div className="text-right">
+                         <p className="text-gray-400 text-xs">OTP Code</p>
+                         <p className="text-[#00ff88] font-mono font-bold text-lg tracking-widest">{activeRide.otp || "----"}</p>
+                      </div>
+                   </div>
 
-                  {activeRide.driver_info && (
-                    <div className="bg-[#1a1a2e] rounded-xl p-4 border border-[#00d4ff]/20 shadow-lg relative overflow-hidden">
-                       <div className="absolute top-0 right-0 p-2 bg-[#00d4ff]/10 rounded-bl-xl text-[#00d4ff] text-xs font-bold">
-                          {activeRide.driver_info.car_make} {activeRide.driver_info.car_model}
-                       </div>
-                       
-                       <div className="flex items-center gap-4 mt-2">
-                          <div className="w-16 h-16 rounded-full bg-gray-700 border-2 border-[#00ff88] flex items-center justify-center overflow-hidden">
-                             <User className="w-8 h-8 text-gray-400" />
-                          </div>
-                          
-                          <div className="flex-1">
-                             <h3 className="text-white font-bold text-lg">{activeRide.driver_info.name}</h3>
-                             <div className="flex items-center text-yellow-400 text-sm">
-                                <Star size={14} fill="currentColor" className="mr-1"/> 4.9 • <span className="text-gray-400 ml-1">1,240 rides</span>
-                             </div>
-                             <div className="mt-2 bg-white text-black font-mono font-bold px-3 py-1 rounded inline-block border-l-4 border-blue-600">
-                                {activeRide.driver_info.license_plate}
-                             </div>
-                          </div>
-                          
-                          <div className="flex flex-col gap-2">
-                             <Button size="icon" className="rounded-full bg-[#00ff88] text-black hover:bg-[#00ff88]/80">
-                                <Phone size={18} />
-                             </Button>
-                             
-                             <Sheet>
-                                <SheetTrigger asChild>
-                                  <Button size="icon" className="rounded-full bg-[#00d4ff] text-black hover:bg-[#00d4ff]/80 relative">
-                                    <MessageSquare size={18} />
-                                    {activeRide.unread_messages > 0 && (
-                                       <span className="absolute -top-1 -right-1 bg-red-500 w-3 h-3 rounded-full border-2 border-black"></span>
-                                    )}
-                                  </Button>
-                                </SheetTrigger>
-                                <SheetContent side="bottom" className="h-[80vh] bg-black border-t border-[#00ff88]/30">
-                                   <ChatInterface rideId={activeRide.id} driverName={activeRide.driver_info.name} />
-                                </SheetContent>
-                             </Sheet>
-                          </div>
-                       </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-4 px-2 relative">
-                     <div className="absolute left-[19px] top-3 bottom-8 w-0.5 bg-gray-700"></div>
-                     <div className="flex gap-3 relative z-10">
-                        <div className="w-4 h-4 rounded-full bg-[#00ff88] mt-1 shadow-[0_0_10px_#00ff88]"></div>
-                        <div><p className="text-xs text-gray-500">Pick Up</p><p className="text-white text-sm">{activeRide.pickup}</p></div>
+                   {activeRide.driver_info && (
+                     <div className="bg-[#1a1a2e] rounded-xl p-4 border border-[#00d4ff]/20 shadow-lg relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-2 bg-[#00d4ff]/10 rounded-bl-xl text-[#00d4ff] text-xs font-bold">
+                           {activeRide.driver_info.car_make} {activeRide.driver_info.car_model}
+                        </div>
+                        
+                        <div className="flex items-center gap-4 mt-2">
+                           <div className="w-16 h-16 rounded-full bg-gray-700 border-2 border-[#00ff88] flex items-center justify-center overflow-hidden">
+                              <User className="w-8 h-8 text-gray-400" />
+                           </div>
+                           
+                           <div className="flex-1">
+                              <h3 className="text-white font-bold text-lg">{activeRide.driver_info.name}</h3>
+                              <div className="flex items-center text-yellow-400 text-sm">
+                                 <Star size={14} fill="currentColor" className="mr-1"/> 4.9 • <span className="text-gray-400 ml-1">1,240 rides</span>
+                              </div>
+                              <div className="mt-2 bg-white text-black font-mono font-bold px-3 py-1 rounded inline-block border-l-4 border-blue-600">
+                                 {activeRide.driver_info.license_plate}
+                              </div>
+                           </div>
+                           
+                           <div className="flex flex-col gap-2">
+                              <Button size="icon" className="rounded-full bg-[#00ff88] text-black hover:bg-[#00ff88]/80">
+                                 <Phone size={18} />
+                              </Button>
+                              
+                              <Sheet>
+                                 <SheetTrigger asChild>
+                                   <Button size="icon" className="rounded-full bg-[#00d4ff] text-black hover:bg-[#00d4ff]/80 relative">
+                                     <MessageSquare size={18} />
+                                     {activeRide.unread_messages > 0 && (
+                                        <span className="absolute -top-1 -right-1 bg-red-500 w-3 h-3 rounded-full border-2 border-black"></span>
+                                     )}
+                                   </Button>
+                                 </SheetTrigger>
+                                 <SheetContent side="bottom" className="h-[80vh] bg-black border-t border-[#00ff88]/30">
+                                     <ChatInterface rideId={activeRide.id} driverName={activeRide.driver_info.name} />
+                                 </SheetContent>
+                              </Sheet>
+                           </div>
+                        </div>
                      </div>
-                     <div className="flex gap-3 relative z-10">
-                        <div className="w-4 h-4 rounded-full bg-[#00d4ff] mt-1 shadow-[0_0_10px_#00d4ff]"></div>
-                        <div><p className="text-xs text-gray-500">Drop Off</p><p className="text-white text-sm">{activeRide.destination || "Set destination in ride"}</p></div>
-                     </div>
-                  </div>
+                   )}
 
-                  {["searching", "accepted"].includes(activeRide.status) && (
-                     <Button variant="ghost" className="w-full text-red-500 hover:text-red-400 hover:bg-red-500/10 mt-4" onClick={handleCancelRide}>Cancel Ride</Button>
-                  )}
+                   <div className="space-y-4 px-2 relative">
+                      <div className="absolute left-[19px] top-3 bottom-8 w-0.5 bg-gray-700"></div>
+                      <div className="flex gap-3 relative z-10">
+                         <div className="w-4 h-4 rounded-full bg-[#00ff88] mt-1 shadow-[0_0_10px_#00ff88]"></div>
+                         <div><p className="text-xs text-gray-500">Pick Up</p><p className="text-white text-sm">{activeRide.pickup}</p></div>
+                      </div>
+                      <div className="flex gap-3 relative z-10">
+                         <div className="w-4 h-4 rounded-full bg-[#00d4ff] mt-1 shadow-[0_0_10px_#00d4ff]"></div>
+                         <div><p className="text-xs text-gray-500">Drop Off</p><p className="text-white text-sm">{activeRide.destination || "Set destination in ride"}</p></div>
+                      </div>
+                   </div>
+
+                   {["searching", "accepted"].includes(activeRide.status) && (
+                      <Button variant="ghost" className="w-full text-red-500 hover:text-red-400 hover:bg-red-500/10 mt-4" onClick={handleCancelRide}>Cancel Ride</Button>
+                   )}
                 </CardContent>
               </Card>
             ) : (
@@ -1085,13 +1057,13 @@ const RiderDashboard = () => {
                       <p className="text-4xl font-bold text-[#00ff88]">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
                     </div>
                     <div className="space-y-2">
-                       <Label>Add Money (Top Up)</Label>
-                       <Input type="number" placeholder="Enter amount" value={topupAmount} onChange={(e) => setTopupAmount(e.target.value)} className="bg-black/50 border-[#00d4ff]/30 text-white" />
+                        <Label>Add Money (Top Up)</Label>
+                        <Input type="number" placeholder="Enter amount" value={topupAmount} onChange={(e) => setTopupAmount(e.target.value)} className="bg-black/50 border-[#00d4ff]/30 text-white" />
                     </div>
                     {topupAmount && parseFloat(topupAmount) > 0 && (
-                       <div className="bg-white p-2 rounded-lg">
-                          <PayPalButtons style={{ layout: "vertical", shape: "rect" }} createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: topupAmount, currency_code: "USD" } }] })} onApprove={async (data, actions) => { await actions.order.capture(); handleWalletTopUp(data); }} />
-                       </div>
+                        <div className="bg-white p-2 rounded-lg">
+                           <PayPalButtons style={{ layout: "vertical", shape: "rect" }} createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: topupAmount, currency_code: "USD" } }] })} onApprove={async (data, actions) => { await actions.order.capture(); handleWalletTopUp(data); }} />
+                        </div>
                     )}
                 </CardContent>
               </Card>
@@ -1150,6 +1122,29 @@ const RiderDashboard = () => {
           </TabsContent>
 
         </Tabs>
+
+        {/* RATING MODAL */}
+        <Dialog open={showRatingModal} onOpenChange={setShowRatingModal}>
+           <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/20 text-white">
+              <DialogHeader><DialogTitle className="text-[#00ff88]">Rate Your Driver</DialogTitle></DialogHeader>
+              <DialogDescription className="text-gray-400">How was your ride with {completedRideInfo?.driver_info?.name}?</DialogDescription>
+              <div className="flex justify-center space-x-2 my-4">
+                 {[1,2,3,4,5].map(s => (
+                    <Button key={s} variant="ghost" onClick={() => setRating(s)} className={`p-1 hover:bg-transparent ${s <= rating ? "text-yellow-400" : "text-gray-600"}`}>
+                        <Star className={`w-8 h-8 ${s <= rating ? "fill-current" : ""}`} />
+                    </Button>
+                 ))}
+              </div>
+              <textarea 
+                  placeholder="Comments..." 
+                  value={review} 
+                  onChange={e => setReview(e.target.value)} 
+                  className="w-full bg-black/50 text-white p-2 rounded border border-gray-700 min-h-[80px]" 
+              />
+              <Button onClick={submitRating} className="w-full bg-[#00ff88] text-black mt-4 font-bold">Submit Feedback</Button>
+           </DialogContent>
+        </Dialog>
+
       </main>
     </div>
   );

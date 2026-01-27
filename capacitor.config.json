@@ -1,0 +1,8 @@
+{
+  "appId": "com.taksi.app",
+  "appName": "T'aksi",
+  "webDir": "frontend/dist", 
+  "server": {
+    "androidScheme": "https"
+  }
+}

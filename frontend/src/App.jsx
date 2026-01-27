@@ -20,7 +20,7 @@ const BACKEND_URL = import.meta.env.PROD
   : "http://localhost:8000";
 
 export const API = `${BACKEND_URL}/api`;
-export const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "AIzaSyC2gkANH8GJOZNDdibTCKNEOWiuf580bxA";
+export const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "AIzaSyB3Sx7MOC6eSo7or6lUIHGXjCSJRr4pNZo";
 
 // Auth Context
 export const AuthContext = createContext(null);

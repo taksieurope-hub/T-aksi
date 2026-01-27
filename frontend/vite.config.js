@@ -4,6 +4,7 @@ import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: './', // <--- THIS IS THE CRITICAL FIX FOR MOBILE APPS
   plugins: [react()],
   resolve: {
     alias: {
