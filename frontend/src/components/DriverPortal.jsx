@@ -36,7 +36,7 @@ const DRIVER_COMMISSION_RATE = 0.23; // 23%
 const MINIMUM_BALANCE_FOR_CASH = 0.00; // Hard limit
 const WITHDRAWAL_FEE = 1.00; // 1 GEL fee per withdrawal
 const LOCATION_UPDATE_INTERVAL = 5000;
-const GEL_TO_USD_RATE = 0.37; // 1 GEL ≈ 0.37 USD (Update this as needed)
+const GEL_TO_USD_RATE = 0.37; // 1 GEL ≈ 0.37 USD
 
 // CSS for Map
 const mapStyles = `
@@ -45,6 +45,11 @@ const mapStyles = `
     height: 100% !important;
     width: 100% !important;
     border-radius: 0.75rem;
+  }
+  /* Fix for Tailwind breaking Google Maps tiles */
+  .gm-style img {
+    max-width: none !important;
+    max-height: none !important;
   }
 `;
 
@@ -337,6 +342,7 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center,
         zoom: 15,
+        backgroundColor: '#1a1a2e',
         styles: [
             { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
             { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
@@ -418,7 +424,7 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
   }, [activeRide, driverLocation]);
   
   return (
-    <div ref={mapRef} className="w-full h-[300px] rounded-xl border border-[#00d4ff]/20" />
+    <div ref={mapRef} className="w-full h-[300px] rounded-xl border border-[#00d4ff]/20 bg-[#1a1a2e]" />
   );
 };
 
@@ -493,7 +499,10 @@ const DriverDashboard = () => {
     setDriverLocation(location);
     
     try {
-      await axios.post(`${API}/driver/location`, location);
+      // Don't send updates if offline
+      if(isOnline) {
+          await axios.post(`${API}/driver/location`, location);
+      }
       
       // If in active ride, track distance
       if (activeRide && activeRide.status === "in_progress" && lastPositionRef.current) {
@@ -511,7 +520,7 @@ const DriverDashboard = () => {
     } catch (error) {
       console.error("Failed to update location:", error);
     }
-  }, [activeRide]);
+  }, [activeRide, isOnline]);
   
   // Use location tracker
   useLocationTracker(isOnline, handleLocationUpdate);
@@ -606,13 +615,22 @@ const DriverDashboard = () => {
     }
   };
 
-  const handleToggleOnline = async (online) => {
+  // --- FIXED ONLINE TOGGLE ---
+  const handleToggleOnline = async (checked) => {
+    // 1. Optimistic Update
+    setIsOnline(checked);
+    
     try {
-      await axios.post(`${API}/driver/status?is_online=${online}`);
-      setIsOnline(online);
-      updateUser({ is_online: online });
-      toast.success(online ? "You are now online!" : "You are now offline");
+      // 2. Call API
+      await axios.post(`${API}/driver/status?is_online=${checked}`);
+      
+      // 3. Update Global User State
+      updateUser({ ...user, is_online: checked });
+      
+      toast.success(checked ? "You are now online!" : "You are now offline");
     } catch (error) {
+      // 4. Revert if failed
+      setIsOnline(!checked);
       toast.error("Failed to update status");
     }
   };
@@ -629,7 +647,8 @@ const DriverDashboard = () => {
       
       toast.success(`Vehicle registered! Tier: ${res.data.tier}`);
       updateUser({
-        driver_info: { vehicle: vehicleData, vehicle_tier: res.data.tier },
+        ...user,
+        driver_info: { ...user.driver_info, vehicle: vehicleData, vehicle_tier: res.data.tier },
         registration_status: "pending_review"
       });
     } catch (error) {
@@ -655,6 +674,7 @@ const DriverDashboard = () => {
       toast.success(`Ride accepted! Commission: ₾${res.data.commission_deducted.toFixed(2)}`);
       
       updateUser({
+        ...user,
         earnings: { ...user.earnings, balance: res.data.new_balance }
       });
       
@@ -677,6 +697,34 @@ const DriverDashboard = () => {
     } catch (error) {
       toast.error("Failed to decline ride");
     }
+  };
+
+  // --- SMART NAVIGATION HANDLER ---
+  const launchExternalMap = () => {
+    if (!activeRide) return;
+
+    let destLat, destLng;
+
+    // Phase 1: Navigate to Pickup (Accepted -> Arrived)
+    if (activeRide.status === 'accepted') {
+      destLat = activeRide.pickupLat;
+      destLng = activeRide.pickupLng;
+    } 
+    // Phase 2: Navigate to Destination (Arrived -> Completed)
+    else if (['arrived', 'in_progress'].includes(activeRide.status)) {
+      if (!activeRide.destinationLat) {
+        toast.info("No destination set by rider.");
+        return;
+      }
+      destLat = activeRide.destinationLat;
+      destLng = activeRide.destinationLng;
+    } else {
+        return;
+    }
+
+    // Launch Google Maps Intent
+    const url = `geo:0,0?q=${destLat},${destLng}`;
+    window.location.href = url;
   };
 
   const handleRideAction = async (action) => {
@@ -846,9 +894,9 @@ const DriverDashboard = () => {
                 <span className={`text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>
                   {isOnline ? "Online" : "Offline"}
                 </span>
-                <Switch
-                  checked={isOnline}
-                  onCheckedChange={handleToggleOnline}
+                <Switch 
+                  checked={isOnline} 
+                  onCheckedChange={handleToggleOnline} 
                   className="data-[state=checked]:bg-[#00ff88]"
                 />
               </div>
@@ -923,6 +971,17 @@ const DriverDashboard = () => {
                   {/* Live Map */}
                   {mapsLoaded && (
                     <LiveRideMap activeRide={activeRide} driverLocation={driverLocation} />
+                  )}
+
+                  {/* NAVIGATION BUTTON */}
+                  {['accepted', 'arrived', 'in_progress'].includes(activeRide.status) && (
+                      <Button 
+                        onClick={launchExternalMap}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 text-lg shadow-[0_0_15px_rgba(37,99,235,0.5)]"
+                      >
+                        <Navigation className="w-5 h-5 mr-2" />
+                        {activeRide.status === 'accepted' ? "Navigate to Pickup" : "Navigate to Destination"}
+                      </Button>
                   )}
 
                   {/* Ride Details */}
@@ -1176,18 +1235,18 @@ const DriverDashboard = () => {
                                       });
                                    }}
                                    onApprove={async (data, actions) => {
-                                       await actions.order.capture();
-                                       // Update balance with the ORIGINAL GEL amount
-                                       const addedGel = parseFloat(topupAmount);
-                                       const newBalance = (user.earnings?.balance || 0) + addedGel;
-                                       
-                                       updateUser({ 
+                                      await actions.order.capture();
+                                      // Update balance with the ORIGINAL GEL amount
+                                      const addedGel = parseFloat(topupAmount);
+                                      const newBalance = (user.earnings?.balance || 0) + addedGel;
+                                      
+                                      updateUser({ 
                                            ...user, 
                                            earnings: { ...user.earnings, balance: newBalance }
-                                       });
-                                       
-                                       toast.success(`Success! ₾${addedGel} added.`);
-                                       setTopupAmount("");
+                                      });
+                                      
+                                      toast.success(`Success! ₾${addedGel} added.`);
+                                      setTopupAmount("");
                                    }}
                                />
                             </div>
@@ -1222,7 +1281,7 @@ const DriverDashboard = () => {
                            <div className="space-y-2">
                               <Label>Bank IBAN</Label>
                               <Input 
-                                  placeholder="GE00TB000000000000"
+                                  placeholder="GE00TB0000000000000000"
                                   value={withdrawalData.bank_details}
                                   onChange={(e) => setWithdrawalData({...withdrawalData, bank_details: e.target.value})}
                                   className="bg-black/50 border-red-500/30 text-white"
@@ -1510,7 +1569,7 @@ const DriverPortal = () => {
        "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test",
        currency: "USD",
        intent: "capture",
-       locale: "en_US", // <--- FIX: Prevents 404 error on "Add Card"
+       locale: "en_US", 
        components: "buttons",
     }}>
         <Routes>

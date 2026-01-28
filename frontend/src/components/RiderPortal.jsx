@@ -20,7 +20,6 @@ import {
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
-// --- RESTORED THIS MISSING CONSTANT ---
 const mapStyles = `
   .gm-style, 
   div[aria-label="Map"] {
@@ -198,18 +197,21 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   useEffect(() => {
     if (!isOpen || !mapsLoaded || !mapRef.current || !window.google || !window.google.maps) return;
     
+    // Clear container to prevent ghost maps
+    if (mapRef.current) mapRef.current.innerHTML = "";
+
     const defaultCenter = initialLocation || { lat: 42.2662, lng: 42.7180 }; // Kutaisi
     
     const map = new window.google.maps.Map(mapRef.current, {
       center: defaultCenter,
       zoom: 15,
+      disableDefaultUI: true,
+      zoomControl: true,
       styles: [
         { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
         { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
         { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] }
-      ],
-      disableDefaultUI: true,
-      zoomControl: true
+      ]
     });
     
     mapInstanceRef.current = map;
@@ -247,9 +249,12 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       reverseGeocode(initialLocation.lat, initialLocation.lng);
     }
     
-    // FORCE RESIZE
+    // FORCE RESIZE - CRITICAL FOR BLUE BLOCK FIX
     setTimeout(() => {
-        if(map) window.google.maps.event.trigger(map, "resize");
+        if(map) {
+            window.google.maps.event.trigger(map, "resize");
+            map.setCenter(defaultCenter);
+        }
     }, 500);
     
   }, [isOpen, initialLocation, mapsLoaded]);
@@ -324,9 +329,9 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
           </DialogDescription>
         </DialogHeader>
         
-        {/* HARDCODED VISIBLE HEIGHT */}
+        {/* HARDCODED HEIGHT TO PREVENT COLLAPSE */}
         <div style={{ width: '100%', height: '65vh', position: 'relative' }}>
-          <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#1a1a2e' }} />
+          <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#242f3e' }} />
         </div>
         
         <div className="w-full p-4 bg-black border-t border-[#00ff88]/30 flex flex-col gap-3 flex-none">
@@ -412,6 +417,8 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   useEffect(() => {
     if (!window.google || !window.google.maps || !mapRef.current) return;
     
+    mapRef.current.innerHTML = ""; // Clear container
+
     const initialCenter = driverLocation?.lat ? driverLocation : (pickup?.lat ? pickup : { lat: 42.2662, lng: 42.7180 });
     
     try {
@@ -468,7 +475,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
 
   return (
     <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4 mb-4" style={{ height: '300px' }}>
-      <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#1a1a2e' }} />
+      <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#242f3e' }} />
       {eta && (
         <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-4 py-2 rounded-lg backdrop-blur-md z-10 shadow-[0_0_15px_rgba(0,255,136,0.3)]">
           <p className="text-[#00ff88] font-bold text-xl">{eta}</p>
@@ -858,7 +865,6 @@ const RiderDashboard = () => {
 
   return (
     <div className="min-h-screen bg-black">
-      {/* ADDED THIS BACK to ensure class styles are applied */}
       <style>{mapStyles}</style>
       
       {/* Header */}
