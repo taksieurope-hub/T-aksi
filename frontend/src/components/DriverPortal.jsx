@@ -270,7 +270,7 @@ const DriverAuth = () => {
   );
 };
 
-// Real-time Location Tracker Hook (UPDATED to Fix 400 Errors)
+// Real-time Location Tracker Hook (Fixed to prevent 400 Loops)
 const useLocationTracker = (isOnline, onLocationUpdate) => {
   const watchIdRef = useRef(null);
   const intervalRef = useRef(null);
@@ -450,7 +450,7 @@ const DriverDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("rides");
   const [loading, setLoading] = useState(false);
-  const [isOnline, setIsOnline] = useState(!!user?.is_online); // Handle boolean/int
+  const [isOnline, setIsOnline] = useState(user?.is_online || false);
   const [availableRides, setAvailableRides] = useState([]);
   const [nearbyRides, setNearbyRides] = useState([]);
   const [searchRadius, setSearchRadius] = useState(10);

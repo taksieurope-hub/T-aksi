@@ -20,9 +20,9 @@ import {
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
-// --- CRITICAL CSS FIXES INJECTED DIRECTLY ---
+// --- CSS FIXES FOR BLACK MAP AND INPUT ---
 const mapStyles = `
-  /* 1. Fix Blue/Black Map Tiles (Tailwind Conflict) */
+  /* 1. Fix Black Map (Tailwind Conflict) */
   .gm-style img {
     max-width: none !important;
     max-height: none !important;
@@ -36,14 +36,15 @@ const mapStyles = `
     border-radius: 0.5rem;
   }
 
-  /* 3. Fix Autocomplete Dropdown (Z-Index & Styling) */
+  /* 3. Fix Autocomplete Dropdown (Show ON TOP of everything) */
   .pac-container {
-    z-index: 99999 !important; /* Must be higher than Modal (usually 50) */
+    z-index: 99999 !important; /* Forces it above modals */
     background-color: #1a1a2e !important;
     border: 1px solid #00ff88;
     border-radius: 8px;
     font-family: sans-serif;
     margin-top: 5px;
+    position: fixed !important; /* Sticks to screen */
   }
   .pac-item {
     color: #ffffff !important;
@@ -217,7 +218,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
   }, [inputRef, onPlaceSelect, mapsLoaded]);
 };
 
-// --- MAP PICKER COMPONENT ---
+// --- MAP PICKER COMPONENT (FIXED WITH CLOSE BUTTON) ---
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, mapsLoaded }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -284,7 +285,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       reverseGeocode(initialLocation.lat, initialLocation.lng);
     }
     
-    // FORCE RESIZE TRIGGER (Essential for Capacitor)
+    // FORCE RESIZE TRIGGER (Essential for Capacitor/Mobile)
     setTimeout(() => {
         if(map) {
             window.google.maps.event.trigger(map, "resize");
@@ -359,9 +360,9 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
           <DialogTitle className="text-[#00ff88] flex items-center">
             <MapPin className="w-5 h-5 mr-2" /> {title || t('select_location')}
           </DialogTitle>
-          {/* ADDED CLOSE BUTTON */}
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400">
-             <X className="w-5 h-5" />
+          {/* --- ADDED CLOSE BUTTON FOR EXITING MAP --- */}
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white">
+             <X className="w-6 h-6" />
           </Button>
         </DialogHeader>
         
@@ -424,6 +425,7 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
       setInputValue(e.target.value);
   };
 
+  // Prevent keyboard from hiding input
   const handleFocus = () => {
       setTimeout(() => {
           if(inputRef.current) {
@@ -442,7 +444,7 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
           value={inputValue}
           onChange={handleTyping}
           onFocus={handleFocus}
-          autoComplete="off" // CRITICAL: Stops native keyboard blocking suggestions
+          autoComplete="off" // CRITICAL: Stops native keyboard suggestions
           className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
           placeholder={placeholder}
         />
@@ -929,7 +931,6 @@ const RiderDashboard = () => {
 
   return (
     <div className="min-h-screen bg-black">
-      {/* INJECT CSS FIXES */}
       <style>{mapStyles}</style>
       
       {/* Header */}
@@ -1094,7 +1095,6 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
 
-          {/* ... (Active, Wallet, History, Profile Tabs kept same) ... */}
           {/* --- ACTIVE TAB --- */}
           <TabsContent value="active">
             {activeRide ? (
@@ -1192,6 +1192,7 @@ const RiderDashboard = () => {
             )}
           </TabsContent>
 
+          {/* --- WALLET TAB --- */}
           <TabsContent value="wallet">
               <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
                 <CardHeader><CardTitle className="text-[#00ff88]">{t('wallet_title')}</CardTitle></CardHeader>
@@ -1213,6 +1214,7 @@ const RiderDashboard = () => {
               </Card>
           </TabsContent>
 
+          {/* --- HISTORY TAB --- */}
           <TabsContent value="history">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
               <CardHeader><CardTitle className="text-[#00ff88]">{t('ride_history')}</CardTitle></CardHeader>
@@ -1242,6 +1244,7 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
 
+           {/* --- PROFILE TAB --- */}
            <TabsContent value="profile">
               <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
                 <CardHeader><CardTitle className="text-[#00ff88]">{t('profile_title')}</CardTitle></CardHeader>
@@ -1265,6 +1268,7 @@ const RiderDashboard = () => {
 
         </Tabs>
 
+        {/* RATING MODAL */}
         <Dialog open={showRatingModal} onOpenChange={setShowRatingModal}>
            <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/20 text-white">
               <DialogHeader><DialogTitle className="text-[#00ff88]">{t('rate_driver')}</DialogTitle></DialogHeader>
