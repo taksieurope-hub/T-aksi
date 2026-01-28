@@ -331,45 +331,40 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor }) => {
+// 1. Move this OUTSIDE your component to stop it from being recreated
+// 🛡️ DEFINED OUTSIDE THE MAIN DASHBOARD
+const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, iconColor }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   
-  // Use the guarded hook
+  // This hook connects the physical input to Google's search engine
   useGoogleMapsAutocomplete(inputRef, (place) => {
-    onChange({ address: place.address, lat: place.lat, lng: place.lng });
+    onChange(place); // Only triggers when a suggestion is clicked
   });
 
-  // ONLY update the physical input if the value was changed by the Map Picker
-  useEffect(() => {
-    if (inputRef.current && value?.address && inputRef.current.value !== value.address) {
-      inputRef.current.value = value.address;
-    }
-  }, [value?.address]);
-  
   return (
     <>
-      <div className="relative flex items-center">
+      <div className="relative flex items-center mb-2">
         <Icon className={`absolute left-3 h-4 w-4 ${iconColor} z-20`} />
         <Input
           ref={inputRef}
-          /* 🛡️ KEY FIX: We don't use 'value' or 'onChange' here. 
-             We let the browser (and Google) handle the typing naturally. */
           defaultValue={value?.address || ""}
           className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
           placeholder={placeholder}
+          // 🛡️ DO NOT ADD ONCHANGE HERE - It causes the 2-letter loop!
         />
         <Button
+          type="button"
           variant="ghost"
           size="icon"
-          className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20 z-20"
+          className="absolute right-1 text-[#00d4ff] z-20 hover:bg-[#00d4ff]/10"
           onClick={() => setShowMapPicker(true)}
         >
           <Target className="w-4 h-4" />
         </Button>
       </div>
-      
-      
+
+      {/* 🛡️ THIS MUST BE INSIDE THE FRAGMENT WITH THE INPUT */}
       <MapPicker
         isOpen={showMapPicker}
         onClose={() => setShowMapPicker(false)}
@@ -379,7 +374,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor }) 
       />
     </>
   );
-};
+});
 
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
