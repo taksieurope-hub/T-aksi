@@ -25,42 +25,62 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const initAuth = () => {
+    const initAuth = async () => {
       const savedUser = localStorage.getItem("taksi_user");
       const token = localStorage.getItem("taksi_token");
 
+      // FAIL-SAFE: If the server is slow, force stop loading after 5 seconds
+      const timeout = setTimeout(() => {
+        setLoading(false);
+      }, 5000);
+
       if (savedUser && token) {
-        // 1. LOAD INSTANTLY FROM PHONE MEMORY
-        setUser(JSON.parse(savedUser));
-        axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-        
-        // 2. SILENTLY VERIFY IN BACKGROUND (Don't make the user wait)
-        axios.get(`${API}/auth/me`).then(res => {
+        try {
+          // 1. Immediately use local data
+          const localData = JSON.parse(savedUser);
+          setUser(localData);
+          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          
+          // 2. Try to refresh in background, but don't block the app
+          const res = await axios.get(`${API}/auth/me`);
           setUser(res.data);
           localStorage.setItem("taksi_user", JSON.stringify(res.data));
-        }).catch(() => {
-          // Only clear if the token is dead
-          localStorage.removeItem("taksi_token");
-        });
+        } catch (e) {
+          console.error("Auth refresh failed, using local data.");
+        }
       }
-      // Stop the spinner immediately if we have a saved user
+      
+      clearTimeout(timeout);
       setLoading(false);
     };
     initAuth();
   }, []);
 
+  const login = (token, userData) => {
+    localStorage.setItem("taksi_token", token);
+    localStorage.setItem("taksi_user", JSON.stringify(userData));
+    setUser(userData);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("taksi_token");
+    localStorage.removeItem("taksi_user");
+    setUser(null);
+    toast.success("Logged out successfully");
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-black">
         <div className="w-16 h-16 border-4 border-[#00ff88] border-t-transparent rounded-full animate-spin"></div>
-        <p className="ml-4 text-[#00ff88]">Waking up T'aksi...</p>
+        <p className="mt-4 text-[#00ff88] font-mono tracking-widest animate-pulse">BOOTING T'AKSI...</p>
       </div>
     );
   }
 
   return (
     <LanguageProvider>
-      <AuthContext.Provider value={{ user, login: (t, u) => setUser(u), logout: () => setUser(null) }}>
+      <AuthContext.Provider value={{ user, login, logout }}>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LandingPage />} />
