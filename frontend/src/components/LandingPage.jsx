@@ -3,12 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Car, Users, Shield, Rocket, Zap, Globe } from "lucide-react";
-
-// --- FIX: Import directly from Context, NOT from App ---
-import { useLanguage } from "@/i18n/LanguageContext"; 
-// ------------------------------------------------------
-
+import { useLanguage } from "@/App"; 
 import LanguageSelector from "@/i18n/LanguageSelector";
+
+// ❌ NO IMPORT HERE. The file is in public, so we don't import it.
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -37,6 +35,7 @@ const LandingPage = () => {
         <header className="relative z-10 flex items-center justify-between p-6 max-w-7xl mx-auto">
           <div className="flex items-center space-x-3">
             <div className="w-14 h-14 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
+              {/* ✅ CORRECT TAG FOR PUBLIC FOLDER */}
               <img 
                 src="/logo.png" 
                 alt="T'aksi Logo" 

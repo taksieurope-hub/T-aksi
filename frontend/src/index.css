@@ -9,6 +9,8 @@
     --primary: 142 76% 36%;
     --border: 0 0% 14.9%;
     --radius: 0.75rem;
+    
+    /* These grab the exact size of the notch/bars from your phone */
     --sat: env(safe-area-inset-top);
     --sab: env(safe-area-inset-bottom);
   }
@@ -20,26 +22,22 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    
+    /* THE FIX: Pushes the map away from the camera notch and rounded corners */
     margin: 0;
     padding-top: var(--sat);
     padding-bottom: var(--sab);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
-    width: 100%;
-    min-height: 100vh;
-    overflow-x: hidden; 
-    overflow-y: auto; 
-    position: relative; 
+    
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden; 
+    position: fixed;
   }
 }
 
-/* --- FIX GOOGLE MAPS TILES (The "Blue Block" Fix) --- */
-.gm-style img {
-  max-width: none !important;
-  max-height: none !important;
-}
-
-/* GLOW EFFECTS */
+/* --- T-AKSI GLOW & ANIMATION EFFECTS --- */
 .glow-green { box-shadow: 0 0 20px rgba(0, 255, 136, 0.3), 0 0 40px rgba(0, 255, 136, 0.1); }
 .text-glow-green { text-shadow: 0 0 10px rgba(0, 255, 136, 0.5), 0 0 20px rgba(0, 255, 136, 0.3); }
 .btn-glow { transition: all 0.3s ease; }
@@ -51,35 +49,4 @@
   border-top-color: #00ff88;
   border-radius: 50%;
   animation: spin-slow 1s linear infinite;
-}
-/* --- FIX GOOGLE MAPS DROPDOWN BLOCKING INPUT --- */
-.pac-container {
-  z-index: 99999 !important; /* Force it above everything */
-  position: fixed !important; /* Stick to screen, don't scroll away */
-  font-family: 'Inter', sans-serif;
-  border-radius: 0.5rem;
-  margin-top: 5px;
-  background-color: #1a1a2e; /* Dark theme background */
-  border: 1px solid #00ff88; /* Green border */
-}
-
-.pac-item {
-  color: white;
-  border-top: 1px solid #333;
-  padding: 10px;
-  cursor: pointer;
-}
-
-.pac-item:hover {
-  background-color: #2a2a40;
-}
-
-.pac-item-query {
-  color: #00ff88; /* Green highlight text */
-  font-size: 14px;
-}
-
-/* Hide the powered by google logo if it causes layout shift (optional) */
-.pac-logo::after {
-  display: none;
 }

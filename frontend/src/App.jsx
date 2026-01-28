@@ -1,52 +1,73 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 
-// FIX 1: Import Shared Config
-import { API, AuthContext } from "@/config";
-
-// FIX 2: Import Language Context Directly
-import { LanguageProvider } from "@/i18n/LanguageContext";
-
-// Components
+// Import Components
 import LandingPage from "@/components/LandingPage";
 import RiderPortal from "@/components/RiderPortal";
-import DriverPortal from "@/components/DriverPortal"; 
+
+// I18N Fix: Import from Context, then Export for others to use
+import { LanguageProvider } from "@/i18n/LanguageContext";
+export { useLanguage } from "@/i18n/LanguageContext"; 
+
+export const BACKEND_URL = import.meta.env.PROD 
+  ? "https://t-aksi.onrender.com" 
+  : "http://localhost:8000";
+
+export const API = `${BACKEND_URL}/api`;
+export const GOOGLE_MAPS_API_KEY = "AIzaSyC2gkANH8GJOZNDdibTCKNEOWiuf580bxA"; // Use your key here
+
+export const AuthContext = createContext(null);
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error("useAuth must be used within AuthProvider");
+  return context;
+};
+
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem("taksi_token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+const StarsBackground = () => (
+  <div className="fixed inset-0 overflow-hidden pointer-events-none">
+    {[...Array(50)].map((_, i) => (
+      <div key={i} className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
+        style={{
+          top: `${Math.random() * 100}%`,
+          left: `${Math.random() * 100}%`,
+          animationDuration: `${2 + Math.random() * 3}s`,
+          opacity: Math.random() * 0.5,
+        }}
+      />
+    ))}
+  </div>
+);
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const updateUser = (newData) => {
-    setUser((prev) => {
-      const updated = { ...prev, ...newData };
-      localStorage.setItem("taksi_user", JSON.stringify(updated));
-      return updated;
-    });
-  };
-
   useEffect(() => {
     const initAuth = async () => {
       const savedUser = localStorage.getItem("taksi_user");
       const token = localStorage.getItem("taksi_token");
-      const timeout = setTimeout(() => setLoading(false), 5000);
-
       if (savedUser && token) {
         try {
-          const localData = JSON.parse(savedUser);
-          setUser(localData);
-          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
           const res = await axios.get(`${API}/auth/me`);
           setUser(res.data);
           localStorage.setItem("taksi_user", JSON.stringify(res.data));
         } catch (e) {
-          console.error("Auth failed");
+          localStorage.removeItem("taksi_token");
+          localStorage.removeItem("taksi_user");
+          setUser(null);
         }
       }
-      clearTimeout(timeout);
       setLoading(false);
     };
     initAuth();
@@ -55,32 +76,42 @@ function App() {
   const login = (token, userData) => {
     localStorage.setItem("taksi_token", token);
     localStorage.setItem("taksi_user", JSON.stringify(userData));
-    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     setUser(userData);
   };
 
   const logout = () => {
     localStorage.removeItem("taksi_token");
     localStorage.removeItem("taksi_user");
-    delete axios.defaults.headers.common["Authorization"];
     setUser(null);
-    toast.success("Logged out");
+    toast.success("Logged out successfully");
   };
 
-  if (loading) return <div className="bg-black min-h-screen text-[#00ff88] flex items-center justify-center">LOADING...</div>;
+  const updateUser = (newData) => {
+    const updated = { ...user, ...newData };
+    setUser(updated);
+    localStorage.setItem("taksi_user", JSON.stringify(updated));
+  };
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center bg-black"><div className="w-16 h-16 border-4 border-[#00ff88] border-t-transparent rounded-full animate-spin"></div></div>;
+  }
 
   return (
     <LanguageProvider>
       <AuthContext.Provider value={{ user, login, logout, updateUser }}>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/rider/*" element={<RiderPortal />} />
-            <Route path="/driver/*" element={<DriverPortal />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-        <Toaster position="top-center" richColors />
+        <div className="App min-h-screen bg-black relative">
+          <StarsBackground />
+          <div className="relative z-10">
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/rider/*" element={<RiderPortal />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </div>
+          <Toaster position="top-center" richColors />
+        </div>
       </AuthContext.Provider>
     </LanguageProvider>
   );

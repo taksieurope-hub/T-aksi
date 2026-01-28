@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/config";
-import { useLanguage } from "@/i18n/LanguageContext";
+// ADDED useLanguage here
+import { useAuth, API, GOOGLE_MAPS_API_KEY, useLanguage } from "@/App";
 import axios from "axios";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,77 +21,36 @@ import {
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
-// --- CSS FIXES FOR BLACK MAP AND INPUT ---
 const mapStyles = `
-  /* 1. Fix Black Map (Tailwind Conflict) */
-  .gm-style img {
-    max-width: none !important;
-    max-height: none !important;
-  }
-  
-  /* 2. Force Map Container Size */
   .gm-style, div[aria-label="Map"] {
     min-height: 100% !important;
     height: 100% !important;
     width: 100% !important;
     border-radius: 0.5rem;
   }
-
-  /* 3. Fix Autocomplete Dropdown (Show ON TOP of everything) */
-  .pac-container {
-    z-index: 99999 !important; /* Forces it above modals */
-    background-color: #1a1a2e !important;
-    border: 1px solid #00ff88;
-    border-radius: 8px;
-    font-family: sans-serif;
-    margin-top: 5px;
-    position: fixed !important; /* Sticks to screen */
-  }
-  .pac-item {
-    color: #ffffff !important;
-    border-top: 1px solid #333;
-    padding: 10px;
-    cursor: pointer;
-  }
-  .pac-item:hover {
-    background-color: #2a2a40 !important;
-  }
-  .pac-item-query {
-    color: #00ff88 !important;
-    font-size: 14px;
-  }
-  .pac-logo::after {
-    display: none; /* Hide Google Logo to save space */
-  }
 `;
 
-// PRICING RULES
+// UPDATED: Used 'key' instead of 'name' so we can translate it later
 const PRICING_RULES = {
-  economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗", longDist: 7.0, veryLong: 30.0 },
-  comfort: { key: 'vehicle_comfort', base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚙", longDist: 7.0, veryLong: 30.0 },
-  suv: { key: 'vehicle_suv', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐", longDist: 7.0, veryLong: 30.0 },
-  personal: { key: 'vehicle_personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "👤", longDist: 7.0, veryLong: 30.0 },
-  jumpstart: { key: 'vehicle_jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.50, freeWait: 999, stopFee: 0.00, icon: "⚡", longDist: 999.0, veryLong: 999.0 }
+  economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
+  comfort: { key: 'vehicle_comfort', base: 2.50, perKm: 0.55, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚙" },
+  suv: { key: 'vehicle_suv', base: 3.90, perKm: 0.80, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚐" },
+  personal: { key: 'vehicle_personal', base: 4.00, perKm: 0.70, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "👤" },
+  jumpstart: { key: 'vehicle_jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
-// --- CALCULATE FARE LOGIC ---
+// --- CALCULATE FARE ---
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
 
   subtotal += distanceKm * rules.perKm;
-  
-  if (distanceKm > rules.longDist) {
-    subtotal += (distanceKm - rules.longDist) * 0.15; 
-  }
-  if (distanceKm > rules.veryLong) {
-    subtotal += Math.ceil((distanceKm - rules.veryLong) / 15) * 5;
-  }
+  if (distanceKm > 7) subtotal += (distanceKm - 7) * 0.15;
+  if (distanceKm > 30) subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
 
   const billableWait = Math.max(0, waitMin - rules.freeWait);
   const totalWait = billableWait + stopWaitMin;
   subtotal += totalWait * rules.perMinWait;
-  
   subtotal += numStops * rules.stopFee;
 
   const surgeFee = subtotal * (surgeMultiplier - 1.0);
@@ -109,7 +68,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// --- CHAT INTERFACE COMPONENT ---
+// --- CHAT INTERFACE ---
 const ChatInterface = ({ rideId, driverName }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -123,9 +82,7 @@ const ChatInterface = ({ rideId, driverName }) => {
       const res = await axios.get(`${API}/rides/${rideId}/chat`);
       setMessages(res.data.messages || []);
       await axios.post(`${API}/rides/${rideId}/chat/read`);
-    } catch (error) {
-      console.error("Chat error:", error);
-    }
+    } catch (error) { console.error("Chat error:", error); }
   };
 
   useEffect(() => {
@@ -135,25 +92,19 @@ const ChatInterface = ({ rideId, driverName }) => {
   }, [rideId]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
-
     setSending(true);
     try {
       await axios.post(`${API}/rides/${rideId}/chat`, { message: newMessage });
       setNewMessage("");
       fetchMessages();
-    } catch (error) {
-      toast.error("Failed to send message");
-    } finally {
-      setSending(false);
-    }
+    } catch (error) { toast.error("Failed to send"); }
+    finally { setSending(false); }
   };
 
   return (
@@ -170,84 +121,65 @@ const ChatInterface = ({ rideId, driverName }) => {
         <div ref={scrollRef} />
       </div>
       <form onSubmit={sendMessage} className="p-4 border-t border-[#00ff88]/20 flex gap-2">
-        <Input 
-          value={newMessage} 
-          onChange={(e) => setNewMessage(e.target.value)} 
-          placeholder={t('type_message')} 
-          className="bg-black text-white" 
-        />
-        <Button type="submit" disabled={sending} className="bg-[#00ff88] text-black">
-          <Send className="w-4 h-4" />
-        </Button>
+        <Input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder={t('type_message')} className="bg-black text-white" />
+        <Button type="submit" disabled={sending} className="bg-[#00ff88] text-black"><Send className="w-4 h-4" /></Button>
       </form>
     </div>
   );
 };
 
-// --- GOOGLE MAPS HOOKS ---
-const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
+const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
-    if (!mapsLoaded || !inputRef.current || !window.google?.maps?.places) return;
+    if (!inputRef.current || !window.google) return;
     
-    try {
-      const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-        componentRestrictions: { country: 'ge' },
-        fields: ['formatted_address', 'geometry', 'name']
-      });
-      
-      const stopEnter = (e) => { if (e.key === 'Enter') e.preventDefault(); };
-      inputRef.current.addEventListener('keydown', stopEnter);
-      
-      const listener = autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        if (place.geometry) {
-          onPlaceSelect({
-            address: place.formatted_address || place.name,
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng()
-          });
-        }
-      });
-
-      return () => {
-        if (inputRef.current) inputRef.current.removeEventListener('keydown', stopEnter);
-        if (window.google && window.google.maps && listener) window.google.maps.event.removeListener(listener);
-      };
-    } catch (e) {
-      console.warn("Autocomplete init error", e);
-    }
-  }, [inputRef, onPlaceSelect, mapsLoaded]);
+    const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
+      componentRestrictions: { country: 'ge' },
+      fields: ['formatted_address', 'geometry', 'name']
+    });
+    
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (place.geometry) {
+        if(inputRef.current) inputRef.current.value = place.formatted_address || place.name;
+        
+        onPlaceSelect({
+          address: place.formatted_address || place.name,
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng()
+        });
+      }
+    });
+  }, [inputRef, onPlaceSelect]);
 };
 
-// --- MAP PICKER COMPONENT (FIXED WITH CLOSE BUTTON) ---
-const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, mapsLoaded }) => {
+// Map Picker Component
+const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const { t } = useLanguage();
+  const { t } = useLanguage(); // TRANSLATION
   
   useEffect(() => {
-    if (!isOpen || !mapsLoaded || !mapRef.current || !window.google || !window.google.maps) return;
+    if (!isOpen || !mapRef.current || !window.google) return;
     
-    // Clear container to prevent duplicate maps
-    mapRef.current.innerHTML = "";
-
-    const defaultCenter = initialLocation || { lat: 42.2662, lng: 42.7180 }; // Kutaisi
+    const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 }; // Tbilisi
     
     const map = new window.google.maps.Map(mapRef.current, {
       center: defaultCenter,
-      zoom: 15,
-      disableDefaultUI: true,
-      zoomControl: true,
-      // Dark theme for map
+      zoom: 14,
       styles: [
-        { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] }
-      ]
+        { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
+        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
+      ],
+      disableDefaultUI: true,
+      zoomControl: true
     });
     
     mapInstanceRef.current = map;
@@ -256,7 +188,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       map,
       draggable: true,
       position: defaultCenter,
-      animation: window.google.maps.Animation.DROP,
       icon: {
         path: window.google.maps.SymbolPath.CIRCLE,
         scale: 12,
@@ -286,29 +217,16 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       reverseGeocode(initialLocation.lat, initialLocation.lng);
     }
     
-    // FORCE RESIZE TRIGGER (Essential for Capacitor/Mobile)
-    setTimeout(() => {
-        if(map) {
-            window.google.maps.event.trigger(map, "resize");
-            map.setCenter(defaultCenter);
-        }
-    }, 500);
-    
-  }, [isOpen, initialLocation, mapsLoaded]);
+  }, [isOpen, initialLocation]);
   
   const reverseGeocode = async (lat, lng) => {
-    if (!window.google || !window.google.maps || typeof window.google.maps.Geocoder !== 'function') return;
-    
-    try {
-      const geocoder = new window.google.maps.Geocoder();
-      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-        if (status === 'OK' && results[0]) {
-          setAddress(results[0].formatted_address);
-        }
-      });
-    } catch (e) {
-      console.warn("Geocoder error:", e);
-    }
+    if (!window.google) return;
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        setAddress(results[0].formatted_address);
+      }
+    });
   };
   
   const getCurrentLocation = () => {
@@ -357,19 +275,18 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-md h-[90vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="p-4 bg-black/80 z-10 w-full border-b border-[#00ff88]/20 flex-none flex justify-between items-center">
+        <style>{mapStyles}</style>
+        <DialogHeader className="p-4 bg-black/80 z-10 w-full border-b border-[#00ff88]/20 flex-none">
           <DialogTitle className="text-[#00ff88] flex items-center">
             <MapPin className="w-5 h-5 mr-2" /> {title || t('select_location')}
           </DialogTitle>
-          {/* --- ADDED CLOSE BUTTON FOR EXITING MAP --- */}
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white">
-             <X className="w-6 h-6" />
-          </Button>
+          <DialogDescription className="text-gray-500 text-xs">
+              Drag map to pin location.
+          </DialogDescription>
         </DialogHeader>
         
-        {/* MAP CONTAINER */}
-        <div style={{ width: '100%', height: '65vh', position: 'relative' }}>
-          <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#242f3e' }} />
+        <div className="flex-1 w-full min-h-[300px] relative">
+          <div ref={mapRef} className="w-full h-full" />
         </div>
         
         <div className="w-full p-4 bg-black border-t border-[#00ff88]/30 flex flex-col gap-3 flex-none">
@@ -404,145 +321,110 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   );
 };
 
-// --- LOCATION INPUT (FIXED FOR ANDROID TYPING) ---
-const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
+// Location Input Component (CLEANED)
+const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, iconColor }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
-  const [inputValue, setInputValue] = useState(value?.address || "");
-
-  // Sync local input state if parent value changes externally
-  useEffect(() => {
-    if (value?.address && value.address !== inputValue) {
-        setInputValue(value.address);
-    }
-  }, [value]);
   
   useGoogleMapsAutocomplete(inputRef, (place) => {
-    setInputValue(place.address); // Update text immediately
-    onChange(place); 
-  }, mapsLoaded);
+    onChange({ address: place.address, lat: place.lat, lng: place.lng });
+  });
 
-  const handleTyping = (e) => {
-      setInputValue(e.target.value);
-  };
-
-  // Prevent keyboard from hiding input
-  const handleFocus = () => {
-      setTimeout(() => {
-          if(inputRef.current) {
-              inputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
-      }, 300);
-  };
-
+  useEffect(() => {
+      if(inputRef.current && value?.address && inputRef.current.value !== value.address) {
+          inputRef.current.value = value.address;
+      }
+  }, [value]);
+  
   return (
     <>
-      <div className="relative flex items-center mb-2">
-        <Icon className={`absolute left-3 h-4 w-4 ${iconColor} z-20`} />
+      <div className="relative flex items-center">
+        <Icon className={`absolute left-3 h-4 w-4 ${iconColor}`} />
         <Input
           ref={inputRef}
-          type="text"
-          value={inputValue}
-          onChange={handleTyping}
-          onFocus={handleFocus}
-          autoComplete="off" // CRITICAL: Stops native keyboard suggestions
-          className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
+          defaultValue={value?.address || ""}
+          onChange={(e) => onChange({ ...value, address: e.target.value })}
+          className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white"
           placeholder={placeholder}
         />
         <Button
-          type="button"
           variant="ghost"
           size="icon"
-          className="absolute right-1 text-[#00d4ff] z-20 hover:bg-[#00d4ff]/10"
+          className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20"
           onClick={() => setShowMapPicker(true)}
         >
           <Target className="w-4 h-4" />
         </Button>
       </div>
-
+      
       <MapPicker
         isOpen={showMapPicker}
         onClose={() => setShowMapPicker(false)}
-        onLocationSelect={(loc) => {
-            setInputValue(loc.address);
-            onChange(loc);
-        }}
+        onLocationSelect={(loc) => onChange(loc)}
         title={placeholder}
         initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null}
-        mapsLoaded={mapsLoaded}
       />
     </>
   );
-});
+};
 
-// --- LIVE TRACKING MAP ---
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const rendererRef = useRef(null);
   const [eta, setEta] = useState(null);
 
   useEffect(() => {
-    if (!window.google || !window.google.maps || !mapRef.current) return;
+    if (!window.google || !mapRef.current) return;
     
-    mapRef.current.innerHTML = ""; // Clear container
-
-    const initialCenter = driverLocation?.lat ? driverLocation : (pickup?.lat ? pickup : { lat: 42.2662, lng: 42.7180 });
+    const initialCenter = driverLocation?.lat ? driverLocation : (pickup?.lat ? pickup : { lat: 41.7151, lng: 44.8271 });
     
-    try {
-      const map = new window.google.maps.Map(mapRef.current, { 
-        zoom: 15, 
-        center: initialCenter, 
-        disableDefaultUI: true,
-        styles: [
-          { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-          { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-          { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] }
-        ]
-      });
-      
-      rendererRef.current = new window.google.maps.DirectionsRenderer({ 
-        map, 
-        suppressMarkers: false,
-        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
-      });
-    } catch(e) {
-      console.warn("Map init error:", e);
-    }
+    const map = new window.google.maps.Map(mapRef.current, { 
+      zoom: 15, 
+      center: initialCenter, 
+      disableDefaultUI: true,
+      styles: [
+        { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] }
+      ]
+    });
+    
+    rendererRef.current = new window.google.maps.DirectionsRenderer({ 
+      map, 
+      suppressMarkers: false,
+      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
+    });
   }, []);
 
   useEffect(() => {
-    if (!window.google || !rendererRef.current || !window.google.maps.DirectionsService) return;
+    if (!window.google || !rendererRef.current) return;
     
     const start = driverLocation?.lat ? driverLocation : pickup;
     const end = status === 'in_progress' ? destination : pickup;
     
     if (!start?.lat || !end?.lat) return;
 
-    try {
-      const directionsService = new window.google.maps.DirectionsService();
-      directionsService.route(
-        { 
-          origin: new window.google.maps.LatLng(parseFloat(start.lat), parseFloat(start.lng)), 
-          destination: new window.google.maps.LatLng(parseFloat(end.lat), parseFloat(end.lng)), 
-          travelMode: window.google.maps.TravelMode.DRIVING 
-        },
-        (res, stat) => {
-          if (stat === "OK") {
-            rendererRef.current.setDirections(res);
-            if (res.routes[0].legs[0]) {
-              setEta(res.routes[0].legs[0].duration.text);
-            }
+    const directionsService = new window.google.maps.DirectionsService();
+    directionsService.route(
+      { 
+        origin: new window.google.maps.LatLng(parseFloat(start.lat), parseFloat(start.lng)), 
+        destination: new window.google.maps.LatLng(parseFloat(end.lat), parseFloat(end.lng)), 
+        travelMode: window.google.maps.TravelMode.DRIVING 
+      },
+      (res, stat) => {
+        if (stat === "OK") {
+          rendererRef.current.setDirections(res);
+          if (res.routes[0].legs[0]) {
+            setEta(res.routes[0].legs[0].duration.text);
           }
         }
-      );
-    } catch (e) {
-      console.warn("Route error:", e);
-    }
+      }
+    );
   }, [driverLocation, status, pickup, destination]);
 
   return (
-    <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4 mb-4" style={{ height: '300px' }}>
-      <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#242f3e' }} />
+    <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4 mb-4">
+      <div ref={mapRef} className="w-full h-full" />
       {eta && (
         <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-4 py-2 rounded-lg backdrop-blur-md z-10 shadow-[0_0_15px_rgba(0,255,136,0.3)]">
           <p className="text-[#00ff88] font-bold text-xl">{eta}</p>
@@ -553,13 +435,13 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   );
 };
 
-// --- AUTH COMPONENT ---
+// Auth Component
 const RiderAuth = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { t } = useLanguage();
+  const { t } = useLanguage(); // TRANSLATION
   const [formData, setFormData] = useState({
     name: "", surname: "", cellphone: "", password: ""
   });
@@ -679,11 +561,11 @@ const RiderAuth = () => {
   );
 };
 
-// --- RIDER DASHBOARD ---
+// Dashboard Component
 const RiderDashboard = () => {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t } = useLanguage(); // TRANSLATION
   const [activeTab, setActiveTab] = useState("book");
   const [loading, setLoading] = useState(false);
   const [mapsLoaded, setMapsLoaded] = useState(false);
@@ -709,7 +591,7 @@ const RiderDashboard = () => {
   const [fareEstimate, setFareEstimate] = useState(null);
   const [surgeInfo, setSurgeInfo] = useState(null);
 
-  // Rating State
+  // Rating State (MOVED HERE)
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [review, setReview] = useState("");
@@ -722,32 +604,19 @@ const RiderDashboard = () => {
     };
   }, []);
 
-  // Load Maps with SAFETY INTERVAL
+  // Load Maps
   useEffect(() => {
+    if (window.google) {
+      setMapsLoaded(true);
+      return;
+    }
     if (!GOOGLE_MAPS_API_KEY) return;
 
-    if (!document.querySelector('script[src*="maps.googleapis.com"]')) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&loading=async`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        const checkInterval = setInterval(() => {
-          if (window.google && window.google.maps && window.google.maps.Geocoder) {
-            setMapsLoaded(true);
-            clearInterval(checkInterval);
-          }
-        }, 100);
-      };
-      document.head.appendChild(script);
-    } else {
-      const checkInterval = setInterval(() => {
-        if (window.google && window.google.maps && window.google.maps.Geocoder) {
-          setMapsLoaded(true);
-          clearInterval(checkInterval);
-        }
-      }, 100);
-    }
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
+    script.async = true;
+    script.onload = () => setMapsLoaded(true);
+    document.head.appendChild(script);
   }, []);
 
   // Live Wait Time
@@ -800,23 +669,19 @@ const RiderDashboard = () => {
 
   const calculateRoute = async () => {
     if (!window.google || !pickup.lat || !destination.lat) return;
-    try {
-      const directionsService = new window.google.maps.DirectionsService();
-      const waypoints = stops.filter(s => s.lat && s.lng).map(s => ({ location: new window.google.maps.LatLng(s.lat, s.lng), stopover: true }));
-      
-      directionsService.route(
-        { origin: new window.google.maps.LatLng(pickup.lat, pickup.lng), destination: new window.google.maps.LatLng(destination.lat, destination.lng), waypoints, travelMode: window.google.maps.TravelMode.DRIVING, optimizeWaypoints: false },
-        (result, status) => {
-          if (status === 'OK') {
-            let totalDistance = 0; let totalDuration = 0;
-            result.routes[0].legs.forEach(leg => { totalDistance += leg.distance.value; totalDuration += leg.duration.value; });
-            setRouteInfo({ distance: Math.round(totalDistance / 100) / 10, duration: Math.round(totalDuration / 60) });
-          }
+    const directionsService = new window.google.maps.DirectionsService();
+    const waypoints = stops.filter(s => s.lat && s.lng).map(s => ({ location: new window.google.maps.LatLng(s.lat, s.lng), stopover: true }));
+    
+    directionsService.route(
+      { origin: new window.google.maps.LatLng(pickup.lat, pickup.lng), destination: new window.google.maps.LatLng(destination.lat, destination.lng), waypoints, travelMode: window.google.maps.TravelMode.DRIVING, optimizeWaypoints: false },
+      (result, status) => {
+        if (status === 'OK') {
+          let totalDistance = 0; let totalDuration = 0;
+          result.routes[0].legs.forEach(leg => { totalDistance += leg.distance.value; totalDuration += leg.duration.value; });
+          setRouteInfo({ distance: Math.round(totalDistance / 100) / 10, duration: Math.round(totalDuration / 60) });
         }
-      );
-    } catch (e) {
-      console.warn("Route calc warning:", e);
-    }
+      }
+    );
   };
 
   const fetchActiveRide = async () => {
@@ -834,7 +699,7 @@ const RiderDashboard = () => {
   const updateStop = (index, data) => { const newStops = [...stops]; newStops[index] = { ...newStops[index], ...data }; setStops(newStops); };
   const removeStop = (index) => { setStops(stops.filter((_, i) => i !== index)); };
 
-  const handleBookRide = async (paid = false, paymentOrderId = null) => {
+  const handleBookRide = async (paid = false) => {
     if (!pickup.lat || !pickup.address) { toast.error("Please select pickup location"); return; }
     setLoading(true);
     try {
@@ -842,8 +707,7 @@ const RiderDashboard = () => {
         pickup: pickup.address, pickupLat: pickup.lat, pickupLng: pickup.lng,
         destination: destination.address || null, destinationLat: destination.lat, destinationLng: destination.lng,
         stops: stops.filter(s => s.lat).map((s, i) => ({ address: s.address, lat: s.lat, lng: s.lng, order: i })),
-        carType, paymentMethod, estimatedDistance: routeInfo?.distance || 5, estimatedDuration: routeInfo?.duration || 15, paid,
-        paymentOrderId: paymentOrderId
+        carType, paymentMethod, estimatedDistance: routeInfo?.distance || 5, estimatedDuration: routeInfo?.duration || 15, paid
       };
       const res = await axios.post(`${API}/rides/request`, rideData);
       toast.success(t('searching_driver'));
@@ -915,7 +779,7 @@ const RiderDashboard = () => {
   // --- UI CONSTANTS ---
   const carTypes = Object.entries(PRICING_RULES).map(([key, val]) => ({
     value: key,
-    label: t(val.key),
+    label: t(val.key), // TRANSLATED
     icon: val.icon,
     base: val.base
   }));
@@ -981,7 +845,7 @@ const RiderDashboard = () => {
                 {/* Pickup */}
                 <div className="space-y-2">
                     <Label className="text-[#00ff88]">{t('pickup_label')}</Label>
-                    <LocationInput value={pickup} onChange={setPickup} placeholder={t('current_location')} icon={MapPin} iconColor="text-[#00ff88]" mapsLoaded={mapsLoaded} />
+                    <LocationInput value={pickup} onChange={setPickup} placeholder={t('current_location')} icon={MapPin} iconColor="text-[#00ff88]" />
                 </div>
 
                 {/* Stops */}
@@ -991,7 +855,7 @@ const RiderDashboard = () => {
                       <Label className="text-yellow-400">{t('stop_label')} {index + 1}</Label>
                       <Button variant="ghost" size="sm" className="text-red-400 h-6" onClick={() => removeStop(index)}><X className="w-3 h-3" /></Button>
                     </div>
-                    <LocationInput value={stop} onChange={(data) => updateStop(index, data)} placeholder={`${t('stop_label')} ${index + 1}`} icon={MapPin} iconColor="text-yellow-400" mapsLoaded={mapsLoaded} />
+                    <LocationInput value={stop} onChange={(data) => updateStop(index, data)} placeholder={`${t('stop_label')} ${index + 1}`} icon={MapPin} iconColor="text-yellow-400" />
                   </div>
                 ))}
                 {stops.length < 3 && (
@@ -1003,7 +867,7 @@ const RiderDashboard = () => {
                 {/* Destination */}
                 <div className="space-y-2">
                     <Label className="text-[#00d4ff]">{t('destination_label')}</Label>
-                    <LocationInput value={destination} onChange={setDestination} placeholder={t('where_to')} icon={Navigation} iconColor="text-[#00d4ff]" mapsLoaded={mapsLoaded} />
+                    <LocationInput value={destination} onChange={setDestination} placeholder={t('where_to')} icon={Navigation} iconColor="text-[#00d4ff]" />
                 </div>
 
                 {/* Fare Breakdown */}
@@ -1077,10 +941,7 @@ const RiderDashboard = () => {
                          disabled={!fareEstimate || !pickup.lat}
                          forceReRender={[fareEstimate?.total]}
                          createOrder={async (data, actions) => actions.order.create({ purchase_units: [{ amount: { value: fareEstimate.total, currency_code: "USD" } }] })}
-                         onApprove={async (data, actions) => { 
-                             await actions.order.capture(); 
-                             handleBookRide(true, data.orderID);
-                         }}
+                         onApprove={async (data, actions) => { await actions.order.capture(); handleBookRide(true); }}
                       />
                    </div>
                 ) : (

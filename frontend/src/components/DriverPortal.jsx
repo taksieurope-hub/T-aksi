@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/config";
-import { useLanguage } from "@/i18n/LanguageContext"; // Ensure language is still here if needed
+import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/App";
 import axios from "axios";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,15 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription,
-  DialogFooter
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, DollarSign, Loader2,
@@ -32,12 +22,10 @@ import {
   Route as RouteIcon, Play, Square, MapPinned, MessageSquare, Send
 } from "lucide-react";
 
-// --- CONFIGURATION ---
-const DRIVER_COMMISSION_RATE = 0.23; 
-const MINIMUM_BALANCE_FOR_CASH = 0.00; 
-const WITHDRAWAL_FEE = 1.00; 
+const DRIVER_COMMISSION_RATE = 0.23; // 23%
+const MINIMUM_BALANCE_FOR_CASH = 0.00; // Hard limit: If balance < commission, cash is blocked
+const WITHDRAWAL_FEE = 1.00; // 1 GEL fee per withdrawal
 const LOCATION_UPDATE_INTERVAL = 5000;
-const GEL_TO_USD_RATE = 0.37; 
 
 // CSS for Map
 const mapStyles = `
@@ -46,11 +34,6 @@ const mapStyles = `
     height: 100% !important;
     width: 100% !important;
     border-radius: 0.75rem;
-  }
-  /* FIX: Prevents Tailwind from collapsing Google Maps tiles */
-  .gm-style img {
-    max-width: none !important;
-    max-height: none !important;
   }
 `;
 
@@ -62,12 +45,14 @@ const ChatInterface = ({ rideId, riderName, onClose }) => {
   const scrollRef = useRef(null);
   const { user } = useAuth();
 
+  // Poll for messages
   useEffect(() => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
   }, [rideId]);
 
+  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
@@ -78,6 +63,8 @@ const ChatInterface = ({ rideId, riderName, onClose }) => {
     try {
       const res = await axios.get(`${API}/rides/${rideId}/chat`);
       setMessages(res.data.messages || []);
+      
+      // Mark as read if any unread
       await axios.post(`${API}/rides/${rideId}/chat/read`);
     } catch (error) {
       console.error("Chat error:", error);
@@ -92,7 +79,7 @@ const ChatInterface = ({ rideId, riderName, onClose }) => {
     try {
       await axios.post(`${API}/rides/${rideId}/chat`, { message: newMessage });
       setNewMessage("");
-      fetchMessages();
+      fetchMessages(); // Update immediately
     } catch (error) {
       toast.error("Failed to send message");
     } finally {
@@ -271,7 +258,7 @@ const DriverAuth = () => {
   );
 };
 
-// Real-time Location Tracker Hook (Fixed to prevent 400 Loops)
+// Real-time Location Tracker Hook
 const useLocationTracker = (isOnline, onLocationUpdate) => {
   const watchIdRef = useRef(null);
   const intervalRef = useRef(null);
@@ -290,22 +277,6 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
       return;
     }
     
-    // FIX: Immediate fetch to prevent null location (stops 400 error)
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            const loc = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-                heading: position.coords.heading,
-                speed: position.coords.speed
-            };
-            lastLocationRef.current = loc;
-            onLocationUpdate(loc);
-        },
-        (err) => console.error("Initial GPS Error", err),
-        { enableHighAccuracy: true }
-    );
-
     // Start watching location
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
@@ -359,7 +330,6 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center,
         zoom: 15,
-        backgroundColor: '#1a1a2e',
         styles: [
             { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
             { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
@@ -418,11 +388,14 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
       let origin = { lat: driverLocation.lat, lng: driverLocation.lng };
 
       if (activeRide.status === "accepted") {
+        // Navigate Driver -> Pickup
         destination = { lat: parseFloat(activeRide.pickupLat), lng: parseFloat(activeRide.pickupLng) };
       } else if (activeRide.status === "arrived") {
+        // Driver is at pickup, show route to destination
          destination = { lat: parseFloat(activeRide.destinationLat), lng: parseFloat(activeRide.destinationLng) };
          origin = { lat: parseFloat(activeRide.pickupLat), lng: parseFloat(activeRide.pickupLng) };
       } else if (activeRide.status === "in_progress") {
+        // Navigate Driver (moving) -> Destination
         destination = { lat: parseFloat(activeRide.destinationLat), lng: parseFloat(activeRide.destinationLng) };
       }
       
@@ -441,7 +414,7 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
   }, [activeRide, driverLocation]);
   
   return (
-    <div ref={mapRef} className="w-full h-[300px] rounded-xl border border-[#00d4ff]/20 bg-[#1a1a2e]" />
+    <div ref={mapRef} className="w-full h-[300px] rounded-xl border border-[#00d4ff]/20" />
   );
 };
 
@@ -460,14 +433,6 @@ const DriverDashboard = () => {
   const [driverLocation, setDriverLocation] = useState(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
   
-  // Modals
-  const [showRatingModal, setShowRatingModal] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [review, setReview] = useState("");
-  const [completedRideInfo, setCompletedRideInfo] = useState(null);
-  const [showBankModal, setShowBankModal] = useState(false);
-  const [newBankIban, setNewBankIban] = useState("");
-
   // Ride tracking state
   const [rideStartTime, setRideStartTime] = useState(null);
   const [arrivedTime, setArrivedTime] = useState(null);
@@ -514,9 +479,7 @@ const DriverDashboard = () => {
     setDriverLocation(location);
     
     try {
-      if(isOnline) {
-          await axios.post(`${API}/driver/location`, location);
-      }
+      await axios.post(`${API}/driver/location`, location);
       
       // If in active ride, track distance
       if (activeRide && activeRide.status === "in_progress" && lastPositionRef.current) {
@@ -534,7 +497,7 @@ const DriverDashboard = () => {
     } catch (error) {
       console.error("Failed to update location:", error);
     }
-  }, [activeRide, isOnline]);
+  }, [activeRide]);
   
   // Use location tracker
   useLocationTracker(isOnline, handleLocationUpdate);
@@ -569,13 +532,12 @@ const DriverDashboard = () => {
   }, []);
 
   useEffect(() => {
-    // FIX: Only start polling for rides when we have a confirmed driverLocation
-    if (registrationStatus === "approved" && isOnline && driverLocation) {
+    if (registrationStatus === "approved" && isOnline) {
       fetchAvailableRides();
       const interval = setInterval(fetchAvailableRides, 5000);
       return () => clearInterval(interval);
     }
-  }, [isOnline, registrationStatus, driverLocation]);
+  }, [isOnline, registrationStatus]);
 
   const fetchAvailableRides = async () => {
     try {
@@ -608,11 +570,6 @@ const DriverDashboard = () => {
   };
 
   const fetchNearbyRides = async () => {
-    // FIX: Guard clause to prevent 400 Bad Request
-    if (!driverLocation) {
-        toast.info("Waiting for GPS location...");
-        return;
-    }
     try {
       const res = await axios.get(`${API}/driver/rides/nearby?radius=${searchRadius}`);
       setNearbyRides(res.data.rides || []);
@@ -626,6 +583,7 @@ const DriverDashboard = () => {
       setLoading(true);
       await axios.post(`${API}/rides/${rideId}/request-join`);
       toast.success("You can now accept this ride!");
+      // Move ride from nearby to available
       fetchAvailableRides();
       fetchNearbyRides();
     } catch (error) {
@@ -635,50 +593,15 @@ const DriverDashboard = () => {
     }
   };
 
-  // --- FIXED: TOGGLE ONLINE ---
-  const handleToggleOnline = async (checked) => {
-    setIsOnline(checked);
+  const handleToggleOnline = async (online) => {
     try {
-      // 1. Send update to backend
-      await axios.post(`${API}/driver/status?is_online=${checked}`);
-      // 2. Update local state
-      updateUser({ ...user, is_online: checked });
-      toast.success(checked ? "You are now online!" : "You are now offline");
-      
-      // 3. Force immediate location update if going online
-      if(checked && driverLocation) {
-          await axios.post(`${API}/driver/location`, driverLocation);
-      }
+      await axios.post(`${API}/driver/status?is_online=${online}`);
+      setIsOnline(online);
+      updateUser({ is_online: online });
+      toast.success(online ? "You are now online!" : "You are now offline");
     } catch (error) {
-      setIsOnline(!checked);
       toast.error("Failed to update status");
     }
-  };
-
-  // --- NEW: LAUNCH EXTERNAL MAP ---
-  const launchExternalMap = () => {
-    if (!activeRide) return;
-
-    let destLat, destLng;
-
-    if (activeRide.status === 'accepted') {
-      destLat = activeRide.pickupLat;
-      destLng = activeRide.pickupLng;
-    } 
-    else if (['arrived', 'in_progress'].includes(activeRide.status)) {
-      if (!activeRide.destinationLat) {
-        toast.info("No destination set by rider.");
-        return;
-      }
-      destLat = activeRide.destinationLat;
-      destLng = activeRide.destinationLng;
-    } else {
-        return;
-    }
-
-    // This URL scheme opens the native map app on the phone
-    const url = `geo:0,0?q=${destLat},${destLng}`;
-    window.location.href = url;
   };
 
   const handleRegisterVehicle = async (e) => {
@@ -693,8 +616,7 @@ const DriverDashboard = () => {
       
       toast.success(`Vehicle registered! Tier: ${res.data.tier}`);
       updateUser({
-        ...user,
-        driver_info: { ...user.driver_info, vehicle: vehicleData, vehicle_tier: res.data.tier },
+        driver_info: { vehicle: vehicleData, vehicle_tier: res.data.tier },
         registration_status: "pending_review"
       });
     } catch (error) {
@@ -708,6 +630,8 @@ const DriverDashboard = () => {
     const commission = estimatedFare * DRIVER_COMMISSION_RATE;
     const finalBalance = balance - commission;
 
+    // SMART FILTERING LOGIC
+    // If it's a cash ride, and after commission they would have less than 0, BLOCK IT.
     if (paymentMethod === 'cash' && finalBalance < 0) {
         toast.error("Insufficient balance for Cash order commission.");
         setActiveTab("earnings");
@@ -720,7 +644,6 @@ const DriverDashboard = () => {
       toast.success(`Ride accepted! Commission: ₾${res.data.commission_deducted.toFixed(2)}`);
       
       updateUser({
-        ...user,
         earnings: { ...user.earnings, balance: res.data.new_balance }
       });
       
@@ -763,12 +686,6 @@ const DriverDashboard = () => {
       } else if (action === "complete") {
         const res = await axios.post(`${API}/rides/${activeRide.id}/complete?final_distance=${distanceTraveled.toFixed(2)}&total_wait_minutes=${waitTimer}`);
         toast.success(`Ride completed! Final fare: ₾${res.data.final_fare.toFixed(2)}`);
-        
-        // --- Trigger Rating Modal Here ---
-        setCompletedRideInfo(activeRide);
-        setShowRatingModal(true);
-        // ---------------------------------
-
         setActiveRide(null);
         setDistanceTraveled(0);
         setWaitTimer(0);
@@ -789,49 +706,7 @@ const DriverDashboard = () => {
     }
   };
 
-  // Saving Bank Details
-  const handleSaveBank = async () => {
-      if (!newBankIban) {
-        toast.error("Please enter a valid IBAN");
-        return;
-      }
-      
-      setLoading(true);
-      try {
-        // Saving bank details to backend
-        await axios.post(`${API}/driver/bank-details`, { bank_details: newBankIban });
-        
-        // Update local user state immediately so UI reflects change
-        const updatedUser = { 
-            ...user, 
-            driver_info: { 
-                ...user.driver_info, 
-                bank_details: newBankIban 
-            } 
-        };
-        updateUser(updatedUser);
-        
-        toast.success("Bank details linked successfully!");
-        setShowBankModal(false);
-        setNewBankIban("");
-      } catch (err) {
-        console.error(err);
-        toast.error("Failed to save bank details. Try again.");
-      } finally {
-        setLoading(false);
-      }
-  };
-
-  const submitRating = async () => {
-      // Logic to send rating to backend would go here
-      // await axios.post(`${API}/rides/${completedRideInfo.id}/rate`, { rating, review });
-      toast.success("Thank you for your feedback!");
-      setShowRatingModal(false);
-      setRating(0);
-      setReview("");
-      setCompletedRideInfo(null);
-  };
-
+  // WITHDRAWAL LOGIC WITH FEE
   const handleWithdrawal = async () => {
     const amount = parseFloat(withdrawalData.amount);
     if (!amount || !withdrawalData.bank_details) {
@@ -849,9 +724,10 @@ const DriverDashboard = () => {
     setLoading(true);
     try {
       await axios.post(`${API}/driver/withdraw`, {
-        amount: amount, 
+        amount: amount, // Backend should handle fee deduction if logic is there, or we check here
         bank_details: withdrawalData.bank_details
       });
+      // Simulating immediate client update for fee
       updateUser({
           ...user,
           earnings: {
@@ -907,19 +783,18 @@ const DriverDashboard = () => {
             </div>
           </div>
           <div className="flex items-center space-x-4">
-            
-            {/* TOGGLE ALWAYS VISIBLE NOW */}
-            <div className="flex items-center space-x-2">
+            {registrationStatus === "approved" && (
+              <div className="flex items-center space-x-2">
                 <span className={`text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>
                   {isOnline ? "Online" : "Offline"}
                 </span>
-                <Switch 
-                  checked={isOnline} 
-                  onCheckedChange={handleToggleOnline} 
+                <Switch
+                  checked={isOnline}
+                  onCheckedChange={handleToggleOnline}
                   className="data-[state=checked]:bg-[#00ff88]"
                 />
-            </div>
-
+              </div>
+            )}
             <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={logout}>
               <LogOut className="w-5 h-5" />
             </Button>
@@ -990,17 +865,6 @@ const DriverDashboard = () => {
                   {/* Live Map */}
                   {mapsLoaded && (
                     <LiveRideMap activeRide={activeRide} driverLocation={driverLocation} />
-                  )}
-
-                  {/* NAVIGATION BUTTON */}
-                  {['accepted', 'arrived', 'in_progress'].includes(activeRide.status) && (
-                      <Button 
-                        onClick={launchExternalMap}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 text-lg shadow-[0_0_15px_rgba(37,99,235,0.5)]"
-                      >
-                        <Navigation className="w-5 h-5 mr-2" />
-                        {activeRide.status === 'accepted' ? "Navigate to Pickup" : "Navigate to Destination"}
-                      </Button>
                   )}
 
                   {/* Ride Details */}
@@ -1102,6 +966,7 @@ const DriverDashboard = () => {
               <div className="space-y-4">
                 {availableRides.map(ride => {
                   const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
+                  // Allow accept if: Method is NOT cash OR Balance covers commission
                   const canAccept = (ride.payment_method !== 'cash') || (balance >= commission);
                   
                   return (
@@ -1144,14 +1009,15 @@ const DriverDashboard = () => {
             )}
           </TabsContent>
 
-          {/* Earnings Tab */}
+          {/* Earnings Tab with Saved Methods */}
           <TabsContent value="earnings">
             <div className="space-y-6">
+                {/* 1. Summary Cards */}
                 <div className="grid grid-cols-2 gap-4">
                   <Card className="bg-black/60 border border-[#00ff88]/30 p-4 text-center">
                     <p className="text-xs text-gray-500 uppercase">Balance</p>
                     <p className={`text-2xl font-bold ${balance < 0 ? "text-red-500" : "text-[#00ff88]"}`}>
-                        ₾{balance.toFixed(2)}
+                       ₾{balance.toFixed(2)}
                     </p>
                   </Card>
                   <Card className="bg-black/60 border border-red-500/30 p-4 text-center">
@@ -1160,68 +1026,54 @@ const DriverDashboard = () => {
                   </Card>
                 </div>
 
+                {/* 2. SAVED BANK DETAILS (New!) */}
                 <Card className="bg-black/60 border border-[#00d4ff]/30">
-                    <CardHeader className="pb-2">
+                   <CardHeader className="pb-2">
                       <CardTitle className="text-white text-base flex justify-between">
-                          <span><Banknote className="w-4 h-4 inline mr-2 text-[#00d4ff]"/> Payout Method</span>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-6 text-[#00d4ff] text-xs"
-                            onClick={() => setShowBankModal(true)}
-                          >
-                              Edit
-                          </Button>
+                         <span><Banknote className="w-4 h-4 inline mr-2 text-[#00d4ff]"/> Payout Method</span>
+                         <Button variant="ghost" size="sm" className="h-6 text-[#00d4ff] text-xs">Edit</Button>
                       </CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                   </CardHeader>
+                   <CardContent>
                       {user?.driver_info?.bank_details ? (
-                          <div className="flex items-center justify-between bg-[#00d4ff]/10 p-3 rounded-lg border border-[#00d4ff]/20">
+                         <div className="flex items-center justify-between bg-[#00d4ff]/10 p-3 rounded-lg border border-[#00d4ff]/20">
                             <div>
                                <p className="text-sm font-bold text-white">Bank Transfer</p>
                                <p className="text-xs text-[#00d4ff] font-mono">{user.driver_info.bank_details}</p>
                             </div>
                             <CheckCircle2 className="w-5 h-5 text-[#00ff88]" />
-                          </div>
+                         </div>
                       ) : (
-                          <div className="text-center py-2">
+                         <div className="text-center py-2">
                             <p className="text-gray-500 text-sm mb-2">No bank account linked</p>
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="border-dashed border-gray-600 text-gray-400 w-full"
-                                onClick={() => setShowBankModal(true)}
-                            >
+                            <Button variant="outline" size="sm" className="border-dashed border-gray-600 text-gray-400 w-full">
                                + Add Bank Account
                             </Button>
-                          </div>
+                         </div>
                       )}
-                    </CardContent>
+                   </CardContent>
                 </Card>
 
+                {/* 3. INSTANT TOP UP (PayPal) */}
                 <Card className="bg-black/60 border border-[#00ff88]/30">
                   <CardHeader>
                     <CardTitle className="text-[#00ff88] flex items-center text-base">
                       <CreditCard className="w-5 h-5 mr-2" /> Top Up Balance
                     </CardTitle>
-                    <CardDescription>
-                       We convert your GEL to USD for payment.
-                       <br/>
-                       Rate: 1 GEL ≈ ${GEL_TO_USD_RATE.toFixed(2)} USD
-                    </CardDescription>
+                    <CardDescription>Pay commission to accept cash rides</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                       <div className="space-y-2">
-                        <Label className="text-[#00ff88]">Amount (₾ GEL)</Label>
+                        <Label className="text-[#00ff88]">Amount (₾)</Label>
                         <div className="grid grid-cols-4 gap-2 mb-2">
                            {[10, 20, 50, 100].map(amt => (
-                             <button 
+                              <button 
                                 key={amt}
                                 onClick={() => setTopupAmount(amt.toString())}
                                 className={`py-1 rounded border text-sm font-bold transition-all ${
-                                  topupAmount === amt.toString() 
-                                  ? "bg-[#00ff88] text-black border-[#00ff88]" 
-                                  : "bg-black border-gray-700 text-white hover:border-[#00ff88]"
+                                   topupAmount === amt.toString() 
+                                   ? "bg-[#00ff88] text-black border-[#00ff88]" 
+                                   : "bg-black border-gray-700 text-white hover:border-[#00ff88]"
                                 }`}
                               >
                                  {amt}
@@ -1233,42 +1085,23 @@ const DriverDashboard = () => {
                             value={topupAmount} 
                             onChange={(e) => setTopupAmount(e.target.value)} 
                             className="bg-black/50 border-[#00ff88]/30 text-white" 
-                            placeholder="Amount in GEL"
+                            placeholder="Custom Amount"
                         />
                       </div>
                       
                       {topupAmount && parseFloat(topupAmount) > 0 ? (
-                        <div className="space-y-4">
-                            <p className="text-sm text-gray-400 text-center">
-                                You will be charged: <span className="text-white font-bold">${(parseFloat(topupAmount) * GEL_TO_USD_RATE).toFixed(2)} USD</span>
-                            </p>
-                            <div className="bg-white p-2 rounded-xl">
-                               <PayPalButtons 
-                                   style={{ layout: "vertical", shape: "rect" }}
-                                   forceReRender={[topupAmount]} 
-                                   createOrder={(data, actions) => {
-                                      // Convert GEL input to USD for PayPal
-                                      const usdAmount = (parseFloat(topupAmount) * GEL_TO_USD_RATE).toFixed(2);
-                                      return actions.order.create({ 
-                                          purchase_units: [{ amount: { value: usdAmount, currency_code: "USD" } }] 
-                                      });
-                                   }}
-                                   onApprove={async (data, actions) => {
-                                      await actions.order.capture();
-                                      // Update balance with the ORIGINAL GEL amount
-                                      const addedGel = parseFloat(topupAmount);
-                                      const newBalance = (user.earnings?.balance || 0) + addedGel;
-                                      
-                                      updateUser({ 
-                                           ...user, 
-                                           earnings: { ...user.earnings, balance: newBalance }
-                                      });
-                                      
-                                      toast.success(`Success! ₾${addedGel} added.`);
-                                      setTopupAmount("");
-                                   }}
-                               />
-                            </div>
+                        <div className="bg-white p-2 rounded-xl">
+                           <PayPalButtons 
+                               style={{ layout: "vertical", shape: "rect" }}
+                               createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: topupAmount, currency_code: "USD" } }] })}
+                               onApprove={async (data, actions) => {
+                                   await actions.order.capture();
+                                   // In production: await axios.post('/driver/topup', { ... })
+                                   updateUser({ ...user, earnings: { ...user.earnings, balance: (user.earnings?.balance || 0) + parseFloat(topupAmount) }});
+                                   toast.success(`Success! ₾${topupAmount} added.`);
+                                   setTopupAmount("");
+                               }}
+                           />
                         </div>
                       ) : (
                           <Button disabled className="w-full bg-gray-800 text-gray-500">Enter Amount to Pay</Button>
@@ -1276,6 +1109,7 @@ const DriverDashboard = () => {
                   </CardContent>
                 </Card>
 
+                {/* 4. WITHDRAWAL FORM */}
                 <Card className="bg-black/60 border border-red-500/30">
                     <CardHeader>
                         <CardTitle className="text-red-400 text-base">Withdraw Earnings</CardTitle>
@@ -1296,11 +1130,12 @@ const DriverDashboard = () => {
                            </p>
                         </div>
 
+                        {/* If they have a saved bank, use it automatically */}
                         {!user?.driver_info?.bank_details && (
                            <div className="space-y-2">
                               <Label>Bank IBAN</Label>
                               <Input 
-                                  placeholder="GE00TB0000000000000000"
+                                  placeholder="GE00TB000000000000"
                                   value={withdrawalData.bank_details}
                                   onChange={(e) => setWithdrawalData({...withdrawalData, bank_details: e.target.value})}
                                   className="bg-black/50 border-red-500/30 text-white"
@@ -1459,15 +1294,17 @@ const DriverDashboard = () => {
               Ride Completed!
             </DialogTitle>
             <DialogDescription className="text-center text-gray-400">
-              How was your ride with {completedRideInfo?.rider_name || "the passenger"}?
+              How was your ride with {completedRideInfo?.driver_info?.name}?
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col items-center space-y-6 py-4">
+            {/* Driver Avatar */}
             <div className="w-20 h-20 rounded-full bg-gray-700 border-2 border-[#00ff88] flex items-center justify-center overflow-hidden">
                 <User className="w-10 h-10 text-gray-400" />
             </div>
 
+            {/* Star Inputs */}
             <div className="flex space-x-2">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
@@ -1486,6 +1323,7 @@ const DriverDashboard = () => {
               {rating === 5 ? "Excellent!" : rating > 3 ? "Good" : rating > 0 ? "Rated" : "Tap a star"}
             </p>
 
+            {/* Review Text */}
             <Textarea 
               placeholder="Write a compliment or complaint..." 
               value={review}
@@ -1501,52 +1339,6 @@ const DriverDashboard = () => {
               Submit Feedback
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* BANK ACCOUNT MODAL */}
-      <Dialog open={showBankModal} onOpenChange={setShowBankModal}>
-        <DialogContent className="bg-[#1a1a2e] border border-[#00d4ff]/20 text-white sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-[#00d4ff] flex items-center gap-2">
-                <Banknote className="w-5 h-5" /> Link Bank Account
-            </DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Enter your IBAN to receive earnings payouts.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-                <Label>Account Holder Name</Label>
-                <Input 
-                    value={`${user?.name} ${user?.surname}`} 
-                    disabled 
-                    className="bg-black/20 border-gray-700 text-gray-500 cursor-not-allowed"
-                />
-            </div>
-            
-            <div className="space-y-2">
-                <Label>IBAN / Account Number</Label>
-                <Input 
-                    value={newBankIban} 
-                    onChange={(e) => setNewBankIban(e.target.value)}
-                    placeholder="GE00TB0000000000000000"
-                    className="bg-black/50 border-[#00d4ff]/30 text-white font-mono uppercase"
-                />
-                <p className="text-xs text-gray-500">Only Georgian bank accounts supported currently.</p>
-            </div>
-          </div>
-
-          <DialogFooter>
-             <Button 
-                onClick={handleSaveBank} 
-                disabled={loading || !newBankIban}
-                className="bg-[#00d4ff] text-black w-full"
-            >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Bank Details"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1567,6 +1359,33 @@ const DriverDashboard = () => {
         </Tabs>
       </main>
     </div>
+  );
+};
+
+// Main Router Wrapper
+const DriverPortal = () => {
+  const { user } = useAuth();
+  const location = useLocation();
+
+  if (!user || user.user_type !== "driver") {
+    if (location.pathname === "/driver" || location.pathname === "/driver/") {
+      return <DriverAuth />;
+    }
+    return <Navigate to="/driver" replace />;
+  }
+
+  // Wrap in PayPal Provider
+  return (
+    <PayPalScriptProvider options={{ 
+       "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test",
+       currency: "USD" 
+    }}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/driver/dashboard" replace />} />
+          <Route path="/dashboard" element={<DriverDashboard />} />
+          <Route path="*" element={<Navigate to="/driver/dashboard" replace />} />
+        </Routes>
+    </PayPalScriptProvider>
   );
 };
 
