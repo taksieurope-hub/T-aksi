@@ -1,31 +1,25 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 
-// --- CRITICAL IMPORTS ---
+// --- IMPORT SHARED CONFIG (Breaks the Death Loop) ---
+import { API, AuthContext } from "@/config";
+
+// --- IMPORTS ---
 import LandingPage from "@/components/LandingPage";
 import RiderPortal from "@/components/RiderPortal";
-import DriverPortal from "@/components/DriverPortal"; // <--- This was missing/broken
+import DriverPortal from "@/components/DriverPortal"; 
 
+// Import Language directly (Do not export from App)
 import { LanguageProvider } from "@/i18n/LanguageContext";
-export { useLanguage } from "@/i18n/LanguageContext"; 
-
-// --- CONFIGURATION ---
-// Using VITE_ env variables correctly
-export const API = import.meta.env.VITE_API_URL || "https://t-aksi.onrender.com/api";
-export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-
-export const AuthContext = createContext(null);
-export const useAuth = () => useContext(AuthContext);
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // --- HELPER: Update user state locally (Required for Driver Toggle) ---
   const updateUser = (newData) => {
     setUser((prev) => {
       const updated = { ...prev, ...newData };
@@ -39,24 +33,19 @@ function App() {
       const savedUser = localStorage.getItem("taksi_user");
       const token = localStorage.getItem("taksi_token");
 
-      // FAIL-SAFE: If backend is slow, don't hang the app
-      const timeout = setTimeout(() => {
-        setLoading(false);
-      }, 5000);
+      const timeout = setTimeout(() => setLoading(false), 5000);
 
       if (savedUser && token) {
         try {
-          // 1. Load local data immediately (Fast UI)
           const localData = JSON.parse(savedUser);
           setUser(localData);
           axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
           
-          // 2. Refresh data from server in background
           const res = await axios.get(`${API}/auth/me`);
           setUser(res.data);
           localStorage.setItem("taksi_user", JSON.stringify(res.data));
         } catch (e) {
-          console.error("Auth refresh failed, using local data.");
+          console.error("Auth refresh failed");
         }
       }
       
@@ -92,7 +81,6 @@ function App() {
 
   return (
     <LanguageProvider>
-      {/* PASS updateUser TO CONTEXT */}
       <AuthContext.Provider value={{ user, login, logout, updateUser }}>
         <BrowserRouter>
           <Routes>
