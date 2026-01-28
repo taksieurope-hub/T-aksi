@@ -1,5 +1,3 @@
-// cd "C:\Users\edahl\Desktop\taksi app from emergent to render\frontend"
-
 import { useState, useEffect, createContext, useContext } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -9,7 +7,7 @@ import { toast } from "sonner";
 
 import LandingPage from "@/components/LandingPage";
 import RiderPortal from "@/components/RiderPortal";
-import DriverPortal from "@/components/DriverPortal";
+import DriverPortal from "@/components/DriverPortal"; 
 
 import { LanguageProvider } from "@/i18n/LanguageContext";
 export { useLanguage } from "@/i18n/LanguageContext"; 
@@ -23,6 +21,15 @@ export const useAuth = () => useContext(AuthContext);
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // --- ADDED: Helper to update local user state (crucial for Driver toggle) ---
+  const updateUser = (newData) => {
+    setUser((prev) => {
+      const updated = { ...prev, ...newData };
+      localStorage.setItem("taksi_user", JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   useEffect(() => {
     const initAuth = async () => {
@@ -59,12 +66,15 @@ function App() {
   const login = (token, userData) => {
     localStorage.setItem("taksi_token", token);
     localStorage.setItem("taksi_user", JSON.stringify(userData));
+    // Set token immediately so subsequent requests work
+    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     setUser(userData);
   };
 
   const logout = () => {
     localStorage.removeItem("taksi_token");
     localStorage.removeItem("taksi_user");
+    delete axios.defaults.headers.common["Authorization"];
     setUser(null);
     toast.success("Logged out successfully");
   };
@@ -80,7 +90,8 @@ function App() {
 
   return (
     <LanguageProvider>
-      <AuthContext.Provider value={{ user, login, logout }}>
+      {/* ADDED: updateUser to the Provider value */}
+      <AuthContext.Provider value={{ user, login, logout, updateUser }}>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LandingPage />} />

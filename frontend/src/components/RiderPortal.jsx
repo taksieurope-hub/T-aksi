@@ -20,13 +20,46 @@ import {
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
+// --- CRITICAL CSS FIXES INJECTED DIRECTLY ---
 const mapStyles = `
-  .gm-style, 
-  div[aria-label="Map"] {
+  /* 1. Fix Blue/Black Map Tiles (Tailwind Conflict) */
+  .gm-style img {
+    max-width: none !important;
+    max-height: none !important;
+  }
+  
+  /* 2. Force Map Container Size */
+  .gm-style, div[aria-label="Map"] {
     min-height: 100% !important;
     height: 100% !important;
     width: 100% !important;
     border-radius: 0.5rem;
+  }
+
+  /* 3. Fix Autocomplete Dropdown (Z-Index & Styling) */
+  .pac-container {
+    z-index: 99999 !important; /* Must be higher than Modal (usually 50) */
+    background-color: #1a1a2e !important;
+    border: 1px solid #00ff88;
+    border-radius: 8px;
+    font-family: sans-serif;
+    margin-top: 5px;
+  }
+  .pac-item {
+    color: #ffffff !important;
+    border-top: 1px solid #333;
+    padding: 10px;
+    cursor: pointer;
+  }
+  .pac-item:hover {
+    background-color: #2a2a40 !important;
+  }
+  .pac-item-query {
+    color: #00ff88 !important;
+    font-size: 14px;
+  }
+  .pac-logo::after {
+    display: none; /* Hide Google Logo to save space */
   }
 `;
 
@@ -197,8 +230,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   useEffect(() => {
     if (!isOpen || !mapsLoaded || !mapRef.current || !window.google || !window.google.maps) return;
     
-    // Clear container to prevent ghost maps
-    if (mapRef.current) mapRef.current.innerHTML = "";
+    // Clear container to prevent duplicate maps
+    mapRef.current.innerHTML = "";
 
     const defaultCenter = initialLocation || { lat: 42.2662, lng: 42.7180 }; // Kutaisi
     
@@ -207,6 +240,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       zoom: 15,
       disableDefaultUI: true,
       zoomControl: true,
+      // Dark theme for map
       styles: [
         { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
         { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
@@ -220,6 +254,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       map,
       draggable: true,
       position: defaultCenter,
+      animation: window.google.maps.Animation.DROP,
       icon: {
         path: window.google.maps.SymbolPath.CIRCLE,
         scale: 12,
@@ -249,7 +284,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       reverseGeocode(initialLocation.lat, initialLocation.lng);
     }
     
-    // FORCE RESIZE - CRITICAL FOR BLUE BLOCK FIX
+    // FORCE RESIZE TRIGGER (Essential for Capacitor)
     setTimeout(() => {
         if(map) {
             window.google.maps.event.trigger(map, "resize");
@@ -320,16 +355,17 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-md h-[90vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="p-4 bg-black/80 z-10 w-full border-b border-[#00ff88]/20 flex-none">
+        <DialogHeader className="p-4 bg-black/80 z-10 w-full border-b border-[#00ff88]/20 flex-none flex justify-between items-center">
           <DialogTitle className="text-[#00ff88] flex items-center">
             <MapPin className="w-5 h-5 mr-2" /> {title || t('select_location')}
           </DialogTitle>
-          <DialogDescription className="text-gray-500 text-xs">
-              Drag map to pin location.
-          </DialogDescription>
+          {/* ADDED CLOSE BUTTON */}
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400">
+             <X className="w-5 h-5" />
+          </Button>
         </DialogHeader>
         
-        {/* HARDCODED HEIGHT TO PREVENT COLLAPSE */}
+        {/* MAP CONTAINER */}
         <div style={{ width: '100%', height: '65vh', position: 'relative' }}>
           <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#242f3e' }} />
         </div>
@@ -384,12 +420,10 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
     onChange(place); 
   }, mapsLoaded);
 
-  // Handle manual typing
   const handleTyping = (e) => {
       setInputValue(e.target.value);
   };
 
-  // Scroll into view on focus (Fixes keyboard hiding input)
   const handleFocus = () => {
       setTimeout(() => {
           if(inputRef.current) {
@@ -408,7 +442,7 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
           value={inputValue}
           onChange={handleTyping}
           onFocus={handleFocus}
-          autoComplete="off" // CRITICAL: Stops native suggestions from blocking Google
+          autoComplete="off" // CRITICAL: Stops native keyboard blocking suggestions
           className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
           placeholder={placeholder}
         />
@@ -895,6 +929,7 @@ const RiderDashboard = () => {
 
   return (
     <div className="min-h-screen bg-black">
+      {/* INJECT CSS FIXES */}
       <style>{mapStyles}</style>
       
       {/* Header */}
@@ -1059,6 +1094,7 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
 
+          {/* ... (Active, Wallet, History, Profile Tabs kept same) ... */}
           {/* --- ACTIVE TAB --- */}
           <TabsContent value="active">
             {activeRide ? (
@@ -1156,7 +1192,6 @@ const RiderDashboard = () => {
             )}
           </TabsContent>
 
-          {/* --- WALLET TAB --- */}
           <TabsContent value="wallet">
               <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
                 <CardHeader><CardTitle className="text-[#00ff88]">{t('wallet_title')}</CardTitle></CardHeader>
@@ -1178,7 +1213,6 @@ const RiderDashboard = () => {
               </Card>
           </TabsContent>
 
-          {/* --- HISTORY TAB --- */}
           <TabsContent value="history">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
               <CardHeader><CardTitle className="text-[#00ff88]">{t('ride_history')}</CardTitle></CardHeader>
@@ -1208,7 +1242,6 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
 
-           {/* --- PROFILE TAB --- */}
            <TabsContent value="profile">
               <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
                 <CardHeader><CardTitle className="text-[#00ff88]">{t('profile_title')}</CardTitle></CardHeader>
@@ -1232,7 +1265,6 @@ const RiderDashboard = () => {
 
         </Tabs>
 
-        {/* RATING MODAL */}
         <Dialog open={showRatingModal} onOpenChange={setShowRatingModal}>
            <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/20 text-white">
               <DialogHeader><DialogTitle className="text-[#00ff88]">{t('rate_driver')}</DialogTitle></DialogHeader>
