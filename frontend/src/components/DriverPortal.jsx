@@ -1,6 +1,7 @@
+﻿import { useLanguage } from "@/i18n/LanguageContext";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/App";
+import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/config";
 import axios from "axios";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -641,7 +642,7 @@ const DriverDashboard = () => {
     setLoading(true);
     try {
       const res = await axios.post(`${API}/rides/${rideId}/accept`);
-      toast.success(`Ride accepted! Commission: ₾${res.data.commission_deducted.toFixed(2)}`);
+      toast.success(`Ride accepted! Commission: â‚¾${res.data.commission_deducted.toFixed(2)}`);
       
       updateUser({
         earnings: { ...user.earnings, balance: res.data.new_balance }
@@ -685,7 +686,7 @@ const DriverDashboard = () => {
         toast.success("Ride started - tracking distance");
       } else if (action === "complete") {
         const res = await axios.post(`${API}/rides/${activeRide.id}/complete?final_distance=${distanceTraveled.toFixed(2)}&total_wait_minutes=${waitTimer}`);
-        toast.success(`Ride completed! Final fare: ₾${res.data.final_fare.toFixed(2)}`);
+        toast.success(`Ride completed! Final fare: â‚¾${res.data.final_fare.toFixed(2)}`);
         setActiveRide(null);
         setDistanceTraveled(0);
         setWaitTimer(0);
@@ -717,7 +718,7 @@ const DriverDashboard = () => {
     const totalDeduction = amount + WITHDRAWAL_FEE;
 
     if (balance < totalDeduction) {
-        toast.error(`Insufficient balance. You need ₾${totalDeduction.toFixed(2)} (incl. 1₾ fee)`);
+        toast.error(`Insufficient balance. You need â‚¾${totalDeduction.toFixed(2)} (incl. 1â‚¾ fee)`);
         return;
     }
     
@@ -736,7 +737,7 @@ const DriverDashboard = () => {
           }
       });
       
-      toast.success(`Withdrawal requested! ₾${WITHDRAWAL_FEE.toFixed(2)} fee deducted.`);
+      toast.success(`Withdrawal requested! â‚¾${WITHDRAWAL_FEE.toFixed(2)} fee deducted.`);
       setWithdrawalData({ amount: "", bank_details: "" });
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to request withdrawal");
@@ -777,7 +778,7 @@ const DriverDashboard = () => {
                   {registrationStatus?.replace(/_/g, " ").toUpperCase()}
                 </Badge>
                 <span className={`text-sm font-bold ${balance < 5 ? 'text-red-500' : 'text-[#00ff88]'}`}>
-                    ₾{balance.toFixed(2)}
+                    â‚¾{balance.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -807,8 +808,8 @@ const DriverDashboard = () => {
         <div className="bg-[#00ff88]/10 border-b border-[#00ff88]/20 px-4 py-2">
           <div className="container mx-auto flex items-center text-sm text-[#00ff88]">
             <Crosshair className="w-4 h-4 mr-2 animate-pulse" />
-            Location tracking active • {driverLocation.lat.toFixed(5)}, {driverLocation.lng.toFixed(5)}
-            {driverLocation.speed && <span className="ml-2">• {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
+            Location tracking active â€¢ {driverLocation.lat.toFixed(5)}, {driverLocation.lng.toFixed(5)}
+            {driverLocation.speed && <span className="ml-2">â€¢ {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
           </div>
         </div>
       )}
@@ -921,7 +922,7 @@ const DriverDashboard = () => {
                       {activeRide.status === "completed" ? "Final Fare" : "Est. Fare"}
                     </span>
                     <span className="text-2xl font-bold text-[#00ff88]">
-                      ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
+                      â‚¾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
                     </span>
                   </div>
 
@@ -975,18 +976,18 @@ const DriverDashboard = () => {
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex-1">
                             <p className="text-[#00ff88] font-semibold">{ride.pickup}</p>
-                            <p className="text-[#00d4ff]/70 text-sm">→ {ride.destination || "Open"}</p>
+                            <p className="text-[#00d4ff]/70 text-sm">â†’ {ride.destination || "Open"}</p>
                             <div className="flex gap-2 mt-1">
                                 {ride.payment_method === 'cash' ? (
-                                    <Badge variant="outline" className="text-yellow-400 border-yellow-400">💵 Cash</Badge>
+                                    <Badge variant="outline" className="text-yellow-400 border-yellow-400">ðŸ’µ Cash</Badge>
                                 ) : (
-                                    <Badge variant="outline" className="text-[#00d4ff] border-[#00d4ff]">💳 Card</Badge>
+                                    <Badge variant="outline" className="text-[#00d4ff] border-[#00d4ff]">ðŸ’³ Card</Badge>
                                 )}
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
-                            <p className="text-xs text-gray-500">Comm: ₾{commission.toFixed(2)}</p>
+                            <p className="text-2xl font-bold text-[#00ff88]">â‚¾{ride.estimated_fare?.toFixed(2)}</p>
+                            <p className="text-xs text-gray-500">Comm: â‚¾{commission.toFixed(2)}</p>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -1017,12 +1018,12 @@ const DriverDashboard = () => {
                   <Card className="bg-black/60 border border-[#00ff88]/30 p-4 text-center">
                     <p className="text-xs text-gray-500 uppercase">Balance</p>
                     <p className={`text-2xl font-bold ${balance < 0 ? "text-red-500" : "text-[#00ff88]"}`}>
-                       ₾{balance.toFixed(2)}
+                       â‚¾{balance.toFixed(2)}
                     </p>
                   </Card>
                   <Card className="bg-black/60 border border-red-500/30 p-4 text-center">
                     <p className="text-xs text-gray-500 uppercase">Withdrawn</p>
-                    <p className="text-2xl font-bold text-red-400">₾{(user?.earnings?.total_withdrawn || 0).toFixed(0)}</p>
+                    <p className="text-2xl font-bold text-red-400">â‚¾{(user?.earnings?.total_withdrawn || 0).toFixed(0)}</p>
                   </Card>
                 </div>
 
@@ -1064,7 +1065,7 @@ const DriverDashboard = () => {
                   </CardHeader>
                   <CardContent className="space-y-4">
                       <div className="space-y-2">
-                        <Label className="text-[#00ff88]">Amount (₾)</Label>
+                        <Label className="text-[#00ff88]">Amount (â‚¾)</Label>
                         <div className="grid grid-cols-4 gap-2 mb-2">
                            {[10, 20, 50, 100].map(amt => (
                               <button 
@@ -1098,7 +1099,7 @@ const DriverDashboard = () => {
                                    await actions.order.capture();
                                    // In production: await axios.post('/driver/topup', { ... })
                                    updateUser({ ...user, earnings: { ...user.earnings, balance: (user.earnings?.balance || 0) + parseFloat(topupAmount) }});
-                                   toast.success(`Success! ₾${topupAmount} added.`);
+                                   toast.success(`Success! â‚¾${topupAmount} added.`);
                                    setTopupAmount("");
                                }}
                            />
@@ -1119,14 +1120,14 @@ const DriverDashboard = () => {
                            <Label>Amount to Withdraw</Label>
                            <Input 
                                type="number"
-                               placeholder="Min ₾10"
+                               placeholder="Min â‚¾10"
                                value={withdrawalData.amount}
                                onChange={(e) => setWithdrawalData({...withdrawalData, amount: e.target.value})}
                                className="bg-black/50 border-red-500/30 text-white"
                            />
                            <p className="text-xs text-gray-500 flex justify-between">
-                              <span>Fee: ₾{WITHDRAWAL_FEE.toFixed(2)}</span>
-                              <span>Max: ₾{(balance - WITHDRAWAL_FEE).toFixed(2)}</span>
+                              <span>Fee: â‚¾{WITHDRAWAL_FEE.toFixed(2)}</span>
+                              <span>Max: â‚¾{(balance - WITHDRAWAL_FEE).toFixed(2)}</span>
                            </p>
                         </div>
 
@@ -1219,11 +1220,11 @@ const DriverDashboard = () => {
                             {ride.stops?.length > 0 && (
                               <p className="text-yellow-400/70 text-sm">+{ride.stops.length} stops</p>
                             )}
-                            <p className="text-[#00d4ff]/70 text-sm">→ {ride.destination || "Open"}</p>
+                            <p className="text-[#00d4ff]/70 text-sm">â†’ {ride.destination || "Open"}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
-                            <p className="text-xs text-gray-500">Comm: ₾{commission.toFixed(2)}</p>
+                            <p className="text-2xl font-bold text-[#00ff88]">â‚¾{ride.estimated_fare?.toFixed(2)}</p>
+                            <p className="text-xs text-gray-500">Comm: â‚¾{commission.toFixed(2)}</p>
                           </div>
                         </div>
                         
@@ -1349,7 +1350,7 @@ const DriverDashboard = () => {
                        <div key={ride.id} className="bg-black/50 border border-[#00d4ff]/20 p-4 rounded mb-2">
                            <div className="flex justify-between">
                                <span className="text-gray-400">{new Date(ride.created_at).toLocaleDateString()}</span>
-                               <span className="text-[#00ff88] font-bold">₾{ride.final_fare?.toFixed(2)}</span>
+                               <span className="text-[#00ff88] font-bold">â‚¾{ride.final_fare?.toFixed(2)}</span>
                            </div>
                            <p className="text-white text-sm">{ride.pickup} - {ride.destination}</p>
                        </div>

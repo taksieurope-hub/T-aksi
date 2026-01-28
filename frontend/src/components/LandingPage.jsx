@@ -1,23 +1,23 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Car, Users, Shield, Rocket, Zap, Globe } from "lucide-react";
-import { useLanguage } from "@/App"; 
+import { useLanguage } from "@/i18n/LanguageContext"; 
 import LanguageSelector from "@/i18n/LanguageSelector";
 
-// ❌ NO IMPORT HERE. The file is in public, so we don't import it.
+// âŒ NO IMPORT HERE. The file is in public, so we don't import it.
 
 const LandingPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
   const vehicleTypes = [
-    { name: t('vehicle_economy'), icon: "🚗", price: "₾2.00", desc: t('vehicle_economy_desc') },
-    { name: t('vehicle_comfort'), icon: "🚙", price: "₾2.50", desc: t('vehicle_comfort_desc') },
-    { name: t('vehicle_xl'), icon: "🚐", price: "₾3.90", desc: t('vehicle_xl_desc') },
-    { name: t('vehicle_personal'), icon: "👤", price: "₾4.00", desc: t('vehicle_personal_desc') },
-    { name: t('vehicle_jumpstart'), icon: "⚡", price: "₾4.50", desc: t('vehicle_jumpstart_desc') },
+    { name: t('vehicle_economy'), icon: "ðŸš—", price: "â‚¾2.00", desc: t('vehicle_economy_desc') },
+    { name: t('vehicle_comfort'), icon: "ðŸš™", price: "â‚¾2.50", desc: t('vehicle_comfort_desc') },
+    { name: t('vehicle_xl'), icon: "ðŸš", price: "â‚¾3.90", desc: t('vehicle_xl_desc') },
+    { name: t('vehicle_personal'), icon: "ðŸ‘¤", price: "â‚¾4.00", desc: t('vehicle_personal_desc') },
+    { name: t('vehicle_jumpstart'), icon: "âš¡", price: "â‚¾4.50", desc: t('vehicle_jumpstart_desc') },
   ];
 
   const stats = [
@@ -35,7 +35,7 @@ const LandingPage = () => {
         <header className="relative z-10 flex items-center justify-between p-6 max-w-7xl mx-auto">
           <div className="flex items-center space-x-3">
             <div className="w-14 h-14 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
-              {/* ✅ CORRECT TAG FOR PUBLIC FOLDER */}
+              {/* âœ… CORRECT TAG FOR PUBLIC FOLDER */}
               <img 
                 src="/logo.png" 
                 alt="T'aksi Logo" 

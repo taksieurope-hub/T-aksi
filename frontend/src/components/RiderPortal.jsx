@@ -1,6 +1,7 @@
+﻿import { useLanguage } from "@/i18n/LanguageContext";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, API, GOOGLE_MAPS_API_KEY, useLanguage } from "@/App";
+import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/config";
 import axios from "axios";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,11 +34,11 @@ const mapStyles = `
 
 // PRICING RULES (Matches your server.py)
 const PRICING_RULES = {
-  economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗", longDist: 7.0, veryLong: 30.0 },
-  comfort: { key: 'vehicle_comfort', base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚙", longDist: 7.0, veryLong: 30.0 },
-  suv: { key: 'vehicle_suv', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐", longDist: 7.0, veryLong: 30.0 },
-  personal: { key: 'vehicle_personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "👤", longDist: 7.0, veryLong: 30.0 },
-  jumpstart: { key: 'vehicle_jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.50, freeWait: 999, stopFee: 0.00, icon: "⚡", longDist: 999.0, veryLong: 999.0 }
+  economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "ðŸš—", longDist: 7.0, veryLong: 30.0 },
+  comfort: { key: 'vehicle_comfort', base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "ðŸš™", longDist: 7.0, veryLong: 30.0 },
+  suv: { key: 'vehicle_suv', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "ðŸš", longDist: 7.0, veryLong: 30.0 },
+  personal: { key: 'vehicle_personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "ðŸ‘¤", longDist: 7.0, veryLong: 30.0 },
+  jumpstart: { key: 'vehicle_jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.50, freeWait: 999, stopFee: 0.00, icon: "âš¡", longDist: 999.0, veryLong: 999.0 }
 };
 
 // --- CALCULATE FARE LOGIC (Mirrors server.py exactly) ---
@@ -754,7 +755,7 @@ const RiderDashboard = () => {
       try {
           await axios.post(`${API}/rider/wallet/topup`, { amount, reference: details.orderID });
           updateUser({ ...user, wallet_balance: (user.wallet_balance || 0) + amount });
-          toast.success(`Success! ₾${amount} added to wallet.`);
+          toast.success(`Success! â‚¾${amount} added to wallet.`);
           setTopupAmount("");
       } catch (e) { toast.error("Top up failed"); }
   };
@@ -839,7 +840,7 @@ const RiderDashboard = () => {
             </div>
             <div>
               <p className="text-[#00ff88] font-semibold">{user?.name} {user?.surname}</p>
-              <p className="text-[#00d4ff]/60 text-sm">Balance: ₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
+              <p className="text-[#00d4ff]/60 text-sm">Balance: â‚¾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -892,7 +893,7 @@ const RiderDashboard = () => {
                 ))}
                 {stops.length < 3 && (
                     <Button variant="outline" className="w-full border-dashed border-yellow-400/30 text-yellow-400" onClick={addStop}>
-                      <Plus className="w-4 h-4 mr-2" /> {t('add_stop')} (+₾{PRICING_RULES[carType]?.stopFee.toFixed(2)})
+                      <Plus className="w-4 h-4 mr-2" /> {t('add_stop')} (+â‚¾{PRICING_RULES[carType]?.stopFee.toFixed(2)})
                     </Button>
                 )}
 
@@ -910,24 +911,24 @@ const RiderDashboard = () => {
                           <TrendingUp className="w-4 h-4 mr-2" /> {t('fare_breakdown')}
                         </span>
                         <span className="text-white text-xs opacity-70">
-                          {routeInfo.distance}km • {routeInfo.duration}min
+                          {routeInfo.distance}km â€¢ {routeInfo.duration}min
                         </span>
                     </div>
                     
                     <div className="p-4 space-y-2 text-sm">
                         <div className="flex justify-between text-gray-400">
                           <span>{t('base_fare')}</span>
-                          <span>₾{fareEstimate.base.toFixed(2)}</span>
+                          <span>â‚¾{fareEstimate.base.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-gray-400">
                           <span>{t('mileage')} ({routeInfo.distance}km)</span>
-                          <span>₾{fareEstimate.distance.toFixed(2)}</span>
+                          <span>â‚¾{fareEstimate.distance.toFixed(2)}</span>
                         </div>
                         
                         {fareEstimate.surgeFee > 0 && (
                           <div className="flex justify-between text-orange-400 font-bold bg-orange-500/10 p-1 rounded">
                              <span className="flex items-center"><Zap className="w-3 h-3 mr-1" /> {t('traffic_surge')}</span>
-                             <span>+₾{fareEstimate.surgeFee.toFixed(2)}</span>
+                             <span>+â‚¾{fareEstimate.surgeFee.toFixed(2)}</span>
                           </div>
                         )}
 
@@ -935,7 +936,7 @@ const RiderDashboard = () => {
                         
                         <div className="flex justify-between items-center">
                           <span className="text-white font-bold">{t('total_estimate')}</span>
-                          <span className="text-[#00ff88] text-xl font-bold">₾{fareEstimate.total.toFixed(2)}</span>
+                          <span className="text-[#00ff88] text-xl font-bold">â‚¾{fareEstimate.total.toFixed(2)}</span>
                         </div>
                     </div>
                   </div>
@@ -954,7 +955,7 @@ const RiderDashboard = () => {
                             <span className="text-xl">{type.icon}</span>
                             <span className="text-white text-xs mt-1">{type.label}</span>
                             <span className="text-[#00ff88] text-xs font-bold mt-1">
-                                {routeInfo ? `₾${calculateFare(type.value, routeInfo.distance, 0, 0, 0, surgeInfo?.multiplier).total.toFixed(0)}` : `₾${type.base}`}
+                                {routeInfo ? `â‚¾${calculateFare(type.value, routeInfo.distance, 0, 0, 0, surgeInfo?.multiplier).total.toFixed(0)}` : `â‚¾${type.base}`}
                             </span>
                         </button>
                     ))}
@@ -962,8 +963,8 @@ const RiderDashboard = () => {
 
                 {/* Payment */}
                 <div className="flex gap-2">
-                    <Button variant={paymentMethod === "cash" ? "default" : "outline"} onClick={() => setPaymentMethod("cash")} className={`w-1/2 ${paymentMethod === "cash" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}`}>💵 {t('cash')}</Button>
-                    <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")} className={`w-1/2 ${paymentMethod === "card" ? "bg-[#00d4ff] text-black" : "border-[#00d4ff]/30 text-white"}`}>💳 {t('paypal')}</Button>
+                    <Button variant={paymentMethod === "cash" ? "default" : "outline"} onClick={() => setPaymentMethod("cash")} className={`w-1/2 ${paymentMethod === "cash" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}`}>ðŸ’µ {t('cash')}</Button>
+                    <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")} className={`w-1/2 ${paymentMethod === "card" ? "bg-[#00d4ff] text-black" : "border-[#00d4ff]/30 text-white"}`}>ðŸ’³ {t('paypal')}</Button>
                 </div>
 
                 {paymentMethod === 'card' ? (
@@ -1033,7 +1034,7 @@ const RiderDashboard = () => {
                            <div className="flex-1">
                               <h3 className="text-white font-bold text-lg">{activeRide.driver_info.name}</h3>
                               <div className="flex items-center text-yellow-400 text-sm">
-                                 <Star size={14} fill="currentColor" className="mr-1"/> 4.9 • <span className="text-gray-400 ml-1">1,240 rides</span>
+                                 <Star size={14} fill="currentColor" className="mr-1"/> 4.9 â€¢ <span className="text-gray-400 ml-1">1,240 rides</span>
                               </div>
                               <div className="mt-2 bg-white text-black font-mono font-bold px-3 py-1 rounded inline-block border-l-4 border-blue-600">
                                  {activeRide.driver_info.license_plate}
@@ -1096,7 +1097,7 @@ const RiderDashboard = () => {
                 <CardContent className="space-y-6">
                     <div className="text-center p-6 bg-[#00ff88]/10 rounded-xl border border-[#00ff88]/20">
                       <p className="text-sm text-gray-400 uppercase">{t('balance_label')}</p>
-                      <p className="text-4xl font-bold text-[#00ff88]">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
+                      <p className="text-4xl font-bold text-[#00ff88]">â‚¾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
                     </div>
                     <div className="space-y-2">
                         <Label>{t('add_money')}</Label>
@@ -1131,7 +1132,7 @@ const RiderDashboard = () => {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-400 capitalize">{ride.carType}</span>
-                          <span className="text-[#00ff88] font-bold">₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}</span>
+                          <span className="text-[#00ff88] font-bold">â‚¾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}</span>
                         </div>
                       </div>
                     ))}
