@@ -20,6 +20,17 @@ import {
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
+// --- RESTORED THIS MISSING CONSTANT ---
+const mapStyles = `
+  .gm-style, 
+  div[aria-label="Map"] {
+    min-height: 100% !important;
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 0.5rem;
+  }
+`;
+
 // PRICING RULES
 const PRICING_RULES = {
   economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗", longDist: 7.0, veryLong: 30.0 },
@@ -150,7 +161,6 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
         fields: ['formatted_address', 'geometry', 'name']
       });
       
-      // Prevent form submission on enter
       const stopEnter = (e) => { if (e.key === 'Enter') e.preventDefault(); };
       inputRef.current.addEventListener('keydown', stopEnter);
       
@@ -175,7 +185,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
   }, [inputRef, onPlaceSelect, mapsLoaded]);
 };
 
-// --- MAP PICKER COMPONENT (FIXED LAYOUT) ---
+// --- MAP PICKER COMPONENT ---
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, mapsLoaded }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -186,10 +196,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   const { t } = useLanguage();
   
   useEffect(() => {
-    // Only init if open and maps loaded
     if (!isOpen || !mapsLoaded || !mapRef.current || !window.google || !window.google.maps) return;
     
-    // Default to Kutaisi/Tbilisi if no location
     const defaultCenter = initialLocation || { lat: 42.2662, lng: 42.7180 }; // Kutaisi
     
     const map = new window.google.maps.Map(mapRef.current, {
@@ -239,7 +247,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       reverseGeocode(initialLocation.lat, initialLocation.lng);
     }
     
-    // FORCE RESIZE TRIGGER after render to prevent grey/black map
+    // FORCE RESIZE
     setTimeout(() => {
         if(map) window.google.maps.event.trigger(map, "resize");
     }, 500);
@@ -316,7 +324,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
           </DialogDescription>
         </DialogHeader>
         
-        {/* NUCLEAR FIX: Hardcoded height relative to Viewport Height (vh) to prevent 0px height bug */}
+        {/* HARDCODED VISIBLE HEIGHT */}
         <div style={{ width: '100%', height: '65vh', position: 'relative' }}>
           <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#1a1a2e' }} />
         </div>
@@ -353,7 +361,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   );
 };
 
-// --- LOCATION INPUT (MEMOIZED) ---
+// --- LOCATION INPUT ---
 const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -850,6 +858,7 @@ const RiderDashboard = () => {
 
   return (
     <div className="min-h-screen bg-black">
+      {/* ADDED THIS BACK to ensure class styles are applied */}
       <style>{mapStyles}</style>
       
       {/* Header */}
