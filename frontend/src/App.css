@@ -3,35 +3,33 @@ html, body {
   margin: 0;
   padding: 0;
   width: 100%;
-  /* Remove any 'overflow: hidden' that might be here */
-  overflow-x: hidden; 
-  overflow-y: auto !important; 
-  height: auto !important;
+  overflow-x: hidden;
   background-color: #000000;
+  /* Allow height to grow */
+  min-height: 100%; 
 }
 
 #root {
-  min-height: 100%;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
 .App {
   flex: 1;
+  width: 100%;
   min-height: 100vh;
-  /* Ensure the background doesn't stay fixed if the content is long */
   background: linear-gradient(180deg, #000000 0%, #0a0a0a 50%, #050510 100%);
   position: relative;
-  overflow-y: visible !important;
 }
 
-/* Nebula - Keep this fixed so it stays behind while you scroll */
+/* Nebula - Fixed background that stays put while content scrolls */
 .nebula {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
+  width: 100vw;
+  height: 100vh;
   background: 
     radial-gradient(ellipse at 30% 70%, rgba(0, 255, 136, 0.03) 0%, transparent 40%),
     radial-gradient(ellipse at 70% 30%, rgba(0, 212, 255, 0.03) 0%, transparent 40%);
