@@ -15,7 +15,7 @@ import { LanguageProvider } from "@/i18n/LanguageContext";
 export { useLanguage } from "@/i18n/LanguageContext"; 
 
 export const API = "https://t-aksi.onrender.com/api";
-export const GOOGLE_MAPS_API_KEY = "AIzaSyC2gkANH8GJOZNDdibTCKNEOWiuf580bxA"; 
+export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyC2gkANH8GJOZNDdibTCKNEOWiuf580bxA"; 
 
 export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
