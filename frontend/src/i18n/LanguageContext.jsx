@@ -1,44 +1,42 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import { translations, defaultLanguage, languageNames } from './translations';
+import { createContext, useContext, useState, useEffect } from "react";
+
+// Translations
+const translations = {
+  en: {
+    "app_name": "T'aksi",
+    "welcome": "Welcome",
+    // ... add defaults or keep empty, logic handles missing keys
+  },
+  ge: {
+    "app_name": "ტაქსი",
+    "welcome": "მოგესალმებით",
+  }
+};
 
 const LanguageContext = createContext();
 
 export const LanguageProvider = ({ children }) => {
-  const [language, setLanguage] = useState(() => {
-    // 1. Check if user already picked a language before
-    const saved = localStorage.getItem('taksi_language');
-    if (saved && translations[saved]) return saved;
-    
-    // 2. FORCE GEORGIAN DEFAULT (Ignore phone settings)
-    return "ka"; 
-  });
+  const [language, setLanguage] = useState("en");
 
   useEffect(() => {
-    localStorage.setItem('taksi_language', language);
-    document.documentElement.lang = language;
-  }, [language]);
+    const saved = localStorage.getItem("taksi_language");
+    if (saved) setLanguage(saved);
+  }, []);
 
   const t = (key) => {
-    return translations[language]?.[key] || translations.en?.[key] || key;
+    return translations[language]?.[key] || key;
+  };
+
+  const changeLanguage = (lang) => {
+    setLanguage(lang);
+    localStorage.setItem("taksi_language", lang);
   };
 
   return (
-    <LanguageContext.Provider value={{ 
-      language, 
-      setLanguage, 
-      t, 
-      languages: languageNames,
-      availableLanguages: Object.keys(translations)
-    }}>
+    <LanguageContext.Provider value={{ language, changeLanguage, t }}>
       {children}
     </LanguageContext.Provider>
   );
 };
 
-export const useLanguage = () => {
-  const context = useContext(LanguageContext);
-  if (!context) throw new Error('useLanguage error');
-  return context;
-};
-
-export default LanguageContext;
+export const useLanguage = () => useContext(LanguageContext);

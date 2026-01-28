@@ -5,14 +5,16 @@ import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 
-// --- IMPORT SHARED CONFIG (Breaks the Cycle) ---
+// FIX 1: Import Shared Config
 import { API, AuthContext } from "@/config";
 
+// FIX 2: Import Language Context Directly
+import { LanguageProvider } from "@/i18n/LanguageContext";
+
+// Components
 import LandingPage from "@/components/LandingPage";
 import RiderPortal from "@/components/RiderPortal";
 import DriverPortal from "@/components/DriverPortal"; 
-
-import { LanguageProvider } from "@/i18n/LanguageContext";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -30,7 +32,6 @@ function App() {
     const initAuth = async () => {
       const savedUser = localStorage.getItem("taksi_user");
       const token = localStorage.getItem("taksi_token");
-
       const timeout = setTimeout(() => setLoading(false), 5000);
 
       if (savedUser && token) {
@@ -38,15 +39,13 @@ function App() {
           const localData = JSON.parse(savedUser);
           setUser(localData);
           axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-          
           const res = await axios.get(`${API}/auth/me`);
           setUser(res.data);
           localStorage.setItem("taksi_user", JSON.stringify(res.data));
         } catch (e) {
-          console.error("Auth refresh failed");
+          console.error("Auth failed");
         }
       }
-      
       clearTimeout(timeout);
       setLoading(false);
     };
@@ -65,17 +64,10 @@ function App() {
     localStorage.removeItem("taksi_user");
     delete axios.defaults.headers.common["Authorization"];
     setUser(null);
-    toast.success("Logged out successfully");
+    toast.success("Logged out");
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-black">
-        <div className="w-16 h-16 border-4 border-[#00ff88] border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 text-[#00ff88] font-mono tracking-widest animate-pulse">BOOTING T'AKSI...</p>
-      </div>
-    );
-  }
+  if (loading) return <div className="bg-black min-h-screen text-[#00ff88] flex items-center justify-center">LOADING...</div>;
 
   return (
     <LanguageProvider>
