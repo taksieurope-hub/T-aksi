@@ -1,27 +1,31 @@
-.App {
-  min-height: 100vh;
-  background: linear-gradient(180deg, #000000 0%, #0a0a0a 50%, #050510 100%);
+/* FORCE SCROLLING ON ALL DEVICES */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  /* Remove any 'overflow: hidden' that might be here */
+  overflow-x: hidden; 
+  overflow-y: auto !important; 
+  height: auto !important;
+  background-color: #000000;
 }
 
-.App-header {
-  min-height: 100vh;
+#root {
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: white;
 }
 
-/* Additional space theme styles */
-.space-bg {
-  background: 
-    radial-gradient(ellipse at 20% 80%, rgba(0, 255, 136, 0.05) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(0, 212, 255, 0.05) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(168, 85, 247, 0.03) 0%, transparent 70%),
-    #000000;
+.App {
+  flex: 1;
+  min-height: 100vh;
+  /* Ensure the background doesn't stay fixed if the content is long */
+  background: linear-gradient(180deg, #000000 0%, #0a0a0a 50%, #050510 100%);
+  position: relative;
+  overflow-y: visible !important;
 }
 
-/* Nebula effect */
+/* Nebula - Keep this fixed so it stays behind while you scroll */
 .nebula {
   position: fixed;
   top: 0;

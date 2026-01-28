@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Car, Users, Shield, Rocket, Zap, Globe } from "lucide-react";
-import { useLanguage } from "@/App"; // This import works now
+import { useLanguage } from "@/App"; 
 import LanguageSelector from "@/i18n/LanguageSelector";
+
+// ❌ NO IMPORT HERE. The file is in public, so we don't import it.
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -33,7 +35,13 @@ const LandingPage = () => {
         <header className="relative z-10 flex items-center justify-between p-6 max-w-7xl mx-auto">
           <div className="flex items-center space-x-3">
             <div className="w-14 h-14 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
-              <img src="/logo.png" alt="T'aksi" className="w-full h-full object-cover" onError={(e) => e.target.src = "https://via.placeholder.com/150?text=TAKSI"} />
+              {/* ✅ CORRECT TAG FOR PUBLIC FOLDER */}
+              <img 
+                src="/logo.png" 
+                alt="T'aksi Logo" 
+                className="w-full h-full object-cover"
+                onError={(e) => e.target.src = "https://via.placeholder.com/150?text=TAKSI"} 
+              />
             </div>
             <div className="flex flex-col">
               <span className="text-2xl font-black tracking-tight leading-none">{t('app_name')}</span>
@@ -68,7 +76,7 @@ const LandingPage = () => {
 
           <div className="grid md:grid-cols-3 gap-6 mt-20">
             <Card className="bg-black/60 border border-[#00ff88]/20"><CardHeader><div className="w-14 h-14 rounded-xl bg-gradient-to-r from-[#00ff88]/20 to-transparent flex items-center justify-center mb-4"><Zap className="w-7 h-7 text-[#00ff88]" /></div><CardTitle className="text-[#00ff88]">{t('lightning_fast')}</CardTitle><CardDescription className="text-gray-400">{t('lightning_fast_desc')}</CardDescription></CardHeader></Card>
-            <Card className="bg-black/60 border border-[#00d4ff]/20"><CardHeader><div className="w-14 h-14 rounded-xl bg-gradient-to-r from-[#00d4ff]/20 to-transparent flex items-center justify-center mb-4"><Globe className="w-7 h-7 text-[#00d4ff]" /></div><CardTitle className="text-[#00d4ff]">{t('fair_pricing')}</CardTitle><CardDescription className="text-gray-400">{t('fair_pricing_desc')}</CardDescription></CardHeader></Card>
+            <Card className="bg-black/60 border border-[#00d4ff]/20"><CardHeader><div className="w-14 h-14 rounded-xl bg-gradient-to-r from-d4ff/20 to-transparent flex items-center justify-center mb-4"><Globe className="w-7 h-7 text-[#00d4ff]" /></div><CardTitle className="text-[#00d4ff]">{t('fair_pricing')}</CardTitle><CardDescription className="text-gray-400">{t('fair_pricing_desc')}</CardDescription></CardHeader></Card>
             <Card className="bg-black/60 border border-purple-500/20"><CardHeader><div className="w-14 h-14 rounded-xl bg-gradient-to-r from-purple-500/20 to-transparent flex items-center justify-center mb-4"><Shield className="w-7 h-7 text-purple-400" /></div><CardTitle className="text-purple-400">{t('safe_secure')}</CardTitle><CardDescription className="text-gray-400">{t('safe_secure_desc')}</CardDescription></CardHeader></Card>
           </div>
 
