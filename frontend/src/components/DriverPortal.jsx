@@ -32,11 +32,11 @@ import {
 } from "lucide-react";
 
 // --- CONFIGURATION ---
-const DRIVER_COMMISSION_RATE = 0.23; // 23%
-const MINIMUM_BALANCE_FOR_CASH = 0.00; // Hard limit
-const WITHDRAWAL_FEE = 1.00; // 1 GEL fee per withdrawal
+const DRIVER_COMMISSION_RATE = 0.23; 
+const MINIMUM_BALANCE_FOR_CASH = 0.00; 
+const WITHDRAWAL_FEE = 1.00; 
 const LOCATION_UPDATE_INTERVAL = 5000;
-const GEL_TO_USD_RATE = 0.37; // 1 GEL ≈ 0.37 USD
+const GEL_TO_USD_RATE = 0.37; 
 
 // CSS for Map
 const mapStyles = `
@@ -46,7 +46,7 @@ const mapStyles = `
     width: 100% !important;
     border-radius: 0.75rem;
   }
-  /* FIX: Prevents Tailwind from collapsing Google Maps tiles (Blue Block Fix) */
+  /* FIX: Prevents Tailwind from collapsing Google Maps tiles */
   .gm-style img {
     max-width: none !important;
     max-height: none !important;
@@ -450,7 +450,7 @@ const DriverDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("rides");
   const [loading, setLoading] = useState(false);
-  const [isOnline, setIsOnline] = useState(user?.is_online || false);
+  const [isOnline, setIsOnline] = useState(!!user?.is_online); // Handle boolean/int
   const [availableRides, setAvailableRides] = useState([]);
   const [nearbyRides, setNearbyRides] = useState([]);
   const [searchRadius, setSearchRadius] = useState(10);
@@ -459,13 +459,11 @@ const DriverDashboard = () => {
   const [driverLocation, setDriverLocation] = useState(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
   
-  // Rating Modal State
+  // Modals
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [review, setReview] = useState("");
   const [completedRideInfo, setCompletedRideInfo] = useState(null);
-
-  // Bank Account Modal State
   const [showBankModal, setShowBankModal] = useState(false);
   const [newBankIban, setNewBankIban] = useState("");
 
@@ -908,8 +906,9 @@ const DriverDashboard = () => {
             </div>
           </div>
           <div className="flex items-center space-x-4">
-            {registrationStatus === "approved" && (
-              <div className="flex items-center space-x-2">
+            
+            {/* TOGGLE ALWAYS VISIBLE NOW */}
+            <div className="flex items-center space-x-2">
                 <span className={`text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>
                   {isOnline ? "Online" : "Offline"}
                 </span>
@@ -918,8 +917,8 @@ const DriverDashboard = () => {
                   onCheckedChange={handleToggleOnline} 
                   className="data-[state=checked]:bg-[#00ff88]"
                 />
-              </div>
-            )}
+            </div>
+
             <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={logout}>
               <LogOut className="w-5 h-5" />
             </Button>
@@ -1567,36 +1566,6 @@ const DriverDashboard = () => {
         </Tabs>
       </main>
     </div>
-  );
-};
-
-// Main Router Wrapper
-const DriverPortal = () => {
-  const { user } = useAuth();
-  const location = useLocation();
-
-  if (!user || user.user_type !== "driver") {
-    if (location.pathname === "/driver" || location.pathname === "/driver/") {
-      return <DriverAuth />;
-    }
-    return <Navigate to="/driver" replace />;
-  }
-
-  // Wrap in PayPal Provider
-  return (
-    <PayPalScriptProvider options={{ 
-       "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test",
-       currency: "USD",
-       intent: "capture",
-       locale: "en_US", 
-       components: "buttons",
-    }}>
-        <Routes>
-          <Route path="/" element={<Navigate to="/driver/dashboard" replace />} />
-          <Route path="/dashboard" element={<DriverDashboard />} />
-          <Route path="*" element={<Navigate to="/driver/dashboard" replace />} />
-        </Routes>
-    </PayPalScriptProvider>
   );
 };
 
