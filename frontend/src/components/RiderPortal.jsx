@@ -130,7 +130,11 @@ const ChatInterface = ({ rideId, driverName }) => {
 
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
-    if (!inputRef.current || !window.google) return;
+    // 🛡️ SAFETY CHECK: If Google hasn't arrived yet, don't touch it!
+    if (!inputRef.current || !window.google?.maps?.places) {
+      console.log("Autocomplete waiting for Google...");
+      return;
+    }
     
     const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: 'ge' },
@@ -140,8 +144,6 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       if (place.geometry) {
-        if(inputRef.current) inputRef.current.value = place.formatted_address || place.name;
-        
         onPlaceSelect({
           address: place.formatted_address || place.name,
           lat: place.geometry.location.lat(),
@@ -149,6 +151,13 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
         });
       }
     });
+
+    // Cleanup listener on unmount to prevent memory leaks
+    return () => {
+      if (window.google) {
+        window.google.maps.event.clearInstanceListeners(autocomplete);
+      }
+    };
   }, [inputRef, onPlaceSelect]);
 };
 
@@ -342,8 +351,8 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
         <Icon className={`absolute left-3 h-4 w-4 ${iconColor}`} />
         <Input
           ref={inputRef}
-          defaultValue={value?.address || ""}
-          onChange={(e) => onChange({ ...value, address: e.target.value })}
+          // 🛡️ USE defaultValue so React doesn't fight the keyboard
+          defaultValue={value?.address || ""} 
           className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white"
           placeholder={placeholder}
         />
@@ -356,6 +365,7 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
           <Target className="w-4 h-4" />
         </Button>
       </div>
+      
       
       <MapPicker
         isOpen={showMapPicker}
