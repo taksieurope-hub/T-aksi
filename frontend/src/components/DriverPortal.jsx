@@ -46,7 +46,7 @@ const mapStyles = `
     width: 100% !important;
     border-radius: 0.75rem;
   }
-  /* Fix for Tailwind breaking Google Maps tiles */
+  /* FIX: Prevents Tailwind from collapsing Google Maps tiles (Blue Block Fix) */
   .gm-style img {
     max-width: none !important;
     max-height: none !important;
@@ -270,7 +270,7 @@ const DriverAuth = () => {
   );
 };
 
-// Real-time Location Tracker Hook
+// Real-time Location Tracker Hook (UPDATED to Fix 400 Errors)
 const useLocationTracker = (isOnline, onLocationUpdate) => {
   const watchIdRef = useRef(null);
   const intervalRef = useRef(null);
@@ -289,6 +289,22 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
       return;
     }
     
+    // FIX: Immediate fetch to prevent null location (stops 400 error)
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const loc = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                heading: position.coords.heading,
+                speed: position.coords.speed
+            };
+            lastLocationRef.current = loc;
+            onLocationUpdate(loc);
+        },
+        (err) => console.error("Initial GPS Error", err),
+        { enableHighAccuracy: true }
+    );
+
     // Start watching location
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
@@ -499,7 +515,6 @@ const DriverDashboard = () => {
     setDriverLocation(location);
     
     try {
-      // Don't send updates if offline
       if(isOnline) {
           await axios.post(`${API}/driver/location`, location);
       }
@@ -555,12 +570,13 @@ const DriverDashboard = () => {
   }, []);
 
   useEffect(() => {
-    if (registrationStatus === "approved" && isOnline) {
+    // FIX: Only start polling for rides when we have a confirmed driverLocation
+    if (registrationStatus === "approved" && isOnline && driverLocation) {
       fetchAvailableRides();
       const interval = setInterval(fetchAvailableRides, 5000);
       return () => clearInterval(interval);
     }
-  }, [isOnline, registrationStatus]);
+  }, [isOnline, registrationStatus, driverLocation]);
 
   const fetchAvailableRides = async () => {
     try {
@@ -593,6 +609,11 @@ const DriverDashboard = () => {
   };
 
   const fetchNearbyRides = async () => {
+    // FIX: Guard clause to prevent 400 Bad Request
+    if (!driverLocation) {
+        toast.info("Waiting for GPS location...");
+        return;
+    }
     try {
       const res = await axios.get(`${API}/driver/rides/nearby?radius=${searchRadius}`);
       setNearbyRides(res.data.rides || []);
@@ -615,24 +636,50 @@ const DriverDashboard = () => {
     }
   };
 
-  // --- FIXED ONLINE TOGGLE ---
+  // --- FIXED: TOGGLE ONLINE ---
   const handleToggleOnline = async (checked) => {
-    // 1. Optimistic Update
     setIsOnline(checked);
-    
     try {
-      // 2. Call API
+      // 1. Send update to backend
       await axios.post(`${API}/driver/status?is_online=${checked}`);
-      
-      // 3. Update Global User State
+      // 2. Update local state
       updateUser({ ...user, is_online: checked });
-      
       toast.success(checked ? "You are now online!" : "You are now offline");
+      
+      // 3. Force immediate location update if going online
+      if(checked && driverLocation) {
+          await axios.post(`${API}/driver/location`, driverLocation);
+      }
     } catch (error) {
-      // 4. Revert if failed
       setIsOnline(!checked);
       toast.error("Failed to update status");
     }
+  };
+
+  // --- NEW: LAUNCH EXTERNAL MAP ---
+  const launchExternalMap = () => {
+    if (!activeRide) return;
+
+    let destLat, destLng;
+
+    if (activeRide.status === 'accepted') {
+      destLat = activeRide.pickupLat;
+      destLng = activeRide.pickupLng;
+    } 
+    else if (['arrived', 'in_progress'].includes(activeRide.status)) {
+      if (!activeRide.destinationLat) {
+        toast.info("No destination set by rider.");
+        return;
+      }
+      destLat = activeRide.destinationLat;
+      destLng = activeRide.destinationLng;
+    } else {
+        return;
+    }
+
+    // This URL scheme opens the native map app on the phone
+    const url = `geo:0,0?q=${destLat},${destLng}`;
+    window.location.href = url;
   };
 
   const handleRegisterVehicle = async (e) => {
@@ -697,34 +744,6 @@ const DriverDashboard = () => {
     } catch (error) {
       toast.error("Failed to decline ride");
     }
-  };
-
-  // --- SMART NAVIGATION HANDLER ---
-  const launchExternalMap = () => {
-    if (!activeRide) return;
-
-    let destLat, destLng;
-
-    // Phase 1: Navigate to Pickup (Accepted -> Arrived)
-    if (activeRide.status === 'accepted') {
-      destLat = activeRide.pickupLat;
-      destLng = activeRide.pickupLng;
-    } 
-    // Phase 2: Navigate to Destination (Arrived -> Completed)
-    else if (['arrived', 'in_progress'].includes(activeRide.status)) {
-      if (!activeRide.destinationLat) {
-        toast.info("No destination set by rider.");
-        return;
-      }
-      destLat = activeRide.destinationLat;
-      destLng = activeRide.destinationLng;
-    } else {
-        return;
-    }
-
-    // Launch Google Maps Intent
-    const url = `geo:0,0?q=${destLat},${destLng}`;
-    window.location.href = url;
   };
 
   const handleRideAction = async (action) => {
