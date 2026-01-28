@@ -130,16 +130,19 @@ const ChatInterface = ({ rideId, driverName }) => {
 
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
-    // 🛡️ SAFETY CHECK: If Google hasn't arrived yet, don't touch it!
+    // 🛡️ GUARD: Wait for the library to be ready
     if (!inputRef.current || !window.google?.maps?.places) {
-      console.log("Autocomplete waiting for Google...");
       return;
     }
     
     const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-      componentRestrictions: { country: 'ge' },
+      componentRestrictions: { country: 'ge' }, // STAY IN GEORGIA
       fields: ['formatted_address', 'geometry', 'name']
     });
+    
+    // Stop the "Enter" key from refreshing the whole app
+    const stopEnter = (e) => { if (e.key === 'Enter') e.preventDefault(); };
+    inputRef.current.addEventListener('keydown', stopEnter);
     
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
@@ -152,11 +155,9 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
       }
     });
 
-    // Cleanup listener on unmount to prevent memory leaks
     return () => {
-      if (window.google) {
-        window.google.maps.event.clearInstanceListeners(autocomplete);
-      }
+      if (inputRef.current) inputRef.current.removeEventListener('keydown', stopEnter);
+      if (window.google) window.google.maps.event.clearInstanceListeners(autocomplete);
     };
   }, [inputRef, onPlaceSelect]);
 };
@@ -330,36 +331,38 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// Location Input Component (CLEANED)
-const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, iconColor }) => {
+const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   
+  // Use the guarded hook
   useGoogleMapsAutocomplete(inputRef, (place) => {
     onChange({ address: place.address, lat: place.lat, lng: place.lng });
   });
 
+  // ONLY update the physical input if the value was changed by the Map Picker
   useEffect(() => {
-      if(inputRef.current && value?.address && inputRef.current.value !== value.address) {
-          inputRef.current.value = value.address;
-      }
-  }, [value]);
+    if (inputRef.current && value?.address && inputRef.current.value !== value.address) {
+      inputRef.current.value = value.address;
+    }
+  }, [value?.address]);
   
   return (
     <>
       <div className="relative flex items-center">
-        <Icon className={`absolute left-3 h-4 w-4 ${iconColor}`} />
+        <Icon className={`absolute left-3 h-4 w-4 ${iconColor} z-20`} />
         <Input
           ref={inputRef}
-          // 🛡️ USE defaultValue so React doesn't fight the keyboard
-          defaultValue={value?.address || ""} 
-          className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white"
+          /* 🛡️ KEY FIX: We don't use 'value' or 'onChange' here. 
+             We let the browser (and Google) handle the typing naturally. */
+          defaultValue={value?.address || ""}
+          className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
           placeholder={placeholder}
         />
         <Button
           variant="ghost"
           size="icon"
-          className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20"
+          className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20 z-20"
           onClick={() => setShowMapPicker(true)}
         >
           <Target className="w-4 h-4" />
