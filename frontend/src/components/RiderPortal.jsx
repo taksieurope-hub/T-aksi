@@ -31,7 +31,7 @@ const mapStyles = `
   }
 `;
 
-// PRICING RULES (Matches your server.py)
+// PRICING RULES
 const PRICING_RULES = {
   economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗", longDist: 7.0, veryLong: 30.0 },
   comfort: { key: 'vehicle_comfort', base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚙", longDist: 7.0, veryLong: 30.0 },
@@ -40,7 +40,7 @@ const PRICING_RULES = {
   jumpstart: { key: 'vehicle_jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.50, freeWait: 999, stopFee: 0.00, icon: "⚡", longDist: 999.0, veryLong: 999.0 }
 };
 
-// --- CALCULATE FARE LOGIC (Mirrors server.py exactly) ---
+// --- CALCULATE FARE LOGIC ---
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
@@ -50,8 +50,6 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   
   // 2. Long Distance Surcharge
   if (distanceKm > rules.longDist) {
-    // Economy/Comfort have different rates in server.py, generalizing logic here based on Economy default
-    // ideally, pass full rules from backend, but this estimation works for UI
     subtotal += (distanceKm - rules.longDist) * 0.15; 
   }
   if (distanceKm > rules.veryLong) {
@@ -95,7 +93,6 @@ const ChatInterface = ({ rideId, driverName }) => {
     try {
       const res = await axios.get(`${API}/rides/${rideId}/chat`);
       setMessages(res.data.messages || []);
-      // Mark read
       await axios.post(`${API}/rides/${rideId}/chat/read`);
     } catch (error) {
       console.error("Chat error:", error);
@@ -209,7 +206,10 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       zoom: 14,
       styles: [
         { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
         { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
+        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
         { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
       ],
       disableDefaultUI: true,
@@ -739,7 +739,7 @@ const RiderDashboard = () => {
         destination: destination.address || null, destinationLat: destination.lat, destinationLng: destination.lng,
         stops: stops.filter(s => s.lat).map((s, i) => ({ address: s.address, lat: s.lat, lng: s.lng, order: i })),
         carType, paymentMethod, estimatedDistance: routeInfo?.distance || 5, estimatedDuration: routeInfo?.duration || 15, paid,
-        paymentOrderId: paymentOrderId // Send PayPal Order ID to backend
+        paymentOrderId: paymentOrderId
       };
       const res = await axios.post(`${API}/rides/request`, rideData);
       toast.success(t('searching_driver'));
@@ -811,7 +811,7 @@ const RiderDashboard = () => {
   // --- UI CONSTANTS ---
   const carTypes = Object.entries(PRICING_RULES).map(([key, val]) => ({
     value: key,
-    label: t(val.key), // TRANSLATED
+    label: t(val.key),
     icon: val.icon,
     base: val.base
   }));
@@ -975,7 +975,7 @@ const RiderDashboard = () => {
                          createOrder={async (data, actions) => actions.order.create({ purchase_units: [{ amount: { value: fareEstimate.total, currency_code: "USD" } }] })}
                          onApprove={async (data, actions) => { 
                              await actions.order.capture(); 
-                             handleBookRide(true, data.orderID); // Pass Order ID to backend
+                             handleBookRide(true, data.orderID);
                          }}
                       />
                    </div>
