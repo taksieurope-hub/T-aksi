@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-// ADDED useLanguage here
 import { useAuth, API, GOOGLE_MAPS_API_KEY, useLanguage } from "@/App";
 import axios from "axios";
 import { toast } from "sonner";
@@ -21,8 +20,10 @@ import {
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
+// CSS Injection to force map height
 const mapStyles = `
-  .gm-style, div[aria-label="Map"] {
+  .gm-style, 
+  div[aria-label="Map"] {
     min-height: 100% !important;
     height: 100% !important;
     width: 100% !important;
@@ -30,7 +31,7 @@ const mapStyles = `
   }
 `;
 
-// UPDATED: Used 'key' instead of 'name' so we can translate it later
+// PRICING RULES (Using 'key' for translation)
 const PRICING_RULES = {
   economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
   comfort: { key: 'vehicle_comfort', base: 2.50, perKm: 0.55, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚙" },
@@ -39,20 +40,27 @@ const PRICING_RULES = {
   jumpstart: { key: 'vehicle_jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
-// --- CALCULATE FARE ---
+// --- CALCULATE FARE LOGIC ---
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
 
+  // 1. Distance
   subtotal += distanceKm * rules.perKm;
+  
+  // 2. Long Distance Surcharge
   if (distanceKm > 7) subtotal += (distanceKm - 7) * 0.15;
   if (distanceKm > 30) subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
 
+  // 3. Wait Time
   const billableWait = Math.max(0, waitMin - rules.freeWait);
   const totalWait = billableWait + stopWaitMin;
   subtotal += totalWait * rules.perMinWait;
+  
+  // 4. Stops
   subtotal += numStops * rules.stopFee;
 
+  // 5. Surge
   const surgeFee = subtotal * (surgeMultiplier - 1.0);
   const total = subtotal + surgeFee;
 
@@ -68,7 +76,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// --- CHAT INTERFACE ---
+// --- CHAT INTERFACE COMPONENT ---
 const ChatInterface = ({ rideId, driverName }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -82,7 +90,9 @@ const ChatInterface = ({ rideId, driverName }) => {
       const res = await axios.get(`${API}/rides/${rideId}/chat`);
       setMessages(res.data.messages || []);
       await axios.post(`${API}/rides/${rideId}/chat/read`);
-    } catch (error) { console.error("Chat error:", error); }
+    } catch (error) {
+      console.error("Chat error:", error);
+    }
   };
 
   useEffect(() => {
@@ -92,19 +102,25 @@ const ChatInterface = ({ rideId, driverName }) => {
   }, [rideId]);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
+
     setSending(true);
     try {
       await axios.post(`${API}/rides/${rideId}/chat`, { message: newMessage });
       setNewMessage("");
       fetchMessages();
-    } catch (error) { toast.error("Failed to send"); }
-    finally { setSending(false); }
+    } catch (error) {
+      toast.error("Failed to send message");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -121,26 +137,30 @@ const ChatInterface = ({ rideId, driverName }) => {
         <div ref={scrollRef} />
       </div>
       <form onSubmit={sendMessage} className="p-4 border-t border-[#00ff88]/20 flex gap-2">
-        <Input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder={t('type_message')} className="bg-black text-white" />
-        <Button type="submit" disabled={sending} className="bg-[#00ff88] text-black"><Send className="w-4 h-4" /></Button>
+        <Input 
+          value={newMessage} 
+          onChange={(e) => setNewMessage(e.target.value)} 
+          placeholder={t('type_message')} 
+          className="bg-black text-white" 
+        />
+        <Button type="submit" disabled={sending} className="bg-[#00ff88] text-black">
+          <Send className="w-4 h-4" />
+        </Button>
       </form>
     </div>
   );
 };
 
+// --- GOOGLE MAPS HOOKS ---
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
-    // 🛡️ GUARD: Wait for the library to be ready
-    if (!inputRef.current || !window.google?.maps?.places) {
-      return;
-    }
+    if (!inputRef.current || !window.google?.maps?.places) return;
     
     const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-      componentRestrictions: { country: 'ge' }, // STAY IN GEORGIA
+      componentRestrictions: { country: 'ge' },
       fields: ['formatted_address', 'geometry', 'name']
     });
     
-    // Stop the "Enter" key from refreshing the whole app
     const stopEnter = (e) => { if (e.key === 'Enter') e.preventDefault(); };
     inputRef.current.addEventListener('keydown', stopEnter);
     
@@ -162,7 +182,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, [inputRef, onPlaceSelect]);
 };
 
-// Map Picker Component
+// --- MAP PICKER COMPONENT ---
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -170,12 +190,12 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const { t } = useLanguage(); // TRANSLATION
+  const { t } = useLanguage();
   
   useEffect(() => {
     if (!isOpen || !mapRef.current || !window.google) return;
     
-    const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 }; // Tbilisi
+    const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 };
     
     const map = new window.google.maps.Map(mapRef.current, {
       center: defaultCenter,
@@ -331,15 +351,13 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// 1. Move this OUTSIDE your component to stop it from being recreated
-// 🛡️ DEFINED OUTSIDE THE MAIN DASHBOARD
+// --- LOCATION INPUT (MEMOIZED) ---
 const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, iconColor }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   
-  // This hook connects the physical input to Google's search engine
   useGoogleMapsAutocomplete(inputRef, (place) => {
-    onChange(place); // Only triggers when a suggestion is clicked
+    onChange(place); 
   });
 
   return (
@@ -351,7 +369,6 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
           defaultValue={value?.address || ""}
           className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
           placeholder={placeholder}
-          // 🛡️ DO NOT ADD ONCHANGE HERE - It causes the 2-letter loop!
         />
         <Button
           type="button"
@@ -364,7 +381,6 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
         </Button>
       </div>
 
-      {/* 🛡️ THIS MUST BE INSIDE THE FRAGMENT WITH THE INPUT */}
       <MapPicker
         isOpen={showMapPicker}
         onClose={() => setShowMapPicker(false)}
@@ -376,6 +392,7 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
   );
 });
 
+// --- LIVE TRACKING MAP ---
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const rendererRef = useRef(null);
@@ -443,13 +460,13 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   );
 };
 
-// Auth Component
+// --- AUTH COMPONENT ---
 const RiderAuth = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { t } = useLanguage(); // TRANSLATION
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({
     name: "", surname: "", cellphone: "", password: ""
   });
@@ -569,11 +586,11 @@ const RiderAuth = () => {
   );
 };
 
-// Dashboard Component
+// --- RIDER DASHBOARD ---
 const RiderDashboard = () => {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
-  const { t } = useLanguage(); // TRANSLATION
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("book");
   const [loading, setLoading] = useState(false);
   const [mapsLoaded, setMapsLoaded] = useState(false);
@@ -599,7 +616,7 @@ const RiderDashboard = () => {
   const [fareEstimate, setFareEstimate] = useState(null);
   const [surgeInfo, setSurgeInfo] = useState(null);
 
-  // Rating State (MOVED HERE)
+  // Rating State
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [review, setReview] = useState("");
