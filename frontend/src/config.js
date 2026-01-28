@@ -1,11 +1,11 @@
 ﻿import { createContext, useContext } from "react";
 
-// YOUR Logic for Backend URL
 export const BACKEND_URL = import.meta.env.PROD 
   ? "https://t-aksi.onrender.com" 
   : "http://localhost:8000";
 
-export const API = ${BACKEND_URL} + "/api";
+// FIX: Removed the invalid ${} syntax. Now it is standard string concatenation.
+export const API = BACKEND_URL + "/api";
 export const GOOGLE_MAPS_API_KEY = "AIzaSyC2gkANH8GJOZNDdibTCKNEOWiuf580bxA"; 
 
 export const AuthContext = createContext(null);
