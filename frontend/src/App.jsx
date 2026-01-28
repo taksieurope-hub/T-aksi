@@ -5,7 +5,7 @@ import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 
-// --- IMPORT SHARED CONFIG (Crucial Fix) ---
+// --- IMPORT SHARED CONFIG (Breaks the Cycle) ---
 import { API, AuthContext } from "@/config";
 
 import LandingPage from "@/components/LandingPage";
@@ -13,9 +13,6 @@ import RiderPortal from "@/components/RiderPortal";
 import DriverPortal from "@/components/DriverPortal"; 
 
 import { LanguageProvider } from "@/i18n/LanguageContext";
-
-// DO NOT EXPORT API OR useAuth FROM HERE.
-// THEY MUST COME FROM @/config
 
 function App() {
   const [user, setUser] = useState(null);
