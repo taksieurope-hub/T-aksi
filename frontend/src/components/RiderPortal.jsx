@@ -20,17 +20,6 @@ import {
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
-// CSS Injection to force map height and prevent black screen
-const mapStyles = `
-  .gm-style, 
-  div[aria-label="Map"] {
-    min-height: 100% !important;
-    height: 100% !important;
-    width: 100% !important;
-    border-radius: 0.5rem;
-  }
-`;
-
 // PRICING RULES
 const PRICING_RULES = {
   economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗", longDist: 7.0, veryLong: 30.0 },
@@ -153,8 +142,7 @@ const ChatInterface = ({ rideId, driverName }) => {
 // --- GOOGLE MAPS HOOKS ---
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
   useEffect(() => {
-    // STRICT GUARD: Do not run unless Maps AND Places library are fully loaded
-    if (!mapsLoaded || !inputRef.current || !window.google || !window.google.maps || !window.google.maps.places) return;
+    if (!mapsLoaded || !inputRef.current || !window.google?.maps?.places) return;
     
     try {
       const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
@@ -162,6 +150,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
         fields: ['formatted_address', 'geometry', 'name']
       });
       
+      // Prevent form submission on enter
       const stopEnter = (e) => { if (e.key === 'Enter') e.preventDefault(); };
       inputRef.current.addEventListener('keydown', stopEnter);
       
@@ -186,7 +175,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
   }, [inputRef, onPlaceSelect, mapsLoaded]);
 };
 
-// --- MAP PICKER COMPONENT (CRASH PROOF) ---
+// --- MAP PICKER COMPONENT (FIXED LAYOUT) ---
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, mapsLoaded }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -197,21 +186,19 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   const { t } = useLanguage();
   
   useEffect(() => {
-    // STRICT GUARD: Wait for mapsLoaded
+    // Only init if open and maps loaded
     if (!isOpen || !mapsLoaded || !mapRef.current || !window.google || !window.google.maps) return;
     
-    const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 };
+    // Default to Kutaisi/Tbilisi if no location
+    const defaultCenter = initialLocation || { lat: 42.2662, lng: 42.7180 }; // Kutaisi
     
     const map = new window.google.maps.Map(mapRef.current, {
       center: defaultCenter,
-      zoom: 14,
+      zoom: 15,
       styles: [
-        { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
+        { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] }
       ],
       disableDefaultUI: true,
       zoomControl: true
@@ -252,9 +239,13 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       reverseGeocode(initialLocation.lat, initialLocation.lng);
     }
     
+    // FORCE RESIZE TRIGGER after render to prevent grey/black map
+    setTimeout(() => {
+        if(map) window.google.maps.event.trigger(map, "resize");
+    }, 500);
+    
   }, [isOpen, initialLocation, mapsLoaded]);
   
-  // FIX: This function now checks if Geocoder exists before running
   const reverseGeocode = async (lat, lng) => {
     if (!window.google || !window.google.maps || typeof window.google.maps.Geocoder !== 'function') return;
     
@@ -316,7 +307,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-md h-[90vh] flex flex-col p-0 gap-0">
-        <style>{mapStyles}</style>
         <DialogHeader className="p-4 bg-black/80 z-10 w-full border-b border-[#00ff88]/20 flex-none">
           <DialogTitle className="text-[#00ff88] flex items-center">
             <MapPin className="w-5 h-5 mr-2" /> {title || t('select_location')}
@@ -326,8 +316,9 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
           </DialogDescription>
         </DialogHeader>
         
-        <div className="flex-1 w-full min-h-[300px] relative">
-          <div ref={mapRef} className="w-full h-full" />
+        {/* NUCLEAR FIX: Hardcoded height relative to Viewport Height (vh) to prevent 0px height bug */}
+        <div style={{ width: '100%', height: '65vh', position: 'relative' }}>
+          <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#1a1a2e' }} />
         </div>
         
         <div className="w-full p-4 bg-black border-t border-[#00ff88]/30 flex flex-col gap-3 flex-none">
@@ -404,17 +395,16 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
   );
 });
 
-// --- LIVE TRACKING MAP (CRASH PROOF) ---
+// --- LIVE TRACKING MAP ---
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const rendererRef = useRef(null);
   const [eta, setEta] = useState(null);
 
   useEffect(() => {
-    // SAFETY CHECK: Do not init unless google maps is fully ready
     if (!window.google || !window.google.maps || !mapRef.current) return;
     
-    const initialCenter = driverLocation?.lat ? driverLocation : (pickup?.lat ? pickup : { lat: 41.7151, lng: 44.8271 });
+    const initialCenter = driverLocation?.lat ? driverLocation : (pickup?.lat ? pickup : { lat: 42.2662, lng: 42.7180 });
     
     try {
       const map = new window.google.maps.Map(mapRef.current, { 
@@ -439,7 +429,6 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   }, []);
 
   useEffect(() => {
-    // Ensure map and renderer are ready
     if (!window.google || !rendererRef.current || !window.google.maps.DirectionsService) return;
     
     const start = driverLocation?.lat ? driverLocation : pickup;
@@ -470,9 +459,8 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   }, [driverLocation, status, pickup, destination]);
 
   return (
-    <div className="relative w-full h-[300px] rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4 mb-4">
-      {/* Added bg-gray-900 so it's not transparent/black while loading */}
-      <div ref={mapRef} className="w-full h-full bg-gray-900" />
+    <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/30 mt-4 mb-4" style={{ height: '300px' }}>
+      <div ref={mapRef} style={{ width: '100%', height: '100%', backgroundColor: '#1a1a2e' }} />
       {eta && (
         <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] px-4 py-2 rounded-lg backdrop-blur-md z-10 shadow-[0_0_15px_rgba(0,255,136,0.3)]">
           <p className="text-[#00ff88] font-bold text-xl">{eta}</p>
@@ -656,15 +644,12 @@ const RiderDashboard = () => {
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) return;
 
-    // Check if script already exists
     if (!document.querySelector('script[src*="maps.googleapis.com"]')) {
       const script = document.createElement('script');
-      // Added &loading=async to handle race conditions
       script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&loading=async`;
       script.async = true;
       script.defer = true;
       script.onload = () => {
-        // Even if script loads, Geocoder might not be ready. Wait for it.
         const checkInterval = setInterval(() => {
           if (window.google && window.google.maps && window.google.maps.Geocoder) {
             setMapsLoaded(true);
@@ -674,7 +659,6 @@ const RiderDashboard = () => {
       };
       document.head.appendChild(script);
     } else {
-      // Script already there, just wait for object
       const checkInterval = setInterval(() => {
         if (window.google && window.google.maps && window.google.maps.Geocoder) {
           setMapsLoaded(true);
