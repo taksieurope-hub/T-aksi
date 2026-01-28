@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-// ADDED useLanguage here
 import { useAuth, API, GOOGLE_MAPS_API_KEY, useLanguage } from "@/App";
 import axios from "axios";
 import { toast } from "sonner";
@@ -21,8 +20,10 @@ import {
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MessageSquare, Send, CreditCard
 } from "lucide-react";
 
+// CSS Injection to force map height
 const mapStyles = `
-  .gm-style, div[aria-label="Map"] {
+  .gm-style, 
+  div[aria-label="Map"] {
     min-height: 100% !important;
     height: 100% !important;
     width: 100% !important;
@@ -30,29 +31,42 @@ const mapStyles = `
   }
 `;
 
-// UPDATED: Used 'key' instead of 'name' so we can translate it later
+// PRICING RULES (Matches your server.py)
 const PRICING_RULES = {
-  economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
-  comfort: { key: 'vehicle_comfort', base: 2.50, perKm: 0.55, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚙" },
-  suv: { key: 'vehicle_suv', base: 3.90, perKm: 0.80, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚐" },
-  personal: { key: 'vehicle_personal', base: 4.00, perKm: 0.70, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "👤" },
-  jumpstart: { key: 'vehicle_jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
+  economy: { key: 'vehicle_economy', base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗", longDist: 7.0, veryLong: 30.0 },
+  comfort: { key: 'vehicle_comfort', base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚙", longDist: 7.0, veryLong: 30.0 },
+  suv: { key: 'vehicle_suv', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐", longDist: 7.0, veryLong: 30.0 },
+  personal: { key: 'vehicle_personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "👤", longDist: 7.0, veryLong: 30.0 },
+  jumpstart: { key: 'vehicle_jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.50, freeWait: 999, stopFee: 0.00, icon: "⚡", longDist: 999.0, veryLong: 999.0 }
 };
 
-// --- CALCULATE FARE ---
+// --- CALCULATE FARE LOGIC (Mirrors server.py exactly) ---
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
 
+  // 1. Distance
   subtotal += distanceKm * rules.perKm;
-  if (distanceKm > 7) subtotal += (distanceKm - 7) * 0.15;
-  if (distanceKm > 30) subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
+  
+  // 2. Long Distance Surcharge
+  if (distanceKm > rules.longDist) {
+    // Economy/Comfort have different rates in server.py, generalizing logic here based on Economy default
+    // ideally, pass full rules from backend, but this estimation works for UI
+    subtotal += (distanceKm - rules.longDist) * 0.15; 
+  }
+  if (distanceKm > rules.veryLong) {
+    subtotal += Math.ceil((distanceKm - rules.veryLong) / 15) * 5;
+  }
 
+  // 3. Wait Time
   const billableWait = Math.max(0, waitMin - rules.freeWait);
   const totalWait = billableWait + stopWaitMin;
   subtotal += totalWait * rules.perMinWait;
+  
+  // 4. Stops
   subtotal += numStops * rules.stopFee;
 
+  // 5. Surge
   const surgeFee = subtotal * (surgeMultiplier - 1.0);
   const total = subtotal + surgeFee;
 
@@ -68,7 +82,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// --- CHAT INTERFACE ---
+// --- CHAT INTERFACE COMPONENT ---
 const ChatInterface = ({ rideId, driverName }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -81,8 +95,11 @@ const ChatInterface = ({ rideId, driverName }) => {
     try {
       const res = await axios.get(`${API}/rides/${rideId}/chat`);
       setMessages(res.data.messages || []);
+      // Mark read
       await axios.post(`${API}/rides/${rideId}/chat/read`);
-    } catch (error) { console.error("Chat error:", error); }
+    } catch (error) {
+      console.error("Chat error:", error);
+    }
   };
 
   useEffect(() => {
@@ -92,19 +109,25 @@ const ChatInterface = ({ rideId, driverName }) => {
   }, [rideId]);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
+
     setSending(true);
     try {
       await axios.post(`${API}/rides/${rideId}/chat`, { message: newMessage });
       setNewMessage("");
       fetchMessages();
-    } catch (error) { toast.error("Failed to send"); }
-    finally { setSending(false); }
+    } catch (error) {
+      toast.error("Failed to send message");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -121,27 +144,36 @@ const ChatInterface = ({ rideId, driverName }) => {
         <div ref={scrollRef} />
       </div>
       <form onSubmit={sendMessage} className="p-4 border-t border-[#00ff88]/20 flex gap-2">
-        <Input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder={t('type_message')} className="bg-black text-white" />
-        <Button type="submit" disabled={sending} className="bg-[#00ff88] text-black"><Send className="w-4 h-4" /></Button>
+        <Input 
+          value={newMessage} 
+          onChange={(e) => setNewMessage(e.target.value)} 
+          placeholder={t('type_message')} 
+          className="bg-black text-white" 
+        />
+        <Button type="submit" disabled={sending} className="bg-[#00ff88] text-black">
+          <Send className="w-4 h-4" />
+        </Button>
       </form>
     </div>
   );
 };
 
-const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
+// --- GOOGLE MAPS HOOKS ---
+const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
   useEffect(() => {
-    if (!inputRef.current || !window.google) return;
+    if (!mapsLoaded || !inputRef.current || !window.google?.maps?.places) return;
     
     const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: 'ge' },
       fields: ['formatted_address', 'geometry', 'name']
     });
     
-    autocomplete.addListener('place_changed', () => {
+    const stopEnter = (e) => { if (e.key === 'Enter') e.preventDefault(); };
+    inputRef.current.addEventListener('keydown', stopEnter);
+    
+    const listener = autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       if (place.geometry) {
-        if(inputRef.current) inputRef.current.value = place.formatted_address || place.name;
-        
         onPlaceSelect({
           address: place.formatted_address || place.name,
           lat: place.geometry.location.lat(),
@@ -149,33 +181,35 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
         });
       }
     });
-  }, [inputRef, onPlaceSelect]);
+
+    return () => {
+      if (inputRef.current) inputRef.current.removeEventListener('keydown', stopEnter);
+      if (window.google && window.google.maps && listener) window.google.maps.event.removeListener(listener);
+    };
+  }, [inputRef, onPlaceSelect, mapsLoaded]);
 };
 
-// Map Picker Component
-const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
+// --- MAP PICKER COMPONENT ---
+const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, mapsLoaded }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const { t } = useLanguage(); // TRANSLATION
+  const { t } = useLanguage();
   
   useEffect(() => {
-    if (!isOpen || !mapRef.current || !window.google) return;
+    if (!isOpen || !mapsLoaded || !mapRef.current || !window.google) return;
     
-    const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 }; // Tbilisi
+    const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 };
     
     const map = new window.google.maps.Map(mapRef.current, {
       center: defaultCenter,
       zoom: 14,
       styles: [
         { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
         { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
         { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
       ],
       disableDefaultUI: true,
@@ -217,7 +251,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       reverseGeocode(initialLocation.lat, initialLocation.lng);
     }
     
-  }, [isOpen, initialLocation]);
+  }, [isOpen, initialLocation, mapsLoaded]);
   
   const reverseGeocode = async (lat, lng) => {
     if (!window.google) return;
@@ -321,59 +355,56 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// Location Input Component (CLEANED)
-const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, iconColor }) => {
+// --- LOCATION INPUT (MEMOIZED) ---
+const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   
   useGoogleMapsAutocomplete(inputRef, (place) => {
-    onChange({ address: place.address, lat: place.lat, lng: place.lng });
-  });
+    onChange(place); 
+  }, mapsLoaded);
 
-  useEffect(() => {
-      if(inputRef.current && value?.address && inputRef.current.value !== value.address) {
-          inputRef.current.value = value.address;
-      }
-  }, [value]);
-  
   return (
     <>
-      <div className="relative flex items-center">
-        <Icon className={`absolute left-3 h-4 w-4 ${iconColor}`} />
+      <div className="relative flex items-center mb-2">
+        <Icon className={`absolute left-3 h-4 w-4 ${iconColor} z-20`} />
         <Input
           ref={inputRef}
           defaultValue={value?.address || ""}
-          onChange={(e) => onChange({ ...value, address: e.target.value })}
-          className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white"
+          className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
           placeholder={placeholder}
         />
         <Button
+          type="button"
           variant="ghost"
           size="icon"
-          className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20"
+          className="absolute right-1 text-[#00d4ff] z-20 hover:bg-[#00d4ff]/10"
           onClick={() => setShowMapPicker(true)}
         >
           <Target className="w-4 h-4" />
         </Button>
       </div>
-      
+
       <MapPicker
         isOpen={showMapPicker}
         onClose={() => setShowMapPicker(false)}
         onLocationSelect={(loc) => onChange(loc)}
         title={placeholder}
         initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null}
+        mapsLoaded={mapsLoaded}
       />
     </>
   );
-};
+});
 
+// --- LIVE TRACKING MAP ---
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const rendererRef = useRef(null);
   const [eta, setEta] = useState(null);
 
   useEffect(() => {
+    // Safely initialize map
     if (!window.google || !mapRef.current) return;
     
     const initialCenter = driverLocation?.lat ? driverLocation : (pickup?.lat ? pickup : { lat: 41.7151, lng: 44.8271 });
@@ -435,13 +466,13 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   );
 };
 
-// Auth Component
+// --- AUTH COMPONENT ---
 const RiderAuth = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { t } = useLanguage(); // TRANSLATION
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({
     name: "", surname: "", cellphone: "", password: ""
   });
@@ -561,11 +592,11 @@ const RiderAuth = () => {
   );
 };
 
-// Dashboard Component
+// --- RIDER DASHBOARD ---
 const RiderDashboard = () => {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
-  const { t } = useLanguage(); // TRANSLATION
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("book");
   const [loading, setLoading] = useState(false);
   const [mapsLoaded, setMapsLoaded] = useState(false);
@@ -591,7 +622,7 @@ const RiderDashboard = () => {
   const [fareEstimate, setFareEstimate] = useState(null);
   const [surgeInfo, setSurgeInfo] = useState(null);
 
-  // Rating State (MOVED HERE)
+  // Rating State
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [review, setReview] = useState("");
@@ -699,7 +730,7 @@ const RiderDashboard = () => {
   const updateStop = (index, data) => { const newStops = [...stops]; newStops[index] = { ...newStops[index], ...data }; setStops(newStops); };
   const removeStop = (index) => { setStops(stops.filter((_, i) => i !== index)); };
 
-  const handleBookRide = async (paid = false) => {
+  const handleBookRide = async (paid = false, paymentOrderId = null) => {
     if (!pickup.lat || !pickup.address) { toast.error("Please select pickup location"); return; }
     setLoading(true);
     try {
@@ -707,7 +738,8 @@ const RiderDashboard = () => {
         pickup: pickup.address, pickupLat: pickup.lat, pickupLng: pickup.lng,
         destination: destination.address || null, destinationLat: destination.lat, destinationLng: destination.lng,
         stops: stops.filter(s => s.lat).map((s, i) => ({ address: s.address, lat: s.lat, lng: s.lng, order: i })),
-        carType, paymentMethod, estimatedDistance: routeInfo?.distance || 5, estimatedDuration: routeInfo?.duration || 15, paid
+        carType, paymentMethod, estimatedDistance: routeInfo?.distance || 5, estimatedDuration: routeInfo?.duration || 15, paid,
+        paymentOrderId: paymentOrderId // Send PayPal Order ID to backend
       };
       const res = await axios.post(`${API}/rides/request`, rideData);
       toast.success(t('searching_driver'));
@@ -845,7 +877,7 @@ const RiderDashboard = () => {
                 {/* Pickup */}
                 <div className="space-y-2">
                     <Label className="text-[#00ff88]">{t('pickup_label')}</Label>
-                    <LocationInput value={pickup} onChange={setPickup} placeholder={t('current_location')} icon={MapPin} iconColor="text-[#00ff88]" />
+                    <LocationInput value={pickup} onChange={setPickup} placeholder={t('current_location')} icon={MapPin} iconColor="text-[#00ff88]" mapsLoaded={mapsLoaded} />
                 </div>
 
                 {/* Stops */}
@@ -855,7 +887,7 @@ const RiderDashboard = () => {
                       <Label className="text-yellow-400">{t('stop_label')} {index + 1}</Label>
                       <Button variant="ghost" size="sm" className="text-red-400 h-6" onClick={() => removeStop(index)}><X className="w-3 h-3" /></Button>
                     </div>
-                    <LocationInput value={stop} onChange={(data) => updateStop(index, data)} placeholder={`${t('stop_label')} ${index + 1}`} icon={MapPin} iconColor="text-yellow-400" />
+                    <LocationInput value={stop} onChange={(data) => updateStop(index, data)} placeholder={`${t('stop_label')} ${index + 1}`} icon={MapPin} iconColor="text-yellow-400" mapsLoaded={mapsLoaded} />
                   </div>
                 ))}
                 {stops.length < 3 && (
@@ -867,7 +899,7 @@ const RiderDashboard = () => {
                 {/* Destination */}
                 <div className="space-y-2">
                     <Label className="text-[#00d4ff]">{t('destination_label')}</Label>
-                    <LocationInput value={destination} onChange={setDestination} placeholder={t('where_to')} icon={Navigation} iconColor="text-[#00d4ff]" />
+                    <LocationInput value={destination} onChange={setDestination} placeholder={t('where_to')} icon={Navigation} iconColor="text-[#00d4ff]" mapsLoaded={mapsLoaded} />
                 </div>
 
                 {/* Fare Breakdown */}
@@ -941,7 +973,10 @@ const RiderDashboard = () => {
                          disabled={!fareEstimate || !pickup.lat}
                          forceReRender={[fareEstimate?.total]}
                          createOrder={async (data, actions) => actions.order.create({ purchase_units: [{ amount: { value: fareEstimate.total, currency_code: "USD" } }] })}
-                         onApprove={async (data, actions) => { await actions.order.capture(); handleBookRide(true); }}
+                         onApprove={async (data, actions) => { 
+                             await actions.order.capture(); 
+                             handleBookRide(true, data.orderID); // Pass Order ID to backend
+                         }}
                       />
                    </div>
                 ) : (
