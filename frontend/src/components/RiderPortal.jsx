@@ -366,14 +366,37 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   );
 };
 
-// --- LOCATION INPUT ---
+// --- LOCATION INPUT (FIXED FOR ANDROID TYPING) ---
 const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
+  const [inputValue, setInputValue] = useState(value?.address || "");
+
+  // Sync local input state if parent value changes externally
+  useEffect(() => {
+    if (value?.address && value.address !== inputValue) {
+        setInputValue(value.address);
+    }
+  }, [value]);
   
   useGoogleMapsAutocomplete(inputRef, (place) => {
+    setInputValue(place.address); // Update text immediately
     onChange(place); 
   }, mapsLoaded);
+
+  // Handle manual typing
+  const handleTyping = (e) => {
+      setInputValue(e.target.value);
+  };
+
+  // Scroll into view on focus (Fixes keyboard hiding input)
+  const handleFocus = () => {
+      setTimeout(() => {
+          if(inputRef.current) {
+              inputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+      }, 300);
+  };
 
   return (
     <>
@@ -381,7 +404,11 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
         <Icon className={`absolute left-3 h-4 w-4 ${iconColor} z-20`} />
         <Input
           ref={inputRef}
-          defaultValue={value?.address || ""}
+          type="text"
+          value={inputValue}
+          onChange={handleTyping}
+          onFocus={handleFocus}
+          autoComplete="off" // CRITICAL: Stops native suggestions from blocking Google
           className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
           placeholder={placeholder}
         />
@@ -399,7 +426,10 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
       <MapPicker
         isOpen={showMapPicker}
         onClose={() => setShowMapPicker(false)}
-        onLocationSelect={(loc) => onChange(loc)}
+        onLocationSelect={(loc) => {
+            setInputValue(loc.address);
+            onChange(loc);
+        }}
         title={placeholder}
         initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null}
         mapsLoaded={mapsLoaded}

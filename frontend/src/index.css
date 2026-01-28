@@ -52,3 +52,34 @@
   border-radius: 50%;
   animation: spin-slow 1s linear infinite;
 }
+/* --- FIX GOOGLE MAPS DROPDOWN BLOCKING INPUT --- */
+.pac-container {
+  z-index: 99999 !important; /* Force it above everything */
+  position: fixed !important; /* Stick to screen, don't scroll away */
+  font-family: 'Inter', sans-serif;
+  border-radius: 0.5rem;
+  margin-top: 5px;
+  background-color: #1a1a2e; /* Dark theme background */
+  border: 1px solid #00ff88; /* Green border */
+}
+
+.pac-item {
+  color: white;
+  border-top: 1px solid #333;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.pac-item:hover {
+  background-color: #2a2a40;
+}
+
+.pac-item-query {
+  color: #00ff88; /* Green highlight text */
+  font-size: 14px;
+}
+
+/* Hide the powered by google logo if it causes layout shift (optional) */
+.pac-logo::after {
+  display: none;
+}
