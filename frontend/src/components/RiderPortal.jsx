@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { MapPin, Loader2, Crosshair, Target, Send, Phone, Lock, ArrowLeft, Rocket, X } from "lucide-react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -333,22 +334,36 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-md h-[90vh] flex flex-col p-0 gap-0">
-        <style>{mapStyles}</style>
-
-        <DialogHeader className="p-4 bg-black/80 z-10 w-full border-b border-[#00ff88]/20 flex-none">
-          <DialogTitle className="text-[#00ff88] flex items-center">
-            <MapPin className="w-5 h-5 mr-2" /> {title || t("select_location")}
-          </DialogTitle>
-          <DialogDescription className="text-gray-500 text-xs">
-            Tap map or drag pin to select.
-          </DialogDescription>
+        
+        {/* Header with explicit Close Button */}
+        <DialogHeader className="p-4 bg-black/80 z-20 w-full border-b border-[#00ff88]/20 flex-none flex flex-row items-center justify-between">
+          <div className="flex flex-col">
+            <DialogTitle className="text-[#00ff88] flex items-center">
+              <MapPin className="w-5 h-5 mr-2" /> {title || t("select_location")}
+            </DialogTitle>
+            <DialogDescription className="text-gray-500 text-xs">
+              Tap map or drag pin to select.
+            </DialogDescription>
+          </div>
+          
+          {/* THE FIX: Explicit Close Button */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={onClose} 
+            className="text-white hover:text-red-500 -mr-2"
+          >
+            <X className="w-6 h-6" />
+          </Button>
         </DialogHeader>
 
-        <div className="flex-1 w-full relative min-h-[320px]">
+        {/* Map Container - Removed internal style tag to avoid errors if mapStyles is undefined */}
+        <div className="flex-1 w-full relative min-h-[320px] bg-[#1a1a2e]"> 
+           {/* bg-[#1a1a2e] acts as a placeholder color so it doesn't look broken while loading */}
           <div ref={mapDivRef} className="w-full h-full" />
         </div>
 
-        <div className="w-full p-4 bg-black border-t border-[#00ff88]/30 flex flex-col gap-3 flex-none">
+        <div className="w-full p-4 bg-black border-t border-[#00ff88]/30 flex flex-col gap-3 flex-none z-20">
           {address && (
             <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-3">
               <p className="text-[#00ff88] text-xs font-bold uppercase">Selected Address</p>
@@ -379,7 +394,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       </DialogContent>
     </Dialog>
   );
-};
 
 /* ---------------------------------------------
    LocationInput (FIXED: controlled + sync)
