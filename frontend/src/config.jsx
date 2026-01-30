@@ -1,72 +1,71 @@
 ﻿// src/config.jsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-export const API = import.meta.env.VITE_API_URL || "";
+// --- ENV (always export these) ---
+export const API = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, ""); // no trailing slash
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
-// ✅ Export this because App.jsx imports it
+// --- AUTH CONTEXT (exported to match your App.jsx import) ---
 export const AuthContext = createContext({
   user: null,
   token: null,
-  isAuthenticated: false,
+  isAuthReady: false,
   login: () => {},
   logout: () => {},
   updateUser: () => {},
-  getToken: () => null,
 });
+
+// --- STORAGE KEYS ---
+const TOKEN_KEY = "token";
+const USER_KEY = "user";
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
-  // Load persisted auth on first mount
+  // Load from localStorage once
   useEffect(() => {
     try {
-      const savedToken = localStorage.getItem("token");
-      const savedUser = localStorage.getItem("user");
-      if (savedToken) setToken(savedToken);
-      if (savedUser) setUser(JSON.parse(savedUser));
-    } catch {
-      // If parsing fails, reset storage
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-      setToken(null);
-      setUser(null);
+      const storedToken = localStorage.getItem(TOKEN_KEY);
+      const storedUser = localStorage.getItem(USER_KEY);
+
+      if (storedToken) setToken(storedToken);
+      if (storedUser) setUser(JSON.parse(storedUser));
+    } catch (e) {
+      // If parsing fails, clean it up
+      localStorage.removeItem(USER_KEY);
+    } finally {
+      setIsAuthReady(true);
     }
   }, []);
 
   const login = (newToken, userData) => {
-    localStorage.setItem("token", newToken);
-    localStorage.setItem("user", JSON.stringify(userData));
+    localStorage.setItem(TOKEN_KEY, newToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(userData));
     setToken(newToken);
     setUser(userData);
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
     setToken(null);
     setUser(null);
   };
 
   const updateUser = (data) => {
     setUser(data);
-    localStorage.setItem("user", JSON.stringify(data));
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(data));
+    } catch (e) {
+      // ignore storage errors
+    }
   };
 
-  const getToken = () => token || localStorage.getItem("token");
-
   const value = useMemo(
-    () => ({
-      user,
-      token,
-      isAuthenticated: Boolean(token && user),
-      login,
-      logout,
-      updateUser,
-      getToken,
-    }),
-    [user, token]
+    () => ({ user, token, isAuthReady, login, logout, updateUser }),
+    [user, token, isAuthReady]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
