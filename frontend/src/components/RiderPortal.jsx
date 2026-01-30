@@ -92,7 +92,7 @@ const useGoogleMapsLoader = () => {
     if (existing) { existing.addEventListener("load", () => setMapsLoaded(true)); return; }
     const script = document.createElement("script");
     script.dataset.googleMaps = "1";
-    script.src = \https://maps.googleapis.com/maps/api/js?key=\&libraries=places,geometry\;
+    script.src = "https://maps.googleapis.com/maps/api/js?key=" + GOOGLE_MAPS_API_KEY + "&libraries=places,geometry";
     script.async = true;
     script.defer = true;
     script.onload = () => setMapsLoaded(true);
@@ -226,7 +226,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       },
       (err) => {
         console.error("GPS Error", err);
-        toast.error(\Location failed: \\);
+        toast.error("Location failed: " + err.message);
         setLoadingGPS(false);
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -284,7 +284,7 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
   return (
     <>
       <div className="relative flex items-center mb-2">
-        <Icon className={\bsolute left-3 h-4 w-4 \ z-20\} />
+        <Icon className={"absolute left-3 h-4 w-4 " + iconColor + " z-20"} />
         <Input
           ref={inputRef}
           value={text}
@@ -383,9 +383,9 @@ const ChatInterface = ({ rideId }) => {
 
   const fetchMessages = useCallback(async () => {
     try {
-      const res = await api.get(\/rides/\/chat\);
+      const res = await api.get("/rides/" + rideId + "/chat");
       setMessages(res.data?.messages || []);
-      await api.post(\/rides/\/chat/read\);
+      await api.post("/rides/" + rideId + "/chat/read");
     } catch {}
   }, [rideId]);
 
@@ -397,7 +397,7 @@ const ChatInterface = ({ rideId }) => {
     if (!newMessage.trim()) return;
     setSending(true);
     try {
-      await api.post(\/rides/\/chat\, { message: newMessage });
+      await api.post("/rides/" + rideId + "/chat", { message: newMessage });
       setNewMessage(""); fetchMessages();
     } catch { toast.error("Failed to send"); } finally { setSending(false); }
   };
@@ -406,8 +406,8 @@ const ChatInterface = ({ rideId }) => {
     <div className="flex flex-col h-[500px]">
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black">
         {messages.map((msg) => (
-          <div key={msg.id} className={\lex \\}>
-            <div className={\max-w-[80%] rounded-2xl p-3 \\}>
+          <div key={msg.id} className={"flex " + (msg.sender_id === user.id ? "justify-end" : "justify-start")}>
+            <div className={"max-w-[80%] rounded-2xl p-3 " + (msg.sender_id === user.id ? "bg-[#00ff88] text-black" : "bg-[#1a1a2e] text-white")}>
               <p className="text-sm">{msg.message}</p>
             </div>
           </div>
@@ -482,7 +482,7 @@ const RiderDashboard = () => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
-        const res = await api.get(\/rides/\\);
+        const res = await api.get("/rides/" + id);
         const r = normalizeRide(res.data);
         setActiveRide(r);
         if (["completed", "cancelled", "no_drivers"].includes(r.status)) {
@@ -517,7 +517,7 @@ const RiderDashboard = () => {
   const submitRating = async () => {
     if (!completedRideInfo?.id) return;
     try {
-      await api.post(\/rides/\/rate-driver\, { rating, review });
+      await api.post("/rides/" + completedRideInfo.id + "/rate-driver", { rating, review });
       toast.success("Feedback sent"); setShowRatingModal(false);
     } catch { toast.error("Failed"); }
   };
@@ -552,7 +552,7 @@ const RiderDashboard = () => {
 
                 <div className="grid grid-cols-3 gap-2">
                   {Object.entries(PRICING_RULES).map(([k, v]) => (
-                    <button key={k} onClick={() => setCarType(k)} className={\p-2 rounded border \\}>
+                    <button key={k} onClick={() => setCarType(k)} className={"p-2 rounded border " + (carType === k ? "border-[#00ff88] bg-[#00ff88]/20" : "border-gray-800")}>
                       <div className="text-xl">{v.icon}</div>
                       <div className="text-xs text-white capitalize">{k}</div>
                     </button>
@@ -599,7 +599,7 @@ const RiderDashboard = () => {
                       </div>
                    )}
                    {["searching", "accepted"].includes(activeRide.status) && (
-                      <Button variant="ghost" className="w-full text-red-500 mt-4" onClick={async () => { await api.post(\/rides/\/cancel\); setActiveRide(null); }}>Cancel Ride</Button>
+                      <Button variant="ghost" className="w-full text-red-500 mt-4" onClick={async () => { await api.post("/rides/" + activeRide.id + "/cancel"); setActiveRide(null); }}>Cancel Ride</Button>
                    )}
                  </CardContent>
                </Card>
@@ -614,7 +614,7 @@ const RiderDashboard = () => {
            <DialogContent className="bg-black border border-[#00ff88] text-white">
               <DialogTitle className="text-[#00ff88] text-center">Rate Driver</DialogTitle>
               <div className="flex justify-center gap-2 my-4">
-                 {[1,2,3,4,5].map(s => <Star key={s} className={\w-8 h-8 cursor-pointer \\} onClick={() => setRating(s)}/>)}
+                 {[1,2,3,4,5].map(s => <Star key={s} className={"w-8 h-8 cursor-pointer " + (s <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-600")} onClick={() => setRating(s)}/>)}
               </div>
               <Input value={review} onChange={e => setReview(e.target.value)} placeholder="Comment..." className="bg-gray-900 border-gray-700 text-white"/>
               <Button onClick={submitRating} className="w-full bg-[#00ff88] text-black mt-4">Submit</Button>
@@ -625,7 +625,7 @@ const RiderDashboard = () => {
   );
 };
 
-const RiderAuth = () => { /* Simplified Auth for brevity, assumes already works or can be imported */ return <div>Auth Component Here</div> };
+const RiderAuth = () => { /* Placeholder for auth if needed */ return null; };
 
 const RiderPortal = () => {
   const { user } = useAuth();
