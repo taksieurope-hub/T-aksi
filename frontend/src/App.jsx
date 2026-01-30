@@ -1,5 +1,4 @@
-﻿// src/App.jsx
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
@@ -15,17 +14,21 @@ import RiderPortal from "@/components/RiderPortal";
 import DriverPortal from "@/components/DriverPortal";
 
 /**
- * Axios interceptor
+ * Axios interceptor (Global)
  * - Uses the SAME token key as config.jsx: "token"
  * - Adds Authorization header to all requests
  */
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
 
   // Optional: if you sometimes call axios with relative URLs,
   // ensure baseURL is set.
-  if (!config.baseURL && API) config.baseURL = API;
+  if (!config.baseURL && API) {
+    config.baseURL = API;
+  }
 
   return config;
 });

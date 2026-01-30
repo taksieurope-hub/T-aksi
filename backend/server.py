@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 import math
 import os
 import asyncio
@@ -256,6 +256,10 @@ class RideRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class RiderWalletTopUp(BaseModel):
+    amount: float = Field(gt=0)
+    reference: Optional[str] = None
+
 class TopUpRequest(BaseModel):
     amount: float = Field(gt=0)
     payment_reference: Optional[str] = None
@@ -277,6 +281,14 @@ class LocationUpdate(BaseModel):
     heading: Optional[float] = None
     speed: Optional[float] = None
 
+
+class RatePassengerRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    review: Optional[str] = ""
+
+class RateDriverRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    review: Optional[str] = ""
 
 class ChatMessage(BaseModel):
     message: str
@@ -818,7 +830,7 @@ async def request_topup(request: TopUpRequest, user_id: str = Depends(get_curren
     topup_ref.set(topup_data)
 
     return {
-        "message": f"Top-up request for ₾{request.amount} submitted",
+        "message": f"Top-up request for â‚¾{request.amount} submitted",
         "request_id": topup_ref.id,
         "amount": request.amount,
         "payment_link": "https://egreve.bog.ge//Taksi",
@@ -839,7 +851,7 @@ async def request_withdrawal(request: WithdrawalRequest, user_id: str = Depends(
     balance = driver_data.get("earnings", {}).get("balance", 0)
 
     if request.amount > balance:
-        raise HTTPException(400, f"Insufficient balance. Available: ₾{balance}")
+        raise HTTPException(400, f"Insufficient balance. Available: â‚¾{balance}")
 
     withdrawal_ref = db.collection("driver_withdrawals").document()
     withdrawal_data = {
@@ -853,7 +865,7 @@ async def request_withdrawal(request: WithdrawalRequest, user_id: str = Depends(
     }
     withdrawal_ref.set(withdrawal_data)
 
-    return {"message": f"Withdrawal request for ₾{request.amount} submitted", "request_id": withdrawal_ref.id}
+    return {"message": f"Withdrawal request for â‚¾{request.amount} submitted", "request_id": withdrawal_ref.id}
 
 
 @app.get("/api/driver/rides/available", tags=["Driver"])
@@ -1025,7 +1037,7 @@ async def request_to_join_ride(ride_id: str, user_id: str = Depends(get_current_
     driver_balance = driver_data.get("earnings", {}).get("balance", 0)
 
     if driver_balance < required_commission:
-        raise HTTPException(400, f"Insufficient balance. Need ₾{required_commission:.2f}")
+        raise HTTPException(400, f"Insufficient balance. Need â‚¾{required_commission:.2f}")
 
     db.collection("rides").document(ride_id).update({
         "notified_drivers": firestore.ArrayUnion([user_id])
@@ -1313,7 +1325,7 @@ async def accept_ride(ride_id: str, user_id: str = Depends(get_current_user_id))
     held_commission = (ride_data.get("estimated_fare", 0) or 0) * commission_rate
 
     if balance < held_commission:
-        raise HTTPException(400, f"Insufficient balance. Need ₾{held_commission:.2f}, have ₾{balance:.2f}")
+        raise HTTPException(400, f"Insufficient balance. Need â‚¾{held_commission:.2f}, have â‚¾{balance:.2f}")
 
     # HOLD commission at accept time
     new_balance = balance - held_commission
@@ -1470,23 +1482,21 @@ async def complete_ride(
 
             if access_token:
                 async with httpx.AsyncClient(timeout=25) as client:
-                    capture_response = await client.post(
-                        f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}/capture",
-                        headers={
-                            "Content-Type": "application/json",
-                            "Authorization": f"Bearer {access_token}",
-                        },
-                        json={"note_to_payer": "Thanks for riding with T'aksi!"},
-                    )
+                    # CHECK status instead of CAPTURING
+capture_response = await client.get(
+    f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}",
+    headers={
+        "Authorization": f"Bearer {access_token}",
+    },
+)
 
-                if capture_response.status_code in (200, 201):
-                    payment_status = "paid"
-                    logger.info(f"Payment captured successfully for ride {ride_id}")
-                else:
-                    logger.error(f"PayPal Capture Failed: {capture_response.status_code} {capture_response.text}")
-                    payment_status = "failed"
-            else:
-                payment_status = "auth_error"
+if capture_response.status_code == 200:
+    data = capture_response.json()
+    if data.get("status") == "COMPLETED":
+        payment_status = "paid"
+        logger.info(f"Payment verified for ride {ride_id}")
+    else:
+        payment_status = "failed"
 
         except Exception as e:
             logger.error(f"Payment Exception: {e}")
@@ -1542,6 +1552,77 @@ async def complete_ride(
         "fare_breakdown": final_fare,
     }
 
+
+@app.post("/api/rides/{ride_id}/rate-passenger", tags=["Rides"])
+async def rate_passenger(ride_id: str, rating_data: RatePassengerRequest, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    
+    ride_ref = db.collection("rides").document(ride_id)
+    ride = ride_ref.get()
+    if not ride.exists:
+        raise HTTPException(404, "Ride not found")
+        
+    data = ride.to_dict()
+    # Ensure it's the assigned driver
+    if data.get("driver_id") != user_id:
+        raise HTTPException(403, "Not authorized")
+
+    # Update Ride
+    ride_ref.update({
+        "passenger_rating": rating_data.rating,
+        "passenger_review": rating_data.review
+    })
+
+    # Update Passenger's Average Rating
+    rider_id = data.get("userId")
+    if rider_id:
+        user_ref = db.collection("users").document(rider_id)
+        user_doc = user_ref.get()
+        if user_doc.exists:
+            u_data = user_doc.to_dict()
+            current = u_data.get("rating", 5.0)
+            count = u_data.get("total_rides", 1)
+            new_rating = ((current * count) + rating_data.rating) / (count + 1)
+            user_ref.update({"rating": new_rating})
+
+    return {"message": "Passenger rated"}
+
+@app.post("/api/rides/{ride_id}/rate-rider", tags=["Rides"])
+async def rate_driver(ride_id: str, rating_data: RateDriverRequest, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    
+    # 1. Get Ride
+    ride_ref = db.collection("rides").document(ride_id)
+    ride = ride_ref.get()
+    if not ride.exists:
+        raise HTTPException(404, "Ride not found")
+        
+    data = ride.to_dict()
+    if data.get("userId") != user_id:
+        raise HTTPException(403, "Not authorized")
+
+    # 2. Update Ride with Rating
+    ride_ref.update({
+        "rider_rating": rating_data.rating,
+        "rider_review": rating_data.review,
+        "rated_at": firestore.SERVER_TIMESTAMP
+    })
+
+    # 3. Update Driver's Average Rating
+    driver_id = data.get("driver_id")
+    if driver_id:
+        driver_ref = db.collection("users").document(driver_id)
+        driver_doc = driver_ref.get()
+        if driver_doc.exists:
+            d_data = driver_doc.to_dict()
+            current_rating = d_data.get("rating", 5.0)
+            total_rides = d_data.get("total_rides", 1)
+            
+            # Simple moving average calculation
+            new_rating = ((current_rating * total_rides) + rating_data.rating) / (total_rides + 1)
+            driver_ref.update({"rating": new_rating})
+
+    return {"message": "Rating submitted"}
 
 @app.post("/api/rides/{ride_id}/cancel", tags=["Rides"])
 async def cancel_ride(ride_id: str, reason: str = "User cancelled", user_id: str = Depends(get_current_user_id)):
@@ -1666,6 +1747,28 @@ async def mark_messages_read(ride_id: str, user_id: str = Depends(get_current_us
     return {"message": "Messages marked as read"}
 
 
+
+# =========================
+# RIDER WALLET
+# =========================
+
+@app.post("/api/rider/wallet/topup", tags=["Rider"])
+async def rider_topup(request: RiderWalletTopUp, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    
+    try:
+        # Update user balance
+        db.collection("users").document(user_id).update({
+            "wallet_balance": firestore.Increment(request.amount),
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        return {"message": f"Successfully added {request.amount} to wallet"}
+    except Exception as e:
+        logger.error(f"Topup error: {e}")
+        raise HTTPException(500, "Failed to process topup")
 # =========================
 # RIDER HISTORY
 # =========================
@@ -1835,7 +1938,7 @@ async def admin_add_balance(id: str, req: AdminAddBalanceRequest):
         "timestamp": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": f"Successfully added ₾{req.amount} to {user_type} account"}
+    return {"message": f"Successfully added â‚¾{req.amount} to {user_type} account"}
 
 
 @app.get("/api/admin/topups/pending", tags=["Admin"])
@@ -1866,7 +1969,7 @@ async def approve_topup(id: str):
         "approved_at": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": f"Top-up of ₾{amount} approved"}
+    return {"message": f"Top-up of â‚¾{amount} approved"}
 
 
 @app.post("/api/admin/topups/{id}/reject", tags=["Admin"])
@@ -1909,7 +2012,7 @@ async def approve_withdrawal(id: str):
         "approved_at": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": f"Withdrawal of ₾{amount} approved"}
+    return {"message": f"Withdrawal of â‚¾{amount} approved"}
 
 
 @app.post("/api/admin/withdrawals/{id}/reject", tags=["Admin"])
@@ -1940,3 +2043,6 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)
+
+
+

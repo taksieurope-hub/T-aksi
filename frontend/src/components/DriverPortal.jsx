@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
+import { Textarea } from "@/components/ui/textarea"; 
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/config";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -762,7 +763,38 @@ const DriverDashboard = () => {
     cancelled: "bg-red-500 text-white"
   };
 
-  return (
+  
+  // --- ADDED BY SCRIPT: Submit Rating Function ---
+  // --- SUBMIT RATING FUNCTION (FIXED) ---
+  const submitRating = async () => {
+    // 1. Get the ID from completedRideInfo OR activeRide
+    const rId = completedRideInfo?.id || activeRide?.id;
+
+    // 2. Safety check: if no ID, stop
+    if (!rId) {
+      console.error("No ride ID found for rating");
+      return;
+    }
+
+    try {
+      // 3. FIX: Add ${rId} inside the URL
+      await axios.post(`${API}/rides/${rId}/rate-passenger`, {
+        rating: rating,
+        review: review
+      });
+      
+      toast.success("Passenger rated successfully!");
+      setShowRatingModal(false);
+      setRating(0);
+      setReview("");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to submit rating");
+    }
+  };
+  // --------------------------------------
+
+return (
     <div className="min-h-screen bg-black">
         <style>{mapStyles}</style>
       <header className="bg-black/50 backdrop-blur-xl border-b border-[#00d4ff]/20 p-4 sticky top-0 z-50">
@@ -1391,3 +1423,4 @@ const DriverPortal = () => {
 };
 
 export default DriverPortal;
+

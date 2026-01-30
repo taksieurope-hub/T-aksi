@@ -1,4 +1,4 @@
-// frontend/src/api.js
+﻿// frontend/src/api.js
 import axios from "axios";
 import { API } from "./config.jsx";
 
@@ -17,13 +17,15 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Helpful: auto-logout on 401 if your backend returns that
+// Auto-logout on 401
 api.interceptors.response.use(
   (res) => res,
   (error) => {
@@ -32,6 +34,8 @@ api.interceptors.response.use(
       // token invalid/expired
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+      // Optional: Force reload to login
+      // window.location.href = "/";
     }
     return Promise.reject(error);
   }
