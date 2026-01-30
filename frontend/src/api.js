@@ -1,30 +1,39 @@
-// src/api.js
+// frontend/src/api.js
 import axios from "axios";
-import { API } from "@/config";
+import { API } from "./config.jsx";
+
+// Make sure API never ends with a slash
+const BASE = (API || "").replace(/\/+$/, "");
 
 const api = axios.create({
-  baseURL: API,
-  timeout: 15000,
+  baseURL: BASE,
+  timeout: 20000,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  config.headers["Content-Type"] = "application/json";
-  return config;
-});
+// Attach token automatically
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
+// Helpful: auto-logout on 401 if your backend returns that
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
+  (error) => {
+    const status = error?.response?.status;
+    if (status === 401) {
+      // token invalid/expired
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      window.location.href = "/rider";
     }
-    return Promise.reject(err);
+    return Promise.reject(error);
   }
 );
 
