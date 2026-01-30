@@ -1,24 +1,28 @@
-﻿// frontend/src/config.jsx
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+﻿import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 /**
- * IMPORTANT:
- * Set VITE_API_URL in frontend/.env
- *
- * If your backend routes are like:
- *   POST /auth/login
- * then use:
- *   VITE_API_URL=https://t-aksi.onrender.com
- *
- * If your backend routes are like:
- *   POST /api/auth/login
- * then use:
- *   VITE_API_URL=https://t-aksi.onrender.com/api
+ * INTELLIGENT URL CONFIGURATION
+ * Automatically adds '/api' if missing.
  */
-export const API = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+const getBaseUrl = () => {
+  // 1. Get URL from Environment (Render) or default to Localhost
+  let url = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  
+  // 2. Remove trailing slashes (e.g. "com/" -> "com")
+  url = url.replace(/\/+$/, "");
+
+  // 3. Ensure it ends with '/api'
+  if (!url.endsWith("/api")) {
+    url += "/api";
+  }
+
+  return url;
+};
+
+export const API = getBaseUrl();
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
-// ✅ Exported so App.jsx can import it without build failing
+// ✅ Context Setup
 export const AuthContext = createContext(null);
 
 const safeJsonParse = (v) => {
@@ -32,7 +36,6 @@ const safeJsonParse = (v) => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
 
-  // On load: restore user from localStorage
   useEffect(() => {
     const token = localStorage.getItem("token");
     const userData = safeJsonParse(localStorage.getItem("user"));
@@ -56,15 +59,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem("user", JSON.stringify(data));
   };
 
-  const value = useMemo(
-    () => ({
-      user,
-      login,
-      logout,
-      updateUser,
-    }),
-    [user]
-  );
+  const value = useMemo(() => ({ user, login, logout, updateUser }), [user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
