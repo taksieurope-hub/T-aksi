@@ -1477,26 +1477,33 @@ async def complete_ride(
 
     if payment_method == "card" and order_id:
         try:
-            logger.info(f"Attempting to capture PayPal order: {order_id}")
+            logger.info(f"Attempting to verify PayPal order: {order_id}")
             access_token = await get_paypal_token()
 
             if access_token:
                 async with httpx.AsyncClient(timeout=25) as client:
-                    # CHECK status instead of CAPTURING
-capture_response = await client.get(
-    f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}",
-    headers={
-        "Authorization": f"Bearer {access_token}",
-    },
-)
+                    capture_response = await client.get(
+                        f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {access_token}",
+                        },
+                    )
 
-if capture_response.status_code == 200:
-    data = capture_response.json()
-    if data.get("status") == "COMPLETED":
-        payment_status = "paid"
-        logger.info(f"Payment verified for ride {ride_id}")
-    else:
-        payment_status = "failed"
+                    if capture_response.status_code == 200:
+                        data = capture_response.json()
+                        status = data.get("status")
+                        if status == "COMPLETED" or status == "APPROVED":
+                            payment_status = "paid"
+                            logger.info(f"Payment verified for ride {ride_id}")
+                        else:
+                            logger.warning(f"PayPal status: {status}")
+                            payment_status = "failed"
+                    else:
+                        logger.error(f"PayPal Verify Failed: {capture_response.status_code}")
+                        payment_status = "failed"
+            else:
+                payment_status = "auth_error"
 
         except Exception as e:
             logger.error(f"Payment Exception: {e}")
@@ -2043,6 +2050,7 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)
+
 
 
 
