@@ -141,7 +141,7 @@ const useGoogleMapsLoader = () => {
 
     const script = document.createElement("script");
     script.setAttribute("data-google-maps", "1");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&loading=async`;
     script.async = true;
     script.defer = true;
     script.onload = () => setMapsLoaded(true);
@@ -269,11 +269,6 @@ const MapPicker = ({
         disableDefaultUI: true,
         zoomControl: true,
         clickableIcons: false,
-        styles: [
-          { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-          { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-          { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
-        ]
       });
 
       mapRef.current = map;
