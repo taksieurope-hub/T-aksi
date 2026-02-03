@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { MapPin, Loader2, Crosshair, Target, Send, Phone, Lock, ArrowLeft, Rocket, X } from "lucide-react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -18,10 +17,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
-import {
+// FIXED: Consolidated imports (No duplicates)
+import { 
   Car, MapPin, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
-  Plus, X, Target, Crosshair, Zap, TrendingUp, MessageSquare, Send
+  Plus, X, Zap, TrendingUp, MessageSquare, 
+  Target, Crosshair, Send 
 } from "lucide-react";
 
 /* ---------------------------------------------
@@ -181,7 +182,14 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
 /* ---------------------------------------------
    MapPicker (FIXED: resize/recenter after open)
 ---------------------------------------------- */
-const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, mapsLoaded }) => {
+const MapPicker = ({
+  isOpen,
+  onClose,
+  onLocationSelect,
+  title,
+  initialLocation,
+  mapsLoaded
+}) => {
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -191,40 +199,58 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   const [loadingGPS, setLoadingGPS] = useState(false);
   const { t } = useLanguage();
 
-  const cleanup = () => {
+  const cleanup = useCallback(() => {
     try {
-      listenersRef.current.forEach(l => l?.remove?.());
+      // remove listeners
+      listenersRef.current.forEach((l) => l?.remove?.());
       listenersRef.current = [];
     } catch {}
+
+    try {
+      // remove marker from map to avoid memory leaks
+      markerRef.current?.setMap?.(null);
+    } catch {}
+
     markerRef.current = null;
     mapRef.current = null;
-  };
+  }, []);
 
-  const reverseGeocode = useCallback((lat, lng) => {
-    if (!mapsLoaded || !window.google?.maps) return;
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-      if (status === "OK" && results?.[0]) setAddress(results[0].formatted_address);
-    });
-  }, [mapsLoaded]);
+  const reverseGeocode = useCallback(
+    (lat, lng) => {
+      if (!mapsLoaded || !window.google?.maps) return;
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === "OK" && results?.[0]) setAddress(results[0].formatted_address);
+      });
+    },
+    [mapsLoaded]
+  );
 
-  const setPosition = useCallback((lat, lng) => {
-    const pos = { lat, lng };
-    setSelected(pos);
-    markerRef.current?.setPosition(pos);
-    mapRef.current?.setCenter(pos);
-    reverseGeocode(lat, lng);
-  }, [reverseGeocode]);
+  const setPosition = useCallback(
+    (lat, lng) => {
+      const pos = { lat, lng };
+      setSelected(pos);
+
+      try {
+        markerRef.current?.setPosition?.(pos);
+        mapRef.current?.setCenter?.(pos);
+      } catch {}
+
+      reverseGeocode(lat, lng);
+    },
+    [reverseGeocode]
+  );
 
   useEffect(() => {
     if (!isOpen) return;
     if (!mapsLoaded || !window.google?.maps || !mapDivRef.current) return;
 
-    // Ensure container has real dimensions before init
     const init = () => {
       cleanup();
 
-      const defaultCenter = initialLocation?.lat ? initialLocation : { lat: 41.7151, lng: 44.8271 };
+      const defaultCenter = initialLocation?.lat
+        ? initialLocation
+        : { lat: 41.7151, lng: 44.8271 };
 
       const map = new window.google.maps.Map(mapDivRef.current, {
         center: defaultCenter,
@@ -279,33 +305,37 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
         reverseGeocode(defaultCenter.lat, defaultCenter.lng);
       }
 
-      // 🔥 THE IMPORTANT FIX: force resize after the dialog opens
+      // force resize after dialog opens
       setTimeout(() => {
         try {
           window.google.maps.event.trigger(map, "resize");
-          map.setCenter(marker.getPosition());
+          const p = markerRef.current?.getPosition?.();
+          if (p) map.setCenter(p);
         } catch {}
       }, 80);
     };
 
-    // Run on next frame to ensure Dialog is visible
     const raf = requestAnimationFrame(init);
     return () => cancelAnimationFrame(raf);
-  }, [isOpen, mapsLoaded, initialLocation, reverseGeocode, setPosition]);
+  }, [isOpen, mapsLoaded, initialLocation, cleanup, reverseGeocode, setPosition]);
 
   useEffect(() => {
     if (!isOpen) cleanup();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, cleanup]);
 
   const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation not supported on this device");
+      return;
+    }
+
     setLoadingGPS(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setPosition(lat, lng);
-        mapRef.current?.setZoom(16);
+        mapRef.current?.setZoom?.(16);
         setLoadingGPS(false);
       },
       () => {
@@ -334,7 +364,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-black border border-[#00ff88]/30 w-[95vw] max-w-md h-[90vh] flex flex-col p-0 gap-0">
-        
         {/* Header with explicit Close Button */}
         <DialogHeader className="p-4 bg-black/80 z-20 w-full border-b border-[#00ff88]/20 flex-none flex flex-row items-center justify-between">
           <div className="flex flex-col">
@@ -345,21 +374,19 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
               Tap map or drag pin to select.
             </DialogDescription>
           </div>
-          
-          {/* THE FIX: Explicit Close Button */}
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={onClose} 
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
             className="text-white hover:text-red-500 -mr-2"
           >
             <X className="w-6 h-6" />
           </Button>
         </DialogHeader>
 
-        {/* Map Container - Removed internal style tag to avoid errors if mapStyles is undefined */}
-        <div className="flex-1 w-full relative min-h-[320px] bg-[#1a1a2e]"> 
-           {/* bg-[#1a1a2e] acts as a placeholder color so it doesn't look broken while loading */}
+        {/* Map Container */}
+        <div className="flex-1 w-full relative min-h-[320px] bg-[#1a1a2e]">
           <div ref={mapDivRef} className="w-full h-full" />
         </div>
 
@@ -378,7 +405,11 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
               onClick={getCurrentLocation}
               disabled={loadingGPS}
             >
-              {loadingGPS ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Crosshair className="w-4 h-4 mr-2" />}
+              {loadingGPS ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Crosshair className="w-4 h-4 mr-2" />
+              )}
               {t("gps_btn")}
             </Button>
 
@@ -394,72 +425,76 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
       </DialogContent>
     </Dialog>
   );
+};
 
 /* ---------------------------------------------
    LocationInput (FIXED: controlled + sync)
 ---------------------------------------------- */
-const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
-  const inputRef = useRef(null);
-  const [showMapPicker, setShowMapPicker] = useState(false);
-  const [text, setText] = useState(value?.address || "");
+const LocationInput = React.memo(
+  ({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
+    const inputRef = useRef(null);
+    const [showMapPicker, setShowMapPicker] = useState(false);
+    const [text, setText] = useState(value?.address || "");
 
-  // Keep text in sync when parent changes (e.g. selecting from map)
-  useEffect(() => {
-    setText(value?.address || "");
-  }, [value?.address]);
+    useEffect(() => {
+      setText(value?.address || "");
+    }, [value?.address]);
 
-  useGoogleMapsAutocomplete(inputRef, (place) => {
-    setText(place.address || "");
-    onChange(place);
-  }, mapsLoaded);
+    useGoogleMapsAutocomplete(
+      inputRef,
+      (place) => {
+        setText(place.address || "");
+        onChange(place);
+      },
+      mapsLoaded
+    );
 
-  const onType = (e) => {
-    const v = e.target.value;
-    setText(v);
-    // typing only changes address string (coords remain as-is)
-    onChange({ ...(value || {}), address: v });
-  };
+    const onType = (e) => {
+      const v = e.target.value;
+      setText(v);
+      onChange({ ...(value || {}), address: v });
+    };
 
-  return (
-    <>
-      <div className="relative flex items-center mb-2">
-        <Icon className={`absolute left-3 h-4 w-4 ${iconColor} z-20`} />
-        <Input
-          ref={inputRef}
-          value={text}
-          onChange={onType}
-          className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
-          placeholder={placeholder}
+    return (
+      <>
+        <div className="relative flex items-center mb-2">
+          <Icon className={`absolute left-3 h-4 w-4 ${iconColor} z-20`} />
+          <Input
+            ref={inputRef}
+            value={text}
+            onChange={onType}
+            className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
+            placeholder={placeholder}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-1 text-[#00d4ff] z-20 hover:bg-[#00d4ff]/10"
+            onClick={() => setShowMapPicker(true)}
+          >
+            <Target className="w-4 h-4" />
+          </Button>
+        </div>
+
+        <MapPicker
+          isOpen={showMapPicker}
+          onClose={() => setShowMapPicker(false)}
+          onLocationSelect={(loc) => {
+            setText(loc.address || "");
+            onChange(loc);
+          }}
+          title={placeholder}
+          initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null}
+          mapsLoaded={mapsLoaded}
         />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="absolute right-1 text-[#00d4ff] z-20 hover:bg-[#00d4ff]/10"
-          onClick={() => setShowMapPicker(true)}
-        >
-          <Target className="w-4 h-4" />
-        </Button>
-      </div>
-
-      <MapPicker
-        isOpen={showMapPicker}
-        onClose={() => setShowMapPicker(false)}
-        onLocationSelect={(loc) => {
-          setText(loc.address || "");
-          onChange(loc);
-        }}
-        title={placeholder}
-        initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null}
-        mapsLoaded={mapsLoaded}
-      />
-    </>
-  );
-});
+      </>
+    );
+  }
+);
 
 /* ---------------------------------------------
-   LiveTrackingMap (FIXED: init waits for mapsLoaded
-   + uses normalized ride coords)
+   LiveTrackingMap
 ---------------------------------------------- */
 const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, status }) => {
   const mapDivRef = useRef(null);
@@ -467,7 +502,6 @@ const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, stat
   const rendererRef = useRef(null);
   const [eta, setEta] = useState(null);
 
-  // init map (retries once mapsLoaded becomes true)
   useEffect(() => {
     if (!mapsLoaded || !window.google?.maps || !mapDivRef.current) return;
 
@@ -495,7 +529,6 @@ const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, stat
       polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
     });
 
-    // Force resize after mount (sheet/dialog)
     setTimeout(() => {
       try {
         window.google.maps.event.trigger(map, "resize");
@@ -504,7 +537,6 @@ const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, stat
     }, 60);
   }, [mapsLoaded]);
 
-  // update route & ETA
   useEffect(() => {
     if (!mapsLoaded || !window.google?.maps || !rendererRef.current) return;
 
@@ -512,8 +544,6 @@ const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, stat
       driverLocation?.lat ? driverLocation :
       pickup?.lat ? pickup : null;
 
-    // accepted/arrived: driver -> pickup
-    // in_progress: driver -> destination
     const end =
       status === "in_progress"
         ? (destination?.lat ? destination : null)
@@ -550,6 +580,7 @@ const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, stat
     </div>
   );
 };
+
 
 /* ---------------------------------------------
    ChatInterface (uses api; no axios needed)
