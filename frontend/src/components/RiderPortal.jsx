@@ -146,10 +146,7 @@ const useGoogleMapsLoader = () => {
 
     // NOTE: if your key is restricted by HTTP referrers, Render domain must be allowed.
     // If your Android app uses a WebView with file:// origin, referrer restrictions will break maps.
-    script.src =
-      `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&loading=async`
-      `&libraries=places,geometry&v=weekly&loading=async`;
-
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&loading=async`;
     script.async = true;
     script.defer = true;
     script.onload = () => setMapsLoaded(true);
