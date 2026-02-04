@@ -37,11 +37,10 @@ const LandingPage = () => {
             <div className="w-14 h-14 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
               {/* âœ… CORRECT TAG FOR PUBLIC FOLDER */}
               <img 
-                src="/logo.png" 
-                alt="T'aksi Logo" 
-                className="w-full h-full object-cover"
-                onError={(e) => e.target.src = "https://via.placeholder.com/150?text=TAKSI"} 
-              />
+  src="/logo.png" 
+  alt="T'aksi Logo" 
+  className="w-full h-full object-cover" 
+/>
             </div>
             <div className="flex flex-col">
               <span className="text-2xl font-black tracking-tight leading-none">{t('app_name')}</span>
