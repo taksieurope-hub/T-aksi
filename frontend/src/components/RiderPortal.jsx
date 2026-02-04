@@ -119,20 +119,22 @@ const useGoogleMapsLoader = () => {
   const [mapsLoaded, setMapsLoaded] = useState(!!window.google?.maps);
 
   useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY) return;
+
+    // Catch auth failures (MOST COMMON reason for "blank/blue map")
+    window.gm_authFailure = () => {
+      toast.error("Google Maps auth failed. Check API key restrictions + billing + enabled APIs.");
+      setMapsLoaded(false);
+    };
+
     // Already available
     if (window.google?.maps) {
       setMapsLoaded(true);
       return;
     }
-    if (!GOOGLE_MAPS_API_KEY) return;
 
     const existing = document.querySelector("script[data-google-maps='1']");
     if (existing) {
-      // If it already loaded earlier, don't wait for "load" event
-      if (window.google?.maps) {
-        setMapsLoaded(true);
-        return;
-      }
       const onLoad = () => setMapsLoaded(true);
       existing.addEventListener("load", onLoad);
       existing.addEventListener("error", () => toast.error("Google Maps failed to load"));
@@ -141,7 +143,13 @@ const useGoogleMapsLoader = () => {
 
     const script = document.createElement("script");
     script.setAttribute("data-google-maps", "1");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&loading=async`;
+
+    // NOTE: if your key is restricted by HTTP referrers, Render domain must be allowed.
+    // If your Android app uses a WebView with file:// origin, referrer restrictions will break maps.
+    script.src =
+      `https://maps.googleapis.com/maps/api/js?key=${AIzaSyC2gkANH8GJOZNDdibTCKNEOWiuf580bxA}` +
+      `&libraries=places,geometry&v=weekly&loading=async`;
+
     script.async = true;
     script.defer = true;
     script.onload = () => setMapsLoaded(true);
@@ -151,6 +159,7 @@ const useGoogleMapsLoader = () => {
 
   return mapsLoaded;
 };
+
 
 
 /* ---------------------------------------------
@@ -266,7 +275,8 @@ const MapPicker = ({
       const map = new window.google.maps.Map(mapDivRef.current, {
         center: defaultCenter,
         zoom: 14,
-        disableDefaultUI: true,
+        disableDefaultUI: false, // debugging: show controls
+        gestureHandling: "greedy",
         zoomControl: true,
         clickableIcons: false,
       });
@@ -504,7 +514,7 @@ const LocationInput = React.memo(
             ref={inputRef}
             value={text}
             onChange={onType}
-            className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white"
+            className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
             placeholder={placeholder}
             autoComplete="off"
             inputMode="text"

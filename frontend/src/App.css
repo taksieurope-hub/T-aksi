@@ -44,6 +44,7 @@ body {
   z-index: 0;
 }
 
+
 /* =========================================================
    Google Maps + Places fixes (Dialog/Sheet compatible)
    ========================================================= */
@@ -58,7 +59,8 @@ div[aria-label="Map"] {
 
 /* 🔥 IMPORTANT: Places dropdown must sit above shadcn Dialog/Sheet overlays */
 .pac-container {
-  z-index: 99999 !important;
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
 }
 
 /* Optional: readable autocomplete text on dark UI */
