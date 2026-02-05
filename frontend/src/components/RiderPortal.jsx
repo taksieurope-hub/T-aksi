@@ -113,7 +113,7 @@ const normalizeRide = (ride) => {
 };
 
 /* ---------------------------------------------
-   Google Maps loader (reliable)
+   Google Maps loader (Updated)
 ---------------------------------------------- */
 const useGoogleMapsLoader = () => {
   const [mapsLoaded, setMapsLoaded] = useState(!!window.google?.maps);
@@ -121,13 +121,6 @@ const useGoogleMapsLoader = () => {
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) return;
 
-    // Catch auth failures (MOST COMMON reason for "blank/blue map")
-    window.gm_authFailure = () => {
-      toast.error("Google Maps auth failed. Check API key restrictions + billing + enabled APIs.");
-      setMapsLoaded(false);
-    };
-
-    // Already available
     if (window.google?.maps) {
       setMapsLoaded(true);
       return;
@@ -135,18 +128,14 @@ const useGoogleMapsLoader = () => {
 
     const existing = document.querySelector("script[data-google-maps='1']");
     if (existing) {
-      const onLoad = () => setMapsLoaded(true);
-      existing.addEventListener("load", onLoad);
-      existing.addEventListener("error", () => toast.error("Google Maps failed to load"));
-      return () => existing.removeEventListener("load", onLoad);
+      existing.addEventListener("load", () => setMapsLoaded(true));
+      return;
     }
 
     const script = document.createElement("script");
     script.setAttribute("data-google-maps", "1");
-
-    // NOTE: if your key is restricted by HTTP referrers, Render domain must be allowed.
-    // If your Android app uses a WebView with file:// origin, referrer restrictions will break maps.
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&loading=async`;
+    // Added &v=weekly to ensure New Places API is available
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&loading=async&v=weekly`;
     script.async = true;
     script.defer = true;
     script.onload = () => setMapsLoaded(true);
@@ -157,41 +146,6 @@ const useGoogleMapsLoader = () => {
   return mapsLoaded;
 };
 
-
-
-/* ---------------------------------------------
-   Google Places Autocomplete hook (safe)
----------------------------------------------- */
-const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
-  useEffect(() => {
-    if (!mapsLoaded || !inputRef.current || !window.google?.maps?.places) return;
-
-    const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
-      componentRestrictions: { country: "ge" },
-      fields: ["formatted_address", "geometry", "name"]
-    });
-
-    const stopEnter = (e) => { if (e.key === "Enter") e.preventDefault(); };
-    inputRef.current.addEventListener("keydown", stopEnter);
-
-    const listener = ac.addListener("place_changed", () => {
-      const place = ac.getPlace();
-      if (!place?.geometry?.location) return;
-      onPlaceSelect({
-        address: place.formatted_address || place.name || "",
-        lat: place.geometry.location.lat(),
-        lng: place.geometry.location.lng()
-      });
-    });
-
-    return () => {
-      try {
-        inputRef.current?.removeEventListener("keydown", stopEnter);
-        window.google?.maps?.event?.removeListener(listener);
-      } catch {}
-    };
-  }, [mapsLoaded, inputRef, onPlaceSelect]);
-};
 
 /* ---------------------------------------------
    MapPicker (FIXED: resize/recenter after open)
@@ -475,71 +429,103 @@ const MapPicker = ({
 /* ---------------------------------------------
    LocationInput (FIXED: controlled + sync)
 ---------------------------------------------- */
+/* ---------------------------------------------
+   LocationInput (UPDATED FOR NEW GOOGLE MAPS API)
+---------------------------------------------- */
 const LocationInput = React.memo(
   ({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
-    const inputRef = useRef(null);
-    const [showMapPicker, setShowMapPicker] = useState(false);
+    const containerRef = useRef(null);
+    const autocompleteRef = useRef(null);
     const [text, setText] = useState(value?.address || "");
 
+    // Sync state if parent value changes
     useEffect(() => {
-      setText(value?.address || "");
+      if (value?.address) setText(value.address);
     }, [value?.address]);
 
-    useGoogleMapsAutocomplete(
-      inputRef,
-      (place) => {
-        setText(place.address || "");
-        onChange(place);
-      },
-      mapsLoaded
-    );
+    // Initialize the NEW Google Place Autocomplete Element
+    useEffect(() => {
+      if (!mapsLoaded || !containerRef.current || !window.google?.maps) return;
 
-    const onType = (e) => {
-      const v = e.target.value;
-      setText(v);
-      // do NOT wipe coords when typing; keep whatever you already have
-      onChange({ ...(value || {}), address: v });
-    };
+      const init = async () => {
+        // 1. Import the specific library
+        const { PlaceAutocompleteElement } = await window.google.maps.importLibrary("places");
+
+        // 2. Create the element if it doesn't exist
+        if (!autocompleteRef.current) {
+          const autocomplete = new PlaceAutocompleteElement();
+          
+          // 3. Configure it
+          autocomplete.placeholder = placeholder;
+          autocomplete.className = "taksi-autocomplete"; // For custom CSS below
+          
+          // 4. Listen for selection
+          autocomplete.addEventListener("gmp-places-select", async ({ place }) => {
+            // The new API requires fetching fields explicitly
+            await place.fetchFields({ fields: ["displayName", "formattedAddress", "location"] });
+
+            const address = place.formattedAddress || place.displayName;
+            const lat = place.location.lat();
+            const lng = place.location.lng();
+
+            setText(address);
+            onChange({ address, lat, lng });
+          });
+
+          // 5. Append to DOM
+          containerRef.current.appendChild(autocomplete);
+          autocompleteRef.current = autocomplete;
+        }
+      };
+
+      init();
+
+      // Cleanup: Remove the element to prevent duplicates
+      return () => {
+        if (autocompleteRef.current && containerRef.current) {
+          try {
+            // containerRef.current.removeChild(autocompleteRef.current); // Optional: keep cached
+            // autocompleteRef.current = null;
+          } catch (e) {}
+        }
+      };
+    }, [mapsLoaded, onChange, placeholder]);
 
     return (
-      <>
-        <div className="relative flex items-center mb-2">
-          {/* IMPORTANT: pointer-events-none so it never blocks typing on mobile */}
-          <Icon className={`absolute left-3 h-4 w-4 ${iconColor} pointer-events-none`} />
+      <div className="relative mb-2">
+        {/* CSS to Force Dark Mode on Google's Element */}
+        <style>{`
+          .taksi-autocomplete {
+            width: 100%;
+            --gmp-px-color-surface: #000000; /* Black Background */
+            --gmp-px-color-on-surface: #ffffff; /* White Text */
+            --gmp-px-color-on-surface-variant: #9ca3af; /* Gray placeholder */
+            --gmp-px-color-primary: #00ff88; /* Green Highlights */
+            --gmp-px-font-family: inherit;
+          }
+          /* Hide Google's default border and make it look like our app */
+          .taksi-autocomplete::part(input) {
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 0.5rem;
+            color: white;
+            padding-left: 2.5rem; /* Space for our icon */
+            height: 2.25rem;
+          }
+          .taksi-autocomplete::part(input):focus {
+            outline: none;
+            border-color: #00ff88;
+          }
+        `}</style>
 
-          <Input
-            ref={inputRef}
-            value={text}
-            onChange={onType}
-            className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white relative z-10"
-            placeholder={placeholder}
-            autoComplete="off"
-            inputMode="text"
-          />
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/10"
-            onClick={() => setShowMapPicker(true)}
-          >
-            <Target className="w-4 h-4" />
-          </Button>
+        {/* The Icon (Overlayed on top) */}
+        <div className="absolute left-3 top-2.5 z-10 pointer-events-none">
+          <Icon className={`h-4 w-4 ${iconColor}`} />
         </div>
 
-        <MapPicker
-          isOpen={showMapPicker}
-          onClose={() => setShowMapPicker(false)}
-          onLocationSelect={(loc) => {
-            setText(loc.address || "");
-            onChange(loc);
-          }}
-          title={placeholder}
-          initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null}
-          mapsLoaded={mapsLoaded}
-        />
-      </>
+        {/* The Container where Google injects the input */}
+        <div ref={containerRef} className="w-full relative z-0" />
+      </div>
     );
   }
 );
