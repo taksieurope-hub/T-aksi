@@ -427,104 +427,77 @@ const MapPicker = ({
 
 
 /* ---------------------------------------------
-   LocationInput (FIXED: controlled + sync)
----------------------------------------------- */
-/* ---------------------------------------------
-   LocationInput (UPDATED FOR NEW GOOGLE MAPS API)
+   LocationInput (FIXED for "Request Ride" Button)
 ---------------------------------------------- */
 const LocationInput = React.memo(
   ({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
     const containerRef = useRef(null);
     const autocompleteRef = useRef(null);
-    const [text, setText] = useState(value?.address || "");
 
-    // Sync state if parent value changes
-    useEffect(() => {
-      if (value?.address) setText(value.address);
-    }, [value?.address]);
-
-    // Initialize the NEW Google Place Autocomplete Element
+    // Initialize the New Google Autocomplete
     useEffect(() => {
       if (!mapsLoaded || !containerRef.current || !window.google?.maps) return;
 
       const init = async () => {
-        // 1. Import the specific library
+        // 1. Import the library
         const { PlaceAutocompleteElement } = await window.google.maps.importLibrary("places");
 
-        // 2. Create the element if it doesn't exist
         if (!autocompleteRef.current) {
           const autocomplete = new PlaceAutocompleteElement();
-          
-          // 3. Configure it
           autocomplete.placeholder = placeholder;
-          autocomplete.className = "taksi-autocomplete"; // For custom CSS below
+          autocomplete.className = "taksi-autocomplete";
           
-          // 4. Listen for selection
+          // 2. CRITICAL: Listen for selection to unlock the button
           autocomplete.addEventListener("gmp-places-select", async ({ place }) => {
-            // The new API requires fetching fields explicitly
+            if (!place) return;
+            
+            // Fetch the GPS coordinates (Required!)
             await place.fetchFields({ fields: ["displayName", "formattedAddress", "location"] });
 
             const address = place.formattedAddress || place.displayName;
-            const lat = place.location.lat();
-            const lng = place.location.lng();
+            const lat = place.location?.lat();
+            const lng = place.location?.lng();
 
-            setText(address);
-            onChange({ address, lat, lng });
+            // Send data to parent (This unlocks the "Request Ride" button)
+            if (lat && lng) {
+              onChange({ address, lat, lng });
+            }
           });
 
-          // 5. Append to DOM
           containerRef.current.appendChild(autocomplete);
           autocompleteRef.current = autocomplete;
         }
       };
 
       init();
-
-      // Cleanup: Remove the element to prevent duplicates
-      return () => {
-        if (autocompleteRef.current && containerRef.current) {
-          try {
-            // containerRef.current.removeChild(autocompleteRef.current); // Optional: keep cached
-            // autocompleteRef.current = null;
-          } catch (e) {}
-        }
-      };
-    }, [mapsLoaded, onChange, placeholder]);
+    }, [mapsLoaded, placeholder, onChange]);
 
     return (
       <div className="relative mb-2">
-        {/* CSS to Force Dark Mode on Google's Element */}
+        {/* Force Dark Mode & Fix Dropdown Visibility */}
         <style>{`
           .taksi-autocomplete {
             width: 100%;
-            --gmp-px-color-surface: #000000; /* Black Background */
-            --gmp-px-color-on-surface: #ffffff; /* White Text */
-            --gmp-px-color-on-surface-variant: #9ca3af; /* Gray placeholder */
-            --gmp-px-color-primary: #00ff88; /* Green Highlights */
-            --gmp-px-font-family: inherit;
+            --gmp-px-color-surface: #000000;
+            --gmp-px-color-on-surface: #ffffff;
+            --gmp-px-color-primary: #00ff88;
           }
-          /* Hide Google's default border and make it look like our app */
           .taksi-autocomplete::part(input) {
-            background-color: rgba(0, 0, 0, 0.5);
+            background-color: rgba(26, 26, 46, 0.8);
             border: 1px solid rgba(0, 255, 136, 0.3);
             border-radius: 0.5rem;
             color: white;
-            padding-left: 2.5rem; /* Space for our icon */
-            height: 2.25rem;
-          }
-          .taksi-autocomplete::part(input):focus {
-            outline: none;
-            border-color: #00ff88;
+            padding-left: 2.5rem;
+            height: 2.5rem;
           }
         `}</style>
 
-        {/* The Icon (Overlayed on top) */}
-        <div className="absolute left-3 top-2.5 z-10 pointer-events-none">
+        <div className="absolute left-3 top-3 z-20 pointer-events-none">
           <Icon className={`h-4 w-4 ${iconColor}`} />
         </div>
 
-        {/* The Container where Google injects the input */}
-        <div ref={containerRef} className="w-full relative z-0" />
+        {/* High Z-Index ensures dropdown appears on top */}
+        <div ref={containerRef} className="w-full relative z-10" />
       </div>
     );
   }
