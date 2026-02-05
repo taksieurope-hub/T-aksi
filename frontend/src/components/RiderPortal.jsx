@@ -427,77 +427,146 @@ const MapPicker = ({
 
 
 /* ---------------------------------------------
-   LocationInput (FIXED for "Request Ride" Button)
+   LocationInput (RESTORED UI + NEW API)
 ---------------------------------------------- */
 const LocationInput = React.memo(
   ({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
     const containerRef = useRef(null);
     const autocompleteRef = useRef(null);
+    const [showMapPicker, setShowMapPicker] = useState(false);
 
-    // Initialize the New Google Autocomplete
+    // 1. Initialize the Google Input
     useEffect(() => {
       if (!mapsLoaded || !containerRef.current || !window.google?.maps) return;
 
       const init = async () => {
-        // 1. Import the library
         const { PlaceAutocompleteElement } = await window.google.maps.importLibrary("places");
 
         if (!autocompleteRef.current) {
           const autocomplete = new PlaceAutocompleteElement();
           autocomplete.placeholder = placeholder;
-          autocomplete.className = "taksi-autocomplete";
+          autocomplete.className = "taksi-autocomplete"; // Custom Class for styling
           
-          // 2. CRITICAL: Listen for selection to unlock the button
+          // Handle Selection
           autocomplete.addEventListener("gmp-places-select", async ({ place }) => {
             if (!place) return;
-            
-            // Fetch the GPS coordinates (Required!)
             await place.fetchFields({ fields: ["displayName", "formattedAddress", "location"] });
-
             const address = place.formattedAddress || place.displayName;
             const lat = place.location?.lat();
             const lng = place.location?.lng();
-
-            // Send data to parent (This unlocks the "Request Ride" button)
-            if (lat && lng) {
-              onChange({ address, lat, lng });
-            }
+            if (lat && lng) onChange({ address, lat, lng });
           });
 
           containerRef.current.appendChild(autocomplete);
           autocompleteRef.current = autocomplete;
         }
       };
-
       init();
     }, [mapsLoaded, placeholder, onChange]);
 
+    // 2. Handle "Current Location" (GPS) Click
+    const handleGPS = () => {
+      if (!navigator.geolocation) return toast.error("GPS not supported");
+      toast.info("Locating...");
+      
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          
+          // Reverse Geocode to get address text for the input
+          const geocoder = new window.google.maps.Geocoder();
+          const { results } = await geocoder.geocode({ location: { lat, lng } });
+          const address = results[0]?.formatted_address || `${lat}, ${lng}`;
+
+          // Update the input text manually (since it's a web component)
+          if (autocompleteRef.current) {
+            autocompleteRef.current.value = address;
+          }
+          onChange({ address, lat, lng });
+          toast.success("Location found");
+        },
+        () => toast.error("Could not get location")
+      );
+    };
+
     return (
-      <div className="relative mb-2">
-        {/* Force Dark Mode & Fix Dropdown Visibility */}
+      <div className="relative mb-2 group">
+        {/* CSS to make Google Element look like YOUR App (Dark Mode) */}
         <style>{`
           .taksi-autocomplete {
             width: 100%;
-            --gmp-px-color-surface: #000000;
-            --gmp-px-color-on-surface: #ffffff;
-            --gmp-px-color-primary: #00ff88;
+            --gmp-px-color-surface: #000000;      /* Black background */
+            --gmp-px-color-on-surface: #ffffff;   /* White text */
+            --gmp-px-color-primary: #00ff88;      /* Green highlights */
           }
+          /* Hack to style the internal input of the web component */
           .taksi-autocomplete::part(input) {
-            background-color: rgba(26, 26, 46, 0.8);
+            background-color: rgba(0, 0, 0, 0.5);
             border: 1px solid rgba(0, 255, 136, 0.3);
             border-radius: 0.5rem;
             color: white;
             padding-left: 2.5rem;
+            padding-right: 5rem; /* Space for buttons */
             height: 2.5rem;
+            font-family: inherit;
+          }
+          .taksi-autocomplete::part(input):focus {
+            outline: none;
+            border-color: #00ff88;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
           }
         `}</style>
 
+        {/* Left Icon (Static) */}
         <div className="absolute left-3 top-3 z-20 pointer-events-none">
           <Icon className={`h-4 w-4 ${iconColor}`} />
         </div>
 
-        {/* High Z-Index ensures dropdown appears on top */}
+        {/* The Google Input Container */}
         <div ref={containerRef} className="w-full relative z-10" />
+
+        {/* Right Side Buttons (GPS & Map) */}
+        <div className="absolute right-1 top-1 z-20 flex gap-1 h-8 items-center">
+          {/* GPS Button */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-[#00ff88] hover:bg-[#00ff88]/10 rounded-full"
+            onClick={handleGPS}
+            title="Use Current Location"
+          >
+            <Crosshair className="w-4 h-4" />
+          </Button>
+
+          {/* Map Picker Button */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-[#00d4ff] hover:bg-[#00d4ff]/10 rounded-full"
+            onClick={() => setShowMapPicker(true)}
+            title="Select on Map"
+          >
+            <Target className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* Map Picker Modal (Restored) */}
+        <MapPicker
+          isOpen={showMapPicker}
+          onClose={() => setShowMapPicker(false)}
+          onLocationSelect={(loc) => {
+            if (autocompleteRef.current) {
+              autocompleteRef.current.value = loc.address;
+            }
+            onChange(loc);
+          }}
+          title={placeholder}
+          initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null}
+          mapsLoaded={mapsLoaded}
+        />
       </div>
     );
   }
