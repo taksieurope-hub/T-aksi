@@ -427,7 +427,7 @@ const MapPicker = ({
 
 
 /* ---------------------------------------------
-   LocationInput (Final Fix: Dark Mode + Enter Key Support)
+   LocationInput (MASTER FIX: Dark Mode + Unlocks Button)
 ---------------------------------------------- */
 const LocationInput = React.memo(
   ({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
@@ -435,7 +435,7 @@ const LocationInput = React.memo(
     const autocompleteRef = useRef(null);
     const [showMapPicker, setShowMapPicker] = useState(false);
 
-    // Helper: Geocode manually (if user hits Enter or uses GPS)
+    // Helper: Handle "Enter" key to force coordinates
     const manualGeocode = async (addressText) => {
       if (!addressText || !window.google?.maps) return;
       
@@ -448,34 +448,30 @@ const LocationInput = React.memo(
           const lng = loc.geometry.location.lng();
           const formattedAddress = loc.formatted_address;
           
-          // Update the UI input text
+          // Force update the UI
           if (autocompleteRef.current) autocompleteRef.current.value = formattedAddress;
           
-          // Send to parent to UNLOCK button
+          // Send to Parent (This UNLOCKS the button)
           onChange({ address: formattedAddress, lat, lng });
-          return true;
         }
       } catch (e) {
         toast.error("Address not found. Please try again.");
       }
-      return false;
     };
 
-    // Initialize Google Element
     useEffect(() => {
       if (!mapsLoaded || !containerRef.current || !window.google?.maps) return;
 
       const init = async () => {
-        // Prevent duplicate inputs
-        if (autocompleteRef.current) return;
+        if (autocompleteRef.current) return; // Prevent double render
 
         const { PlaceAutocompleteElement } = await window.google.maps.importLibrary("places");
         const autocomplete = new PlaceAutocompleteElement();
         
         autocomplete.placeholder = placeholder;
-        autocomplete.className = "taksi-autocomplete"; // Apply our custom dark theme
+        autocomplete.className = "taksi-autocomplete"; // Styles applied below
 
-        // 1. Handle Click Selection (Standard)
+        // 1. Handle Selection from Dropdown
         autocomplete.addEventListener("gmp-places-select", async ({ place }) => {
           if (!place) return;
           await place.fetchFields({ fields: ["displayName", "formattedAddress", "location"] });
@@ -483,13 +479,15 @@ const LocationInput = React.memo(
           const lat = place.location?.lat();
           const lng = place.location?.lng();
           
-          if (lat && lng) onChange({ address, lat, lng });
+          if (lat && lng) {
+            onChange({ address, lat, lng });
+          }
         });
 
-        // 2. Handle "Enter" Key (Failsafe for typing)
-        autocomplete.addEventListener("keydown", async (e) => {
+        // 2. Handle "Enter" Key (If user types and hits enter)
+        autocomplete.addEventListener("keydown", (e) => {
           if (e.key === "Enter") {
-            e.preventDefault(); // Stop form submit
+            e.preventDefault();
             const text = autocomplete.value;
             if (text) manualGeocode(text);
           }
@@ -502,7 +500,7 @@ const LocationInput = React.memo(
       init();
     }, [mapsLoaded, placeholder, onChange]);
 
-    // Handle "Use Current Location" Click
+    // Handle "Use Current Location"
     const handleGPS = () => {
       if (!navigator.geolocation) return toast.error("GPS not supported");
       toast.info("Locating...");
@@ -512,7 +510,6 @@ const LocationInput = React.memo(
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           
-          // Reverse lookup to get text address
           const geocoder = new window.google.maps.Geocoder();
           const { results } = await geocoder.geocode({ location: { lat, lng } });
           const address = results[0]?.formatted_address || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
@@ -526,44 +523,43 @@ const LocationInput = React.memo(
     };
 
     return (
-      <div className="relative mb-3">
-        {/* DARK MODE STYLING INJECTION */}
+      <div className="relative mb-3 group">
+        {/* CSS to fix the "Block" look and make it Dark Mode */}
         <style>{`
           .taksi-autocomplete {
-            --gmp-px-color-surface: #000000;      /* Background */
-            --gmp-px-color-on-surface: #ffffff;   /* Text */
-            --gmp-px-color-on-surface-variant: #9ca3af; /* Placeholder */
-            --gmp-px-color-primary: #00ff88;      /* Active Color */
+            --gmp-px-color-surface: #000000;      /* Black background */
+            --gmp-px-color-on-surface: #ffffff;   /* White text */
+            --gmp-px-color-on-surface-variant: #9ca3af; /* Grey placeholder */
+            --gmp-px-color-primary: #00ff88;      /* Green selection */
             width: 100%;
           }
-          /* Deep styling to fix the "Block" look */
+          /* This specifically styles the input box to remove the "Block" look */
           .taksi-autocomplete::part(input) {
-            background-color: rgba(20, 20, 30, 0.9);
-            border: 1px solid rgba(0, 255, 136, 0.3);
+            background-color: rgba(26, 26, 46, 0.8); /* Dark Blue/Black */
+            border: 1px solid rgba(0, 255, 136, 0.3); /* Green Border */
             border-radius: 0.75rem;
             color: white;
             padding-left: 2.75rem;
             padding-right: 5rem;
             height: 3rem;
             font-size: 0.95rem;
-            box-sizing: border-box;
           }
           .taksi-autocomplete::part(input):focus {
             outline: none;
             border-color: #00ff88;
-            box-shadow: 0 0 0 1px #00ff88;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
           }
         `}</style>
 
-        {/* Left Icon */}
+        {/* Icon */}
         <div className="absolute left-3 top-3.5 z-20 pointer-events-none">
           <Icon className={`h-5 w-5 ${iconColor}`} />
         </div>
 
-        {/* Google Input Container */}
+        {/* Google Input */}
         <div ref={containerRef} className="w-full relative z-10" />
 
-        {/* Right Side Buttons (GPS + Map) */}
+        {/* Action Buttons (GPS & Map) */}
         <div className="absolute right-2 top-2 z-20 flex gap-1 bg-black/50 rounded-lg p-0.5 border border-white/10">
           <Button
             type="button"
@@ -588,7 +584,7 @@ const LocationInput = React.memo(
           </Button>
         </div>
 
-        {/* Map Picker Modal */}
+        {/* Map Picker */}
         <MapPicker
           isOpen={showMapPicker}
           onClose={() => setShowMapPicker(false)}
