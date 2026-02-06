@@ -744,31 +744,31 @@ const RiderAuth = () => {
 
     try {
       if (isLogin) {
-        const res = await api.post("/auth/login", loginData);
-        if (res.data?.token && res.data?.user) {
-          login(res.data.token, res.data.user);
-          toast.success(t("login_welcome"));
-          navigate("/rider/dashboard");
-        } else {
-          toast.error("Invalid response from server");
-        }
-      } else {
-        const payload = {
-          name: registerData.name,
-          surname: registerData.surname,
-          cellphone: registerData.cellphone,
-          password: registerData.password,
-          email: registerData.email || undefined,
-        };
-        const res = await api.post("/auth/register/rider", payload);
-        if (res.data?.token && res.data?.user) {
-          login(res.data.token, res.data.user);
-          toast.success("Account created!");
-          navigate("/rider/dashboard");
-        } else {
-          toast.error("Invalid response from server");
-        }
-      }
+  const res = await api.post("/auth/login", loginData);
+
+  console.log("LOGIN RESPONSE:", res.data);
+
+  const token =
+    res.data?.token ||
+    res.data?.access_token ||
+    res.data?.jwt ||
+    res.data?.data?.token;
+
+  const user =
+    res.data?.user ||
+    res.data?.rider ||
+    res.data?.data?.user ||
+    res.data?.profile;
+
+  if (token && user) {
+    login(token, user);
+    toast.success("Logged in");
+    navigate("/rider/dashboard");
+  } else {
+    toast.error("Server login response wrong format");
+  }
+}
+
     } catch (error) {
       const msg = error?.response?.data?.detail || error?.response?.data || "Authentication failed";
       toast.error(String(msg));
