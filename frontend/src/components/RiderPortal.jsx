@@ -1723,10 +1723,13 @@ const RiderPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
 
-  if (!user || user.user_type !== "rider") {
-    if (location.pathname === "/rider" || location.pathname === "/rider/") return <RiderAuth />;
-    return <Navigate to="/rider" replace />;
-  }
+  if (!user) return <RiderAuth />;
+
+// allow rider accounts
+if (user.user_type && user.user_type !== "rider") {
+  return <Navigate to="/driver" replace />;
+}
+
 
   return (
     <Routes>

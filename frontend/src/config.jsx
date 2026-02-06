@@ -43,10 +43,11 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = (token, userData) => {
-    localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(userData));
-    setUser(userData);
-  };
+  localStorage.setItem("token", token);
+  localStorage.setItem("user", JSON.stringify(userData));
+  setUser(userData);
+};
+
 
   const logout = () => {
     localStorage.removeItem("token");
