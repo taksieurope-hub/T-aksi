@@ -1,11 +1,20 @@
-﻿import logging
+﻿# server.py  (T'aksi API v3 - Firestore Edition)
+# ✅ Fixes:
+# - Robust Firebase Admin init (no "wrong project" surprises)
+# - Phone normalization (no more invalid creds due to formatting)
+# - Consistent serialization of Firestore timestamps
+# - Keeps ALL your routes + logic (auth, rides, matching, surge, chat, wallet, admin)
+
+import logging
 import math
 import os
 import asyncio
+import base64
+import json
+import re
 from typing import List, Optional
 from datetime import datetime, timezone
 from pathlib import Path
-import base64
 
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -20,49 +29,254 @@ import jwt
 import httpx
 
 # =========================
-# 1. SETUP & CONFIG
+# ENV + INITIALIZATION
 # =========================
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
+load_dotenv(ROOT_DIR / ".env")  # IMPORTANT: load first
 
-# Set up Logging (Crucial for debugging on Render)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("taksi")
 
-# Security
-JWT_SECRET = os.environ.get("JWT_SECRET", "taksi_super_secret_key_change_this")
+# JWT
+JWT_SECRET = os.environ.get("JWT_SECRET", "taksi_galactic_secret_2025_secure_key")
 JWT_ALGORITHM = "HS256"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "D'Ahl-Enterprise9409145169086")
 
 # PayPal
 PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID")
 PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET")
-PAYPAL_API_BASE = "https://api-m.paypal.com" if os.environ.get("PAYPAL_MODE") == "live" else "https://api-m.sandbox.paypal.com"
+PAYPAL_MODE = os.environ.get("PAYPAL_MODE", "live").lower()  # "sandbox" or "live"
+PAYPAL_API_BASE = os.environ.get(
+    "PAYPAL_API_BASE",
+    "https://api-m.sandbox.paypal.com" if PAYPAL_MODE == "sandbox" else "https://api-m.paypal.com"
+)
 
-# Firebase Setup
-if not firebase_admin._apps:
+# CORS
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*")
+ALLOW_ORIGINS = ["*"] if (CORS_ORIGINS or "*").strip() == "*" else [
+    o.strip() for o in CORS_ORIGINS.split(",") if o.strip()
+]
+
+# Firebase
+SERVICE_ACCOUNT_PATH = Path(os.environ.get(
+    "FIREBASE_SERVICE_ACCOUNT_PATH",
+    str(ROOT_DIR / "firebase-service-account.json")
+))
+
+# ✅ Best: supply service account JSON in env on Render:
+# export FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+FIREBASE_SA_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+
+
+def init_firebase():
+    if firebase_admin._apps:
+        return
+
     try:
-        # Check if we have the JSON file, otherwise rely on Render Environment Variables
-        service_account_path = ROOT_DIR / "firebase-service-account.json"
-        if service_account_path.exists():
-            cred = credentials.Certificate(str(service_account_path))
+        if FIREBASE_SA_JSON:
+            cred = credentials.Certificate(json.loads(FIREBASE_SA_JSON))
             firebase_admin.initialize_app(cred)
-        else:
-            # For Render: Use Default Credentials (set via Env Vars) or dict
-            logger.info("No service account file found, attempting default credentials.")
-            firebase_admin.initialize_app()
+            logger.info("Firebase Admin initialized from FIREBASE_SERVICE_ACCOUNT_JSON")
+            return
+
+        if SERVICE_ACCOUNT_PATH.exists():
+            cred = credentials.Certificate(str(SERVICE_ACCOUNT_PATH))
+            firebase_admin.initialize_app(cred)
+            logger.info(f"Firebase Admin initialized from file: {SERVICE_ACCOUNT_PATH}")
+            return
+
+        # ⚠️ This is risky on Render unless you truly configured ADC.
+        # We keep it as a last resort, but we log clearly.
+        firebase_admin.initialize_app()
+        logger.warning("Firebase Admin initialized using default credentials (ADC). "
+                       "If login fails on Render, set FIREBASE_SERVICE_ACCOUNT_JSON.")
     except Exception as e:
-        logger.error(f"Firebase Init Error: {e}")
+        logger.error(f"Could not initialize Firebase Admin SDK: {e}")
+        raise
+
+
+init_firebase()
 
 _db = None
+
+
 def get_db():
     global _db
     if _db is None:
         _db = firestore.client()
     return _db
 
+
 # =========================
-# 2. MODELS (Pydantic)
+# HELPERS
+# =========================
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def serialize_firestore_data(data):
+    """
+    Recursively converts Firestore objects for JSON serialization.
+    Handles Timestamp, SERVER_TIMESTAMP sentinel, nested dicts/lists.
+    """
+    if data is None:
+        return None
+
+    # If already primitive
+    if isinstance(data, (str, int, float, bool)):
+        return data
+
+    # Firestore Timestamp often has isoformat OR timestamp
+    if hasattr(data, "isoformat"):
+        try:
+            return data.isoformat()
+        except Exception:
+            pass
+    if hasattr(data, "timestamp"):
+        try:
+            # Firestore Timestamp
+            return datetime.fromtimestamp(data.timestamp(), tz=timezone.utc).isoformat()
+        except Exception:
+            pass
+
+    # Dict
+    if isinstance(data, dict):
+        out = {}
+        for k, v in data.items():
+            # SERVER_TIMESTAMP sentinel sometimes has _sentinel
+            if hasattr(v, "_sentinel"):
+                out[k] = now_iso()
+            else:
+                out[k] = serialize_firestore_data(v)
+        return out
+
+    # List
+    if isinstance(data, list):
+        return [serialize_firestore_data(x) for x in data]
+
+    # Fallback
+    try:
+        return str(data)
+    except Exception:
+        return None
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    if not hashed:
+        return False
+    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def create_token(user_id: str, role: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "role": role,
+        "exp": int(datetime.now(timezone.utc).timestamp() + (7 * 24 * 60 * 60))
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def decode_token(token: str) -> Optional[dict]:
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception:
+        return None
+
+
+def normalize_phone(phone: str) -> str:
+    """
+    Removes spaces/dashes etc, keeps digits and +.
+    Converts leading 00 to +.
+    """
+    if not phone:
+        return ""
+    p = phone.strip()
+    p = re.sub(r"[^\d+]", "", p)
+    if p.startswith("00"):
+        p = "+" + p[2:]
+    return p
+
+
+def get_current_user_id(
+    user_id_q: Optional[str] = Query(None, alias="user_id"),
+    userId_q: Optional[str] = Query(None, alias="userId"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    authorization: Optional[str] = Header(None)
+):
+    if user_id_q:
+        return user_id_q
+    if userId_q:
+        return userId_q
+    if x_user_id:
+        return x_user_id
+    if authorization:
+        token = authorization.replace("Bearer ", "")
+        decoded = decode_token(token)
+        if decoded:
+            return decoded.get("user_id")
+        # fallback: if someone is passing raw user id
+        return token
+    return None
+
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate distance between two points in km"""
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2 +
+         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+         math.sin(dlon / 2) ** 2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+
+async def get_paypal_token():
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        logger.error("PayPal credentials missing")
+        return None
+
+    auth_str = f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        try:
+            response = await client.post(
+                f"{PAYPAL_API_BASE}/v1/oauth2/token",
+                headers={"Authorization": f"Basic {b64_auth}"},
+                data={"grant_type": "client_credentials"}
+            )
+            if response.status_code not in (200, 201):
+                logger.error(f"PayPal token failed: {response.status_code} {response.text}")
+                return None
+            return response.json().get("access_token")
+        except Exception as e:
+            logger.error(f"PayPal Token Error: {e}")
+            return None
+
+
+# =========================
+# FASTAPI APP
+# =========================
+
+app = FastAPI(title="T'aksi API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOW_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# =========================
+# MODELS
 # =========================
 
 class UserRegister(BaseModel):
@@ -72,16 +286,19 @@ class UserRegister(BaseModel):
     password: str
     email: Optional[str] = None
 
+
 class UserLogin(BaseModel):
     cellphone: str
     password: str
 
+
 class VehicleInfo(BaseModel):
     car_make: str
     car_model: str
-    car_year: int
+    car_year: int = Field(ge=1990, le=2030)
     car_color: str
     license_plate: str
+
 
 class StopLocation(BaseModel):
     address: str
@@ -89,8 +306,10 @@ class StopLocation(BaseModel):
     lng: float
     order: int = 0
 
+
 class RideRequest(BaseModel):
-    car_type: Optional[str] = "economy"
+    user_id: Optional[str] = Field(None, alias="userId")
+    car_type: Optional[str] = Field("economy", alias="carType")
     pickup: str
     pickup_lat: float = Field(alias="pickupLat")
     pickup_lng: float = Field(alias="pickupLng")
@@ -98,552 +317,1849 @@ class RideRequest(BaseModel):
     destination_lat: Optional[float] = Field(None, alias="destinationLat")
     destination_lng: Optional[float] = Field(None, alias="destinationLng")
     stops: List[StopLocation] = []
-    payment_method: str = "cash"
-    payment_order_id: Optional[str] = None
-    estimated_distance: float = 5.0
-    estimated_duration: int = 15
+    payment_method: Optional[str] = Field("cash", alias="paymentMethod")
+    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId")
+    estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
+    estimated_duration: Optional[int] = Field(0, alias="estimatedDuration")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class RiderWalletTopUp(BaseModel):
+    amount: float = Field(gt=0)
+    reference: Optional[str] = None
+
+
+class TopUpRequest(BaseModel):
+    amount: float = Field(gt=0)
+    payment_reference: Optional[str] = None
+
+
+class WithdrawalRequest(BaseModel):
+    amount: float = Field(gt=0)
+    bank_details: str
+
+
+class AdminAddBalanceRequest(BaseModel):
+    amount: float
+    reason: Optional[str] = "Admin Adjustment"
+
 
 class LocationUpdate(BaseModel):
     lat: float
     lng: float
-    heading: Optional[float] = 0.0
-    speed: Optional[float] = 0.0
+    heading: Optional[float] = None
+    speed: Optional[float] = None
 
-class RateRequest(BaseModel):
-    rating: int
+
+class RatePassengerRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
     review: Optional[str] = ""
+
+
+class RateDriverRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    review: Optional[str] = ""
+
 
 class ChatMessage(BaseModel):
     message: str
 
-# =========================
-# 3. HELPER FUNCTIONS
-# =========================
 
-def serialize_firestore(data):
-    """Clean up Firestore timestamps for JSON response"""
-    if not data: return None
-    if isinstance(data, list): return [serialize_firestore(x) for x in data]
-    if isinstance(data, dict):
-        result = {}
-        for k, v in data.items():
-            if hasattr(v, 'isoformat'): result[k] = v.isoformat()
-            elif isinstance(v, dict): result[k] = serialize_firestore(v)
-            elif isinstance(v, list): result[k] = serialize_firestore(v)
-            else: result[k] = v
-        return result
-    return data
+class UpdateRideFare(BaseModel):
+    distance_km: float
+    wait_minutes: int = 0
+    stop_wait_minutes: int = 0
 
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-def verify_password(plain: str, hashed: str) -> bool:
-    try:
-        return bcrypt.checkpw(plain.encode(), hashed.encode())
-    except:
-        return False
-
-def create_token(user_id: str, role: str) -> str:
-    payload = {
-        "user_id": user_id, 
-        "role": role, 
-        "exp": datetime.now(timezone.utc).timestamp() + (7 * 86400) # 7 days
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-def get_current_user_id(authorization: Optional[str] = Header(None)):
-    if not authorization: return None
-    try:
-        token = authorization.replace("Bearer ", "")
-        decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return decoded.get("user_id")
-    except:
-        return None
-
-def haversine_distance(lat1, lon1, lat2, lon2):
-    R = 6371  # Earth radius in km
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
 
 # =========================
-# 4. PRICING LOGIC
+# PRICING + SURGE
 # =========================
-PRICING = {
-    "economy": {"base": 2.0, "km": 0.5, "min": 0.15},
-    "comfort": {"base": 3.0, "km": 0.7, "min": 0.20},
-    "suv":     {"base": 5.0, "km": 1.0, "min": 0.25},
+
+PRICING_RULES = {
+    "economy": {
+        "base": 2.00,
+        "per_km": 0.50,
+        "per_minute_wait": 0.50,
+        "free_wait_minutes": 2,
+        "stop_fee": 0.00,
+        "long_distance_threshold": 7.0,
+        "long_distance_fee_per_km": 0.15,
+        "very_long_threshold": 30.0,
+        "very_long_surcharge_per_15km": 5.00,
+    },
+    "comfort": {
+        "base": 2.50,
+        "per_km": 0.55,
+        "per_minute_wait": 0.50,
+        "free_wait_minutes": 2,
+        "stop_fee": 0.00,
+        "long_distance_threshold": 7.0,
+        "long_distance_fee_per_km": 0.18,
+        "very_long_threshold": 30.0,
+        "very_long_surcharge_per_15km": 6.00,
+    },
+    "suv": {
+        "base": 3.90,
+        "per_km": 0.80,
+        "per_minute_wait": 0.50,
+        "free_wait_minutes": 2,
+        "stop_fee": 0.00,
+        "long_distance_threshold": 7.0,
+        "long_distance_fee_per_km": 0.25,
+        "very_long_threshold": 30.0,
+        "very_long_surcharge_per_15km": 8.00,
+    },
+    "personal": {
+        "base": 4.00,
+        "per_km": 0.70,
+        "per_minute_wait": 0.50,
+        "free_wait_minutes": 2,
+        "stop_fee": 0.00,
+        "long_distance_threshold": 7.0,
+        "long_distance_fee_per_km": 0.20,
+        "very_long_threshold": 30.0,
+        "very_long_surcharge_per_15km": 7.00,
+    },
+    "jumpstart": {
+        "base": 4.50,
+        "per_km": 0.00,
+        "per_minute_wait": 0.50,
+        "free_wait_minutes": 999,
+        "stop_fee": 0.00,
+        "long_distance_threshold": 999.0,
+        "long_distance_fee_per_km": 0.00,
+        "very_long_threshold": 999.0,
+        "very_long_surcharge_per_15km": 0.00,
+    },
 }
 
-def calculate_fare(car_type, distance_km, duration_min=0, surge=1.0):
-    rules = PRICING.get(car_type, PRICING["economy"])
-    subtotal = rules["base"] + (distance_km * rules["km"]) + (duration_min * rules["min"])
-    return round(subtotal * surge, 2)
+DRIVER_COMMISSION_RATE = 0.23
+
+# Surge hours: Wednesday 18:00-02:00, Friday 18:00-04:00, Saturday 18:00-04:00
+SURGE_SCHEDULE = {
+    2: {"start": 18, "end": 26},  # Wednesday
+    4: {"start": 18, "end": 28},  # Friday
+    5: {"start": 18, "end": 28},  # Saturday
+}
+
+SURGE_LEVELS = {
+    1.0: 0.230,
+    1.2: 0.232,
+    1.5: 0.235,
+    1.8: 0.238,
+    2.0: 0.240,
+}
+
+
+def is_surge_time() -> bool:
+    now = datetime.now(timezone.utc)
+    georgia_hour = (now.hour + 4) % 24
+    weekday = now.weekday()
+
+    if weekday in SURGE_SCHEDULE:
+        schedule = SURGE_SCHEDULE[weekday]
+        if schedule["end"] > 24:
+            if georgia_hour >= schedule["start"] or georgia_hour < (schedule["end"] - 24):
+                return True
+        else:
+            if schedule["start"] <= georgia_hour < schedule["end"]:
+                return True
+
+    prev_weekday = (weekday - 1) % 7
+    if prev_weekday in SURGE_SCHEDULE:
+        schedule = SURGE_SCHEDULE[prev_weekday]
+        if schedule["end"] > 24 and georgia_hour < (schedule["end"] - 24):
+            return True
+
+    return False
+
+
+def get_area_demand(lat: float, lng: float) -> float:
+    db = get_db()
+    try:
+        active_rides = list(
+            db.collection("rides")
+            .where("status", "in", ["searching", "accepted", "arrived", "in_progress"])
+            .stream()
+        )
+
+        nearby_rides = 0
+        for ride in active_rides:
+            ride_data = ride.to_dict()
+            ride_lat = ride_data.get("pickup_lat")
+            ride_lng = ride_data.get("pickup_lng")
+            if ride_lat and ride_lng:
+                dist = haversine_distance(lat, lng, ride_lat, ride_lng)
+                if dist <= 5:
+                    nearby_rides += 1
+
+        online_drivers = list(
+            db.collection("users")
+            .where("user_type", "==", "driver")
+            .where("is_online", "==", True)
+            .stream()
+        )
+
+        nearby_drivers = 0
+        for driver in online_drivers:
+            driver_data = driver.to_dict()
+            driver_loc = driver_data.get("current_location")
+            if driver_loc and driver_loc.get("lat"):
+                dist = haversine_distance(lat, lng, driver_loc["lat"], driver_loc["lng"])
+                if dist <= 5:
+                    nearby_drivers += 1
+
+        if nearby_drivers == 0:
+            demand = 1.0 if nearby_rides > 0 else 0.0
+        else:
+            demand = min(1.0, nearby_rides / max(1, nearby_drivers * 2))
+
+        return demand
+
+    except Exception as e:
+        logger.warning(f"Error calculating area demand: {e}")
+        return 0.3
+
+
+def get_surge_multiplier(lat: float = None, lng: float = None) -> dict:
+    if not is_surge_time():
+        return {
+            "multiplier": 1.0,
+            "commission_rate": DRIVER_COMMISSION_RATE,
+            "is_surge": False,
+            "surge_reason": None,
+        }
+
+    demand = 0.5
+    if lat and lng:
+        demand = get_area_demand(lat, lng)
+
+    if demand >= 0.75:
+        multiplier = 2.0
+        reason = "Very high demand"
+    elif demand >= 0.5:
+        multiplier = 1.8
+        reason = "High demand"
+    elif demand >= 0.25:
+        multiplier = 1.5
+        reason = "Moderate demand"
+    else:
+        multiplier = 1.2
+        reason = "Surge hours"
+
+    commission_rate = SURGE_LEVELS.get(multiplier, DRIVER_COMMISSION_RATE)
+
+    return {
+        "multiplier": multiplier,
+        "commission_rate": commission_rate,
+        "is_surge": True,
+        "surge_reason": reason,
+        "demand_level": round(demand, 2),
+    }
+
+
+def calculate_fare(
+    car_type: str,
+    distance_km: float,
+    wait_minutes: int = 0,
+    stop_wait_minutes: int = 0,
+    num_stops: int = 0,
+    surge_multiplier: float = 1.0,
+) -> dict:
+    rules = PRICING_RULES.get(car_type, PRICING_RULES["economy"])
+
+    base_fare = rules["base"]
+    distance_fare = distance_km * rules["per_km"]
+
+    long_distance_fee = 0
+    if distance_km > rules["long_distance_threshold"]:
+        extra_km = distance_km - rules["long_distance_threshold"]
+        long_distance_fee = extra_km * rules["long_distance_fee_per_km"]
+
+    very_long_surcharge = 0
+    if distance_km > rules["very_long_threshold"]:
+        extra_km = distance_km - rules["very_long_threshold"]
+        num_blocks = math.ceil(extra_km / 15)
+        very_long_surcharge = num_blocks * rules["very_long_surcharge_per_15km"]
+
+    pickup_wait_fee = 0
+    billable_wait = max(0, wait_minutes - rules["free_wait_minutes"])
+    if billable_wait > 0:
+        pickup_wait_fee = billable_wait * rules["per_minute_wait"]
+
+    stop_wait_fee = stop_wait_minutes * rules["per_minute_wait"]
+    stop_fee = num_stops * rules["stop_fee"]
+
+    subtotal = (
+        base_fare
+        + distance_fare
+        + long_distance_fee
+        + very_long_surcharge
+        + pickup_wait_fee
+        + stop_wait_fee
+        + stop_fee
+    )
+
+    surge_fee = 0
+    if surge_multiplier > 1.0:
+        surge_fee = subtotal * (surge_multiplier - 1.0)
+
+    total = subtotal + surge_fee
+
+    return {
+        "base": round(base_fare, 2),
+        "distance": round(distance_fare, 2),
+        "long_distance": round(long_distance_fee, 2),
+        "very_long_surcharge": round(very_long_surcharge, 2),
+        "pickup_wait": round(pickup_wait_fee, 2),
+        "stop_wait": round(stop_wait_fee, 2),
+        "stop_fee": round(stop_fee, 2),
+        "subtotal": round(subtotal, 2),
+        "surge_fee": round(surge_fee, 2),
+        "surge_multiplier": surge_multiplier,
+        "total": round(total, 2),
+        "breakdown": {
+            "distance_km": round(distance_km, 2),
+            "wait_minutes": wait_minutes,
+            "stop_wait_minutes": stop_wait_minutes,
+            "num_stops": num_stops,
+            "free_wait_minutes": rules["free_wait_minutes"],
+        },
+    }
+
 
 # =========================
-# 5. FASTAPI APP
+# AUTH ROUTES
 # =========================
 
-app = FastAPI(title="Taksi API Backend")
-
-# Allow all origins (Fixes "Network Error" on Frontend)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# =========================
-# 6. AUTH ROUTES
-# =========================
-
-@app.post("/api/auth/register/rider")
+@app.post("/api/auth/register/rider", tags=["Auth"])
 async def register_rider(data: UserRegister):
     db = get_db()
-    if list(db.collection("users").where("cellphone", "==", data.cellphone).stream()):
-        raise HTTPException(400, "User already exists")
-    
-    ref = db.collection("users").document()
+
+    phone_norm = normalize_phone(data.cellphone)
+
+    existing = list(
+        db.collection("users")
+        .where("cellphone_norm", "==", phone_norm)
+        .limit(1)
+        .stream()
+    )
+    if existing:
+        raise HTTPException(400, "Phone number already registered")
+
+    user_ref = db.collection("users").document()
     user_data = {
-        "id": ref.id,
+        "id": user_ref.id,
         "name": data.name,
         "surname": data.surname,
         "cellphone": data.cellphone,
-        "password": hash_password(data.password),
+        "cellphone_norm": phone_norm,
+        "email": data.email,
+        "password_hash": hash_password(data.password),
         "user_type": "rider",
         "wallet_balance": 0.0,
-        "created_at": firestore.SERVER_TIMESTAMP
+        "total_rides": 0,
+        "rating": 5.0,
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP,
     }
-    ref.set(user_data)
-    token = create_token(ref.id, "rider")
-    return {"token": token, "user": serialize_firestore(user_data)}
+    user_ref.set(user_data)
 
-@app.post("/api/auth/register/driver")
-async def register_driver(data: UserRegister):
-    db = get_db()
-    if list(db.collection("users").where("cellphone", "==", data.cellphone).stream()):
-        raise HTTPException(400, "User already exists")
+    token = create_token(user_ref.id, "rider")
 
-    ref = db.collection("users").document()
-    user_data = {
-        "id": ref.id,
+    safe_user = {
+        "id": user_ref.id,
         "name": data.name,
         "surname": data.surname,
         "cellphone": data.cellphone,
-        "password": hash_password(data.password),
-        "user_type": "driver",
-        "registration_status": "pending_vehicle", # Needs vehicle info next
-        "is_online": False,
+        "cellphone_norm": phone_norm,
+        "email": data.email,
+        "user_type": "rider",
         "wallet_balance": 0.0,
-        "created_at": firestore.SERVER_TIMESTAMP
+        "total_rides": 0,
+        "rating": 5.0,
+        "created_at": now_iso(),
     }
-    ref.set(user_data)
-    token = create_token(ref.id, "driver")
-    return {"token": token, "user": serialize_firestore(user_data)}
 
-@app.post("/api/auth/login")
+    return {"token": token, "user": safe_user}
+
+
+@app.post("/api/auth/register/driver", tags=["Auth"])
+@app.post("/api/driver/register", tags=["Auth"])
+async def register_driver(data: UserRegister):
+    db = get_db()
+
+    phone_norm = normalize_phone(data.cellphone)
+
+    existing = list(
+        db.collection("users")
+        .where("cellphone_norm", "==", phone_norm)
+        .limit(1)
+        .stream()
+    )
+    if existing:
+        raise HTTPException(400, "Phone number already registered")
+
+    user_ref = db.collection("users").document()
+    user_data = {
+        "id": user_ref.id,
+        "name": data.name,
+        "surname": data.surname,
+        "cellphone": data.cellphone,
+        "cellphone_norm": phone_norm,
+        "email": data.email,
+        "password_hash": hash_password(data.password),
+        "user_type": "driver",
+        "registration_status": "pending_vehicle",
+        "is_online": False,
+        "current_location": None,
+        "driver_info": {"vehicle": None, "vehicle_tier": None},
+        "earnings": {
+            "balance": 0.0,
+            "total_earned": 0.0,
+            "total_topped_up": 0.0,
+            "total_withdrawn": 0.0,
+            "total_commission_paid": 0.0,
+        },
+        "total_rides": 0,
+        "rating": 5.0,
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    }
+    user_ref.set(user_data)
+
+    token = create_token(user_ref.id, "driver")
+
+    safe_user = {
+        "id": user_ref.id,
+        "name": data.name,
+        "surname": data.surname,
+        "cellphone": data.cellphone,
+        "cellphone_norm": phone_norm,
+        "email": data.email,
+        "user_type": "driver",
+        "registration_status": "pending_vehicle",
+        "is_online": False,
+        "current_location": None,
+        "driver_info": {"vehicle": None, "vehicle_tier": None},
+        "earnings": user_data["earnings"],
+        "total_rides": 0,
+        "rating": 5.0,
+        "created_at": now_iso(),
+    }
+
+    return {"token": token, "user": safe_user}
+
+
+@app.post("/api/auth/login", tags=["Auth"])
+@app.post("/api/rider/login", tags=["Auth"])
 async def login(data: UserLogin):
     db = get_db()
-    users = list(db.collection("users").where("cellphone", "==", data.cellphone).limit(1).stream())
+
+    phone_norm = normalize_phone(data.cellphone)
+
+    # ✅ Primary lookup uses normalized phone
+    users = list(
+        db.collection("users")
+        .where("cellphone_norm", "==", phone_norm)
+        .limit(1)
+        .stream()
+    )
+
+    # Backwards-compat fallback for old records that don't have cellphone_norm
+    if not users:
+        users = list(
+            db.collection("users")
+            .where("cellphone", "==", data.cellphone)
+            .limit(1)
+            .stream()
+        )
+
     if not users:
         raise HTTPException(401, "Invalid credentials")
-    
+
     user_doc = users[0]
     user_data = user_doc.to_dict()
-    
-    if not verify_password(data.password, user_data.get("password", "")):
+
+    if not verify_password(data.password, user_data.get("password_hash", "")):
         raise HTTPException(401, "Invalid credentials")
-        
+
     token = create_token(user_doc.id, user_data.get("user_type", "rider"))
-    return {"token": token, "user": serialize_firestore({**user_data, "id": user_doc.id})}
+    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
+    safe_user["id"] = user_doc.id
 
-@app.get("/api/auth/me")
-async def get_me(user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401, "Unauthorized")
-    doc = get_db().collection("users").document(user_id).get()
-    return serialize_firestore({**doc.to_dict(), "id": doc.id})
+    return {"token": token, "user": serialize_firestore_data(safe_user)}
 
-# =========================
-# 7. DRIVER LOGIC
-# =========================
 
-@app.post("/api/driver/vehicle")
-async def update_vehicle(data: VehicleInfo, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
+@app.post("/api/driver/login", tags=["Auth"])
+async def driver_login(data: UserLogin):
     db = get_db()
-    
-    # Auto-assign tier based on car
-    tier = "economy"
-    if data.car_year > 2018: tier = "comfort"
-    if "suv" in data.car_model.lower() or "jeep" in data.car_make.lower(): tier = "suv"
+
+    phone_norm = normalize_phone(data.cellphone)
+
+    users = list(
+        db.collection("users")
+        .where("cellphone_norm", "==", phone_norm)
+        .where("user_type", "==", "driver")
+        .limit(1)
+        .stream()
+    )
+
+    if not users:
+        # fallback legacy
+        users = list(
+            db.collection("users")
+            .where("cellphone", "==", data.cellphone)
+            .where("user_type", "==", "driver")
+            .limit(1)
+            .stream()
+        )
+
+    if not users:
+        raise HTTPException(401, "Invalid credentials or not a driver account")
+
+    user_doc = users[0]
+    user_data = user_doc.to_dict()
+
+    if not verify_password(data.password, user_data.get("password_hash", "")):
+        raise HTTPException(401, "Invalid credentials")
+
+    token = create_token(user_doc.id, "driver")
+    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
+    safe_user["id"] = user_doc.id
+
+    return {"token": token, "user": serialize_firestore_data(safe_user)}
+
+
+@app.get("/api/auth/me", tags=["Auth"])
+async def get_current_user(user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    doc = db.collection("users").document(user_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "User not found")
+
+    user_data = doc.to_dict()
+    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
+    safe_user["id"] = doc.id
+    return serialize_firestore_data(safe_user)
+
+
+# =========================
+# DRIVER ROUTES
+# =========================
+
+@app.post("/api/driver/vehicle", tags=["Driver"])
+async def register_vehicle(vehicle: VehicleInfo, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    doc = db.collection("users").document(user_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Driver not found")
+
+    make_lower = (vehicle.car_make or "").lower()
+    if any(m in make_lower for m in ["mercedes", "bmw", "lexus", "audi", "tesla"]):
+        tier = "comfort"
+    elif any(m in make_lower for m in ["jeep", "land rover", "range rover", "toyota land"]):
+        tier = "suv"
+    else:
+        tier = "economy"
 
     db.collection("users").document(user_id).update({
-        "driver_info": data.model_dump(),
-        "driver_info.tier": tier,
-        "registration_status": "approved" # Auto-approve for MVP
+        "driver_info.vehicle": vehicle.model_dump(),
+        "driver_info.vehicle_tier": tier,
+        "registration_status": "pending_review",
+        "updated_at": firestore.SERVER_TIMESTAMP,
     })
-    return {"status": "updated", "tier": tier}
 
-@app.post("/api/driver/location")
-async def driver_location(loc: LocationUpdate, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    
-    # Update Driver Doc
-    get_db().collection("users").document(user_id).update({
-        "current_location": loc.model_dump(),
-        "last_seen": firestore.SERVER_TIMESTAMP
+    return {"message": "Vehicle registered successfully", "tier": tier}
+
+
+@app.post("/api/driver/status", tags=["Driver"])
+async def update_driver_status(is_online: bool, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    db.collection("users").document(user_id).update({
+        "is_online": is_online,
+        "updated_at": firestore.SERVER_TIMESTAMP,
     })
-    
-    # Update Active Ride (if any) so Rider sees the car move
-    active_rides = list(get_db().collection("rides")\
-        .where("driver_id", "==", user_id)\
-        .where("status", "in", ["accepted", "arrived", "in_progress"])\
-        .limit(1).stream())
-        
-    if active_rides:
-        get_db().collection("rides").document(active_rides[0].id).update({
-            "driver_location": loc.model_dump()
-        })
-        
-    return {"status": "ok"}
+    return {"message": f"Status updated to {'online' if is_online else 'offline'}"}
 
-@app.post("/api/driver/status")
-async def driver_status(is_online: bool, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    get_db().collection("users").document(user_id).update({"is_online": is_online})
-    return {"status": "online" if is_online else "offline"}
 
-@app.get("/api/driver/rides/available")
-async def get_available_rides(user_id: str = Depends(get_current_user_id)):
-    """ Polling endpoint for drivers to see rides they are matched with """
-    if not user_id: raise HTTPException(401)
+@app.post("/api/driver/location", tags=["Driver"])
+async def update_driver_location(location: LocationUpdate, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
     db = get_db()
-    
-    # Find rides where this driver is in the 'notified_drivers' list
-    rides = list(db.collection("rides")\
-        .where("status", "==", "searching")\
-        .where("notified_drivers", "array_contains", user_id)\
-        .stream())
-        
-    # Filter out declined
-    results = []
-    for r in rides:
-        d = r.to_dict()
-        if user_id not in d.get("declined_drivers", []):
-            results.append(serialize_firestore({**d, "id": r.id}))
-            
-    return {"rides": results}
-
-# =========================
-# 8. RIDE ALGORITHM & DISPATCH
-# =========================
-
-async def match_drivers_bg(ride_id: str):
-    """ The Core Algorithm: Expands radius to find drivers """
-    db = get_db()
-    radius_steps = [3, 5, 10, 20] # km
-    
-    for radius in radius_steps:
-        # Check if ride still exists/searching
-        doc = db.collection("rides").document(ride_id).get()
-        if not doc.exists or doc.to_dict().get("status") != "searching":
-            return # Stop if ride cancelled or taken
-            
-        ride_data = doc.to_dict()
-        plat, plng = ride_data["pickup_lat"], ride_data["pickup_lng"]
-        
-        # Get ONLINE drivers
-        # NOTE: For scale, use GeoFirestore. For MVP, fetch all online and filter in Python.
-        drivers = list(db.collection("users")\
-            .where("user_type", "==", "driver")\
-            .where("is_online", "==", True)\
-            .stream())
-            
-        matched_ids = []
-        for d in drivers:
-            d_data = d.to_dict()
-            loc = d_data.get("current_location")
-            if loc:
-                dist = haversine_distance(plat, plng, loc["lat"], loc["lng"])
-                if dist <= radius:
-                    matched_ids.append(d.id)
-        
-        if matched_ids:
-            # Notify these drivers
-            logger.info(f"Ride {ride_id}: Notifying {len(matched_ids)} drivers at {radius}km")
-            db.collection("rides").document(ride_id).update({
-                "notified_drivers": firestore.ArrayUnion(matched_ids),
-                "matching_radius": radius
-            })
-            
-        # Wait 10 seconds before expanding radius
-        await asyncio.sleep(10)
-
-    # If loop finishes and no one accepted
-    doc = db.collection("rides").document(ride_id).get()
-    if doc.exists and doc.to_dict().get("status") == "searching":
-        db.collection("rides").document(ride_id).update({"status": "no_drivers"})
-
-
-@app.post("/api/rides/request")
-async def request_ride(data: RideRequest, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    
-    fare = calculate_fare(data.car_type, data.estimated_distance)
-    
-    ref = get_db().collection("rides").document()
-    ride_data = {
-        "id": ref.id,
-        "userId": user_id,
-        "pickup": data.pickup,
-        "pickup_lat": data.pickup_lat,
-        "pickup_lng": data.pickup_lng,
-        "destination": data.destination,
-        "destination_lat": data.destination_lat,
-        "destination_lng": data.destination_lng,
-        "carType": data.car_type,
-        "status": "searching",
-        "estimated_fare": fare,
-        "created_at": firestore.SERVER_TIMESTAMP,
-        "notified_drivers": [],
-        "declined_drivers": []
+    location_data = {
+        "lat": location.lat,
+        "lng": location.lng,
+        "heading": location.heading,
+        "speed": location.speed,
+        "updated_at": firestore.SERVER_TIMESTAMP,
     }
-    ref.set(ride_data)
-    
-    # Start the Algorithm
-    bg_tasks.add_task(match_drivers_bg, ref.id)
-    
-    return {"ride_id": ref.id, "estimated_fare": fare}
 
-@app.post("/api/rides/{ride_id}/accept")
-async def accept_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
+    db.collection("users").document(user_id).update({
+        "current_location": location_data,
+        "location_updated_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    active_rides = list(
+        db.collection("rides")
+        .where("driver_id", "==", user_id)
+        .where("status", "in", ["accepted", "arrived", "in_progress"])
+        .limit(1)
+        .stream()
+    )
+    if active_rides:
+        ride = active_rides[0]
+        db.collection("rides").document(ride.id).update({"driver_location": location_data})
+
+    return {"message": "Location updated"}
+
+
+@app.post("/api/driver/topup/request", tags=["Driver"])
+async def request_topup(request: TopUpRequest, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
     db = get_db()
-    
-    # TRANSACTION to prevent double-booking
-    @firestore.transactional
-    def accept_in_transaction(transaction, ride_ref, driver_id):
-        snapshot = ride_ref.get(transaction=transaction)
-        if not snapshot.exists: raise HTTPException(404, "Ride not found")
-        
-        data = snapshot.to_dict()
-        if data.get("status") != "searching":
-            raise HTTPException(400, "Ride already taken or cancelled")
-            
-        # Get driver info
-        driver_doc = db.collection("users").document(driver_id).get()
-        driver_data = driver_doc.to_dict()
-        
-        transaction.update(ride_ref, {
-            "status": "accepted",
-            "driver_id": driver_id,
-            "driver_info": {
-                "name": f"{driver_data.get('name')} {driver_data.get('surname')}",
-                "vehicle": driver_data.get("driver_info", {}),
-                "cellphone": driver_data.get("cellphone"),
-                "lat": driver_data.get("current_location", {}).get("lat"),
-                "lng": driver_data.get("current_location", {}).get("lng")
-            },
-            "driver_location": driver_data.get("current_location")
-        })
-        return data
+    driver_doc = db.collection("users").document(user_id).get()
+    if not driver_doc.exists:
+        raise HTTPException(404, "Driver not found")
 
-    ref = db.collection("rides").document(ride_id)
-    transaction = db.transaction()
+    driver_data = driver_doc.to_dict()
+
+    topup_ref = db.collection("driver_topup_requests").document()
+    topup_data = {
+        "id": topup_ref.id,
+        "driver_id": user_id,
+        "driver_name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}",
+        "driver_cellphone": driver_data.get("cellphone"),
+        "amount": request.amount,
+        "payment_reference": request.payment_reference,
+        "status": "pending",
+        "requested_at": firestore.SERVER_TIMESTAMP,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    }
+    topup_ref.set(topup_data)
+
+    return {
+        "message": f"Top-up request for ₾{request.amount} submitted",
+        "request_id": topup_ref.id,
+        "amount": request.amount,
+        "payment_link": "https://egreve.bog.ge//Taksi",
+    }
+
+
+@app.post("/api/driver/withdraw", tags=["Driver"])
+async def request_withdrawal(request: WithdrawalRequest, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    driver_doc = db.collection("users").document(user_id).get()
+    if not driver_doc.exists:
+        raise HTTPException(404, "Driver not found")
+
+    driver_data = driver_doc.to_dict()
+    balance = driver_data.get("earnings", {}).get("balance", 0)
+
+    if request.amount > balance:
+        raise HTTPException(400, f"Insufficient balance. Available: ₾{balance}")
+
+    withdrawal_ref = db.collection("driver_withdrawals").document()
+    withdrawal_data = {
+        "id": withdrawal_ref.id,
+        "driver_id": user_id,
+        "driver_name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}",
+        "amount": request.amount,
+        "bank_details": request.bank_details,
+        "status": "pending",
+        "requested_at": firestore.SERVER_TIMESTAMP,
+    }
+    withdrawal_ref.set(withdrawal_data)
+
+    return {"message": f"Withdrawal request for ₾{request.amount} submitted", "request_id": withdrawal_ref.id}
+
+
+@app.get("/api/driver/rides/available", tags=["Driver"])
+async def get_available_rides(user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    driver_doc = db.collection("users").document(user_id).get()
+    if not driver_doc.exists:
+        raise HTTPException(404, "Driver not found")
+
+    driver_data = driver_doc.to_dict()
+    driver_location = driver_data.get("current_location")
+
+    rides = db.collection("rides").where("status", "==", "searching").stream()
+    available = []
+
+    for ride in rides:
+        ride_data = ride.to_dict()
+        ride_data["id"] = ride.id
+
+        notified_drivers = ride_data.get("notified_drivers", [])
+        declined_drivers = ride_data.get("declined_drivers", [])
+
+        if user_id not in notified_drivers:
+            continue
+        if user_id in declined_drivers:
+            continue
+
+        if driver_location and ride_data.get("pickup_lat") and ride_data.get("pickup_lng"):
+            distance = haversine_distance(
+                driver_location["lat"], driver_location["lng"],
+                ride_data["pickup_lat"], ride_data["pickup_lng"]
+            )
+            ride_data["distance_to_pickup"] = round(distance, 2)
+
+        ride_data["matching_radius"] = ride_data.get("matching_radius", 3)
+        ride_data["drivers_notified"] = len(notified_drivers)
+
+        available.append(serialize_firestore_data(ride_data))
+
+    available.sort(key=lambda x: x.get("distance_to_pickup", 999))
+    return {"rides": available}
+
+
+@app.get("/api/driver/active-ride", tags=["Driver"])
+async def get_driver_active_ride(user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    for status in ["accepted", "arrived", "in_progress"]:
+        rides = list(
+            db.collection("rides")
+            .where("driver_id", "==", user_id)
+            .where("status", "==", status)
+            .limit(1)
+            .stream()
+        )
+        if rides:
+            ride = rides[0]
+            return serialize_firestore_data({**ride.to_dict(), "id": ride.id})
+    return None
+
+
+@app.get("/api/driver/history", tags=["Driver"])
+async def get_driver_history(user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
     try:
-        accept_in_transaction(transaction, ref, user_id)
-    except Exception as e:
-        raise HTTPException(400, str(e))
-        
-    return {"status": "accepted"}
-
-@app.post("/api/rides/{ride_id}/arrived")
-async def ride_arrived(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    get_db().collection("rides").document(ride_id).update({
-        "status": "arrived",
-        "arrived_at": firestore.SERVER_TIMESTAMP
-    })
-    return {"status": "arrived"}
-
-@app.post("/api/rides/{ride_id}/start")
-async def ride_start(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    get_db().collection("rides").document(ride_id).update({
-        "status": "in_progress",
-        "started_at": firestore.SERVER_TIMESTAMP
-    })
-    return {"status": "started"}
-
-# =========================
-# 11. PAYPAL HELPERS (Add this near the top with other helpers)
-# =========================
-async def get_paypal_token():
-    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET: return None
-    auth = base64.b64encode(f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}".encode()).decode()
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{PAYPAL_API_BASE}/v1/oauth2/token",
-            headers={"Authorization": f"Basic {auth}"},
-            data={"grant_type": "client_credentials"}
+        rides = list(
+            db.collection("rides")
+            .where("driver_id", "==", user_id)
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(50)
+            .stream()
         )
-        return resp.json().get("access_token") if resp.status_code == 200 else None
+    except Exception:
+        rides = list(db.collection("rides").where("driver_id", "==", user_id).limit(50).stream())
+        rides.sort(key=lambda r: r.to_dict().get("created_at", ""), reverse=True)
 
-async def capture_paypal_payment(order_id):
-    token = await get_paypal_token()
-    if not token: return False
-    
-    async with httpx.AsyncClient() as client:
-        # We try to 'Capture' the authorized payment
-        resp = await client.post(
-            f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}/capture",
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-        )
-        # If already captured or successful
-        if resp.status_code in [200, 201]: return True
-        # If it says "Order already captured", that's also fine
-        if resp.status_code == 422 and "ORDER_ALREADY_CAPTURED" in resp.text: return True
-        return False
+    return {"rides": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in rides]}
 
-# =========================
-# 12. UPDATE THE COMPLETE RIDE FUNCTION
-# =========================
-@app.post("/api/rides/{ride_id}/complete")
-async def ride_complete(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
+
+@app.get("/api/driver/rides/nearby", tags=["Driver"])
+async def get_nearby_rides(
+    user_id: str = Depends(get_current_user_id),
+    radius: float = Query(10, description="Search radius in km"),
+):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
     db = get_db()
-    
-    ride_ref = db.collection("rides").document(ride_id)
-    doc = ride_ref.get()
-    if not doc.exists: raise HTTPException(404, "Ride not found")
-    data = doc.to_dict()
-    
-    # 1. Calculate Final Fare (Simple version: use estimate. Complex: use GPS logs)
-    final_fare = data.get("estimated_fare", 0)
-    
-    # 2. Handle Payment
-    payment_status = "cash_collected"
-    if data.get("payment_method") == "card" and data.get("payment_order_id"):
-        # CAPTURE THE HELD MONEY
-        success = await capture_paypal_payment(data["payment_order_id"])
-        payment_status = "paid" if success else "failed"
-    
-    # 3. Update Ride
-    ride_ref.update({
-        "status": "completed",
-        "completed_at": firestore.SERVER_TIMESTAMP,
-        "payment_status": payment_status,
-        "final_fare": final_fare
+    driver_doc = db.collection("users").document(user_id).get()
+    if not driver_doc.exists:
+        raise HTTPException(404, "Driver not found")
+
+    driver_data = driver_doc.to_dict()
+    driver_location = driver_data.get("current_location")
+
+    if not driver_location or not driver_location.get("lat") or not driver_location.get("lng"):
+        raise HTTPException(400, "Driver location not available. Please enable location sharing.")
+
+    rides = db.collection("rides").where("status", "==", "searching").stream()
+    nearby = []
+
+    for ride in rides:
+        ride_data = ride.to_dict()
+        ride_data["id"] = ride.id
+
+        pickup_lat = ride_data.get("pickup_lat")
+        pickup_lng = ride_data.get("pickup_lng")
+        if not pickup_lat or not pickup_lng:
+            continue
+
+        distance = haversine_distance(
+            driver_location["lat"], driver_location["lng"],
+            pickup_lat, pickup_lng
+        )
+
+        if distance <= radius:
+            ride_data["distance_to_pickup"] = round(distance, 2)
+            ride_data["was_notified"] = user_id in ride_data.get("notified_drivers", [])
+            ride_data["has_declined"] = user_id in ride_data.get("declined_drivers", [])
+            nearby.append(serialize_firestore_data(ride_data))
+
+    nearby.sort(key=lambda x: x.get("distance_to_pickup", 999))
+
+    return {"rides": nearby, "search_radius": radius, "driver_location": driver_location}
+
+
+@app.post("/api/rides/{ride_id}/request-join", tags=["Driver"])
+async def request_to_join_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+
+    driver_doc = db.collection("users").document(user_id).get()
+    if not driver_doc.exists:
+        raise HTTPException(404, "Driver not found")
+
+    driver_data = driver_doc.to_dict()
+
+    if driver_data.get("user_type") != "driver":
+        raise HTTPException(403, "Only drivers can request to join rides")
+    if not driver_data.get("is_online"):
+        raise HTTPException(400, "You must be online to request rides")
+    if driver_data.get("registration_status") != "approved":
+        raise HTTPException(400, "Your driver registration is not approved")
+
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+
+    ride_data = ride_doc.to_dict()
+    if ride_data.get("status") != "searching":
+        raise HTTPException(400, "This ride is no longer available")
+
+    if user_id in ride_data.get("declined_drivers", []):
+        raise HTTPException(400, "You have already declined this ride")
+
+    estimated_fare = ride_data.get("estimated_fare", 0)
+    commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
+    required_commission = estimated_fare * commission_rate
+    driver_balance = driver_data.get("earnings", {}).get("balance", 0)
+
+    if driver_balance < required_commission:
+        raise HTTPException(400, f"Insufficient balance. Need ₾{required_commission:.2f}")
+
+    db.collection("rides").document(ride_id).update({
+        "notified_drivers": firestore.ArrayUnion([user_id])
     })
-    
-    # 4. Update Driver Balance
-    commission = final_fare * 0.20 # 20% Commission
-    driver_earnings = final_fare - commission
-    
-    driver_ref = db.collection("users").document(data["driver_id"])
-    
-    if payment_status == "paid":
-        # Card: We have the money. Add net earnings to driver wallet.
-        driver_ref.update({
-            "wallet_balance": firestore.Increment(driver_earnings),
+
+    return {"message": "You can now accept this ride", "ride_id": ride_id}
+
+
+# =========================
+# RIDE ROUTES
+# =========================
+
+@app.post("/api/rides/{ride_id}/retry", tags=["Rides"])
+async def retry_ride_matching(ride_id: str, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+
+    ride_data = ride_doc.to_dict()
+    if ride_data.get("status") not in ["no_drivers", "cancelled"]:
+        raise HTTPException(400, f"Cannot retry ride with status: {ride_data.get('status')}")
+
+    if ride_data.get("userId") != user_id:
+        raise HTTPException(403, "You can only retry your own rides")
+
+    db.collection("rides").document(ride_id).update({
+        "status": "searching",
+        "matching_radius": 3,
+        "matching_status": "Retrying - Searching within 3km",
+        "matching_round": 0,
+        "notified_drivers": [],
+        "declined_drivers": [],
+        "available_drivers": [],
+        "retry_count": firestore.Increment(1),
+        "retried_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    background_tasks.add_task(match_drivers_to_ride, ride_id)
+
+    return {"message": "Ride matching restarted", "ride_id": ride_id, "status": "searching"}
+
+
+@app.get("/api/surge/status", tags=["Rides"])
+async def get_surge_status(lat: float = Query(None), lng: float = Query(None)):
+    surge_info = get_surge_multiplier(lat, lng)
+    now = datetime.now(timezone.utc)
+    georgia_hour = (now.hour + 4) % 24
+    weekday = now.weekday()
+    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    return {
+        **surge_info,
+        "current_day": weekday_names[weekday],
+        "current_hour": georgia_hour,
+        "surge_schedule": {
+            "Wednesday": "18:00 - 02:00",
+            "Friday": "18:00 - 04:00",
+            "Saturday": "18:00 - 04:00",
+        },
+    }
+
+
+@app.post("/api/rides/request", tags=["Rides"])
+async def request_ride(ride_data: RideRequest, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+
+    surge_info = get_surge_multiplier(ride_data.pickup_lat, ride_data.pickup_lng)
+    surge_multiplier = surge_info["multiplier"]
+    commission_rate = surge_info["commission_rate"]
+
+    num_stops = len(ride_data.stops)
+    fare = calculate_fare(
+        ride_data.car_type or "economy",
+        ride_data.estimated_distance or 5,
+        0, 0, num_stops,
+        surge_multiplier
+    )
+
+    stops_data = [{"address": s.address, "lat": s.lat, "lng": s.lng, "order": s.order} for s in ride_data.stops]
+
+    ride_ref = db.collection("rides").document()
+    new_ride = {
+        "id": ride_ref.id,
+        "userId": user_id or ride_data.user_id,
+        "carType": ride_data.car_type,
+        "pickup": ride_data.pickup,
+        "pickup_lat": ride_data.pickup_lat,
+        "pickup_lng": ride_data.pickup_lng,
+        "destination": ride_data.destination,
+        "destination_lat": ride_data.destination_lat,
+        "destination_lng": ride_data.destination_lng,
+        "stops": stops_data,
+        "num_stops": num_stops,
+        "payment_method": ride_data.payment_method,
+        "payment_order_id": ride_data.payment_order_id,
+        "estimated_distance": ride_data.estimated_distance,
+        "estimated_duration": ride_data.estimated_duration,
+        "estimated_fare": fare["total"],
+        "fare_breakdown": fare,
+        "surge_multiplier": surge_multiplier,
+        "surge_info": surge_info,
+        "commission_rate": commission_rate,
+        "status": "searching",
+        "matching_radius": 3,
+        "notified_drivers": [],
+        "declined_drivers": [],
+        "actual_distance": 0,
+        "pickup_wait_minutes": 0,
+        "stop_wait_minutes": 0,
+        "route_points": [],
+        "created_at": firestore.SERVER_TIMESTAMP,
+    }
+    ride_ref.set(new_ride)
+
+    background_tasks.add_task(match_drivers_to_ride, ride_ref.id)
+
+    return {
+        "ride_id": ride_ref.id,
+        "estimated_fare": fare["total"],
+        "fare_breakdown": fare,
+        "surge": surge_info,
+        "status": "searching",
+    }
+
+
+@app.get("/api/rides/estimate", tags=["Rides"])
+async def estimate_fare(
+    car_type: str = "economy",
+    distance: float = 5,
+    stops: int = 0,
+    lat: float = Query(None),
+    lng: float = Query(None),
+):
+    surge_info = get_surge_multiplier(lat, lng)
+    fare = calculate_fare(car_type, distance, 0, 0, stops, surge_info["multiplier"])
+    return {**fare, "surge": surge_info}
+
+
+async def match_drivers_to_ride(ride_id: str):
+    db = get_db()
+
+    radius_progression = [3, 5, 8, 12, 20, 30]
+    drivers_per_radius = [5, 5, 8, 10, 15, 20]
+    wait_time_per_round = [30, 25, 20, 15, 15, 15]
+
+    total_notified = []
+
+    for idx, radius in enumerate(radius_progression):
+        ride_doc = db.collection("rides").document(ride_id).get()
+        if not ride_doc.exists:
+            logger.info(f"Ride {ride_id} no longer exists, stopping matching")
+            return
+
+        ride_data = ride_doc.to_dict()
+        if ride_data.get("status") != "searching":
+            logger.info(f"Ride {ride_id} status changed to {ride_data.get('status')}, stopping matching")
+            return
+
+        pickup_lat = ride_data.get("pickup_lat")
+        pickup_lng = ride_data.get("pickup_lng")
+        if not pickup_lat or not pickup_lng:
+            logger.error(f"Ride {ride_id} missing pickup coordinates")
+            return
+
+        db.collection("rides").document(ride_id).update({
+            "matching_radius": radius,
+            "matching_status": f"Searching within {radius}km ({idx + 1}/{len(radius_progression)})",
+            "matching_round": idx + 1,
+        })
+
+        try:
+            drivers = (
+                db.collection("users")
+                .where("user_type", "==", "driver")
+                .where("is_online", "==", True)
+                .where("registration_status", "==", "approved")
+                .stream()
+            )
+        except Exception as e:
+            logger.warning(f"Composite index query failed, using fallback: {e}")
+            all_drivers = db.collection("users").where("user_type", "==", "driver").stream()
+            drivers = [d for d in all_drivers if d.to_dict().get("is_online") and d.to_dict().get("registration_status") == "approved"]
+
+        nearby_drivers = []
+        declined = ride_data.get("declined_drivers", [])
+        already_notified = ride_data.get("notified_drivers", [])
+
+        for driver in drivers:
+            driver_data = driver.to_dict()
+            driver_location = driver_data.get("current_location")
+
+            if driver.id in declined or driver.id in already_notified:
+                continue
+
+            estimated_fare = ride_data.get("estimated_fare", 0)
+            commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
+            required_commission = estimated_fare * commission_rate
+            driver_balance = driver_data.get("earnings", {}).get("balance", 0)
+
+            if driver_balance < required_commission:
+                continue
+
+            if driver_location and driver_location.get("lat") and driver_location.get("lng"):
+                distance = haversine_distance(
+                    pickup_lat, pickup_lng,
+                    driver_location["lat"], driver_location["lng"]
+                )
+                if distance <= radius:
+                    nearby_drivers.append({
+                        "id": driver.id,
+                        "distance": round(distance, 2),
+                        "name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}".strip(),
+                        "vehicle": driver_data.get("driver_info", {}).get("vehicle", {}),
+                        "rating": driver_data.get("rating", 5.0),
+                        "balance": driver_balance,
+                    })
+
+        nearby_drivers.sort(key=lambda x: x["distance"])
+        batch_size = drivers_per_radius[idx]
+        selected_drivers = nearby_drivers[:batch_size]
+
+        if selected_drivers:
+            driver_ids = [d["id"] for d in selected_drivers]
+            total_notified.extend(driver_ids)
+
+            db.collection("rides").document(ride_id).update({
+                "notified_drivers": firestore.ArrayUnion(driver_ids),
+                "available_drivers": selected_drivers,
+                "last_driver_notification": firestore.SERVER_TIMESTAMP,
+                "drivers_notified_count": len(total_notified),
+                "current_batch_drivers": len(selected_drivers),
+            })
+
+            logger.info(f"Ride {ride_id}: Notified {len(selected_drivers)} drivers within {radius}km radius")
+
+            await asyncio.sleep(wait_time_per_round[idx])
+
+            updated_ride = db.collection("rides").document(ride_id).get()
+            if updated_ride.exists and updated_ride.to_dict().get("status") != "searching":
+                logger.info(f"Ride {ride_id} was accepted, stopping matching")
+                return
+        else:
+            logger.info(f"Ride {ride_id}: No new drivers found within {radius}km radius")
+
+        if idx + 1 >= len(radius_progression):
+            break
+
+    db.collection("rides").document(ride_id).update({
+        "status": "no_drivers",
+        "matching_status": "No drivers available in your area",
+        "matching_completed_at": firestore.SERVER_TIMESTAMP,
+        "total_drivers_searched": len(total_notified),
+    })
+    logger.info(f"Ride {ride_id}: Matching completed, no drivers found after searching all radii")
+
+
+@app.post("/api/rides/{ride_id}/accept", tags=["Rides"])
+async def accept_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+
+    driver_doc = db.collection("users").document(user_id).get()
+    if not driver_doc.exists:
+        raise HTTPException(404, "Driver not found")
+    driver_data = driver_doc.to_dict()
+
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+    ride_data = ride_doc.to_dict()
+
+    if ride_data.get("status") != "searching":
+        raise HTTPException(400, "Ride is no longer available")
+
+    commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
+    surge_multiplier = ride_data.get("surge_multiplier", 1.0)
+
+    balance = driver_data.get("earnings", {}).get("balance", 0)
+    held_commission = (ride_data.get("estimated_fare", 0) or 0) * commission_rate
+
+    if balance < held_commission:
+        raise HTTPException(400, f"Insufficient balance. Need ₾{held_commission:.2f}, have ₾{balance:.2f}")
+
+    # HOLD commission at accept time
+    new_balance = balance - held_commission
+    db.collection("users").document(user_id).update({
+        "earnings.balance": new_balance,
+        "earnings.total_commission_paid": firestore.Increment(held_commission),
+    })
+
+    vehicle = driver_data.get("driver_info", {}).get("vehicle", {})
+    driver_location = driver_data.get("current_location", {}) or {}
+
+    db.collection("rides").document(ride_id).update({
+        "status": "accepted",
+        "driver_id": user_id,
+        "driver_info": {
+            "id": user_id,
+            "name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}",
+            "cellphone": driver_data.get("cellphone"),
+            "car_make": vehicle.get("car_make"),
+            "car_model": vehicle.get("car_model"),
+            "car_color": vehicle.get("car_color"),
+            "license_plate": vehicle.get("license_plate"),
+            "rating": driver_data.get("rating", 5.0),
+        },
+        "driver_location": driver_location,
+        "commission_paid": held_commission,
+        "commission_rate_used": commission_rate,
+        "accepted_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    return {
+        "message": "Ride accepted!",
+        "commission_deducted": held_commission,
+        "commission_rate": f"{commission_rate * 100:.1f}%",
+        "surge_multiplier": surge_multiplier,
+        "new_balance": new_balance,
+    }
+
+
+@app.post("/api/rides/{ride_id}/decline", tags=["Rides"])
+async def decline_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    db.collection("rides").document(ride_id).update({
+        "declined_drivers": firestore.ArrayUnion([user_id])
+    })
+    return {"message": "Ride declined"}
+
+
+@app.post("/api/rides/{ride_id}/arrived", tags=["Rides"])
+async def driver_arrived(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    db.collection("rides").document(ride_id).update({
+        "status": "arrived",
+        "arrived_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"message": "Marked as arrived - wait timer started"}
+
+
+@app.post("/api/rides/{ride_id}/start", tags=["Rides"])
+async def start_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if ride_doc.exists:
+        ride_data = ride_doc.to_dict()
+        arrived_at = ride_data.get("arrived_at")
+        wait_minutes = 0
+        if arrived_at and hasattr(arrived_at, "timestamp"):
+            now = datetime.now(timezone.utc)
+            wait_seconds = (now - arrived_at).total_seconds()
+            wait_minutes = int(wait_seconds / 60)
+
+        db.collection("rides").document(ride_id).update({
+            "status": "in_progress",
+            "pickup_wait_minutes": wait_minutes,
+            "started_at": firestore.SERVER_TIMESTAMP,
+        })
+
+    return {"message": "Ride started"}
+
+
+@app.post("/api/rides/{ride_id}/update-tracking", tags=["Rides"])
+async def update_ride_tracking(ride_id: str, location: LocationUpdate, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+
+    db.collection("rides").document(ride_id).update({
+        "driver_location": {"lat": location.lat, "lng": location.lng, "heading": location.heading, "speed": location.speed},
+        "route_points": firestore.ArrayUnion([{
+            "lat": location.lat,
+            "lng": location.lng,
+            "timestamp": now_iso(),
+        }]),
+    })
+
+    return {"message": "Tracking updated"}
+
+
+@app.post("/api/rides/{ride_id}/stop-reached", tags=["Rides"])
+async def stop_reached(ride_id: str, stop_index: int, wait_minutes: int = 0, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    db.collection("rides").document(ride_id).update({
+        "stop_wait_minutes": firestore.Increment(wait_minutes),
+        f"stops_completed.{stop_index}": True,
+    })
+    return {"message": f"Stop {stop_index} completed, wait time: {wait_minutes} minutes"}
+
+
+@app.post("/api/rides/{ride_id}/complete", tags=["Rides"])
+async def complete_ride(
+    ride_id: str,
+    final_distance: Optional[float] = None,
+    total_wait_minutes: Optional[int] = None,  # kept for compatibility
+    user_id: str = Depends(get_current_user_id),
+):
+    db = get_db()
+
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+    ride_data = ride_doc.to_dict()
+
+    estimated = ride_data.get("estimated_distance", 5) or 5
+    reported = final_distance if final_distance is not None else 0
+
+    if reported < (estimated * 0.1):
+        actual_distance = estimated
+        logger.warning(f"Ride {ride_id}: GPS distance {reported}km seems wrong. Using estimate {estimated}km")
+    else:
+        actual_distance = reported
+
+    pickup_wait = ride_data.get("pickup_wait_minutes", 0) or 0
+    stop_wait = ride_data.get("stop_wait_minutes", 0) or 0
+    num_stops = ride_data.get("num_stops", 0) or 0
+    car_type = ride_data.get("carType", "economy")
+    surge_multiplier = ride_data.get("surge_multiplier", 1.0)
+
+    final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops, surge_multiplier)
+
+    payment_status = "cash_pending"
+    payment_method = ride_data.get("payment_method", "cash")
+    order_id = ride_data.get("payment_order_id")
+
+    if payment_method == "card" and order_id:
+        try:
+            logger.info(f"Attempting to verify PayPal order: {order_id}")
+            access_token = await get_paypal_token()
+
+            if access_token:
+                async with httpx.AsyncClient(timeout=25) as client:
+                    capture_response = await client.get(
+                        f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {access_token}",
+                        },
+                    )
+
+                    if capture_response.status_code == 200:
+                        data = capture_response.json()
+                        status = data.get("status")
+                        if status in ("COMPLETED", "APPROVED"):
+                            payment_status = "paid"
+                            logger.info(f"Payment verified for ride {ride_id}")
+                        else:
+                            logger.warning(f"PayPal status: {status}")
+                            payment_status = "failed"
+                    else:
+                        logger.error(f"PayPal Verify Failed: {capture_response.status_code}")
+                        payment_status = "failed"
+            else:
+                payment_status = "auth_error"
+
+        except Exception as e:
+            logger.error(f"Payment Exception: {e}")
+            payment_status = "error"
+    elif payment_method == "cash":
+        payment_status = "cash_collected"
+
+    db.collection("rides").document(ride_id).update({
+        "status": "completed",
+        "actual_distance": actual_distance,
+        "final_fare": final_fare["total"],
+        "final_fare_breakdown": final_fare,
+        "payment_status": payment_status,
+        "completed_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    # DRIVER EARNINGS / COMMISSION RECONCILIATION
+    driver_id = ride_data.get("driver_id")
+    if driver_id:
+        commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
+        held_commission = ride_data.get("commission_paid", 0) or 0
+        actual_commission = (final_fare["total"] or 0) * commission_rate
+        delta_commission = actual_commission - held_commission  # + => owes more; - => refund
+
+        driver_earnings = (final_fare["total"] or 0) - actual_commission
+
+        updates = {
+            "earnings.total_earned": firestore.Increment(driver_earnings),
+            "total_rides": firestore.Increment(1),
+        }
+
+        if payment_method == "cash":
+            updates["earnings.balance"] = firestore.Increment(-delta_commission)
+        elif payment_status == "paid":
+            updates["earnings.balance"] = firestore.Increment(held_commission + driver_earnings)
+
+        db.collection("users").document(driver_id).update(updates)
+
+    rider_id = ride_data.get("userId")
+    if rider_id:
+        db.collection("users").document(rider_id).update({
             "total_rides": firestore.Increment(1)
+        })
+
+    return {
+        "message": "Ride completed",
+        "payment_status": payment_status,
+        "final_fare": final_fare["total"],
+        "fare_breakdown": final_fare,
+    }
+
+
+@app.post("/api/rides/{ride_id}/rate-passenger", tags=["Rides"])
+async def rate_passenger(ride_id: str, rating_data: RatePassengerRequest, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+
+    ride_ref = db.collection("rides").document(ride_id)
+    ride = ride_ref.get()
+    if not ride.exists:
+        raise HTTPException(404, "Ride not found")
+
+    data = ride.to_dict()
+    if data.get("driver_id") != user_id:
+        raise HTTPException(403, "Not authorized")
+
+    ride_ref.update({
+        "passenger_rating": rating_data.rating,
+        "passenger_review": rating_data.review
+    })
+
+    rider_id = data.get("userId")
+    if rider_id:
+        user_ref = db.collection("users").document(rider_id)
+        user_doc = user_ref.get()
+        if user_doc.exists:
+            u_data = user_doc.to_dict()
+            current = u_data.get("rating", 5.0)
+            count = u_data.get("total_rides", 1)
+            new_rating = ((current * count) + rating_data.rating) / (count + 1)
+            user_ref.update({"rating": new_rating})
+
+    return {"message": "Passenger rated"}
+
+
+@app.post("/api/rides/{ride_id}/rate-rider", tags=["Rides"])
+async def rate_driver(ride_id: str, rating_data: RateDriverRequest, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+
+    ride_ref = db.collection("rides").document(ride_id)
+    ride = ride_ref.get()
+    if not ride.exists:
+        raise HTTPException(404, "Ride not found")
+
+    data = ride.to_dict()
+    if data.get("userId") != user_id:
+        raise HTTPException(403, "Not authorized")
+
+    ride_ref.update({
+        "rider_rating": rating_data.rating,
+        "rider_review": rating_data.review,
+        "rated_at": firestore.SERVER_TIMESTAMP
+    })
+
+    driver_id = data.get("driver_id")
+    if driver_id:
+        driver_ref = db.collection("users").document(driver_id)
+        driver_doc = driver_ref.get()
+        if driver_doc.exists:
+            d_data = driver_doc.to_dict()
+            current_rating = d_data.get("rating", 5.0)
+            total_rides = d_data.get("total_rides", 1)
+            new_rating = ((current_rating * total_rides) + rating_data.rating) / (total_rides + 1)
+            driver_ref.update({"rating": new_rating})
+
+    return {"message": "Rating submitted"}
+
+
+@app.post("/api/rides/{ride_id}/cancel", tags=["Rides"])
+async def cancel_ride(ride_id: str, reason: str = "User cancelled", user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    db.collection("rides").document(ride_id).update({
+        "status": "cancelled",
+        "cancellation_reason": reason,
+        "cancelled_by": user_id,
+        "cancelled_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"message": "Ride cancelled"}
+
+
+@app.get("/api/rides/{ride_id}", tags=["Rides"])
+async def get_ride(ride_id: str):
+    db = get_db()
+    doc = db.collection("rides").document(ride_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Ride not found")
+    return serialize_firestore_data({**doc.to_dict(), "id": doc.id})
+
+
+# =========================
+# CHAT ROUTES
+# =========================
+
+@app.get("/api/rides/{ride_id}/chat", tags=["Chat"])
+async def get_chat_messages(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+
+    ride_data = ride_doc.to_dict()
+    rider_id = ride_data.get("userId")
+    driver_id = ride_data.get("driver_id")
+
+    if user_id not in [rider_id, driver_id]:
+        raise HTTPException(403, "Not authorized to access this chat")
+
+    messages = list(
+        db.collection("rides")
+        .document(ride_id)
+        .collection("messages")
+        .order_by("timestamp")
+        .stream()
+    )
+
+    return {
+        "ride_id": ride_id,
+        "messages": [serialize_firestore_data({**m.to_dict(), "id": m.id}) for m in messages],
+    }
+
+
+@app.post("/api/rides/{ride_id}/chat", tags=["Chat"])
+async def send_chat_message(ride_id: str, chat: ChatMessage, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+
+    ride_data = ride_doc.to_dict()
+    rider_id = ride_data.get("userId")
+    driver_id = ride_data.get("driver_id")
+
+    if user_id not in [rider_id, driver_id]:
+        raise HTTPException(403, "Not authorized to send messages in this chat")
+
+    sender_type = "rider" if user_id == rider_id else "driver"
+
+    user_doc = db.collection("users").document(user_id).get()
+    sender_name = "Unknown"
+    if user_doc.exists:
+        user_data = user_doc.to_dict()
+        sender_name = f"{user_data.get('name', '')} {user_data.get('surname', '')}".strip()
+
+    message_ref = db.collection("rides").document(ride_id).collection("messages").document()
+    message_data = {
+        "id": message_ref.id,
+        "sender_id": user_id,
+        "sender_type": sender_type,
+        "sender_name": sender_name,
+        "message": chat.message,
+        "timestamp": firestore.SERVER_TIMESTAMP,
+        "read": False,
+    }
+    message_ref.set(message_data)
+
+    db.collection("rides").document(ride_id).update({
+        "last_message": {
+            "text": chat.message[:50] + "..." if len(chat.message) > 50 else chat.message,
+            "sender_type": sender_type,
+            "timestamp": firestore.SERVER_TIMESTAMP,
+        },
+        "unread_messages": firestore.Increment(1),
+    })
+
+    return {"message": "Message sent", "message_id": message_ref.id, "sender_type": sender_type}
+
+
+@app.post("/api/rides/{ride_id}/chat/read", tags=["Chat"])
+async def mark_messages_read(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+
+    ride_data = ride_doc.to_dict()
+    if user_id not in [ride_data.get("userId"), ride_data.get("driver_id")]:
+        raise HTTPException(403, "Not authorized")
+
+    db.collection("rides").document(ride_id).update({"unread_messages": 0})
+    return {"message": "Messages marked as read"}
+
+
+# =========================
+# RIDER WALLET
+# =========================
+
+@app.post("/api/rider/wallet/topup", tags=["Rider"])
+async def rider_topup(request: RiderWalletTopUp, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+
+    try:
+        db.collection("users").document(user_id).update({
+            "wallet_balance": firestore.Increment(request.amount),
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        return {"message": f"Successfully added {request.amount} to wallet"}
+    except Exception as e:
+        logger.error(f"Topup error: {e}")
+        raise HTTPException(500, "Failed to process topup")
+
+
+# =========================
+# RIDER HISTORY
+# =========================
+
+@app.get("/api/rider/history", tags=["Rider"])
+async def get_rider_history(user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    try:
+        rides = list(
+            db.collection("rides")
+            .where("userId", "==", user_id)
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(50)
+            .stream()
+        )
+    except Exception:
+        rides = list(db.collection("rides").where("userId", "==", user_id).limit(50).stream())
+        rides.sort(key=lambda r: r.to_dict().get("created_at", ""), reverse=True)
+
+    return {"rides": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in rides]}
+
+
+@app.get("/api/rider/active-ride", tags=["Rider"])
+async def get_active_ride(user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    db = get_db()
+    for status in ["searching", "accepted", "arrived", "in_progress"]:
+        rides = list(
+            db.collection("rides")
+            .where("userId", "==", user_id)
+            .where("status", "==", status)
+            .limit(1)
+            .stream()
+        )
+        if rides:
+            ride = rides[0]
+            return serialize_firestore_data({**ride.to_dict(), "id": ride.id})
+
+    return None
+
+
+# =========================
+# ADMIN ROUTES
+# =========================
+
+@app.get("/api/admin/dashboard", tags=["Admin"])
+async def admin_dashboard():
+    db = get_db()
+
+    riders = list(db.collection("users").where("user_type", "==", "rider").stream())
+    drivers = list(db.collection("users").where("user_type", "==", "driver").stream())
+    active_rides = list(db.collection("rides").where("status", "in", ["searching", "accepted", "arrived", "in_progress"]).stream())
+    pending_drivers = list(db.collection("users").where("registration_status", "==", "pending_review").stream())
+    pending_withdrawals = list(db.collection("driver_withdrawals").where("status", "==", "pending").stream())
+    pending_topups = list(db.collection("driver_topup_requests").where("status", "==", "pending").stream())
+
+    return {
+        "total_riders": len(riders),
+        "total_drivers": len(drivers),
+        "active_rides": len(active_rides),
+        "pending_driver_approvals": len(pending_drivers),
+        "pending_withdrawals": len(pending_withdrawals),
+        "pending_topups": len(pending_topups),
+    }
+
+
+@app.get("/api/admin/riders", tags=["Admin"])
+async def admin_riders():
+    db = get_db()
+    riders = db.collection("users").where("user_type", "==", "rider").stream()
+    return {"riders": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in riders]}
+
+
+@app.get("/api/admin/riders/{id}", tags=["Admin"])
+async def get_admin_rider_detail(id: str):
+    db = get_db()
+    doc = db.collection("users").document(id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Rider not found")
+
+    rides = db.collection("rides").where("userId", "==", id).limit(50).stream()
+
+    return {
+        "rider": serialize_firestore_data({**doc.to_dict(), "id": id}),
+        "rides": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in rides],
+    }
+
+
+@app.get("/api/admin/drivers", tags=["Admin"])
+async def admin_drivers():
+    db = get_db()
+    drivers = db.collection("users").where("user_type", "==", "driver").stream()
+    return {"drivers": [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in drivers]}
+
+
+@app.get("/api/admin/drivers/pending", tags=["Admin"])
+async def get_pending_drivers():
+    db = get_db()
+    all_drivers = list(db.collection("users").where("user_type", "==", "driver").stream())
+    pending = [d for d in all_drivers if d.to_dict().get("registration_status") == "pending_review"]
+    return {"pending_drivers": [serialize_firestore_data({**doc.to_dict(), "id": doc.id}) for doc in pending]}
+
+
+@app.get("/api/admin/drivers/{id}", tags=["Admin"])
+async def get_admin_driver_detail(id: str):
+    db = get_db()
+    doc = db.collection("users").document(id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Driver not found")
+    return {"driver": serialize_firestore_data({**doc.to_dict(), "id": id})}
+
+
+@app.post("/api/admin/drivers/{id}/approve", tags=["Admin"])
+async def admin_approve_driver(id: str):
+    db = get_db()
+    db.collection("users").document(id).update({
+        "registration_status": "approved",
+        "approved_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"message": "Driver approved"}
+
+
+@app.post("/api/admin/drivers/{id}/reject", tags=["Admin"])
+async def admin_reject_driver(id: str, reason: str = "Documents not satisfactory"):
+    db = get_db()
+    db.collection("users").document(id).update({
+        "registration_status": "rejected",
+        "rejection_reason": reason,
+        "rejected_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"message": "Driver rejected"}
+
+
+@app.post("/api/admin/users/{id}/add-balance", tags=["Admin"])
+@app.post("/api/admin/add-balance/{id}", tags=["Admin"])
+async def admin_add_balance(id: str, req: AdminAddBalanceRequest):
+    db = get_db()
+    ref = db.collection("users").document(id)
+    doc = ref.get()
+
+    if not doc.exists:
+        raise HTTPException(404, "User not found")
+
+    user_data = doc.to_dict()
+    user_type = user_data.get("user_type", "rider")
+
+    if user_type == "driver":
+        ref.update({
+            "earnings.balance": firestore.Increment(req.amount),
+            "earnings.total_topped_up": firestore.Increment(abs(req.amount)) if req.amount > 0 else firestore.Increment(0),
         })
     else:
-        # Cash: Driver has the money. We deduct commission from their wallet.
-        driver_ref.update({
-            "wallet_balance": firestore.Increment(-commission),
-            "total_rides": firestore.Increment(1)
-        })
+        ref.update({"wallet_balance": firestore.Increment(req.amount)})
 
-    return {"status": "completed", "payment": payment_status}
-
-@app.post("/api/rides/{ride_id}/cancel")
-async def ride_cancel(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    get_db().collection("rides").document(ride_id).update({
-        "status": "cancelled",
-        "cancelled_by": user_id
+    db.collection("admin_balance_logs").add({
+        "target_user_id": id,
+        "target_user_name": f"{user_data.get('name', '')} {user_data.get('surname', '')}",
+        "target_user_type": user_type,
+        "amount": req.amount,
+        "reason": req.reason,
+        "admin_action": "add_balance",
+        "timestamp": firestore.SERVER_TIMESTAMP,
     })
-    return {"status": "cancelled"}
 
-@app.get("/api/rides/{ride_id}")
-async def get_ride_details(ride_id: str):
-    doc = get_db().collection("rides").document(ride_id).get()
-    if not doc.exists: raise HTTPException(404)
-    return serialize_firestore({**doc.to_dict(), "id": doc.id})
+    return {"message": f"Successfully added ₾{req.amount} to {user_type} account"}
 
-# =========================
-# 9. HISTORY & CHAT
-# =========================
 
-@app.get("/api/rider/history")
-async def rider_history(user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    rides = list(get_db().collection("rides").where("userId", "==", user_id)\
-        .order_by("created_at", direction=firestore.Query.DESCENDING).limit(20).stream())
-    return {"rides": [serialize_firestore({**r.to_dict(), "id": r.id}) for r in rides]}
+@app.get("/api/admin/topups/pending", tags=["Admin"])
+async def get_pending_topups():
+    db = get_db()
+    topups = db.collection("driver_topup_requests").where("status", "==", "pending").stream()
+    return {"pending_topups": [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in topups]}
 
-@app.get("/api/driver/history")
-async def driver_history(user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    rides = list(get_db().collection("rides").where("driver_id", "==", user_id)\
-        .order_by("created_at", direction=firestore.Query.DESCENDING).limit(20).stream())
-    return {"rides": [serialize_firestore({**r.to_dict(), "id": r.id}) for r in rides]}
 
-@app.post("/api/rides/{ride_id}/chat")
-async def send_message(ride_id: str, msg: ChatMessage, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    ref = get_db().collection("rides").document(ride_id).collection("messages").document()
-    ref.set({
-        "sender_id": user_id,
-        "message": msg.message,
-        "timestamp": firestore.SERVER_TIMESTAMP
+@app.post("/api/admin/topups/{id}/approve", tags=["Admin"])
+async def approve_topup(id: str):
+    db = get_db()
+    topup_doc = db.collection("driver_topup_requests").document(id).get()
+    if not topup_doc.exists:
+        raise HTTPException(404, "Top-up request not found")
+
+    topup_data = topup_doc.to_dict()
+    driver_id = topup_data.get("driver_id")
+    amount = topup_data.get("amount", 0)
+
+    db.collection("users").document(driver_id).update({
+        "earnings.balance": firestore.Increment(amount),
+        "earnings.total_topped_up": firestore.Increment(amount),
     })
-    return {"status": "sent"}
 
-@app.get("/api/rides/{ride_id}/chat")
-async def get_messages(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    if not user_id: raise HTTPException(401)
-    msgs = list(get_db().collection("rides").document(ride_id).collection("messages")\
-        .order_by("timestamp").stream())
-    return {"messages": [serialize_firestore(m.to_dict()) for m in msgs]}
+    db.collection("driver_topup_requests").document(id).update({
+        "status": "approved",
+        "approved_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    return {"message": f"Top-up of ₾{amount} approved"}
+
+
+@app.post("/api/admin/topups/{id}/reject", tags=["Admin"])
+async def reject_topup(id: str, reason: str = "Payment not verified"):
+    db = get_db()
+    db.collection("driver_topup_requests").document(id).update({
+        "status": "rejected",
+        "rejection_reason": reason,
+        "rejected_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"message": "Top-up request rejected"}
+
+
+@app.get("/api/admin/withdrawals/pending", tags=["Admin"])
+async def get_pending_withdrawals():
+    db = get_db()
+    withdrawals = db.collection("driver_withdrawals").where("status", "==", "pending").stream()
+    return {"pending_withdrawals": [serialize_firestore_data({**w.to_dict(), "id": w.id}) for w in withdrawals]}
+
+
+@app.post("/api/admin/withdrawals/{id}/approve", tags=["Admin"])
+@app.post("/api/admin/withdrawal/{id}/approve", tags=["Admin"])
+async def approve_withdrawal(id: str):
+    db = get_db()
+    withdrawal_doc = db.collection("driver_withdrawals").document(id).get()
+    if not withdrawal_doc.exists:
+        raise HTTPException(404, "Withdrawal request not found")
+
+    withdrawal_data = withdrawal_doc.to_dict()
+    driver_id = withdrawal_data.get("driver_id")
+    amount = withdrawal_data.get("amount", 0)
+
+    db.collection("users").document(driver_id).update({
+        "earnings.balance": firestore.Increment(-amount),
+        "earnings.total_withdrawn": firestore.Increment(amount),
+    })
+
+    db.collection("driver_withdrawals").document(id).update({
+        "status": "approved",
+        "approved_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    return {"message": f"Withdrawal of ₾{amount} approved"}
+
+
+@app.post("/api/admin/withdrawals/{id}/reject", tags=["Admin"])
+@app.post("/api/admin/withdrawal/{id}/reject", tags=["Admin"])
+async def reject_withdrawal(id: str):
+    db = get_db()
+    db.collection("driver_withdrawals").document(id).update({
+        "status": "rejected",
+        "rejected_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"message": "Withdrawal rejected"}
+
 
 # =========================
-# 10. ACTIVE RIDE CHECK (CRITICAL)
+# HEALTH
 # =========================
 
-@app.get("/api/rider/active-ride")
-async def get_rider_active_ride(user_id: str = Depends(get_current_user_id)):
-    if not user_id: return None
-    rides = list(get_db().collection("rides")\
-        .where("userId", "==", user_id)\
-        .where("status", "in", ["searching", "accepted", "arrived", "in_progress"])\
-        .limit(1).stream())
-    if rides:
-        return serialize_firestore({**rides[0].to_dict(), "id": rides[0].id})
-    return None
+@app.get("/api/health", tags=["Health"])
+async def health_check():
+    return {"status": "healthy", "timestamp": now_iso()}
 
-@app.get("/api/driver/active-ride")
-async def get_driver_active_ride(user_id: str = Depends(get_current_user_id)):
-    if not user_id: return None
-    rides = list(get_db().collection("rides")\
-        .where("driver_id", "==", user_id)\
-        .where("status", "in", ["accepted", "arrived", "in_progress"])\
-        .limit(1).stream())
-    if rides:
-        return serialize_firestore({**rides[0].to_dict(), "id": rides[0].id})
-    return None
 
-@app.get("/")
-def health_check():
-    return {"status": "Taksi API is Running"}
+@app.get("/api/", tags=["Health"])
+async def root():
+    return {"message": "T'aksi API v3 - Firebase Edition"}
+
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)

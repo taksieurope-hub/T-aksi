@@ -120,7 +120,7 @@ Very long (>30km): +₾5-8 per 15km block
 ## Credentials
 - **Admin Password:** `D'Ahl-Enterprise9409145169086`
 - **Payment Link:** `https://egreve.bog.ge//Taksi`
-- **Google Maps API Key:** `AIzaSyC2gkANH8GJOZNDdibTCKNEOWiuf580bxA`
+- **Google Maps API Key:** `AIzaSyAAenq7Dyy1R8tS49JxKf70Nxtf5es4QJ4`
 
 ## Firebase Indexes Needed
 Create these composite indexes in Firebase Console:
