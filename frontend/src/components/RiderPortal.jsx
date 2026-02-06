@@ -49,6 +49,7 @@ const PRICING_RULES = {
   jumpstart:{ key: "vehicle_jumpstart",base: 4.50, perKm: 0.00, perMinWait: 0.50, freeWait: 999, stopFee: 0.00, icon: "⚡", longDist: 999.0,veryLong: 999.0 }
 };
 
+
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
@@ -1121,7 +1122,7 @@ const RiderDashboard = () => {
         const ride = normalizeRide(res.data);
         setActiveRide(ride);
 
-        if (["completed", "cancelled", "no_drivers"].includes(ride.status)) {
+                if (["completed", "cancelled", "no_drivers"].includes(ride.status)) {
           clearInterval(pollRef.current);
           pollRef.current = null;
 
@@ -1130,13 +1131,15 @@ const RiderDashboard = () => {
             setShowRatingModal(true);
             fetchRideHistory();
           } else if (ride.status === "no_drivers") {
-            toast.error("No drivers available. Please try again.");
-            setActiveRide(null);
+            // ✅ KEEP ride visible and allow retry
+            toast.error("No drivers available. You can retry.");
+            setActiveRide(ride);
           } else {
             toast.info(t("ride_cancelled"));
             setActiveRide(null);
           }
         }
+
       } catch (error) {
         if (error?.response?.status === 404 && pollRef.current) {
           clearInterval(pollRef.current);
@@ -1158,6 +1161,25 @@ const RiderDashboard = () => {
       toast.error("Failed to cancel ride");
     }
   };
+
+    const handleRetryRide = async () => {
+    if (!activeRide?.id) return;
+    try {
+      await api.post(`/rides/${activeRide.id}/retry`);
+      toast.success("Searching again...");
+      // Keep the current ride card, just set status back to searching
+      setActiveRide((prev) => normalizeRide({
+        ...(prev || {}),
+        id: prev?.id,
+        status: "searching",
+        matching_status: "Retrying - Searching within 3km"
+      }));
+      pollRideStatus(activeRide.id);
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Failed to retry ride");
+    }
+  };
+
 
   const submitRating = async () => {
     try {
@@ -1302,6 +1324,24 @@ const RiderDashboard = () => {
                   />
                 </div>
 
+                                {/* Surge Pricing Banner */}
+                {Boolean((surgeInfo?.multiplier || 1) > 1 || surgeInfo?.is_surge) && (
+                  <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-orange-400 font-bold">Surge Pricing Active</p>
+                        <p className="text-orange-300/70 text-sm">
+                          {surgeInfo?.surge_reason || "High demand / traffic"}
+                        </p>
+                      </div>
+                      <Badge className="bg-orange-500 text-black text-lg px-3 py-1">
+                        x{surgeInfo?.multiplier || 1.0}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+
+
                 {routeInfo && fareEstimate && (
                   <div className="bg-[#1a1a2e] border border-[#00ff88]/30 rounded-xl overflow-hidden">
                     <div className="bg-[#00ff88]/10 p-3 flex justify-between items-center border-b border-[#00ff88]/10">
@@ -1432,6 +1472,59 @@ const RiderDashboard = () => {
                       <p className="text-[#00ff88] font-mono font-bold text-lg tracking-widest">{rideForUI.otp || "----"}</p>
                     </div>
                   </div>
+
+                                    {rideForUI.status === "searching" && (
+                    <div className="bg-yellow-500/20 border border-yellow-500 p-4 rounded-xl space-y-2">
+                      <div className="flex items-center">
+                        <Loader2 className="w-5 h-5 animate-spin mr-3 text-yellow-400" />
+                        <span className="text-yellow-400 font-medium">
+                          {rideForUI.matching_status || "Searching for drivers..."}
+                        </span>
+                      </div>
+
+                      {Number(rideForUI.drivers_notified_count) > 0 && (
+                        <p className="text-yellow-400/70 text-sm pl-8">
+                          {rideForUI.drivers_notified_count} drivers notified
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {rideForUI.status === "no_drivers" && (
+                    <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
+                      <div className="flex items-center text-gray-300">
+                        <Target className="w-5 h-5 mr-2" />
+                        <span className="font-medium">No drivers available</span>
+                      </div>
+
+                      <p className="text-gray-400 text-sm">
+                        All nearby drivers are busy. You can retry now or book a new ride.
+                      </p>
+
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1 bg-[#00ff88] text-black font-bold"
+                          onClick={handleRetryRide}
+                          type="button"
+                        >
+                          Retry Search
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          className="border-gray-500 text-gray-300"
+                          onClick={() => {
+                            setActiveRide(null);
+                            setActiveTab("book");
+                          }}
+                          type="button"
+                        >
+                          New Ride
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
 
                   {rideForUI.driver_info && (
                     <div className="bg-[#1a1a2e] rounded-xl p-4 border border-[#00d4ff]/20 shadow-lg relative overflow-hidden">
