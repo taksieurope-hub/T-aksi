@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 
 // FIX: Import from @/config and @/api
@@ -34,9 +34,8 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
     
-    // 🔥 FIX: Check Master Key FIRST (Local Override)
-    // This ensures you can login even if the backend API is down or "admin" user doesn't exist.
-    if (password === ADMIN_PASSWORD) {
+    try {
+      if (password === ADMIN_PASSWORD) {
         const adminUser = {
           id: "admin_local",
           name: "System",
@@ -45,29 +44,23 @@ const AdminLogin = () => {
           cellphone: "admin_master"
         };
         
-        // Simulate network delay for UX
-        setTimeout(() => {
-            login("master_admin_token", adminUser);
-            toast.success("⚡ Master Key Accepted. Command Center Unlocked.");
-            navigate("/admin/dashboard");
-            setLoading(false);
-        }, 800);
-        return;
-    }
-
-    // If not master key, try database login
-    try {
-      const res = await api.post(`/auth/login`, {
-        cellphone: "admin",
-        password: password,
-      });
-      
-      if(res.data.user.user_type === 'admin') {
+        login("master_admin_token", adminUser);
+        toast.success("⚡ Master Key Accepted. Command Center Unlocked.");
+        // Use window.location for force reload after local login
+        window.location.href = "/admin/dashboard";
+      } else {
+        const res = await api.post(`/auth/login`, {
+          cellphone: "admin",
+          password: password,
+        });
+        
+        if (res.data.user.user_type === 'admin') {
           login(res.data.token, res.data.user);
           toast.success("Welcome to Command Center!");
           navigate("/admin/dashboard");
-      } else {
+        } else {
           toast.error("Access Denied: User is not an admin.");
+        }
       }
     } catch (error) {
       console.error("Login error", error);
@@ -491,7 +484,7 @@ const AdminDashboard = () => {
                           </TableCell>
                           <TableCell className="text-gray-400">
                             {driver.driver_info?.vehicle ? 
-                              `${driver.driver_info.vehicle.car_make} ${driver.driver_info.vehicle.car_model}` : 
+                              `${driver.driver_info.vehicle.car_year} ${driver.driver_info.vehicle.car_make} ${driver.driver_info.vehicle.car_model}` : 
                               "N/A"}
                           </TableCell>
                           <TableCell>
