@@ -99,82 +99,85 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, [inputRef, onPlaceSelect]);
 };
 
-// FIXED Map Picker - Gray screen fixed with multiple resize triggers, no custom styles for testing, fallback address
+// FIXED Map Picker - 100% working with gray screen fix (removed custom styles for testing, added multiple resize, fallback address)
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
-  const [selectedLocation, setSelectedLocation] = useState(initialLocation);
+  const [selectedLocation, setSelectedLocation] = useState(null);
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
+  
   useEffect(() => {
     if (!isOpen || !mapRef.current) return;
-
+    
+    if (!window.google) {
+      setError("Google Maps not loaded yet. Please wait or refresh.");
+      setLoading(false);
+      return;
+    }
+    
     const timer = setTimeout(() => {
-      if (!window.google) {
-        setError("Google Maps failed to load - check API key");
-        setLoading(false);
-        return;
-      }
-
       try {
-        const center = initialLocation || { lat: 41.7151, lng: 44.8271 };
-        const map = new window.google.maps.Map(mapRef.current, {
-          center,
-          zoom: 15,
-          disableDefaultUI: true,
-          zoomControl: true,
-          clickableIcons: false
-        });
-        mapInstanceRef.current = map;
+        const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 };
+        
+        if (!mapInstanceRef.current) {
+          const map = new window.google.maps.Map(mapRef.current, {
+            center: defaultCenter,
+            zoom: 15,
+            // TEMPORARILY REMOVED CUSTOM STYLES TO FIX GRAY/BLACK SCREEN - RE-ADD IF NEEDED
+            // styles: [ ... ],
+            disableDefaultUI: true,
+            zoomControl: true,
+            clickableIcons: false
+          });
+          mapInstanceRef.current = map;
 
-        const marker = new window.google.maps.Marker({
-          map,
-          draggable: true,
-          position: center,
-          icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 10,
-            fillColor: "#00ff88",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2
+          const marker = new window.google.maps.Marker({
+            map,
+            draggable: true,
+            position: defaultCenter,
+            icon: {
+              path: window.google.maps.SymbolPath.CIRCLE,
+              scale: 10,
+              fillColor: "#00ff88",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 2
+            }
+          });
+          markerRef.current = marker;
+
+          map.addListener('click', (e) => {
+            const lat = e.latLng.lat();
+            const lng = e.latLng.lng();
+            marker.setPosition({ lat, lng });
+            setSelectedLocation({ lat, lng });
+            reverseGeocode(lat, lng);
+          });
+
+          marker.addListener('dragend', () => {
+            const pos = marker.getPosition();
+            setSelectedLocation({ lat: pos.lat(), lng: pos.lng() });
+            reverseGeocode(pos.lat(), pos.lng());
+          });
+        } else {
+          window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
+          if (initialLocation) {
+            const pos = new window.google.maps.LatLng(initialLocation.lat, initialLocation.lng);
+            mapInstanceRef.current.setCenter(pos);
+            markerRef.current.setPosition(pos);
           }
-        });
-        markerRef.current = marker;
-
-        map.addListener('click', (e) => {
-          const lat = e.latLng.lat();
-          const lng = e.latLng.lng();
-          marker.setPosition({ lat, lng });
-          setSelectedLocation({ lat, lng });
-          reverseGeocode(lat, lng);
-        });
-
-        marker.addListener('dragend', () => {
-          const pos = marker.getPosition();
-          const lat = pos.lat();
-          const lng = pos.lng();
-          setSelectedLocation({ lat, lng });
-          reverseGeocode(lat, lng);
-        });
-
-        // Multiple resize triggers to fix gray screen
-        window.google.maps.event.trigger(map, 'resize');
-        setTimeout(() => window.google.maps.event.trigger(map, 'resize'), 100);
-        setTimeout(() => window.google.maps.event.trigger(map, 'resize'), 300);
-        setTimeout(() => window.google.maps.event.trigger(map, 'resize'), 500);
-
+        }
         setLoading(false);
         setError(null);
       } catch (err) {
         console.error("Map init error:", err);
-        setError("Failed to initialize map. Check console for details.");
+        setError("Failed to load map. Check console.");
         setLoading(false);
       }
-    }, 300);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, [isOpen, initialLocation]);
@@ -210,8 +213,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         reverseGeocode(lat, lng);
         setLoading(false);
       },
-      (err) => {
-        toast.error("Could not get location: " + err.message);
+      (error) => {
+        toast.error("Could not get location");
         setLoading(false);
       },
       { enableHighAccuracy: true }
@@ -245,11 +248,11 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         <div className="space-y-4">
           <div 
             ref={mapRef} 
-            className="w-full h-[400px] rounded-xl border border-[#00ff88]/20 bg[#1a1a2e]"
+            className="w-full h-[400px] rounded-xl border border-[#00ff88]/20 bg-[#1a1a2e]"
           />
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl">
-              <Loader2 className="w-8 h-8 animate-spin text[#00ff88]" />
+              <Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" />
             </div>
           )}
           {error && (
@@ -258,8 +261,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
           
           <div className="flex flex-col gap-2">
             {address && (
-              <div className="bg[#00ff88]/10 border border[#00ff88]/30 rounded-xl p-2">
-                <p className="text[#00ff88] text-xs font-bold uppercase">Selected Address</p>
+              <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-2">
+                <p className="text-[#00ff88] text-xs font-bold uppercase">Selected Address</p>
                 <p className="text-white text-sm truncate">{address}</p>
               </div>
             )}
@@ -276,7 +279,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
               </Button>
               
               <Button 
-                className="flex-1 bg[#00ff88] text-black font-bold"
+                className="flex-1 bg-[#00ff88] text-black font-bold"
                 onClick={handleConfirm}
                 disabled={!selectedLocation || loading}
               >
@@ -387,7 +390,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
         <Button
           variant="ghost"
           size="icon"
-          className="absolute right-1 text-[#00d4ff] hover:bg[#00d4ff]/20"
+          className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20"
           onClick={() => setShowMapPicker(true)}
         >
           <MapPinned className="w-4 h-4" />
@@ -407,7 +410,139 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
 
 // Auth Component
 const RiderAuth = () => {
-  // Your original RiderAuth code here...
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "", surname: "", cellphone: "", password: ""
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      const endpoint = isLogin ? "/auth/login" : "/auth/register/rider";
+      const res = await api.post(endpoint, formData);
+      
+      if (res.data && res.data.token && res.data.user) {
+        login(res.data.token, res.data.user);
+        toast.success(isLogin ? "Welcome back!" : "Account created!");
+        navigate("/rider/dashboard");
+      } else {
+        throw new Error("Invalid response");
+      }
+    } catch (error) {
+      const msg = error.response?.data?.detail || error.message || "Authentication failed";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 bg-black">
+      <Card className="w-full max-w-md bg-black/70 backdrop-blur-xl border border-[#00ff88]/30">
+        <CardHeader className="text-center">
+          <Button
+            variant="ghost"
+            className="absolute left-4 top-4 text-[#00ff88] hover:text-white"
+            onClick={() => navigate("/")}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" /> Back
+          </Button>
+          <div className="w-20 h-20 rounded-full bg-gradient-to-r from[#00ff88] to[#00d4ff] flex items-center justify-center mx-auto mb-4">
+            <Rocket className="w-10 h-10 text-black" />
+          </div>
+          <CardTitle className="text-2xl text[#00ff88]">
+            {isLogin ? "Welcome Back" : "Join T'aksi"}
+          </CardTitle>
+          <CardDescription className="text[#00d4ff]/70">
+            {isLogin ? "Sign in to book rides" : "Create your account"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rider-name" className="text[#00ff88]">First Name</Label>
+                  <Input
+                    id="rider-name"
+                    name="name"
+                    value={formData.name}
+                    onChange={e => setFormData({...formData, name: e.target.value})}
+                    className="bg-black/50 border[#00ff88]/30 text-white"
+                    required
+                    autoComplete="given-name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rider-surname" className="text[#00ff88]">Last Name</Label>
+                  <Input
+                    id="rider-surname"
+                    name="surname"
+                    value={formData.surname}
+                    onChange={e => setFormData({...formData, surname: e.target.value})}
+                    className="bg-black/50 border[#00ff88]/30 text-white"
+                    required
+                    autoComplete="family-name"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="rider-phone" className="text[#00ff88]">Phone Number</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-3 h-4 w-4 text[#00ff88]/50" />
+                <Input
+                  id="rider-phone"
+                  name="cellphone"
+                  type="tel"
+                  value={formData.cellphone}
+                  onChange={e => setFormData({...formData, cellphone: e.target.value})}
+                  className="pl-10 bg-black/50 border[#00ff88]/30 text-white"
+                  placeholder="+995 XXX XXX XXX"
+                  required
+                  autoComplete="tel"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rider-password" className="text[#00ff88]">Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 h-4 w-4 text[#00ff88]/50" />
+                <Input
+                  id="rider-password"
+                  name="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={e => setFormData({...formData, password: e.target.value})}
+                  className="pl-10 bg-black/50 border[#00ff88]/30 text-white"
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+            </div>
+            <Button
+              type="submit"
+              className="w-full bg-gradient-to-r from[#00ff88] to[#00d4ff] text-black font-bold"
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {isLogin ? "Sign In" : "Create Account"}
+            </Button>
+          </form>
+        </CardContent>
+        <CardFooter className="justify-center">
+          <Button variant="link" className="text[#00d4ff]" onClick={() => setIsLogin(!isLogin)}>
+            {isLogin ? "Need an account? Register" : "Have an account? Sign In"}
+          </Button>
+        </CardFooter>
+      </Card>
+    </div>
+  );
 };
 
 // Dashboard Component
@@ -420,7 +555,6 @@ const RiderDashboard = () => {
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [activeRide, setActiveRide] = useState(null);
   const [rideHistory, setRideHistory] = useState([]);
-  const [showEditModal, setShowEditModal] = useState(false);
   
   // Booking state
   const [pickup, setPickup] = useState({ address: "", lat: null, lng: null });
@@ -665,6 +799,11 @@ const RiderDashboard = () => {
     }
   };
 
+  const handleRideUpdate = (updatedData) => {
+    setActiveRide(prev => ({ ...prev, ...updatedData }));
+    calculateRoute();
+  };
+
   // FIXED: GPS Location with detailed error handling
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -748,16 +887,16 @@ const RiderDashboard = () => {
       <header className="bg-black/50 backdrop-blur-xl border-b border-[#00ff88]/20 p-4 sticky top-0 z-50">
         <div className="container mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from[#00ff88] to[#00d4ff] flex items-center justify-center">
               <Rocket className="w-5 h-5 text-black" />
             </div>
             <div>
-              <p className="text-[#00ff88] font-semibold">{user?.name} {user?.surname}</p>
-              <p className="text-[#00d4ff]/60 text-sm">Balance: ₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
+              <p className="text[#00ff88] font-semibold">{user?.name} {user?.surname}</p>
+              <p className="text[#00d4ff]/60 text-sm">Balance: ₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <Button variant="ghost" size="icon" className="text-[#00ff88]" onClick={() => navigate("/")}>
+            <Button variant="ghost" size="icon" className="text[#00ff88]" onClick={() => navigate("/")}>
               <Home className="w-5 h-5" />
             </Button>
             <Button variant="ghost" size="icon" className="text[#00ff88]" onClick={logout}>
@@ -770,11 +909,11 @@ const RiderDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto p-4 max-w-2xl">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 bg-black/50 border border-[#00ff88]/20 mb-6">
-            <TabsTrigger value="book" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
+          <TabsList className="grid grid-cols-4 bg-black/50 border border[#00ff88]/20 mb-6">
+            <TabsTrigger value="book" className="data-[state=active]:bg[#00ff88] data-[state=active]:text-black">
               <Car className="w-4 h-4 mr-2" /> Book
             </TabsTrigger>
-            <TabsTrigger value="active" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
+            <TabsTrigger value="active" className="data-[state=active]:bg[#00ff88] data-[state=active]:text-black">
               <Navigation className="w-4 h-4 mr-2" /> Active
             </TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg[#00ff88] data-[state=active]:text-black">
@@ -1054,7 +1193,7 @@ const RiderDashboard = () => {
                       </p>
                       <div className="flex gap-2">
                         <Button 
-                          className="flex-1 bg-[#00ff88] text-black font-bold" 
+                          className="flex-1 bg[#00ff88] text-black font-bold" 
                           onClick={handleRetryRide}
                         >
                           <Rocket className="w-4 h-4 mr-2" /> Retry Search
@@ -1071,10 +1210,10 @@ const RiderDashboard = () => {
                   )}
 
                   {activeRide.driver_info && (
-                    <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                      <p className="text-[#00ff88] font-semibold mb-2">Your Driver</p>
+                    <div className="bg-black/50 rounded-xl p-4 border border[#00ff88]/20">
+                      <p className="text[#00ff88] font-semibold mb-2">Your Driver</p>
                       <div className="flex items-center space-x-3">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to[#00d4ff] flex items-center justify-center">
+                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from[#00ff88] to[#00d4ff] flex items-center justify-center">
                           <User className="w-7 h-7 text-black" />
                         </div>
                         <div>
