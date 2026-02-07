@@ -99,7 +99,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, [inputRef, onPlaceSelect]);
 };
 
-// 🔥 FIX 1: Map Picker (Grey Map Fix)
+// 🔥 FIXED: Map Picker (Solves Grey Map using ResizeObserver)
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -109,6 +109,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
+  // 1. Initialize Map
   useEffect(() => {
     if (!isOpen || !mapRef.current) return;
     
@@ -118,18 +119,24 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       return;
     }
     
-    // Increased timeout to ensure modal animation is done
-    const timer = setTimeout(() => {
-      try {
+    try {
         const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 };
         
+        // Only initialize if not already done
         if (!mapInstanceRef.current) {
           const map = new window.google.maps.Map(mapRef.current, {
             center: defaultCenter,
             zoom: 15,
             disableDefaultUI: true,
             zoomControl: true,
-            clickableIcons: false
+            clickableIcons: false,
+            styles: [
+                { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+                { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+                { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+                { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+                { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+            ]
           });
           mapInstanceRef.current = map;
 
@@ -158,29 +165,35 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 
           marker.addListener('dragend', () => {
             const pos = marker.getPosition();
-            const lat = pos.lat();
-            const lng = pos.lng();
-            setSelectedLocation({ lat, lng });
-            reverseGeocode(lat, lng);
+            setSelectedLocation({ lat: pos.lat(), lng: pos.lng() });
+            reverseGeocode(pos.lat(), pos.lng());
           });
-        } else {
-          // 🔥 CRITICAL: Force resize trigger when reopening modal to fix grey screen
-          const center = new window.google.maps.LatLng(initialLocation?.lat || 41.7151, initialLocation?.lng || 44.8271);
-          window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
-          mapInstanceRef.current.setCenter(center);
-          markerRef.current.setPosition(center);
-        }
+        } 
+        
         setLoading(false);
         setError(null);
-      } catch (err) {
+    } catch (err) {
         console.error("Map init error:", err);
-        setError("Failed to load map. Check console.");
+        setError("Failed to load map.");
         setLoading(false);
-      }
-    }, 500); // 500ms delay to ensure DOM is ready
+    }
+  }, [isOpen]);
 
-    return () => clearTimeout(timer);
-  }, [isOpen, initialLocation]);
+  // 2. 🔥 NEW: Observe div resize to fix Grey Map
+  useEffect(() => {
+      if (!isOpen || !mapRef.current || !mapInstanceRef.current) return;
+
+      const observer = new ResizeObserver(() => {
+          if (mapInstanceRef.current) {
+              window.google.maps.event.trigger(mapInstanceRef.current, "resize");
+              const center = markerRef.current ? markerRef.current.getPosition() : mapInstanceRef.current.getCenter();
+              mapInstanceRef.current.setCenter(center);
+          }
+      });
+
+      observer.observe(mapRef.current);
+      return () => observer.disconnect();
+  }, [isOpen]);
 
   const reverseGeocode = (lat, lng) => {
     if (!window.google) return;
@@ -293,15 +306,14 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// 🔥 FIX 2: Route Visualization Map (Follows Driver)
+// 🔥 FIXED: Route Map (Tracks Driver & Follows Camera)
 const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
-  const driverMarkerRef = useRef(null); // Ref for the car marker
+  const driverMarkerRef = useRef(null); 
   const [error, setError] = useState(null);
 
-  // Initialize Map & Route
   useEffect(() => {
     if (!mapRef.current || !window.google || !pickup?.lat || !destination?.lat) {
       if (!window.google) setError("Maps not loaded");
@@ -329,7 +341,7 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
         });
       }
 
-      // Draw Route - Only re-runs if primitive values change (prevents flashing)
+      // Route Calculation - Dependency check prevents flashing
       const directionsService = new window.google.maps.DirectionsService();
       const waypoints = stops.filter(s => s.lat && s.lng).map(s => ({
         location: new window.google.maps.LatLng(s.lat, s.lng),
@@ -347,20 +359,18 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
           setError(null);
         } else {
           console.error("Directions failed:", status);
-          setError(`Navigation failed: ${status}`);
         }
       });
     } catch (err) {
       console.error("RouteMap error:", err);
       setError("Failed to render route");
     }
-  }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length]); 
+  }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length]);
 
-  // 🔥 CORE FIX: Follow Driver Camera Logic
+  // 🔥 CORE FIX: Track Driver & MOVE CAMERA
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation || !driverLocation.lat) return;
 
-    // Ensure numeric values
     const lat = parseFloat(driverLocation.lat);
     const lng = parseFloat(driverLocation.lng);
     const heading = driverLocation.heading || 0;
@@ -385,7 +395,7 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
             zIndex: 9999
         });
     } else {
-        // Move existing marker smoothly
+        // Move existing marker
         driverMarkerRef.current.setPosition(pos);
         
         // Update rotation
@@ -394,7 +404,7 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
         driverMarkerRef.current.setIcon(icon);
     }
 
-    // 🔥 Force camera to follow
+    // 🔥 THIS LINE FIXES THE "NOT FOLLOWING" ISSUE
     mapInstanceRef.current.panTo(pos);
 
   }, [driverLocation]); 
@@ -665,7 +675,7 @@ const RiderDashboard = () => {
     }
   }, [routeInfo, carType, stops.length, surgeInfo]);
 
-  // 🔥 FIX 3: Poll for active ride updates (including driver location)
+  // 🔥 POLL FOR ACTIVE RIDE + DRIVER LOCATION
   useEffect(() => {
     let interval;
     if (activeRide && !["completed", "cancelled", "no_drivers"].includes(activeRide.status)) {
