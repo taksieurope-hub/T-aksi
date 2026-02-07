@@ -57,7 +57,7 @@ import {
 ========================================================= */
 
 /* ---------------------------------------------
-   UI CSS fixes (maps + nicer address bars)
+   UI CSS fixes (maps)
 ---------------------------------------------- */
 const globalCss = `
   .gm-style,
@@ -184,7 +184,7 @@ const useGoogleMapsLoader = () => {
 };
 
 /* ---------------------------------------------
-   MapPicker (prevents grey map: forces resize + min height)
+   MapPicker
 ---------------------------------------------- */
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, mapsLoaded }) => {
   const mapDivRef = useRef(null);
@@ -305,8 +305,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
 
   const getCurrentLocation = () => {
     if (!navigator.geolocation) return toast.error("Geolocation not supported on this device/browser");
-
-    // Geolocation requires https (or localhost)
     if (window.location.protocol !== "https:" && window.location.hostname !== "localhost") {
       return toast.error("GPS requires HTTPS (or localhost).");
     }
@@ -398,7 +396,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
 };
 
 /* ---------------------------------------------
-   LocationInput (NEW: clean “not-shit” bar + standard Autocomplete)
+   LocationInput
 ---------------------------------------------- */
 const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, iconColor, mapsLoaded }) => {
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -409,21 +407,16 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
     if (inputRef.current) inputRef.current.value = text || "";
   }, []);
 
-  // keep input synced when parent changes (e.g. map picker)
   useEffect(() => {
     syncInputValue(value?.address || "");
   }, [value?.address, syncInputValue]);
 
   useEffect(() => {
     if (!mapsLoaded || !window.google?.maps || !inputRef.current) return;
-
-    // avoid double init
     if (autoRef.current) return;
 
     const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
       fields: ["formatted_address", "geometry", "name"],
-      // optional restriction:
-      // componentRestrictions: { country: "ge" },
     });
 
     ac.addListener("place_changed", () => {
@@ -432,12 +425,8 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
       const lat = place?.geometry?.location?.lat?.();
       const lng = place?.geometry?.location?.lng?.();
 
-      if (lat && lng) {
-        onChange({ address: addr, lat, lng });
-      } else {
-        // fallback if user typed something weird
-        onChange({ address: addr, lat: null, lng: null });
-      }
+      if (lat && lng) onChange({ address: addr, lat, lng });
+      else onChange({ address: addr, lat: null, lng: null });
     });
 
     autoRef.current = ac;
@@ -474,7 +463,6 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
 
   const handleGPS = () => {
     if (!navigator.geolocation) return toast.error("GPS not supported");
-
     if (window.location.protocol !== "https:" && window.location.hostname !== "localhost") {
       return toast.error("GPS requires HTTPS (or localhost).");
     }
@@ -507,7 +495,6 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
 
   return (
     <div className="relative">
-      {/* nice input */}
       <div className="relative">
         <div className="absolute left-3 top-3.5 z-20 pointer-events-none">
           <Icon className={`h-5 w-5 ${iconColor}`} />
@@ -531,13 +518,13 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
             }
           }}
           onBlur={() => {
-            // keep address text even if not selected
             const text = inputRef.current?.value?.trim();
-            if (text && text !== (value?.address || "")) onChange({ address: text, lat: value?.lat || null, lng: value?.lng || null });
+            if (text && text !== (value?.address || "")) {
+              onChange({ address: text, lat: value?.lat || null, lng: value?.lng || null });
+            }
           }}
         />
 
-        {/* right buttons */}
         <div className="absolute right-2 top-2 z-20 flex gap-1 bg-black/50 rounded-lg p-0.5 border border-white/10">
           <Button
             type="button"
@@ -706,8 +693,11 @@ const ChatInterface = ({ rideId }) => {
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black">
         {messages.length === 0 && <p className="text-gray-500 text-center mt-10">{t("no_messages")}</p>}
         {messages.map((msg) => (
-          <div key={msg.id || `${msg.sender_id}-${msg.timestamp || msg.created_at}`} className={`flex ${msg.sender_id === user.id ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[80%] rounded-2xl p-3 ${msg.sender_id === user.id ? "bg-[#00ff88] text-black" : "bg-[#1a1a2e] text-white"}`}>
+          <div
+            key={msg.id || `${msg.sender_id}-${msg.timestamp || msg.created_at}`}
+            className={`flex ${msg.sender_id === user?.id ? "justify-end" : "justify-start"}`}
+          >
+            <div className={`max-w-[80%] rounded-2xl p-3 ${msg.sender_id === user?.id ? "bg-[#00ff88] text-black" : "bg-[#1a1a2e] text-white"}`}>
               <p className="text-sm">{msg.message}</p>
             </div>
           </div>
@@ -725,7 +715,7 @@ const ChatInterface = ({ rideId }) => {
 };
 
 /* ---------------------------------------------
-   RiderAuth (FIX: separate login/register payloads)
+   RiderAuth (FIXED: login + register)
 ---------------------------------------------- */
 const RiderAuth = () => {
   const { login } = useAuth();
@@ -744,31 +734,44 @@ const RiderAuth = () => {
 
     try {
       if (isLogin) {
-  const res = await api.post("/auth/login", loginData);
+        const res = await api.post("/auth/login", loginData);
 
-  console.log("LOGIN RESPONSE:", res.data);
+        const token = res.data?.token || res.data?.access_token || res.data?.jwt || res.data?.data?.token;
+        const user = res.data?.user || res.data?.rider || res.data?.data?.user || res.data?.profile;
 
-  const token =
-    res.data?.token ||
-    res.data?.access_token ||
-    res.data?.jwt ||
-    res.data?.data?.token;
+        if (token && user) {
+          login(token, user);
+          toast.success("Logged in");
+          navigate("/rider/dashboard");
+        } else {
+          toast.error("Server login response wrong format");
+        }
+      } else {
+        const payload = {
+          name: registerData.name,
+          surname: registerData.surname,
+          cellphone: registerData.cellphone,
+          password: registerData.password,
+          ...(registerData.email?.trim() ? { email: registerData.email.trim() } : {}),
+        };
 
-  const user =
-    res.data?.user ||
-    res.data?.rider ||
-    res.data?.data?.user ||
-    res.data?.profile;
+        const res = await api.post("/auth/register/rider", payload);
 
-  if (token && user) {
-    login(token, user);
-    toast.success("Logged in");
-    navigate("/rider/dashboard");
-  } else {
-    toast.error("Server login response wrong format");
-  }
-}
+        // Some backends auto-login on register. Support both.
+        const token = res.data?.token || res.data?.access_token || res.data?.jwt || res.data?.data?.token;
+        const user = res.data?.user || res.data?.rider || res.data?.data?.user || res.data?.profile;
 
+        toast.success("Account created");
+
+        if (token && user) {
+          login(token, user);
+          navigate("/rider/dashboard");
+        } else {
+          // If no token returned, switch to login screen
+          setIsLogin(true);
+          setLoginData({ cellphone: payload.cellphone, password: payload.password });
+        }
+      }
     } catch (error) {
       const msg = error?.response?.data?.detail || error?.response?.data || "Authentication failed";
       toast.error(String(msg));
@@ -885,7 +888,7 @@ const RiderAuth = () => {
 };
 
 /* ---------------------------------------------
-   RiderDashboard (aligned to server.py)
+   RiderDashboard
 ---------------------------------------------- */
 const RiderDashboard = () => {
   const { user, logout, updateUser } = useAuth();
@@ -906,7 +909,7 @@ const RiderDashboard = () => {
   const [destination, setDestination] = useState({ address: "", lat: null, lng: null });
   const [stops, setStops] = useState([]);
   const [carType, setCarType] = useState("economy");
-  const [paymentMethod, setPaymentMethod] = useState("cash"); // server expects "cash" or "card"
+  const [paymentMethod, setPaymentMethod] = useState("cash"); // "cash" | "card"
   const [topupAmount, setTopupAmount] = useState("");
 
   const [routeInfo, setRouteInfo] = useState(null);
@@ -918,14 +921,17 @@ const RiderDashboard = () => {
   const [review, setReview] = useState("");
   const [completedRideInfo, setCompletedRideInfo] = useState(null);
 
-  // stop polling on unmount
+  // PayPal env (SAFE)
+  const PAYPAL_CURRENCY = import.meta.env.VITE_PAYPAL_CURRENCY || "USD";
+  const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID || "";
+  const PAYPAL_ENABLED = Boolean(PAYPAL_CLIENT_ID) && PAYPAL_CLIENT_ID !== "test";
+
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
-  // Wait timer (arrived)
   useEffect(() => {
     let interval;
     if (activeRide?.status === "arrived" && activeRide?.arrived_at) {
@@ -1084,14 +1090,13 @@ const RiderDashboard = () => {
         destinationLng: destination?.lng || null,
         stops: stops.filter((s) => s?.lat && s?.lng).map((s, i) => ({ address: s.address, lat: s.lat, lng: s.lng, order: i })),
         carType,
-        paymentMethod, // alias in server is paymentMethod
-        paymentOrderId: paymentOrderId || null, // alias in server is paymentOrderId
+        paymentMethod,
+        paymentOrderId: paymentOrderId || null,
         estimatedDistance: routeInfo?.distance || 5,
         estimatedDuration: routeInfo?.duration || 15,
       };
 
       const res = await api.post("/rides/request", rideData);
-
       toast.success(t("searching_driver"));
 
       const tempRide = normalizeRide({
@@ -1204,9 +1209,13 @@ const RiderDashboard = () => {
   const destinationPoint = rideForUI?.destinationLat ? { lat: rideForUI.destinationLat, lng: rideForUI.destinationLng } : null;
   const driverPoint = rideForUI?.driver_location?.lat ? rideForUI.driver_location : null;
 
-  // PayPal currency (configurable)
-  const PAYPAL_CURRENCY = import.meta.env.VITE_PAYPAL_CURRENCY || "USD";
-  const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID || "test";
+  // Wrapper so PayPal never crashes when not configured
+  const PaypalWrapper = ({ children }) =>
+    PAYPAL_ENABLED ? (
+      <PayPalScriptProvider options={{ "client-id": PAYPAL_CLIENT_ID, currency: PAYPAL_CURRENCY }}>{children}</PayPalScriptProvider>
+    ) : (
+      <>{children}</>
+    );
 
   return (
     <div className="min-h-screen bg-black">
@@ -1237,7 +1246,7 @@ const RiderDashboard = () => {
       </header>
 
       <main className="container mx-auto p-4 max-w-2xl">
-        <PayPalScriptProvider options={{ "client-id": PAYPAL_CLIENT_ID, currency: PAYPAL_CURRENCY }}>
+        <PaypalWrapper>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid grid-cols-5 bg-black/50 border border-[#00ff88]/20 mb-6">
               <TabsTrigger value="book" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
@@ -1269,7 +1278,14 @@ const RiderDashboard = () => {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label className="text-[#00ff88]">{t("pickup_label")}</Label>
-                    <LocationInput value={pickup} onChange={setPickup} placeholder={t("current_location")} icon={MapPin} iconColor="text-[#00ff88]" mapsLoaded={mapsLoaded} />
+                    <LocationInput
+                      value={pickup}
+                      onChange={setPickup}
+                      placeholder={t("current_location")}
+                      icon={MapPin}
+                      iconColor="text-[#00ff88]"
+                      mapsLoaded={mapsLoaded}
+                    />
                   </div>
 
                   {stops.map((stop, index) => (
@@ -1278,7 +1294,7 @@ const RiderDashboard = () => {
                         <Label className="text-yellow-400">
                           {t("stop_label")} {index + 1}
                         </Label>
-                        <Button variant="ghost" size="sm" className="text-red-400 h-6" onClick={() => removeStop(index)}>
+                        <Button variant="ghost" size="sm" className="text-red-400 h-6" onClick={() => removeStop(index)} type="button">
                           <X className="w-3 h-3" />
                         </Button>
                       </div>
@@ -1294,14 +1310,21 @@ const RiderDashboard = () => {
                   ))}
 
                   {stops.length < 3 && (
-                    <Button variant="outline" className="w-full border-dashed border-yellow-400/30 text-yellow-400" onClick={addStop}>
+                    <Button variant="outline" className="w-full border-dashed border-yellow-400/30 text-yellow-400" onClick={addStop} type="button">
                       <Plus className="w-4 h-4 mr-2" /> {t("add_stop")}
                     </Button>
                   )}
 
                   <div className="space-y-2">
                     <Label className="text-[#00d4ff]">{t("destination_label")}</Label>
-                    <LocationInput value={destination} onChange={setDestination} placeholder={t("where_to")} icon={Navigation} iconColor="text-[#00d4ff]" mapsLoaded={mapsLoaded} />
+                    <LocationInput
+                      value={destination}
+                      onChange={setDestination}
+                      placeholder={t("where_to")}
+                      icon={Navigation}
+                      iconColor="text-[#00d4ff]"
+                      mapsLoaded={mapsLoaded}
+                    />
                   </div>
 
                   {Boolean((surgeInfo?.multiplier || 1) > 1 || surgeInfo?.is_surge) && (
@@ -1404,23 +1427,32 @@ const RiderDashboard = () => {
                     </Button>
                   </div>
 
+                  {/* PAYPAL (SAFE) */}
                   {paymentMethod === "card" ? (
-                    <div className="mt-4 p-2 bg-white rounded-xl">
-                      <PayPalButtons
-                        style={{ layout: "vertical", shape: "rect" }}
-                        disabled={!fareEstimate || !pickup?.lat}
-                        forceReRender={[fareEstimate?.total, PAYPAL_CURRENCY]}
-                        createOrder={async (data, actions) =>
-                          actions.order.create({
-                            purchase_units: [{ amount: { value: String(fareEstimate?.total || 0), currency_code: PAYPAL_CURRENCY } }],
-                          })
-                        }
-                        onApprove={async (data, actions) => {
-                          await actions.order.capture();
-                          await handleBookRide({ paymentOrderId: data.orderID });
-                        }}
-                      />
-                    </div>
+                    PAYPAL_ENABLED ? (
+                      <div className="mt-4 p-2 bg-white rounded-xl">
+                        <PayPalButtons
+                          style={{ layout: "vertical", shape: "rect" }}
+                          disabled={!fareEstimate || !pickup?.lat}
+                          forceReRender={[fareEstimate?.total, PAYPAL_CURRENCY]}
+                          createOrder={async (data, actions) =>
+                            actions.order.create({
+                              purchase_units: [
+                                { amount: { value: String(fareEstimate?.total || 0), currency_code: PAYPAL_CURRENCY } },
+                              ],
+                            })
+                          }
+                          onApprove={async (data, actions) => {
+                            await actions.order.capture();
+                            await handleBookRide({ paymentOrderId: data.orderID });
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-4 p-3 bg-white rounded-xl text-black text-center">
+                        PayPal not configured yet
+                      </div>
+                    )
                   ) : (
                     <Button
                       className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6 mt-4 shadow-[0_0_20px_rgba(0,255,136,0.3)] hover:shadow-[0_0_30px_rgba(0,255,136,0.5)] transition-all"
@@ -1440,12 +1472,20 @@ const RiderDashboard = () => {
               {rideForUI?.id ? (
                 <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30 overflow-hidden">
                   {["accepted", "arrived", "in_progress"].includes(rideForUI.status) && (
-                    <LiveTrackingMap mapsLoaded={mapsLoaded} pickup={pickupPoint} destination={destinationPoint} driverLocation={driverPoint} status={rideForUI.status} />
+                    <LiveTrackingMap
+                      mapsLoaded={mapsLoaded}
+                      pickup={pickupPoint}
+                      destination={destinationPoint}
+                      driverLocation={driverPoint}
+                      status={rideForUI.status}
+                    />
                   )}
 
                   <CardContent className="space-y-4 pt-4">
                     <div className="flex justify-between items-center mb-2">
-                      <Badge className={`${statusColors[rideForUI.status]} text-sm px-3 py-1`}>{String(rideForUI.status || "").replace(/_/g, " ").toUpperCase()}</Badge>
+                      <Badge className={`${statusColors[rideForUI.status]} text-sm px-3 py-1`}>
+                        {String(rideForUI.status || "").replace(/_/g, " ").toUpperCase()}
+                      </Badge>
                       <div className="text-right">
                         <p className="text-gray-400 text-xs">{t("otp_code")}</p>
                         <p className="text-[#00ff88] font-mono font-bold text-lg tracking-widest">{rideForUI.otp || "----"}</p>
@@ -1554,7 +1594,12 @@ const RiderDashboard = () => {
                     </div>
 
                     {["searching", "accepted"].includes(rideForUI.status) && (
-                      <Button variant="ghost" className="w-full text-red-500 hover:text-red-400 hover:bg-red-500/10 mt-4" onClick={handleCancelRide} type="button">
+                      <Button
+                        variant="ghost"
+                        className="w-full text-red-500 hover:text-red-400 hover:bg-red-500/10 mt-4"
+                        onClick={handleCancelRide}
+                        type="button"
+                      >
                         {t("cancel_ride")}
                       </Button>
                     )}
@@ -1595,20 +1640,26 @@ const RiderDashboard = () => {
                   </div>
 
                   {topupAmount && parseFloat(topupAmount) > 0 && (
-                    <div className="bg-white p-2 rounded-lg">
-                      <PayPalButtons
-                        style={{ layout: "vertical", shape: "rect" }}
-                        createOrder={(data, actions) =>
-                          actions.order.create({
-                            purchase_units: [{ amount: { value: String(topupAmount), currency_code: PAYPAL_CURRENCY } }],
-                          })
-                        }
-                        onApprove={async (data, actions) => {
-                          await actions.order.capture();
-                          handleWalletTopUp(data);
-                        }}
-                      />
-                    </div>
+                    PAYPAL_ENABLED ? (
+                      <div className="bg-white p-2 rounded-lg">
+                        <PayPalButtons
+                          style={{ layout: "vertical", shape: "rect" }}
+                          createOrder={(data, actions) =>
+                            actions.order.create({
+                              purchase_units: [{ amount: { value: String(topupAmount), currency_code: PAYPAL_CURRENCY } }],
+                            })
+                          }
+                          onApprove={async (data, actions) => {
+                            await actions.order.capture();
+                            handleWalletTopUp(data);
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="bg-white p-3 rounded-lg text-black text-center">
+                        PayPal not configured yet
+                      </div>
+                    )
                   )}
                 </CardContent>
               </Card>
@@ -1627,7 +1678,9 @@ const RiderDashboard = () => {
                       {rideHistory.map((r) => (
                         <div key={r.id} className="bg-black/50 border border-[#00ff88]/10 rounded-xl p-4 space-y-2">
                           <div className="flex justify-between">
-                            <Badge className={statusColors[r.status] || "bg-gray-500 text-white"}>{String(r.status || "").replace(/_/g, " ").toUpperCase()}</Badge>
+                            <Badge className={statusColors[r.status] || "bg-gray-500 text-white"}>
+                              {String(r.status || "").replace(/_/g, " ").toUpperCase()}
+                            </Badge>
                             <span className="text-gray-400 text-sm">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "N/A"}</span>
                           </div>
                           <div>
@@ -1688,11 +1741,19 @@ const RiderDashboard = () => {
               <DialogHeader>
                 <DialogTitle className="text-[#00ff88]">{t("rate_driver")}</DialogTitle>
               </DialogHeader>
-              <DialogDescription className="text-gray-400">How was your ride with {completedRideInfo?.driver_info?.name}?</DialogDescription>
+              <DialogDescription className="text-gray-400">
+                How was your ride with {completedRideInfo?.driver_info?.name}?
+              </DialogDescription>
 
               <div className="flex justify-center space-x-2 my-4">
                 {[1, 2, 3, 4, 5].map((s) => (
-                  <Button key={s} variant="ghost" onClick={() => setRating(s)} className={`p-1 hover:bg-transparent ${s <= rating ? "text-yellow-400" : "text-gray-600"}`} type="button">
+                  <Button
+                    key={s}
+                    variant="ghost"
+                    onClick={() => setRating(s)}
+                    className={`p-1 hover:bg-transparent ${s <= rating ? "text-yellow-400" : "text-gray-600"}`}
+                    type="button"
+                  >
                     <Star className={`w-8 h-8 ${s <= rating ? "fill-current" : ""}`} />
                   </Button>
                 ))}
@@ -1710,7 +1771,7 @@ const RiderDashboard = () => {
               </Button>
             </DialogContent>
           </Dialog>
-        </PayPalScriptProvider>
+        </PaypalWrapper>
       </main>
     </div>
   );
@@ -1723,13 +1784,13 @@ const RiderPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
 
+  // If not logged in, show auth screen
   if (!user) return <RiderAuth />;
 
-// allow rider accounts
-if (user.user_type && user.user_type !== "rider") {
-  return <Navigate to="/driver" replace />;
-}
-
+  // If a non-rider user tries to access rider portal, send to driver
+  if (user.user_type && user.user_type !== "rider") {
+    return <Navigate to="/driver" replace state={{ from: location.pathname }} />;
+  }
 
   return (
     <Routes>
