@@ -99,7 +99,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, [inputRef, onPlaceSelect]);
 };
 
-// FIXED Map Picker
+// 🔥 FIX 1: Map Picker (Grey Map Fix)
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -118,6 +118,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       return;
     }
     
+    // Increased timeout to ensure modal animation is done
     const timer = setTimeout(() => {
       try {
         const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 };
@@ -163,12 +164,11 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
             reverseGeocode(lat, lng);
           });
         } else {
+          // 🔥 CRITICAL: Force resize trigger when reopening modal to fix grey screen
+          const center = new window.google.maps.LatLng(initialLocation?.lat || 41.7151, initialLocation?.lng || 44.8271);
           window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
-          if (initialLocation) {
-            const pos = new window.google.maps.LatLng(initialLocation.lat, initialLocation.lng);
-            mapInstanceRef.current.setCenter(pos);
-            markerRef.current.setPosition(pos);
-          }
+          mapInstanceRef.current.setCenter(center);
+          markerRef.current.setPosition(center);
         }
         setLoading(false);
         setError(null);
@@ -177,7 +177,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         setError("Failed to load map. Check console.");
         setLoading(false);
       }
-    }, 200);
+    }, 500); // 500ms delay to ensure DOM is ready
 
     return () => clearTimeout(timer);
   }, [isOpen, initialLocation]);
@@ -293,7 +293,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// 🔥 UPDATED: Route Visualization Map (Tracks Driver)
+// 🔥 FIX 2: Route Visualization Map (Follows Driver)
 const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -301,6 +301,7 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
   const driverMarkerRef = useRef(null); // Ref for the car marker
   const [error, setError] = useState(null);
 
+  // Initialize Map & Route
   useEffect(() => {
     if (!mapRef.current || !window.google || !pickup?.lat || !destination?.lat) {
       if (!window.google) setError("Maps not loaded");
@@ -328,6 +329,7 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
         });
       }
 
+      // Draw Route - Only re-runs if primitive values change (prevents flashing)
       const directionsService = new window.google.maps.DirectionsService();
       const waypoints = stops.filter(s => s.lat && s.lng).map(s => ({
         location: new window.google.maps.LatLng(s.lat, s.lng),
@@ -352,9 +354,9 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
       console.error("RouteMap error:", err);
       setError("Failed to render route");
     }
-  }, [pickup, destination, stops]);
+  }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length]); 
 
-  // 🔥 NEW: Track Driver Location Updates Instantly
+  // 🔥 CORE FIX: Follow Driver Camera Logic
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation || !driverLocation.lat) return;
 
@@ -363,7 +365,7 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
     const lng = parseFloat(driverLocation.lng);
     const heading = driverLocation.heading || 0;
 
-    const pos = { lat, lng };
+    const pos = new window.google.maps.LatLng(lat, lng);
 
     if (!driverMarkerRef.current) {
         // Create marker
@@ -371,7 +373,6 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
             position: pos,
             map: mapInstanceRef.current,
             icon: {
-                // Car/Arrow SVG
                 path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                 scale: 6,
                 fillColor: "#00d4ff",
@@ -380,7 +381,8 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
                 strokeWeight: 2,
                 rotation: heading
             },
-            title: "Driver"
+            title: "Driver",
+            zIndex: 9999
         });
     } else {
         // Move existing marker smoothly
@@ -391,7 +393,11 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
         icon.rotation = heading;
         driverMarkerRef.current.setIcon(icon);
     }
-  }, [driverLocation]); // Re-run when driverLocation prop changes
+
+    // 🔥 Force camera to follow
+    mapInstanceRef.current.panTo(pos);
+
+  }, [driverLocation]); 
 
   return (
     <div className="relative">
@@ -659,7 +665,7 @@ const RiderDashboard = () => {
     }
   }, [routeInfo, carType, stops.length, surgeInfo]);
 
-  // 🔥 NEW: Poll for active ride updates (including driver location)
+  // 🔥 FIX 3: Poll for active ride updates (including driver location)
   useEffect(() => {
     let interval;
     if (activeRide && !["completed", "cancelled", "no_drivers"].includes(activeRide.status)) {
