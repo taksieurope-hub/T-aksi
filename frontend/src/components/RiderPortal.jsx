@@ -1626,7 +1626,7 @@ const RiderDashboard = () => {
 };
 
 /* ---------------------------------------------
-   Main Router
+   Main Router (FIXED for nested routes)
 ---------------------------------------------- */
 const RiderPortal = () => {
   const { user } = useAuth();
@@ -1640,9 +1640,14 @@ const RiderPortal = () => {
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/rider/dashboard" replace />} />
-      <Route path="/dashboard" element={<RiderDashboard />} />
-      <Route path="*" element={<Navigate to="/rider/dashboard" replace />} />
+      {/* /rider -> /rider/dashboard */}
+      <Route index element={<Navigate to="dashboard" replace />} />
+
+      {/* /rider/dashboard */}
+      <Route path="dashboard" element={<RiderDashboard />} />
+
+      {/* anything else under /rider */}
+      <Route path="*" element={<Navigate to="dashboard" replace />} />
     </Routes>
   );
 };
