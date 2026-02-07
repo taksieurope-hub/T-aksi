@@ -11,18 +11,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
+// Added missing icons (Banknote, AlertTriangle, etc.)
 import { 
   Car, MapPin, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
   Plus, X, Zap, TrendingUp, MessageSquare, 
-  Target, Crosshair, Send 
+  Target, Crosshair, Send,
+  Banknote, CreditCard, ExternalLink, AlertTriangle, Activity,
+  MapPinned, CheckCircle2, XCircle, Play, Timer
 } from "lucide-react";
 
 const DRIVER_COMMISSION_RATE = 0.23;
@@ -44,8 +46,9 @@ const DriverAuth = () => {
     setLoading(true);
     
     try {
-      const endpoint = isLogin ? "/driver/login" : "/auth/register/driver";
-      const res = await axios.post(`${API}${endpoint}`, formData);
+      const endpoint = isLogin ? "/auth/login" : "/auth/register/driver";
+      // FIX: Use api.post
+      const res = await api.post(endpoint, formData);
       
       if (res.data && res.data.token && res.data.user) {
         login(res.data.token, res.data.user);
@@ -362,7 +365,8 @@ const DriverDashboard = () => {
     setDriverLocation(location);
     
     try {
-      await axios.post(`${API}/driver/location`, location);
+      // FIX: Use api.post
+      await api.post(`/driver/location`, location);
       
       // If in active ride, track distance
       if (activeRide && activeRide.status === "in_progress" && lastPositionRef.current) {
@@ -373,7 +377,7 @@ const DriverDashboard = () => {
         setDistanceTraveled(prev => prev + dist);
         
         // Update ride tracking
-        await axios.post(`${API}/rides/${activeRide.id}/update-tracking`, location);
+        await api.post(`/rides/${activeRide.id}/update-tracking`, location);
       }
       
       lastPositionRef.current = location;
@@ -424,7 +428,8 @@ const DriverDashboard = () => {
 
   const fetchAvailableRides = async () => {
     try {
-      const res = await axios.get(`${API}/driver/rides/available`);
+      // FIX: Use api.get
+      const res = await api.get(`/driver/rides/available`);
       setAvailableRides(res.data.rides || []);
     } catch (error) {
       console.error("Error fetching rides:", error);
@@ -433,7 +438,8 @@ const DriverDashboard = () => {
 
   const fetchActiveRide = async () => {
     try {
-      const res = await axios.get(`${API}/driver/active-ride`);
+      // FIX: Use api.get
+      const res = await api.get(`/driver/active-ride`);
       if (res.data) {
         setActiveRide(res.data);
         setActiveTab("rides");
@@ -445,7 +451,8 @@ const DriverDashboard = () => {
 
   const fetchRideHistory = async () => {
     try {
-      const res = await axios.get(`${API}/driver/history`);
+      // FIX: Use api.get
+      const res = await api.get(`/driver/history`);
       setRideHistory(res.data.rides || []);
     } catch (error) {
       console.error("Error fetching history:", error);
@@ -454,7 +461,8 @@ const DriverDashboard = () => {
 
   const fetchNearbyRides = async () => {
     try {
-      const res = await axios.get(`${API}/driver/rides/nearby?radius=${searchRadius}`);
+      // FIX: Use api.get
+      const res = await api.get(`/driver/rides/nearby?radius=${searchRadius}`);
       setNearbyRides(res.data.rides || []);
     } catch (error) {
       console.error("Error fetching nearby rides:", error);
@@ -464,7 +472,7 @@ const DriverDashboard = () => {
   const handleRequestToJoin = async (rideId) => {
     try {
       setLoading(true);
-      await axios.post(`${API}/rides/${rideId}/request-join`);
+      await api.post(`/rides/${rideId}/request-join`);
       toast.success("You can now accept this ride!");
       // Move ride from nearby to available
       fetchAvailableRides();
@@ -478,7 +486,7 @@ const DriverDashboard = () => {
 
   const handleToggleOnline = async (online) => {
     try {
-      await axios.post(`${API}/driver/status?is_online=${online}`);
+      await api.post(`/driver/status?is_online=${online}`);
       setIsOnline(online);
       updateUser({ is_online: online });
       toast.success(online ? "You are now online!" : "You are now offline");
@@ -492,7 +500,7 @@ const DriverDashboard = () => {
     setLoading(true);
     
     try {
-      const res = await axios.post(`${API}/driver/vehicle`, {
+      const res = await api.post(`/driver/vehicle`, {
         ...vehicleData,
         car_year: parseInt(vehicleData.car_year)
       });
@@ -520,14 +528,16 @@ const DriverDashboard = () => {
     
     setLoading(true);
     try {
-      const res = await axios.post(`${API}/rides/${rideId}/accept`);
-      toast.success(`Ride accepted! Commission: ₾${res.data.commission_deducted.toFixed(2)}`);
+      const res = await api.post(`/rides/${rideId}/accept`);
+      toast.success(`Ride accepted! Commission: ₾${res.data.commission_deducted?.toFixed(2)}`);
       
-      updateUser({
-        earnings: { ...user.earnings, balance: res.data.new_balance }
-      });
+      if (res.data.new_balance) {
+        updateUser({
+          earnings: { ...user.earnings, balance: res.data.new_balance }
+        });
+      }
       
-      const rideRes = await axios.get(`${API}/rides/${rideId}`);
+      const rideRes = await api.get(`/rides/${rideId}`);
       setActiveRide(rideRes.data);
       setAvailableRides(prev => prev.filter(r => r.id !== rideId));
       setDistanceTraveled(0);
@@ -540,7 +550,7 @@ const DriverDashboard = () => {
 
   const handleDeclineRide = async (rideId) => {
     try {
-      await axios.post(`${API}/rides/${rideId}/decline`);
+      await api.post(`/rides/${rideId}/decline`);
       setAvailableRides(prev => prev.filter(r => r.id !== rideId));
       toast.info("Ride declined");
     } catch (error) {
@@ -554,17 +564,17 @@ const DriverDashboard = () => {
     setLoading(true);
     try {
       if (action === "arrived") {
-        await axios.post(`${API}/rides/${activeRide.id}/arrived`);
+        await api.post(`/rides/${activeRide.id}/arrived`);
         setArrivedTime(Date.now());
         toast.success("Marked as arrived - wait timer started");
       } else if (action === "start") {
-        await axios.post(`${API}/rides/${activeRide.id}/start`);
+        await api.post(`/rides/${activeRide.id}/start`);
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
         lastPositionRef.current = driverLocation;
         toast.success("Ride started - tracking distance");
       } else if (action === "complete") {
-        const res = await axios.post(`${API}/rides/${activeRide.id}/complete?final_distance=${distanceTraveled.toFixed(2)}&total_wait_minutes=${waitTimer}`);
+        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${distanceTraveled.toFixed(2)}&total_wait_minutes=${waitTimer}`);
         toast.success(`Ride completed! Final fare: ₾${res.data.final_fare.toFixed(2)}`);
         setActiveRide(null);
         setDistanceTraveled(0);
@@ -572,12 +582,12 @@ const DriverDashboard = () => {
         setArrivedTime(null);
         setRideStartTime(null);
         fetchRideHistory();
-        const userRes = await axios.get(`${API}/auth/me`);
+        const userRes = await api.get(`/auth/me`);
         updateUser(userRes.data);
         return;
       }
       
-      const rideRes = await axios.get(`${API}/rides/${activeRide.id}`);
+      const rideRes = await api.get(`/rides/${activeRide.id}`);
       setActiveRide(rideRes.data);
     } catch (error) {
       toast.error(`Failed to ${action}`);
@@ -594,7 +604,7 @@ const DriverDashboard = () => {
     
     setLoading(true);
     try {
-      const res = await axios.post(`${API}/driver/topup/request`, {
+      const res = await api.post(`/driver/topup/request`, {
         amount: parseFloat(topupAmount),
         payment_reference: topupReference
       });
@@ -618,7 +628,7 @@ const DriverDashboard = () => {
     
     setLoading(true);
     try {
-      await axios.post(`${API}/driver/withdraw`, {
+      await api.post(`/driver/withdraw`, {
         amount: parseFloat(withdrawalData.amount),
         bank_details: withdrawalData.bank_details
       });
@@ -674,11 +684,13 @@ const DriverDashboard = () => {
                 <span className={`text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>
                   {isOnline ? "Online" : "Offline"}
                 </span>
-                <Switch
-                  checked={isOnline}
-                  onCheckedChange={handleToggleOnline}
-                  className="data-[state=checked]:bg-[#00ff88]"
-                />
+                <Button 
+                  size="sm" 
+                  className={isOnline ? "bg-[#00ff88] text-black" : "bg-gray-600"}
+                  onClick={() => handleToggleOnline(!isOnline)}
+                >
+                  {isOnline ? "ON" : "OFF"}
+                </Button>
               </div>
             )}
             <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={() => navigate("/")}>
@@ -801,7 +813,7 @@ const DriverDashboard = () => {
                       )}
                       {activeRide.status === "in_progress" && (
                         <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center">
-                          <RouteIcon className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
+                          <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
                           <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(1)} km</p>
                           <p className="text-xs text-[#00ff88]/70">Distance Traveled</p>
                         </div>
@@ -937,7 +949,7 @@ const DriverDashboard = () => {
             )}
           </TabsContent>
 
-          {/* Nearby Rides Tab - Discover rides in your area */}
+          {/* Nearby Rides Tab */}
           <TabsContent value="nearby">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30 mb-4">
               <CardHeader className="pb-2">
@@ -952,9 +964,6 @@ const DriverDashboard = () => {
                     <Navigation className="w-4 h-4 mr-1" /> Refresh
                   </Button>
                 </CardTitle>
-                <p className="text-gray-400 text-sm">
-                  Discover all ride requests in your area, even if you weren't notified
-                </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">

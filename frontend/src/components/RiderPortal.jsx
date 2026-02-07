@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 
-// FIX: Import from @/config and @/api, NOT @/App
+// FIX: Import from @/config and @/api
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api"; 
 
@@ -18,7 +18,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
-// Make sure these match exactly what you use in the code
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
@@ -334,7 +333,8 @@ const RiderAuth = () => {
     
     try {
       const endpoint = isLogin ? "/auth/login" : "/auth/register/rider";
-      const res = await axios.post(`${API}${endpoint}`, formData);
+      // FIX: Use api.post instead of axios.post
+      const res = await api.post(endpoint, formData);
       
       if (res.data && res.data.token && res.data.user) {
         login(res.data.token, res.data.user);
@@ -513,7 +513,8 @@ const RiderDashboard = () => {
   const fetchSurgeStatus = async () => {
     try {
       const params = pickup.lat ? `?lat=${pickup.lat}&lng=${pickup.lng}` : '';
-      const res = await axios.get(`${API}/surge/status${params}`);
+      // FIX: Use api.get instead of axios.get
+      const res = await api.get(`/surge/status${params}`);
       setSurgeInfo(res.data);
     } catch (error) {
       console.error("Error fetching surge:", error);
@@ -562,7 +563,8 @@ const RiderDashboard = () => {
 
   const fetchActiveRide = async () => {
     try {
-      const res = await axios.get(`${API}/rider/active-ride`);
+      // FIX: Use api.get
+      const res = await api.get(`/rider/active-ride`);
       if (res.data) {
         setActiveRide(res.data);
         setActiveTab("active");
@@ -574,7 +576,8 @@ const RiderDashboard = () => {
 
   const fetchRideHistory = async () => {
     try {
-      const res = await axios.get(`${API}/rider/history`);
+      // FIX: Use api.get
+      const res = await api.get(`/rider/history`);
       setRideHistory(res.data.rides || []);
     } catch (error) {
       console.error("Error fetching history:", error);
@@ -626,7 +629,8 @@ const RiderDashboard = () => {
         estimatedDuration: routeInfo?.duration || 15
       };
       
-      const res = await axios.post(`${API}/rides/request`, rideData);
+      // FIX: Use api.post
+      const res = await api.post(`/rides/request`, rideData);
       
       toast.success("Ride requested! Searching for drivers...");
       setActiveRide({
@@ -648,7 +652,8 @@ const RiderDashboard = () => {
   const pollRideStatus = async (rideId) => {
     const interval = setInterval(async () => {
       try {
-        const res = await axios.get(`${API}/rides/${rideId}`);
+        // FIX: Use api.get
+        const res = await api.get(`/rides/${rideId}`);
         setActiveRide(res.data);
         
         if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
@@ -672,7 +677,8 @@ const RiderDashboard = () => {
     if (!activeRide) return;
     
     try {
-      await axios.post(`${API}/rides/${activeRide.id}/cancel`);
+      // FIX: Use api.post
+      await api.post(`/rides/${activeRide.id}/cancel`);
       toast.success("Ride cancelled");
       setActiveRide(null);
       setActiveTab("book");
@@ -685,7 +691,8 @@ const RiderDashboard = () => {
     if (!activeRide) return;
     
     try {
-      const res = await axios.post(`${API}/rides/${activeRide.id}/retry`);
+      // FIX: Use api.post
+      const res = await api.post(`/rides/${activeRide.id}/retry`);
       toast.success("Searching for drivers again...");
       setActiveRide(prev => ({ ...prev, status: 'searching', matching_status: 'Retrying - Searching within 3km' }));
       pollRideStatus(activeRide.id);
@@ -1009,7 +1016,7 @@ const RiderDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Matching Status - Bolt-style progress */}
+                  {/* Matching Status */}
                   {activeRide.status === "searching" && (
                     <div className="bg-yellow-500/20 border border-yellow-500 p-4 rounded-xl space-y-2">
                       <div className="flex items-center">
@@ -1026,7 +1033,7 @@ const RiderDashboard = () => {
                     </div>
                   )}
 
-                  {/* No Drivers Available - with retry option */}
+                  {/* No Drivers Available */}
                   {activeRide.status === "no_drivers" && (
                     <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
                       <div className="flex items-center text-gray-300">
@@ -1197,11 +1204,12 @@ const RiderPortal = () => {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/rider/dashboard" replace />} />
-      <Route path="/dashboard" element={<RiderDashboard />} />
-      <Route path="*" element={<Navigate to="/rider/dashboard" replace />} />
-    </Routes>
+    <PayPalScriptProvider options={{ "client-id": "test", currency: "USD" }}>
+      <Routes>
+        <Route path="/" element={<RiderDashboard />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </PayPalScriptProvider>
   );
 };
 
