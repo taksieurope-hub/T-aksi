@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 
 // FIX: Import from @/config and @/api
@@ -24,7 +24,7 @@ import {
   MapPinned
 } from "lucide-react";
 
-// Pricing Rules - FIX: stopFee is now 0.00
+// Pricing Rules
 const PRICING_RULES = {
   economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
   comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.45, freeWait: 2, stopFee: 0.00, icon: "🚙" },
@@ -46,11 +46,11 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
     subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
   }
   
-  // Wait fees (Pickup wait + Stop wait)
+  // Wait fees
   const billableWait = Math.max(0, waitMin - rules.freeWait);
   subtotal += billableWait * rules.perMinWait;
-  subtotal += stopWaitMin * rules.perMinWait; // Stops charge for time, not per stop
-  
+  subtotal += stopWaitMin * rules.perMinWait;
+
   // Stop fees (Now 0.00)
   subtotal += numStops * rules.stopFee;
 
@@ -70,7 +70,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// Google Maps Autocomplete Hook
+// Google Maps Autocomplete Hook (with guard)
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
     if (!inputRef.current || !window.google) return;
@@ -92,7 +92,9 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     });
     
     return () => {
-      window.google.maps.event.removeListener(listener);
+      if (window.google) {
+        window.google.maps.event.removeListener(listener);
+      }
     };
   }, [inputRef, onPlaceSelect]);
 };
@@ -104,76 +106,88 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   const markerRef = useRef(null);
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [address, setAddress] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   
   useEffect(() => {
-    // Only initialize if dialog is OPEN
-    if (!isOpen || !mapRef.current || !window.google) return;
+    if (!isOpen || !mapRef.current) return;
     
-    // 🔥 TIMEOUT FIX: Wait for Dialog animation to finish so DIV has height
+    if (!window.google) {
+      setError("Google Maps not loaded yet. Please wait or refresh.");
+      setLoading(false);
+      return;
+    }
+    
+    // Wait for Dialog animation
     const timer = setTimeout(() => {
-        const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 }; // Tbilisi
+      try {
+        const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 };
         
         if (!mapInstanceRef.current) {
-            const map = new window.google.maps.Map(mapRef.current, {
-                center: defaultCenter,
-                zoom: 15,
-                styles: [
-                    { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-                    { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-                    { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-                    { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-                    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
-                    { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
-                ],
-                disableDefaultUI: true,
-                zoomControl: true,
-                clickableIcons: false
-            });
-            mapInstanceRef.current = map;
+          const map = new window.google.maps.Map(mapRef.current, {
+            center: defaultCenter,
+            zoom: 15,
+            styles: [
+              { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+              { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+              { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
+              { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
+              { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
+              { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
+            ],
+            disableDefaultUI: true,
+            zoomControl: true,
+            clickableIcons: false
+          });
+          mapInstanceRef.current = map;
 
-            const marker = new window.google.maps.Marker({
-                map,
-                draggable: true,
-                position: defaultCenter,
-                icon: {
-                    path: window.google.maps.SymbolPath.CIRCLE,
-                    scale: 10,
-                    fillColor: "#00ff88",
-                    fillOpacity: 1,
-                    strokeColor: "#ffffff",
-                    strokeWeight: 2
-                }
-            });
-            markerRef.current = marker;
-
-            // Click listener
-            map.addListener('click', (e) => {
-                const lat = e.latLng.lat();
-                const lng = e.latLng.lng();
-                updateMarker(lat, lng);
-            });
-
-            // Drag listener
-            marker.addListener('dragend', () => {
-                const pos = marker.getPosition();
-                updateMarker(pos.lat(), pos.lng());
-            });
-        } else {
-            // If map exists, trigger resize so it fills the modal correctly
-            window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
-            if (initialLocation) {
-                const pos = new window.google.maps.LatLng(initialLocation.lat, initialLocation.lng);
-                mapInstanceRef.current.setCenter(pos);
-                markerRef.current.setPosition(pos);
+          const marker = new window.google.maps.Marker({
+            map,
+            draggable: true,
+            position: defaultCenter,
+            icon: {
+              path: window.google.maps.SymbolPath.CIRCLE,
+              scale: 10,
+              fillColor: "#00ff88",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 2
             }
+          });
+          markerRef.current = marker;
+
+          map.addListener('click', (e) => {
+            const lat = e.latLng.lat();
+            const lng = e.latLng.lng();
+            updateMarker(lat, lng);
+          });
+
+          marker.addListener('dragend', () => {
+            const pos = marker.getPosition();
+            updateMarker(pos.lat(), pos.lng());
+          });
+        } else {
+          window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
+          if (initialLocation) {
+            const pos = new window.google.maps.LatLng(initialLocation.lat, initialLocation.lng);
+            mapInstanceRef.current.setCenter(pos);
+            markerRef.current.setPosition(pos);
+          }
         }
-    }, 200); // 200ms delay
+        setLoading(false);
+        setError(null);
+      } catch (err) {
+        console.error("Map init error:", err);
+        setError("Failed to load map. Check console.");
+        setLoading(false);
+      }
+    }, 200);
 
     return () => clearTimeout(timer);
   }, [isOpen, initialLocation]);
   
   const updateMarker = (lat, lng) => {
+    if (!markerRef.current) return;
     const pos = new window.google.maps.LatLng(lat, lng);
     markerRef.current.setPosition(pos);
     setSelectedLocation({ lat, lng });
@@ -191,23 +205,24 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   };
   
   const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation not supported");
+      return;
+    }
     setLoading(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        
         if (mapInstanceRef.current) {
           mapInstanceRef.current.setCenter({ lat, lng });
           mapInstanceRef.current.setZoom(17);
         }
-        if (markerRef.current) {
-          updateMarker(lat, lng);
-        }
+        updateMarker(lat, lng);
         setLoading(false);
       },
       (error) => {
-        toast.error("Could not get your location");
+        toast.error("Could not get location");
         setLoading(false);
       },
       { enableHighAccuracy: true }
@@ -238,38 +253,46 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
           </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4">
+        <div className="space-y-4 relative">
           <div 
             ref={mapRef} 
             className="w-full h-[400px] rounded-xl border border-[#00ff88]/20 bg-[#1a1a2e]"
           />
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl">
+              <Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" />
+            </div>
+          )}
+          {error && (
+            <div className="text-red-500 p-2 bg-red-900/20 rounded text-sm">{error}</div>
+          )}
           
           <div className="flex flex-col gap-2">
             {address && (
-                <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-2">
-                    <p className="text-[#00ff88] text-xs font-bold uppercase">Selected Address</p>
-                    <p className="text-white text-sm truncate">{address}</p>
-                </div>
+              <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-2">
+                <p className="text-[#00ff88] text-xs font-bold uppercase">Selected Address</p>
+                <p className="text-white text-sm truncate">{address}</p>
+              </div>
             )}
 
             <div className="flex gap-2">
-                <Button
+              <Button
                 variant="outline"
                 className="border-[#00d4ff]/30 text-[#00d4ff] flex-1"
                 onClick={getCurrentLocation}
                 disabled={loading}
-                >
+              >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Crosshair className="w-4 h-4 mr-2" />}
                 Locate Me
-                </Button>
-                
-                <Button 
+              </Button>
+              
+              <Button 
                 className="flex-1 bg-[#00ff88] text-black font-bold"
                 onClick={handleConfirm}
-                disabled={!selectedLocation}
-                >
+                disabled={!selectedLocation || loading}
+              >
                 Confirm Location
-                </Button>
+              </Button>
             </div>
           </div>
         </div>
@@ -278,56 +301,76 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// Route Visualization Map
+// Route Visualization Map (with guards + error handling)
 const RouteMap = ({ pickup, destination, stops }) => {
-    const mapRef = useRef(null);
-    const mapInstanceRef = useRef(null);
-    const directionsRendererRef = useRef(null);
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const directionsRendererRef = useRef(null);
+  const [error, setError] = useState(null);
 
-    useEffect(() => {
-        if (!mapRef.current || !window.google) return;
+  useEffect(() => {
+    if (!mapRef.current || !window.google || !pickup?.lat || !destination?.lat) {
+      if (!window.google) setError("Maps not loaded");
+      return;
+    }
 
-        if (!mapInstanceRef.current) {
-            mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-                center: { lat: 41.7151, lng: 44.8271 },
-                zoom: 12,
-                disableDefaultUI: true,
-                styles: [
-                    { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-                    { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-                    { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-                    { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-                    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
-                ]
-            });
-            directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-                map: mapInstanceRef.current,
-                suppressMarkers: false,
-                polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
-            });
+    try {
+      if (!mapInstanceRef.current) {
+        mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+          center: { lat: 41.7151, lng: 44.8271 },
+          zoom: 12,
+          disableDefaultUI: true,
+          styles: [
+            { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
+            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
+          ]
+        });
+        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+          map: mapInstanceRef.current,
+          suppressMarkers: false,
+          polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
+        });
+      }
+
+      const directionsService = new window.google.maps.DirectionsService();
+      const waypoints = stops.filter(s => s.lat && s.lng).map(s => ({
+        location: new window.google.maps.LatLng(s.lat, s.lng),
+        stopover: true
+      }));
+
+      directionsService.route({
+        origin: new window.google.maps.LatLng(pickup.lat, pickup.lng),
+        destination: new window.google.maps.LatLng(destination.lat, destination.lng),
+        waypoints,
+        travelMode: window.google.maps.TravelMode.DRIVING
+      }, (result, status) => {
+        if (status === 'OK') {
+          directionsRendererRef.current.setDirections(result);
+          setError(null);
+        } else {
+          console.error("Directions failed:", status);
+          setError(`Navigation failed: ${status}`);
         }
+      });
+    } catch (err) {
+      console.error("RouteMap error:", err);
+      setError("Failed to render route");
+    }
+  }, [pickup, destination, stops]);
 
-        if (pickup.lat && destination.lat) {
-            const directionsService = new window.google.maps.DirectionsService();
-            const waypoints = stops.filter(s => s.lat).map(s => ({
-                location: new window.google.maps.LatLng(s.lat, s.lng),
-                stopover: true
-            }));
-
-            directionsService.route({
-                origin: new window.google.maps.LatLng(pickup.lat, pickup.lng),
-                destination: new window.google.maps.LatLng(destination.lat, destination.lng),
-                waypoints: waypoints,
-                travelMode: window.google.maps.TravelMode.DRIVING
-            }, (result, status) => {
-                if (status === 'OK') {
-                    directionsRendererRef.current.setDirections(result);
-                }
-            });
-        }
-    }, [pickup, destination, stops]);
-
-    return <div ref={mapRef} className="w-full h-[200px] rounded-xl border border-[#00ff88]/20 mb-4" />;
+  return (
+    <div className="relative">
+      <div ref={mapRef} className="w-full h-[200px] rounded-xl border border-[#00ff88]/20 mb-4" />
+      {error && (
+        <div className="absolute bottom-2 left-2 bg-black/80 text-red-500 text-xs p-1 rounded">
+          {error}
+        </div>
+      )}
+    </div>
+  );
 };
 
 // Location Input Component
@@ -373,7 +416,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
   );
 };
 
-// Auth Component
+// Auth Component (unchanged)
 const RiderAuth = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -516,7 +559,7 @@ const RiderDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("book");
   const [loading, setLoading] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(false); // Separate loading state for Location
+  const [locationLoading, setLocationLoading] = useState(false);
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [activeRide, setActiveRide] = useState(null);
   const [rideHistory, setRideHistory] = useState([]);
@@ -546,6 +589,10 @@ const RiderDashboard = () => {
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
     script.async = true;
     script.onload = () => setMapsLoaded(true);
+    script.onerror = () => {
+      toast.error("Failed to load Google Maps. Check API key/network.");
+      console.error("Google Maps script failed");
+    };
     document.head.appendChild(script);
   }, []);
 
@@ -555,21 +602,18 @@ const RiderDashboard = () => {
     fetchSurgeStatus();
   }, []);
   
-  // Fetch surge status when pickup location changes
   useEffect(() => {
     if (pickup.lat) {
       fetchSurgeStatus();
     }
   }, [pickup.lat, pickup.lng]);
 
-  // Calculate route when locations change
   useEffect(() => {
     if (mapsLoaded && pickup.lat && destination.lat) {
       calculateRoute();
     }
   }, [pickup, destination, stops, mapsLoaded]);
 
-  // Update fare when route or car type or surge changes
   useEffect(() => {
     if (routeInfo) {
       const surge = surgeInfo?.multiplier || 1.0;
@@ -593,7 +637,6 @@ const RiderDashboard = () => {
     
     const directionsService = new window.google.maps.DirectionsService();
     
-    // Build waypoints from stops
     const waypoints = stops
       .filter(s => s.lat && s.lng)
       .map(s => ({
@@ -620,9 +663,11 @@ const RiderDashboard = () => {
           });
           
           setRouteInfo({
-            distance: Math.round(totalDistance / 100) / 10, // km with 1 decimal
-            duration: Math.round(totalDuration / 60) // minutes
+            distance: Math.round(totalDistance / 100) / 10,
+            duration: Math.round(totalDuration / 60)
           });
+        } else {
+          console.error("Route calculation failed:", status);
         }
       }
     );
@@ -762,21 +807,17 @@ const RiderDashboard = () => {
     }
   };
 
-  // 🔥 FIXED: GPS Location with Timeout and Unblock
+  // FIXED: GPS Location with detailed error handling
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser");
+      toast.error("Geolocation not supported by your browser. Enter address manually.");
       return;
     }
 
-    setLocationLoading(true); // Only block the button, not input fields
-
-    // Safety timeout: Unlock after 10s if browser hangs
+    setLocationLoading(true);
     const safetyTimer = setTimeout(() => {
-        if(locationLoading) {
-            setLocationLoading(false);
-            toast.error("GPS Request timed out. Please enter address manually.");
-        }
+      setLocationLoading(false);
+      toast.error("Location request timed out. Try again or enter manually.");
     }, 10000);
 
     navigator.geolocation.getCurrentPosition(
@@ -785,38 +826,42 @@ const RiderDashboard = () => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         
-        // Reverse geocode
-        if (window.google) {
-          const geocoder = new window.google.maps.Geocoder();
-          geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-            setLocationLoading(false);
-            if (status === 'OK' && results[0]) {
-              setPickup({
-                address: results[0].formatted_address,
-                lat,
-                lng
-              });
-              toast.success("Location detected!");
-            } else {
-              // Fallback if geocoding fails
-              setPickup({
-                address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-                lat,
-                lng
-              });
-              toast.warning("Address lookup failed, using coordinates");
-            }
-          });
-        } else {
-            setLocationLoading(false);
-            toast.error("Maps not loaded yet");
+        if (!window.google) {
+          setLocationLoading(false);
+          toast.error("Maps not loaded. Using coordinates only.");
+          setPickup({ address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, lat, lng });
+          return;
         }
+
+        const geocoder = new window.google.maps.Geocoder();
+        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+          setLocationLoading(false);
+          if (status === 'OK' && results[0]) {
+            setPickup({
+              address: results[0].formatted_address,
+              lat,
+              lng
+            });
+            toast.success("Location detected!");
+          } else {
+            setPickup({
+              address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+              lat,
+              lng
+            });
+            toast.warning("Address lookup failed, using coordinates");
+          }
+        });
       },
       (error) => {
         clearTimeout(safetyTimer);
         setLocationLoading(false);
+        let msg = "Could not get location.";
+        if (error.code === 1) msg = "Location access denied. Enable in browser settings and try again.";
+        else if (error.code === 2) msg = "Location unavailable. Check GPS/WiFi.";
+        else if (error.code === 3) msg = "Request timed out. Try again.";
+        toast.error(msg);
         console.error("Geolocation error:", error);
-        toast.error("Could not get your location. Check permissions.");
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
@@ -894,7 +939,7 @@ const RiderDashboard = () => {
                 
                 {/* Visual Route Map */}
                 {mapsLoaded && pickup.lat && destination.lat && (
-                    <RouteMap pickup={pickup} destination={destination} stops={stops} />
+                  <RouteMap pickup={pickup} destination={destination} stops={stops} />
                 )}
 
                 {/* Pickup */}
@@ -1124,7 +1169,6 @@ const RiderDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Matching Status */}
                   {activeRide.status === "searching" && (
                     <div className="bg-yellow-500/20 border border-yellow-500 p-4 rounded-xl space-y-2">
                       <div className="flex items-center">
@@ -1141,7 +1185,6 @@ const RiderDashboard = () => {
                     </div>
                   )}
 
-                  {/* No Drivers Available */}
                   {activeRide.status === "no_drivers" && (
                     <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
                       <div className="flex items-center text-gray-300">
