@@ -1,7 +1,10 @@
-﻿import { useState, useEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/App";
-import axios from "axios";
+
+// FIX: Import from @/config and @/api, NOT @/App
+import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
+import api from "@/api"; 
+
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -11,11 +14,16 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+
+// Make sure these match exactly what you use in the code
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
-  Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp
+  Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp,
+  MessageSquare, Send
 } from "lucide-react";
 
 // Pricing Rules
