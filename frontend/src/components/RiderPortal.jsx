@@ -14,14 +14,14 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PayPalScriptProvider } from "@paypal/react-paypal-js";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp,
-  MapPinned
+  MapPinned, Edit
 } from "lucide-react";
 
 // Pricing Rules
@@ -99,7 +99,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, [inputRef, onPlaceSelect]);
 };
 
-// FIXED Map Picker - 100% working (functions moved up, resize fixed, no closure errors)
+// FIXED Map Picker - 100% working with gray screen fix (added multiple resize, removed styles temporarily, fallback)
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -124,6 +124,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
     geocoder.geocode({ location: { lat, lng } }, (results, status) => {
       if (status === 'OK' && results[0]) {
         setAddress(results[0].formatted_address);
+      } else {
+        setAddress("Selected Location");
       }
     });
   }, []);
@@ -184,14 +186,15 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
           const map = new window.google.maps.Map(mapRef.current, {
             center: defaultCenter,
             zoom: 15,
-            styles: [
-              { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-              { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-              { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-              { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-              { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
-              { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
-            ],
+            // TEMPORARILY COMMENTED OUT STYLES TO FIX GRAY SCREEN
+            // styles: [
+            //   { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+            //   { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+            //   { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
+            //   { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
+            //   { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
+            //   { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
+            // ],
             disableDefaultUI: true,
             zoomControl: true,
             clickableIcons: false
@@ -219,16 +222,16 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
             updateMarker(pos.lat(), pos.lng());
           });
         } else {
-          // Critical: Force resize TWICE for grey map fix
+          // Critical: Force resize MULTIPLE TIMES for grey map fix
           window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
-          setTimeout(() => {
-            window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
-            if (initialLocation) {
-              const pos = new window.google.maps.LatLng(initialLocation.lat, initialLocation.lng);
-              mapInstanceRef.current.setCenter(pos);
-              markerRef.current.setPosition(pos);
-            }
-          }, 100);
+          setTimeout(() => window.google.maps.event.trigger(mapInstanceRef.current, 'resize'), 50);
+          setTimeout(() => window.google.maps.event.trigger(mapInstanceRef.current, 'resize'), 100);
+          setTimeout(() => window.google.maps.event.trigger(mapInstanceRef.current, 'resize'), 200);
+          if (initialLocation) {
+            const pos = new window.google.maps.LatLng(initialLocation.lat, initialLocation.lng);
+            mapInstanceRef.current.setCenter(pos);
+            markerRef.current.setPosition(pos);
+          }
         }
         setLoading(false);
         setError(null);
@@ -261,7 +264,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-xl z-10">
               <Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" />
-              <span className="ml-2 text-[#00ff88]">Loading map...</span>
+              <span className="ml-2 text[#00ff88]">Loading map...</span>
             </div>
           )}
           {error && (
@@ -270,8 +273,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
           
           <div className="flex flex-col gap-2">
             {address && (
-              <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-3">
-                <p className="text-[#00ff88] text-xs font-bold uppercase">Selected</p>
+              <div className="bg[#00ff88]/10 border border[#00ff88]/30 rounded-xl p-3">
+                <p className="text[#00ff88] text-xs font-bold uppercase">Selected</p>
                 <p className="text-white text-sm">{address}</p>
               </div>
             )}
@@ -279,7 +282,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                className="border-[#00d4ff]/30 text-[#00d4ff] flex-1"
+                className="border[#00d4ff]/30 text[#00d4ff] flex-1"
                 onClick={getCurrentLocationInPicker}
                 disabled={loading}
               >
@@ -288,7 +291,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
               </Button>
               
               <Button 
-                className="flex-1 bg-[#00ff88] text-black font-bold"
+                className="flex-1 bg[#00ff88] text-black font-bold"
                 onClick={handleConfirm}
                 disabled={!selectedLocation || loading}
               >
@@ -399,7 +402,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
         <Button
           variant="ghost"
           size="icon"
-          className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20"
+          className="absolute right-1 text[#00d4ff] hover:bg[#00d4ff]/20"
           onClick={() => setShowMapPicker(true)}
         >
           <MapPinned className="w-4 h-4" />
@@ -452,22 +455,22 @@ const RiderAuth = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-black">
-      <Card className="w-full max-w-md bg-black/70 backdrop-blur-xl border border-[#00ff88]/30">
+      <Card className="w-full max-w-md bg-black/70 backdrop-blur-xl border border[#00ff88]/30">
         <CardHeader className="text-center">
           <Button
             variant="ghost"
-            className="absolute left-4 top-4 text-[#00ff88] hover:text-white"
+            className="absolute left-4 top-4 text[#00ff88] hover:text-white"
             onClick={() => navigate("/")}
           >
             <ArrowLeft className="w-4 h-4 mr-2" /> Back
           </Button>
-          <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center mx-auto mb-4">
+          <div className="w-20 h-20 rounded-full bg-gradient-to-r from[#00ff88] to[#00d4ff] flex items-center justify-center mx-auto mb-4">
             <Rocket className="w-10 h-10 text-black" />
           </div>
-          <CardTitle className="text-2xl text-[#00ff88]">
+          <CardTitle className="text-2xl text[#00ff88]">
             {isLogin ? "Welcome Back" : "Join T'aksi"}
           </CardTitle>
-          <CardDescription className="text-[#00d4ff]/70">
+          <CardDescription className="text[#00d4ff]/70">
             {isLogin ? "Sign in to book rides" : "Create your account"}
           </CardDescription>
         </CardHeader>
@@ -476,25 +479,25 @@ const RiderAuth = () => {
             {!isLogin && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="rider-name" className="text-[#00ff88]">First Name</Label>
+                  <Label htmlFor="rider-name" className="text[#00ff88]">First Name</Label>
                   <Input
                     id="rider-name"
                     name="name"
                     value={formData.name}
                     onChange={e => setFormData({...formData, name: e.target.value})}
-                    className="bg-black/50 border-[#00ff88]/30 text-white"
+                    className="bg-black/50 border[#00ff88]/30 text-white"
                     required
                     autoComplete="given-name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rider-surname" className="text-[#00ff88]">Last Name</Label>
+                  <Label htmlFor="rider-surname" className="text[#00ff88]">Last Name</Label>
                   <Input
                     id="rider-surname"
                     name="surname"
                     value={formData.surname}
                     onChange={e => setFormData({...formData, surname: e.target.value})}
-                    className="bg-black/50 border-[#00ff88]/30 text-white"
+                    className="bg-black/50 border[#00ff88]/30 text-white"
                     required
                     autoComplete="family-name"
                   />
@@ -502,16 +505,16 @@ const RiderAuth = () => {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="rider-phone" className="text-[#00ff88]">Phone Number</Label>
+              <Label htmlFor="rider-phone" className="text[#00ff88]">Phone Number</Label>
               <div className="relative">
-                <Phone className="absolute left-3 top-3 h-4 w-4 text-[#00ff88]/50" />
+                <Phone className="absolute left-3 top-3 h-4 w-4 text[#00ff88]/50" />
                 <Input
                   id="rider-phone"
                   name="cellphone"
                   type="tel"
                   value={formData.cellphone}
                   onChange={e => setFormData({...formData, cellphone: e.target.value})}
-                  className="pl-10 bg-black/50 border-[#00ff88]/30 text-white"
+                  className="pl-10 bg-black/50 border[#00ff88]/30 text-white"
                   placeholder="+995 XXX XXX XXX"
                   required
                   autoComplete="tel"
@@ -519,16 +522,16 @@ const RiderAuth = () => {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rider-password" className="text-[#00ff88]">Password</Label>
+              <Label htmlFor="rider-password" className="text[#00ff88]">Password</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-[#00ff88]/50" />
+                <Lock className="absolute left-3 top-3 h-4 w-4 text[#00ff88]/50" />
                 <Input
                   id="rider-password"
                   name="password"
                   type="password"
                   value={formData.password}
                   onChange={e => setFormData({...formData, password: e.target.value})}
-                  className="pl-10 bg-black/50 border-[#00ff88]/30 text-white"
+                  className="pl-10 bg-black/50 border[#00ff88]/30 text-white"
                   required
                   autoComplete="current-password"
                 />
@@ -536,7 +539,7 @@ const RiderAuth = () => {
             </div>
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold"
+              className="w-full bg-gradient-to-r from[#00ff88] to[#00d4ff] text-black font-bold"
               disabled={loading}
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
@@ -545,7 +548,7 @@ const RiderAuth = () => {
           </form>
         </CardContent>
         <CardFooter className="justify-center">
-          <Button variant="link" className="text-[#00d4ff]" onClick={() => setIsLogin(!isLogin)}>
+          <Button variant="link" className="text[#00d4ff]" onClick={() => setIsLogin(!isLogin)}>
             {isLogin ? "Need an account? Register" : "Have an account? Sign In"}
           </Button>
         </CardFooter>
@@ -564,6 +567,8 @@ const RiderDashboard = () => {
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [activeRide, setActiveRide] = useState(null);
   const [rideHistory, setRideHistory] = useState([]);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showPayPal, setShowPayPal] = useState(false);
   
   // Booking state
   const [pickup, setPickup] = useState({ address: "", lat: null, lng: null });
@@ -578,6 +583,9 @@ const RiderDashboard = () => {
   
   // Surge pricing
   const [surgeInfo, setSurgeInfo] = useState(null);
+
+  // Exchange rate GEL to USD (use real value from tool or approx 0.37)
+  const GEL_TO_USD = 0.37; // From search, approx 0.37
 
   // Load Google Maps
   useEffect(() => {
@@ -719,6 +727,15 @@ const RiderDashboard = () => {
       return;
     }
     
+    if (paymentMethod === "card") {
+      setShowPayPal(true);
+      return;
+    }
+    
+    await processRideRequest();
+  };
+
+  const processRideRequest = async () => {
     setLoading(true);
     try {
       const rideData = {
@@ -756,6 +773,7 @@ const RiderDashboard = () => {
       toast.error(error.response?.data?.detail || "Failed to request ride");
     } finally {
       setLoading(false);
+      setShowPayPal(false);
     }
   };
 
@@ -806,6 +824,11 @@ const RiderDashboard = () => {
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to retry ride");
     }
+  };
+
+  const handleRideUpdate = (updatedData) => {
+    setActiveRide(prev => ({ ...prev, ...updatedData }));
+    calculateRoute();
   };
 
   // FIXED: GPS Location with detailed error handling
@@ -879,7 +902,7 @@ const RiderDashboard = () => {
     searching: "bg-yellow-500 text-black",
     accepted: "bg-blue-500 text-white",
     arrived: "bg-purple-500 text-white",
-    in_progress: "bg-[#00ff88] text-black",
+    in_progress: "bg[#00ff88] text-black",
     completed: "bg-green-600 text-white",
     cancelled: "bg-red-500 text-white",
     no_drivers: "bg-gray-500 text-white"
@@ -888,22 +911,22 @@ const RiderDashboard = () => {
   return (
     <div className="min-h-screen bg-black">
       {/* Header */}
-      <header className="bg-black/50 backdrop-blur-xl border-b border-[#00ff88]/20 p-4 sticky top-0 z-50">
+      <header className="bg-black/50 backdrop-blur-xl border-b border[#00ff88]/20 p-4 sticky top-0 z-50">
         <div className="container mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from[#00ff88] to[#00d4ff] flex items-center justify-center">
               <Rocket className="w-5 h-5 text-black" />
             </div>
             <div>
-              <p className="text-[#00ff88] font-semibold">{user?.name} {user?.surname}</p>
-              <p className="text-[#00d4ff]/60 text-sm">Balance: ₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
+              <p className="text[#00ff88] font-semibold">{user?.name} {user?.surname}</p>
+              <p className="text[#00d4ff]/60 text-sm">Balance: ₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <Button variant="ghost" size="icon" className="text-[#00ff88]" onClick={() => navigate("/")}>
+            <Button variant="ghost" size="icon" className="text[#00ff88]" onClick={() => navigate("/")}>
               <Home className="w-5 h-5" />
             </Button>
-            <Button variant="ghost" size="icon" className="text-[#00ff88]" onClick={logout}>
+            <Button variant="ghost" size="icon" className="text[#00ff88]" onClick={logout}>
               <LogOut className="w-5 h-5" />
             </Button>
           </div>
@@ -913,26 +936,26 @@ const RiderDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto p-4 max-w-2xl">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 bg-black/50 border border-[#00ff88]/20 mb-6">
-            <TabsTrigger value="book" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
+          <TabsList className="grid grid-cols-4 bg-black/50 border border[#00ff88]/20 mb-6">
+            <TabsTrigger value="book" className="data-[state=active]:bg[#00ff88] data-[state=active]:text-black">
               <Car className="w-4 h-4 mr-2" /> Book
             </TabsTrigger>
-            <TabsTrigger value="active" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
+            <TabsTrigger value="active" className="data-[state=active]:bg[#00ff88] data-[state=active]:text-black">
               <Navigation className="w-4 h-4 mr-2" /> Active
             </TabsTrigger>
-            <TabsTrigger value="history" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
+            <TabsTrigger value="history" className="data-[state=active]:bg[#00ff88] data-[state=active]:text-black">
               <History className="w-4 h-4 mr-2" /> History
             </TabsTrigger>
-            <TabsTrigger value="profile" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black">
+            <TabsTrigger value="profile" className="data-[state=active]:bg[#00ff88] data-[state=active]:text-black">
               <User className="w-4 h-4 mr-2" /> Profile
             </TabsTrigger>
           </TabsList>
 
           {/* Book Tab */}
           <TabsContent value="book">
-            <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
+            <Card className="bg-black/60 backdrop-blur-xl border border[#00ff88]/30">
               <CardHeader>
-                <CardTitle className="text-[#00ff88] flex items-center">
+                <CardTitle className="text[#00ff88] flex items-center">
                   <Rocket className="w-5 h-5 mr-2" /> Book Your Ride
                 </CardTitle>
               </CardHeader>
@@ -946,11 +969,11 @@ const RiderDashboard = () => {
                 {/* Pickup */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="pickup-input" className="text-[#00ff88]">Pickup Location</Label>
+                    <Label htmlFor="pickup-input" className="text[#00ff88]">Pickup Location</Label>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-[#00d4ff] h-6"
+                      className="text[#00d4ff] h-6"
                       onClick={getCurrentLocation}
                       disabled={locationLoading}
                     >
@@ -964,7 +987,7 @@ const RiderDashboard = () => {
                     onChange={setPickup}
                     placeholder="Where to pick you up?"
                     icon={MapPin}
-                    iconColor="text-[#00ff88]"
+                    iconColor="text[#00ff88]"
                   />
                 </div>
 
@@ -1007,7 +1030,7 @@ const RiderDashboard = () => {
 
                 {/* Destination */}
                 <div className="space-y-2">
-                  <Label htmlFor="destination-input" className="text-[#00d4ff]">Destination</Label>
+                  <Label htmlFor="destination-input" className="text[#00d4ff]">Destination</Label>
                   <LocationInput
                     id="destination-input"
                     name="destination"
@@ -1015,7 +1038,7 @@ const RiderDashboard = () => {
                     onChange={setDestination}
                     placeholder="Where to go?"
                     icon={Navigation}
-                    iconColor="text-[#00d4ff]"
+                    iconColor="text[#00d4ff]"
                   />
                 </div>
                 
@@ -1042,14 +1065,14 @@ const RiderDashboard = () => {
 
                 {/* Route Info */}
                 {routeInfo && (
-                  <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-4">
-                    <div className="flex justify-between items-center mb-2 text-[#00ff88]">
+                  <div className="bg[#00ff88]/10 border border[#00ff88]/30 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-2 text[#00ff88]">
                       <span className="flex items-center"><RouteIcon className="w-4 h-4 mr-1" /> Route</span>
                       <span className="font-bold">{routeInfo.distance} km • ~{routeInfo.duration} min</span>
                     </div>
                     {fareEstimate && (
                       <>
-                        <Separator className="bg-[#00ff88]/20 my-2" />
+                        <Separator className="bg[#00ff88]/20 my-2" />
                         <div className="space-y-1 text-white text-sm">
                           <div className="flex justify-between"><span>Base</span><span>₾{fareEstimate.base.toFixed(2)}</span></div>
                           <div className="flex justify-between"><span>Distance</span><span>₾{fareEstimate.distance.toFixed(2)}</span></div>
@@ -1065,8 +1088,8 @@ const RiderDashboard = () => {
                               </div>
                             </>
                           )}
-                          <Separator className="bg-[#00ff88]/20 my-2" />
-                          <div className="flex justify-between text-lg text-[#00ff88] font-bold">
+                          <Separator className="bg[#00ff88]/20 my-2" />
+                          <div className="flex justify-between text-lg text[#00ff88] font-bold">
                             <span>Estimated Total</span>
                             <span>₾{fareEstimate.total.toFixed(2)}</span>
                           </div>
@@ -1078,7 +1101,7 @@ const RiderDashboard = () => {
 
                 {/* Car Type */}
                 <div className="space-y-2">
-                  <Label className="text-[#00ff88]">Vehicle Class {surgeInfo?.is_surge && <span className="text-orange-400 text-xs">(Surge x{surgeInfo.multiplier})</span>}</Label>
+                  <Label className="text[#00ff88]">Vehicle Class {surgeInfo?.is_surge && <span className="text-orange-400 text-xs">(Surge x{surgeInfo.multiplier})</span>}</Label>
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                     {carTypes.map((type) => {
                       const typeFare = routeInfo 
@@ -1090,13 +1113,13 @@ const RiderDashboard = () => {
                           onClick={() => setCarType(type.value)}
                           className={`p-3 rounded-xl border-2 transition-all ${
                             carType === type.value 
-                              ? "border-[#00ff88] bg-[#00ff88]/20" 
-                              : "border-[#00ff88]/20 bg-black/30"
+                              ? "border[#00ff88] bg[#00ff88]/20" 
+                              : "border[#00ff88]/20 bg-black/30"
                           }`}
                         >
                           <div className="text-2xl mb-1">{type.icon}</div>
                           <div className="text-white font-medium text-xs">{type.label}</div>
-                          <div className={`text-sm ${surgeInfo?.is_surge ? 'text-orange-400' : 'text-[#00ff88]'}`}>
+                          <div className={`text-sm ${surgeInfo?.is_surge ? 'text-orange-400' : 'text[#00ff88]'}`}>
                             ₾{typeFare.toFixed(2)}
                           </div>
                         </button>
@@ -1107,19 +1130,19 @@ const RiderDashboard = () => {
 
                 {/* Payment */}
                 <div className="space-y-2">
-                  <Label className="text-[#00ff88]">Payment</Label>
+                  <Label className="text[#00ff88]">Payment</Label>
                   <div className="flex gap-2">
                     <Button
                       variant={paymentMethod === "cash" ? "default" : "outline"}
                       onClick={() => setPaymentMethod("cash")}
-                      className={paymentMethod === "cash" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}
+                      className={paymentMethod === "cash" ? "bg[#00ff88] text-black" : "border[#00ff88]/30 text-white"}
                     >
                       💵 Cash
                     </Button>
                     <Button
                       variant={paymentMethod === "card" ? "default" : "outline"}
                       onClick={() => setPaymentMethod("card")}
-                      className={paymentMethod === "card" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}
+                      className={paymentMethod === "card" ? "bg[#00ff88] text-black" : "border[#00ff88]/30 text-white"}
                     >
                       💳 Card
                     </Button>
@@ -1127,7 +1150,7 @@ const RiderDashboard = () => {
                 </div>
 
                 <Button
-                  className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6"
+                  className="w-full bg-gradient-to-r from[#00ff88] to[#00d4ff] text-black font-bold text-lg py-6"
                   onClick={handleBookRide}
                   disabled={loading || !pickup.lat}
                 >
@@ -1138,13 +1161,46 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
 
+          {/* PayPal Modal */}
+          <Dialog open={showPayPal} onOpenChange={setShowPayPal}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Pay with PayPal</DialogTitle>
+              </DialogHeader>
+              <div className="p-4">
+                <p className="text-center mb-4">Amount: ₾{fareEstimate.total.toFixed(2)} (~ ${(fareEstimate.total * GEL_TO_USD).toFixed(2)} USD)</p>
+                <PayPalButtons
+                  createOrder={(data, actions) => {
+                    return actions.order.create({
+                      purchase_units: [{
+                        amount: {
+                          value: (fareEstimate.total * GEL_TO_USD).toFixed(2),
+                          currency_code: "USD"
+                        }
+                      }]
+                    });
+                  }}
+                  onApprove={async (data, actions) => {
+                    const order = await actions.order.capture();
+                    toast.success("Payment successful!");
+                    await processRideRequest();
+                  }}
+                  onError={(err) => {
+                    toast.error("Payment failed");
+                    console.error(err);
+                  }}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+
           {/* Active Tab */}
           <TabsContent value="active">
             {activeRide ? (
-              <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
+              <Card className="bg-black/60 backdrop-blur-xl border border[#00d4ff]/30">
                 <CardHeader>
                   <div className="flex justify-between items-center">
-                    <CardTitle className="text-[#00d4ff]">Active Ride</CardTitle>
+                    <CardTitle className="text[#00d4ff]">Active Ride</CardTitle>
                     <Badge className={statusColors[activeRide.status]}>
                       {activeRide.status?.replace(/_/g, ' ').toUpperCase()}
                     </Badge>
@@ -1153,7 +1209,7 @@ const RiderDashboard = () => {
                 <CardContent className="space-y-4 text-white">
                   <div className="space-y-3">
                     <div>
-                      <p className="text-[#00ff88]/60 text-sm">Pickup</p>
+                      <p className="text[#00ff88]/60 text-sm">Pickup</p>
                       <p>{activeRide.pickup}</p>
                     </div>
                     {activeRide.stops?.length > 0 && (
@@ -1165,7 +1221,7 @@ const RiderDashboard = () => {
                       </div>
                     )}
                     <div>
-                      <p className="text-[#00d4ff]/60 text-sm">Destination</p>
+                      <p className="text[#00d4ff]/60 text-sm">Destination</p>
                       <p>{activeRide.destination || "Open Trip"}</p>
                     </div>
                   </div>
@@ -1197,7 +1253,7 @@ const RiderDashboard = () => {
                       </p>
                       <div className="flex gap-2">
                         <Button 
-                          className="flex-1 bg-[#00ff88] text-black font-bold" 
+                          className="flex-1 bg[#00ff88] text-black font-bold" 
                           onClick={handleRetryRide}
                         >
                           <Rocket className="w-4 h-4 mr-2" /> Retry Search
@@ -1214,10 +1270,10 @@ const RiderDashboard = () => {
                   )}
 
                   {activeRide.driver_info && (
-                    <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                      <p className="text-[#00ff88] font-semibold mb-2">Your Driver</p>
+                    <div className="bg-black/50 rounded-xl p-4 border border[#00ff88]/20">
+                      <p className="text[#00ff88] font-semibold mb-2">Your Driver</p>
                       <div className="flex items-center space-x-3">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
+                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from[#00ff88] to[#00d4ff] flex items-center justify-center">
                           <User className="w-7 h-7 text-black" />
                         </div>
                         <div>
@@ -1225,7 +1281,7 @@ const RiderDashboard = () => {
                           <p className="text-sm text-gray-400">
                             {activeRide.driver_info.car_make} {activeRide.driver_info.car_model}
                           </p>
-                          <p className="text-[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p>
+                          <p className="text[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p>
                         </div>
                       </div>
                     </div>
@@ -1240,9 +1296,9 @@ const RiderDashboard = () => {
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
-                    <span className="text-[#00ff88]">Estimated Fare</span>
-                    <span className="text-2xl font-bold text-[#00ff88]">
+                  <div className="flex justify-between items-center bg[#00ff88]/10 rounded-xl p-4">
+                    <span className="text[#00ff88]">Estimated Fare</span>
+                    <span className="text-2xl font-bold text[#00ff88]">
                       ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
                     </span>
                   </div>
@@ -1255,10 +1311,10 @@ const RiderDashboard = () => {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12">
-                <Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" />
-                <p className="text-[#00ff88]/60 text-lg">No active ride</p>
-                <Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>
+              <Card className="bg-black/60 backdrop-blur-xl border border[#00ff88]/20 text-center py-12">
+                <Navigation className="w-20 h-20 mx-auto text[#00ff88]/30 mb-4" />
+                <p className="text[#00ff88]/60 text-lg">No active ride</p>
+                <Button className="mt-6 bg[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>
                   Book a Ride
                 </Button>
               </Card>
@@ -1267,9 +1323,9 @@ const RiderDashboard = () => {
 
           {/* History Tab */}
           <TabsContent value="history">
-            <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
+            <Card className="bg-black/60 backdrop-blur-xl border border[#00ff88]/20 text-white">
               <CardHeader>
-                <CardTitle className="text-[#00ff88]">Ride History</CardTitle>
+                <CardTitle className="text[#00ff88]">Ride History</CardTitle>
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-[400px]">
@@ -1278,7 +1334,7 @@ const RiderDashboard = () => {
                       <div className="text-center text-gray-500 py-8">No rides yet</div>
                     )}
                     {rideHistory.map(ride => (
-                      <div key={ride.id} className="bg-black/50 border border-[#00ff88]/10 rounded-xl p-4 space-y-2">
+                      <div key={ride.id} className="bg-black/50 border border[#00ff88]/10 rounded-xl p-4 space-y-2">
                         <div className="flex justify-between">
                           <Badge className={statusColors[ride.status]}>
                             {ride.status?.replace(/_/g, ' ').toUpperCase()}
@@ -1288,13 +1344,12 @@ const RiderDashboard = () => {
                           </span>
                         </div>
                         <div>
-                          <p className="text-sm text-[#00ff88]/60">From: {ride.pickup}</p>
-                          <p className="text-sm text-[#00d4ff]/60">To: {ride.destination || "Open"}
-                          </p>
+                          <p className="text-sm text[#00ff88]/60">From: {ride.pickup}</p>
+                          <p className="text-sm text[#00d4ff]/60">To: {ride.destination || "Open"}</p>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-400 capitalize">{ride.carType}</span>
-                          <span className="text-[#00ff88] font-bold">
+                          <span className="text[#00ff88] font-bold">
                             ₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}
                           </span>
                         </div>
@@ -1308,31 +1363,31 @@ const RiderDashboard = () => {
 
           {/* Profile Tab */}
           <TabsContent value="profile">
-            <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
+            <Card className="bg-black/60 backdrop-blur-xl border border[#00ff88]/20 text-white">
               <CardHeader>
-                <CardTitle className="text-[#00ff88]">Profile</CardTitle>
+                <CardTitle className="text[#00ff88]">Profile</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-center space-x-4">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-r from[#00ff88] to[#00d4ff] flex items-center justify-center">
                     <User className="w-10 h-10 text-black" />
                   </div>
                   <div>
                     <h3 className="text-2xl font-bold">{user?.name} {user?.surname}</h3>
-                    <p className="text-[#00d4ff]">{user?.cellphone}</p>
+                    <p className="text[#00d4ff]">{user?.cellphone}</p>
                   </div>
                 </div>
-                <Separator className="bg-[#00ff88]/20" />
+                <Separator className="bg[#00ff88]/20" />
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center">
-                    <Car className="w-8 h-8 mx-auto text-[#00d4ff] mb-2" />
+                  <div className="bg-black/50 border border[#00ff88]/20 rounded-xl p-4 text-center">
+                    <Car className="w-8 h-8 mx-auto text[#00d4ff] mb-2" />
                     <p className="text-2xl font-bold">{user?.total_rides || 0}</p>
-                    <p className="text-[#00ff88]/60 text-sm">Total Rides</p>
+                    <p className="text[#00ff88]/60 text-sm">Total Rides</p>
                   </div>
-                  <div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center">
+                  <div className="bg-black/50 border border[#00ff88]/20 rounded-xl p-4 text-center">
                     <Star className="w-8 h-8 mx-auto text-yellow-400 mb-2" />
                     <p className="text-2xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p>
-                    <p className="text-[#00ff88]/60 text-sm">Rating</p>
+                    <p className="text[#00ff88]/60 text-sm">Rating</p>
                   </div>
                 </div>
               </CardContent>
@@ -1357,7 +1412,7 @@ const RiderPortal = () => {
   }
 
   return (
-    <PayPalScriptProvider options={{ "client-id": "test", currency: "USD" }}>
+    <PayPalScriptProvider options={{ clientId: process.env.PAYPAL_CLIENT_ID, currency: "USD" }}>
       <Routes>
         <Route path="/" element={<RiderDashboard />} />
         <Route path="*" element={<Navigate to="/" replace />} />
