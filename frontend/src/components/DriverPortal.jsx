@@ -88,61 +88,49 @@ const DriverAuth = () => {
             {!isLogin && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="driver-name" className="text-[#00d4ff]">First Name</Label>
+                  <Label className="text-[#00d4ff]">First Name</Label>
                   <Input
-                    id="driver-name"
-                    name="name"
                     value={formData.name}
                     onChange={e => setFormData({...formData, name: e.target.value})}
                     className="bg-black/50 border-[#00d4ff]/30 text-white"
                     required
-                    autoComplete="given-name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="driver-surname" className="text-[#00d4ff]">Last Name</Label>
+                  <Label className="text-[#00d4ff]">Last Name</Label>
                   <Input
-                    id="driver-surname"
-                    name="surname"
                     value={formData.surname}
                     onChange={e => setFormData({...formData, surname: e.target.value})}
                     className="bg-black/50 border-[#00d4ff]/30 text-white"
                     required
-                    autoComplete="family-name"
                   />
                 </div>
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="driver-phone" className="text-[#00d4ff]">Phone Number</Label>
+              <Label className="text-[#00d4ff]">Phone Number</Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-3 h-4 w-4 text-[#00d4ff]/50" />
                 <Input
-                  id="driver-phone"
-                  name="cellphone"
                   type="tel"
                   value={formData.cellphone}
                   onChange={e => setFormData({...formData, cellphone: e.target.value})}
                   className="pl-10 bg-black/50 border-[#00d4ff]/30 text-white"
                   placeholder="+995 XXX XXX XXX"
                   required
-                  autoComplete="tel"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="driver-password" className="text-[#00d4ff]">Password</Label>
+              <Label className="text-[#00d4ff]">Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-[#00d4ff]/50" />
                 <Input
-                  id="driver-password"
-                  name="password"
                   type="password"
                   value={formData.password}
                   onChange={e => setFormData({...formData, password: e.target.value})}
                   className="pl-10 bg-black/50 border-[#00d4ff]/30 text-white"
                   required
-                  autoComplete="current-password"
                 />
               </div>
             </div>
@@ -979,9 +967,8 @@ const DriverDashboard = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
-                  <Label htmlFor="search-radius" className="text-white">Search Radius:</Label>
+                  <Label className="text-white">Search Radius:</Label>
                   <select 
-                    id="search-radius"
                     value={searchRadius} 
                     onChange={(e) => { setSearchRadius(Number(e.target.value)); fetchNearbyRides(); }}
                     className="bg-black/50 border border-[#00d4ff]/30 text-white rounded-md px-3 py-2"
@@ -1120,10 +1107,8 @@ const DriverDashboard = () => {
                   <form onSubmit={handleRegisterVehicle} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="car-make" className="text-[#00d4ff]">Make</Label>
+                        <Label className="text-[#00d4ff]">Make</Label>
                         <Input
-                          id="car-make"
-                          name="car_make"
                           value={vehicleData.car_make}
                           onChange={e => setVehicleData({...vehicleData, car_make: e.target.value})}
                           className="bg-black/50 border-[#00d4ff]/30 text-white"
@@ -1132,10 +1117,8 @@ const DriverDashboard = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="car-model" className="text-[#00d4ff]">Model</Label>
+                        <Label className="text-[#00d4ff]">Model</Label>
                         <Input
-                          id="car-model"
-                          name="car_model"
                           value={vehicleData.car_model}
                           onChange={e => setVehicleData({...vehicleData, car_model: e.target.value})}
                           className="bg-black/50 border-[#00d4ff]/30 text-white"
@@ -1146,10 +1129,8 @@ const DriverDashboard = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="car-year" className="text-[#00d4ff]">Year</Label>
+                        <Label className="text-[#00d4ff]">Year</Label>
                         <Input
-                          id="car-year"
-                          name="car_year"
                           type="number"
                           value={vehicleData.car_year}
                           onChange={e => setVehicleData({...vehicleData, car_year: e.target.value})}
@@ -1159,10 +1140,8 @@ const DriverDashboard = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="car-color" className="text-[#00d4ff]">Color</Label>
+                        <Label className="text-[#00d4ff]">Color</Label>
                         <Input
-                          id="car-color"
-                          name="car_color"
                           value={vehicleData.car_color}
                           onChange={e => setVehicleData({...vehicleData, car_color: e.target.value})}
                           className="bg-black/50 border-[#00d4ff]/30 text-white"
@@ -1172,10 +1151,8 @@ const DriverDashboard = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="license-plate" className="text-[#00d4ff]">License Plate</Label>
+                      <Label className="text-[#00d4ff]">License Plate</Label>
                       <Input
-                        id="license-plate"
-                        name="license_plate"
                         value={vehicleData.license_plate}
                         onChange={e => setVehicleData({...vehicleData, license_plate: e.target.value.toUpperCase()})}
                         className="bg-black/50 border-[#00d4ff]/30 text-white font-mono"
@@ -1224,10 +1201,8 @@ const DriverDashboard = () => {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="topup-amount" className="text-[#00ff88]">Amount (₾)</Label>
+                      <Label className="text-[#00ff88]">Amount (₾)</Label>
                       <Input
-                        id="topup-amount"
-                        name="topup_amount"
                         type="number"
                         value={topupAmount}
                         onChange={e => setTopupAmount(e.target.value)}
@@ -1236,10 +1211,8 @@ const DriverDashboard = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="topup-ref" className="text-[#00ff88]">Reference (optional)</Label>
+                      <Label className="text-[#00ff88]">Reference (optional)</Label>
                       <Input
-                        id="topup-ref"
-                        name="topup_reference"
                         value={topupReference}
                         onChange={e => setTopupReference(e.target.value)}
                         className="bg-black/50 border-[#00ff88]/30 text-white"
@@ -1267,10 +1240,8 @@ const DriverDashboard = () => {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="withdraw-amount" className="text-[#00d4ff]">Amount (₾)</Label>
+                    <Label className="text-[#00d4ff]">Amount (₾)</Label>
                     <Input
-                      id="withdraw-amount"
-                      name="withdraw_amount"
                       type="number"
                       value={withdrawalData.amount}
                       onChange={e => setWithdrawalData({...withdrawalData, amount: e.target.value})}
@@ -1278,10 +1249,8 @@ const DriverDashboard = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="withdraw-bank" className="text-[#00d4ff]">Bank Details / IBAN</Label>
+                    <Label className="text-[#00d4ff]">Bank Details / IBAN</Label>
                     <Input
-                      id="withdraw-bank"
-                      name="bank_details"
                       value={withdrawalData.bank_details}
                       onChange={e => setWithdrawalData({...withdrawalData, bank_details: e.target.value})}
                       className="bg-black/50 border-[#00d4ff]/30 text-white"
