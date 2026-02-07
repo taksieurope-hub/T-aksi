@@ -15,22 +15,21 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { PayPalScriptProvider } from "@paypal/react-paypal-js";
 
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp,
-  MessageSquare, Send
+  MapPinned
 } from "lucide-react";
 
-// Pricing Rules
+// Pricing Rules - FIX: stopFee is now 0.00
 const PRICING_RULES = {
-  economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 1.00, icon: "🚗" },
-  comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.45, freeWait: 2, stopFee: 1.50, icon: "🚙" },
-  suv: { name: 'SUV / XL', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 2.00, icon: "🚐" },
-  personal: { name: 'Personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 3, stopFee: 1.50, icon: "👤" },
+  economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
+  comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.45, freeWait: 2, stopFee: 0.00, icon: "🚙" },
+  suv: { name: 'SUV / XL', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐" },
+  personal: { name: 'Personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 3, stopFee: 0.00, icon: "👤" },
   jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
@@ -39,7 +38,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   let subtotal = rules.base;
   subtotal += distanceKm * rules.perKm;
   
-  // Long distance
+  // Long distance logic
   if (distanceKm > 7) {
     subtotal += (distanceKm - 7) * 0.15;
   }
@@ -47,13 +46,14 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
     subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
   }
   
-  // Wait fees
+  // Wait fees (Pickup wait + Stop wait)
   const billableWait = Math.max(0, waitMin - rules.freeWait);
   subtotal += billableWait * rules.perMinWait;
-  subtotal += stopWaitMin * rules.perMinWait;
+  subtotal += stopWaitMin * rules.perMinWait; // Stops charge for time, not per stop
   
-  // Stop fees
+  // Stop fees (Now 0.00)
   subtotal += numStops * rules.stopFee;
+
   // Surge
   const surgeFee = subtotal * (surgeMultiplier - 1.0);
   const total = subtotal + surgeFee;
@@ -111,61 +111,63 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
     
     const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 }; // Tbilisi
     
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: defaultCenter,
-      zoom: 14,
-      styles: [
-        { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
-      ],
-      disableDefaultUI: true,
-      zoomControl: true
-    });
-    
-    mapInstanceRef.current = map;
-    
-    const marker = new window.google.maps.Marker({
-      map,
-      draggable: true,
-      icon: {
-        path: window.google.maps.SymbolPath.CIRCLE,
-        scale: 12,
-        fillColor: "#00ff88",
-        fillOpacity: 1,
-        strokeColor: "#ffffff",
-        strokeWeight: 3
-      }
-    });
-    
-    markerRef.current = marker;
-    
-    // Click to set location
-    map.addListener('click', (e) => {
-      const lat = e.latLng.lat();
-      const lng = e.latLng.lng();
-      marker.setPosition(e.latLng);
-      setSelectedLocation({ lat, lng });
-      reverseGeocode(lat, lng);
-    });
-    
-    // Drag marker
-    marker.addListener('dragend', () => {
-      const pos = marker.getPosition();
-      const lat = pos.lat();
-      const lng = pos.lng();
-      setSelectedLocation({ lat, lng });
-      reverseGeocode(lat, lng);
-    });
+    if (!mapInstanceRef.current) {
+        const map = new window.google.maps.Map(mapRef.current, {
+        center: defaultCenter,
+        zoom: 14,
+        styles: [
+            { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
+            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
+        ],
+        disableDefaultUI: true,
+        zoomControl: true
+        });
+        mapInstanceRef.current = map;
+
+        const marker = new window.google.maps.Marker({
+            map,
+            draggable: true,
+            icon: {
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 12,
+                fillColor: "#00ff88",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 3
+            }
+        });
+        markerRef.current = marker;
+
+        // Click listener
+        map.addListener('click', (e) => {
+            const lat = e.latLng.lat();
+            const lng = e.latLng.lng();
+            marker.setPosition(e.latLng);
+            setSelectedLocation({ lat, lng });
+            reverseGeocode(lat, lng);
+        });
+
+        // Drag listener
+        marker.addListener('dragend', () => {
+            const pos = marker.getPosition();
+            const lat = pos.lat();
+            const lng = pos.lng();
+            setSelectedLocation({ lat, lng });
+            reverseGeocode(lat, lng);
+        });
+    }
     
     // Set initial location if provided
-    if (initialLocation) {
-      marker.setPosition(initialLocation);
-      setSelectedLocation(initialLocation);
-      reverseGeocode(initialLocation.lat, initialLocation.lng);
+    if (initialLocation && mapInstanceRef.current && markerRef.current) {
+        const pos = new window.google.maps.LatLng(initialLocation.lat, initialLocation.lng);
+        mapInstanceRef.current.setCenter(pos);
+        markerRef.current.setPosition(pos);
+        setSelectedLocation(initialLocation);
+        reverseGeocode(initialLocation.lat, initialLocation.lng);
     }
     
   }, [isOpen, initialLocation]);
@@ -276,8 +278,60 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
+// Route Visualization Map 
+const RouteMap = ({ pickup, destination, stops }) => {
+    const mapRef = useRef(null);
+    const mapInstanceRef = useRef(null);
+    const directionsRendererRef = useRef(null);
+
+    useEffect(() => {
+        if (!mapRef.current || !window.google) return;
+
+        if (!mapInstanceRef.current) {
+            mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+                center: { lat: 41.7151, lng: 44.8271 },
+                zoom: 12,
+                disableDefaultUI: true,
+                styles: [
+                    { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+                    { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+                    { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
+                    { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
+                    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
+                ]
+            });
+            directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+                map: mapInstanceRef.current,
+                suppressMarkers: false,
+                polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
+            });
+        }
+
+        if (pickup.lat && destination.lat) {
+            const directionsService = new window.google.maps.DirectionsService();
+            const waypoints = stops.filter(s => s.lat).map(s => ({
+                location: new window.google.maps.LatLng(s.lat, s.lng),
+                stopover: true
+            }));
+
+            directionsService.route({
+                origin: new window.google.maps.LatLng(pickup.lat, pickup.lng),
+                destination: new window.google.maps.LatLng(destination.lat, destination.lng),
+                waypoints: waypoints,
+                travelMode: window.google.maps.TravelMode.DRIVING
+            }, (result, status) => {
+                if (status === 'OK') {
+                    directionsRendererRef.current.setDirections(result);
+                }
+            });
+        }
+    }, [pickup, destination, stops]);
+
+    return <div ref={mapRef} className="w-full h-[200px] rounded-xl border border-[#00ff88]/20 mb-4" />;
+};
+
 // Location Input Component
-const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, iconColor }) => {
+const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   
@@ -302,7 +356,7 @@ const LocationInput = ({ value, onChange, onMapSelect, placeholder, icon: Icon, 
           className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20"
           onClick={() => setShowMapPicker(true)}
         >
-          <Target className="w-4 h-4" />
+          <MapPinned className="w-4 h-4" />
         </Button>
       </div>
       
@@ -333,7 +387,6 @@ const RiderAuth = () => {
     
     try {
       const endpoint = isLogin ? "/auth/login" : "/auth/register/rider";
-      // FIX: Use api.post instead of axios.post
       const res = await api.post(endpoint, formData);
       
       if (res.data && res.data.token && res.data.user) {
@@ -445,7 +498,7 @@ const RiderAuth = () => {
 
 // Dashboard Component
 const RiderDashboard = () => {
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("book");
   const [loading, setLoading] = useState(false);
@@ -513,7 +566,6 @@ const RiderDashboard = () => {
   const fetchSurgeStatus = async () => {
     try {
       const params = pickup.lat ? `?lat=${pickup.lat}&lng=${pickup.lng}` : '';
-      // FIX: Use api.get instead of axios.get
       const res = await api.get(`/surge/status${params}`);
       setSurgeInfo(res.data);
     } catch (error) {
@@ -563,7 +615,6 @@ const RiderDashboard = () => {
 
   const fetchActiveRide = async () => {
     try {
-      // FIX: Use api.get
       const res = await api.get(`/rider/active-ride`);
       if (res.data) {
         setActiveRide(res.data);
@@ -576,7 +627,6 @@ const RiderDashboard = () => {
 
   const fetchRideHistory = async () => {
     try {
-      // FIX: Use api.get
       const res = await api.get(`/rider/history`);
       setRideHistory(res.data.rides || []);
     } catch (error) {
@@ -629,7 +679,6 @@ const RiderDashboard = () => {
         estimatedDuration: routeInfo?.duration || 15
       };
       
-      // FIX: Use api.post
       const res = await api.post(`/rides/request`, rideData);
       
       toast.success("Ride requested! Searching for drivers...");
@@ -652,7 +701,6 @@ const RiderDashboard = () => {
   const pollRideStatus = async (rideId) => {
     const interval = setInterval(async () => {
       try {
-        // FIX: Use api.get
         const res = await api.get(`/rides/${rideId}`);
         setActiveRide(res.data);
         
@@ -677,7 +725,6 @@ const RiderDashboard = () => {
     if (!activeRide) return;
     
     try {
-      // FIX: Use api.post
       await api.post(`/rides/${activeRide.id}/cancel`);
       toast.success("Ride cancelled");
       setActiveRide(null);
@@ -691,7 +738,6 @@ const RiderDashboard = () => {
     if (!activeRide) return;
     
     try {
-      // FIX: Use api.post
       const res = await api.post(`/rides/${activeRide.id}/retry`);
       toast.success("Searching for drivers again...");
       setActiveRide(prev => ({ ...prev, status: 'searching', matching_status: 'Retrying - Searching within 3km' }));
@@ -796,6 +842,12 @@ const RiderDashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                
+                {/* Visual Route Map - FIXED NAVIGATION */}
+                {mapsLoaded && pickup.lat && destination.lat && (
+                    <RouteMap pickup={pickup} destination={destination} stops={stops} />
+                )}
+
                 {/* Pickup */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -842,14 +894,14 @@ const RiderDashboard = () => {
                   </div>
                 ))}
 
-                {/* Add Stop Button */}
+                {/* Add Stop Button - FIX: Updated Text */}
                 {stops.length < 3 && (
                   <Button
                     variant="outline"
                     className="w-full border-dashed border-yellow-400/30 text-yellow-400"
                     onClick={addStop}
                   >
-                    <Plus className="w-4 h-4 mr-2" /> Add Stop (+₾{PRICING_RULES[carType]?.stopFee.toFixed(2)})
+                    <Plus className="w-4 h-4 mr-2" /> Add Stop (Free - wait time charged)
                   </Button>
                 )}
 
@@ -900,7 +952,7 @@ const RiderDashboard = () => {
                           <div className="flex justify-between"><span>Base</span><span>₾{fareEstimate.base.toFixed(2)}</span></div>
                           <div className="flex justify-between"><span>Distance</span><span>₾{fareEstimate.distance.toFixed(2)}</span></div>
                           {fareEstimate.stops > 0 && (
-                            <div className="flex justify-between text-yellow-400"><span>Stops ({stops.length})</span><span>₾{fareEstimate.stops.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-yellow-400"><span>Stops ({stops.length})</span><span>Free</span></div>
                           )}
                           {fareEstimate.surgeFee > 0 && (
                             <>
