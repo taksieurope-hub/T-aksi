@@ -12,6 +12,7 @@ import { LanguageProvider } from "@/i18n/LanguageContext";
 import LandingPage from "@/components/LandingPage";
 import RiderPortal from "@/components/RiderPortal";
 import DriverPortal from "@/components/DriverPortal";
+import AdminPortal from "@/components/AdminPortal"; // 👈 1. IMPORT THIS
 
 /**
  * Axios interceptor (Global)
@@ -75,9 +76,16 @@ function App() {
           <div className="relative z-10">
             <BrowserRouter>
               <Routes>
+                {/* Public Landing Page */}
                 <Route path="/" element={<LandingPage />} />
+
+                {/* 👈 2. ADD THIS ROUTE */}
+                <Route path="/admin/*" element={<AdminPortal />} />
+                
                 <Route path="/rider/*" element={<RiderPortal />} />
                 <Route path="/driver/*" element={<DriverPortal />} />
+
+                {/* Fallback - Redirect unknown routes to Landing Page */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </BrowserRouter>
