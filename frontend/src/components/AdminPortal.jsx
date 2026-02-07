@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 
 // FIX: Import from @/config and @/api
@@ -46,8 +46,7 @@ const AdminLogin = () => {
         
         login("master_admin_token", adminUser);
         toast.success("⚡ Master Key Accepted. Command Center Unlocked.");
-        // Use window.location for force reload after local login
-        window.location.href = "/admin/dashboard";
+        navigate("/admin/dashboard");
       } else {
         const res = await api.post(`/auth/login`, {
           cellphone: "admin",
