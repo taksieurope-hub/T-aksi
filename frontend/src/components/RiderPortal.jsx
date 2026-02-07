@@ -293,13 +293,15 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// Route Visualization Map (with guards + error handling)
-const RouteMap = ({ pickup, destination, stops }) => {
+// 🔥 UPDATED: Route Map with Driver Tracking Support
+const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
+  const driverMarkerRef = useRef(null); // Ref to track driver marker
   const [error, setError] = useState(null);
 
+  // 1. Initialize Map and Directions
   useEffect(() => {
     if (!mapRef.current || !window.google || !pickup?.lat || !destination?.lat) {
       if (!window.google) setError("Maps not loaded");
@@ -328,10 +330,10 @@ const RouteMap = ({ pickup, destination, stops }) => {
       }
 
       const directionsService = new window.google.maps.DirectionsService();
-      const waypoints = stops.filter(s => s.lat && s.lng).map(s => ({
+      const waypoints = stops ? stops.filter(s => s.lat && s.lng).map(s => ({
         location: new window.google.maps.LatLng(s.lat, s.lng),
         stopover: true
-      }));
+      })) : [];
 
       directionsService.route({
         origin: new window.google.maps.LatLng(pickup.lat, pickup.lng),
@@ -352,6 +354,47 @@ const RouteMap = ({ pickup, destination, stops }) => {
       setError("Failed to render route");
     }
   }, [pickup, destination, stops]);
+
+  // 2. 🔥 NEW: Track Driver Location Updates
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google || !driverLocation) return;
+
+    // Ensure lat/lng are numbers
+    const lat = parseFloat(driverLocation.lat);
+    const lng = parseFloat(driverLocation.lng);
+
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    const driverPos = new window.google.maps.LatLng(lat, lng);
+
+    if (!driverMarkerRef.current) {
+        // Create marker if it doesn't exist
+        driverMarkerRef.current = new window.google.maps.Marker({
+            position: driverPos,
+            map: mapInstanceRef.current,
+            icon: {
+                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW, // Or use a car SVG path
+                scale: 6,
+                fillColor: "#00d4ff",
+                fillOpacity: 1,
+                strokeWeight: 2,
+                strokeColor: "white",
+                rotation: driverLocation.heading || 0
+            },
+            title: "Driver"
+        });
+    } else {
+        // Move existing marker
+        driverMarkerRef.current.setPosition(driverPos);
+        
+        // Update rotation if available
+        if (driverLocation.heading !== undefined) {
+            const icon = driverMarkerRef.current.getIcon();
+            icon.rotation = driverLocation.heading;
+            driverMarkerRef.current.setIcon(icon);
+        }
+    }
+  }, [driverLocation]); // Re-run whenever driverLocation changes
 
   return (
     <div className="relative">
@@ -1194,6 +1237,17 @@ const RiderDashboard = () => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 text-white">
+                  
+                  {/* 🔥 ADDED: Map inside Active Tab to track driver */}
+                  {mapsLoaded && activeRide.pickup_lat && (
+                    <RouteMap 
+                        pickup={{ lat: parseFloat(activeRide.pickup_lat), lng: parseFloat(activeRide.pickup_lng) }}
+                        destination={activeRide.dest_lat ? { lat: parseFloat(activeRide.dest_lat), lng: parseFloat(activeRide.dest_lng) } : null}
+                        stops={activeRide.stops || []}
+                        driverLocation={activeRide.driver_location} 
+                    />
+                  )}
+
                   <div className="space-y-3">
                     <div>
                       <p className="text-[#00ff88]/60 text-sm">Pickup</p>
