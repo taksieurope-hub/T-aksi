@@ -43,19 +43,6 @@ import {
   Send,
 } from "lucide-react";
 
-/* =========================================================
-   IMPORTANT NOTES (matches server.py)
-   - api client should have baseURL ending with /api
-     so api.get("/rider/active-ride") => GET /api/rider/active-ride
-   - Auth:
-     POST /auth/login {cellphone, password}
-     POST /auth/register/rider {name, surname, cellphone, password, email?}
-   - Ride:
-     POST /rides/request uses aliases:
-       pickupLat, pickupLng, destinationLat, destinationLng,
-       carType, paymentMethod, paymentOrderId, estimatedDistance, estimatedDuration, stops[]
-========================================================= */
-
 /* ---------------------------------------------
    UI CSS fixes (maps)
 ---------------------------------------------- */
@@ -85,14 +72,12 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   let subtotal = rules.base;
 
   subtotal += distanceKm * rules.perKm;
-
   if (distanceKm > rules.longDist) subtotal += (distanceKm - rules.longDist) * 0.15;
   if (distanceKm > rules.veryLong) subtotal += Math.ceil((distanceKm - rules.veryLong) / 15) * 5;
 
   const billableWait = Math.max(0, waitMin - rules.freeWait);
   const totalWait = billableWait + stopWaitMin;
   subtotal += totalWait * rules.perMinWait;
-
   subtotal += numStops * rules.stopFee;
 
   const surgeFee = subtotal * (surgeMultiplier - 1.0);
@@ -145,18 +130,19 @@ const normalizeRide = (ride) => {
     pickupLng,
     destinationLat,
     destinationLng,
-    driver_location:
-      driverLat !== null && driverLng !== null ? { lat: driverLat, lng: driverLng } : (ride.driver_location || null),
+    driver_location: driverLat !== null && driverLng !== null ? { lat: driverLat, lng: driverLng } : (ride.driver_location || null),
   };
 };
 
 /* ---------------------------------------------
-   Google Maps loader (stable)
+   Safe Google Maps loader (guards window)
 ---------------------------------------------- */
 const useGoogleMapsLoader = () => {
-  const [mapsLoaded, setMapsLoaded] = useState(!!window.google?.maps);
+  const canUseWindow = typeof window !== "undefined";
+  const [mapsLoaded, setMapsLoaded] = useState(canUseWindow ? !!window.google?.maps : false);
 
   useEffect(() => {
+    if (!canUseWindow) return;
     if (!GOOGLE_MAPS_API_KEY) return;
 
     if (window.google?.maps) {
@@ -166,8 +152,9 @@ const useGoogleMapsLoader = () => {
 
     const existing = document.querySelector("script[data-google-maps='1']");
     if (existing) {
-      existing.addEventListener("load", () => setMapsLoaded(true));
-      return;
+      const onLoad = () => setMapsLoaded(true);
+      existing.addEventListener("load", onLoad);
+      return () => existing.removeEventListener("load", onLoad);
     }
 
     const script = document.createElement("script");
@@ -178,7 +165,7 @@ const useGoogleMapsLoader = () => {
     script.onload = () => setMapsLoaded(true);
     script.onerror = () => toast.error("Google Maps failed to load (check API key / billing / domain restrictions).");
     document.head.appendChild(script);
-  }, []);
+  }, [canUseWindow]);
 
   return mapsLoaded;
 };
@@ -292,10 +279,10 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
           window.google.maps.event.trigger(map, "resize");
           map.setCenter(defaultCenter);
         } catch {}
-      }, 350);
+      }, 300);
     };
 
-    const timer = setTimeout(init, 150);
+    const timer = setTimeout(init, 120);
     return () => clearTimeout(timer);
   }, [isOpen, mapsLoaded, initialLocation, cleanup, reverseGeocode, setPosition]);
 
@@ -359,9 +346,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation, 
         </DialogHeader>
 
         <div className="flex-1 w-full relative min-h-[360px] bg-[#1a1a2e]">
-          {!mapsLoaded ? (
-            <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">Loading map…</div>
-          ) : null}
+          {!mapsLoaded ? <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">Loading map…</div> : null}
           <div ref={mapDivRef} className="w-full h-full" />
         </div>
 
@@ -424,7 +409,6 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
       const addr = place?.formatted_address || place?.name || inputRef.current?.value || "";
       const lat = place?.geometry?.location?.lat?.();
       const lng = place?.geometry?.location?.lng?.();
-
       if (lat && lng) onChange({ address: addr, lat, lng });
       else onChange({ address: addr, lat: null, lng: null });
     });
@@ -570,7 +554,6 @@ const LocationInput = React.memo(({ value, onChange, placeholder, icon: Icon, ic
 ---------------------------------------------- */
 const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, status }) => {
   const mapDivRef = useRef(null);
-  const mapRef = useRef(null);
   const rendererRef = useRef(null);
   const [eta, setEta] = useState(null);
 
@@ -590,12 +573,9 @@ const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, stat
       ],
     });
 
-    mapRef.current = map;
-
     rendererRef.current = new window.google.maps.DirectionsRenderer({
       map,
       suppressMarkers: false,
-      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 },
     });
 
     setTimeout(() => {
@@ -603,7 +583,7 @@ const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, stat
         window.google.maps.event.trigger(map, "resize");
         map.setCenter(center);
       } catch {}
-    }, 60);
+    }, 80);
   }, [mapsLoaded]);
 
   useEffect(() => {
@@ -611,7 +591,6 @@ const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, stat
 
     const start = driverLocation?.lat ? driverLocation : pickup?.lat ? pickup : null;
     const end = status === "in_progress" ? (destination?.lat ? destination : null) : pickup?.lat ? pickup : null;
-
     if (!start?.lat || !start?.lng || !end?.lat || !end?.lng) return;
 
     const svc = new window.google.maps.DirectionsService();
@@ -645,7 +624,7 @@ const LiveTrackingMap = ({ mapsLoaded, pickup, destination, driverLocation, stat
 };
 
 /* ---------------------------------------------
-   ChatInterface (server: /rides/{id}/chat)
+   ChatInterface
 ---------------------------------------------- */
 const ChatInterface = ({ rideId }) => {
   const [messages, setMessages] = useState([]);
@@ -660,7 +639,9 @@ const ChatInterface = ({ rideId }) => {
       const res = await api.get(`/rides/${rideId}/chat`);
       setMessages(res.data?.messages || []);
       await api.post(`/rides/${rideId}/chat/read`);
-    } catch {}
+    } catch (e) {
+      // keep silent
+    }
   }, [rideId]);
 
   useEffect(() => {
@@ -693,10 +674,7 @@ const ChatInterface = ({ rideId }) => {
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black">
         {messages.length === 0 && <p className="text-gray-500 text-center mt-10">{t("no_messages")}</p>}
         {messages.map((msg) => (
-          <div
-            key={msg.id || `${msg.sender_id}-${msg.timestamp || msg.created_at}`}
-            className={`flex ${msg.sender_id === user?.id ? "justify-end" : "justify-start"}`}
-          >
+          <div key={msg.id || `${msg.sender_id}-${msg.timestamp || msg.created_at}`} className={`flex ${msg.sender_id === user?.id ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[80%] rounded-2xl p-3 ${msg.sender_id === user?.id ? "bg-[#00ff88] text-black" : "bg-[#1a1a2e] text-white"}`}>
               <p className="text-sm">{msg.message}</p>
             </div>
@@ -715,7 +693,7 @@ const ChatInterface = ({ rideId }) => {
 };
 
 /* ---------------------------------------------
-   RiderAuth (FIXED: login + register)
+   RiderAuth
 ---------------------------------------------- */
 const RiderAuth = () => {
   const { login } = useAuth();
@@ -739,11 +717,13 @@ const RiderAuth = () => {
         const token = res.data?.token || res.data?.access_token || res.data?.jwt || res.data?.data?.token;
         const user = res.data?.user || res.data?.rider || res.data?.data?.user || res.data?.profile;
 
+
         if (token && user) {
           login(token, user);
           toast.success("Logged in");
           navigate("/rider/dashboard");
         } else {
+          console.error("LOGIN RESPONSE BAD FORMAT:", res.data);
           toast.error("Server login response wrong format");
         }
       } else {
@@ -757,7 +737,6 @@ const RiderAuth = () => {
 
         const res = await api.post("/auth/register/rider", payload);
 
-        // Some backends auto-login on register. Support both.
         const token = res.data?.token || res.data?.access_token || res.data?.jwt || res.data?.data?.token;
         const user = res.data?.user || res.data?.rider || res.data?.data?.user || res.data?.profile;
 
@@ -767,12 +746,12 @@ const RiderAuth = () => {
           login(token, user);
           navigate("/rider/dashboard");
         } else {
-          // If no token returned, switch to login screen
           setIsLogin(true);
           setLoginData({ cellphone: payload.cellphone, password: payload.password });
         }
       }
     } catch (error) {
+      console.error("AUTH ERROR:", error?.response?.data || error);
       const msg = error?.response?.data?.detail || error?.response?.data || "Authentication failed";
       toast.error(String(msg));
     } finally {
@@ -803,32 +782,17 @@ const RiderAuth = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-[#00ff88]">{t("first_name")}</Label>
-                    <Input
-                      value={registerData.name}
-                      onChange={(e) => setRegisterData({ ...registerData, name: e.target.value })}
-                      className="bg-black/50 border-[#00ff88]/30 text-white"
-                      required
-                    />
+                    <Input value={registerData.name} onChange={(e) => setRegisterData({ ...registerData, name: e.target.value })} className="bg-black/50 border-[#00ff88]/30 text-white" required />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[#00ff88]">{t("last_name")}</Label>
-                    <Input
-                      value={registerData.surname}
-                      onChange={(e) => setRegisterData({ ...registerData, surname: e.target.value })}
-                      className="bg-black/50 border-[#00ff88]/30 text-white"
-                      required
-                    />
+                    <Input value={registerData.surname} onChange={(e) => setRegisterData({ ...registerData, surname: e.target.value })} className="bg-black/50 border-[#00ff88]/30 text-white" required />
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-[#00ff88]">Email (optional)</Label>
-                  <Input
-                    value={registerData.email}
-                    onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
-                    className="bg-black/50 border-[#00ff88]/30 text-white"
-                    placeholder="you@email.com"
-                  />
+                  <Input value={registerData.email} onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })} className="bg-black/50 border-[#00ff88]/30 text-white" placeholder="you@email.com" />
                 </div>
               </>
             )}
@@ -888,6 +852,19 @@ const RiderAuth = () => {
 };
 
 /* ---------------------------------------------
+   Stable PayPal Provider (IMPORTANT FIX)
+---------------------------------------------- */
+const PaypalProvider = ({ enabled, clientId, currency, children }) => {
+  const options = useMemo(() => {
+    if (!enabled) return null;
+    return { "client-id": clientId, currency };
+  }, [enabled, clientId, currency]);
+
+  if (!enabled || !options) return <>{children}</>;
+  return <PayPalScriptProvider options={options}>{children}</PayPalScriptProvider>;
+};
+
+/* ---------------------------------------------
    RiderDashboard
 ---------------------------------------------- */
 const RiderDashboard = () => {
@@ -909,7 +886,7 @@ const RiderDashboard = () => {
   const [destination, setDestination] = useState({ address: "", lat: null, lng: null });
   const [stops, setStops] = useState([]);
   const [carType, setCarType] = useState("economy");
-  const [paymentMethod, setPaymentMethod] = useState("cash"); // "cash" | "card"
+  const [paymentMethod, setPaymentMethod] = useState("cash");
   const [topupAmount, setTopupAmount] = useState("");
 
   const [routeInfo, setRouteInfo] = useState(null);
@@ -921,7 +898,7 @@ const RiderDashboard = () => {
   const [review, setReview] = useState("");
   const [completedRideInfo, setCompletedRideInfo] = useState(null);
 
-  // PayPal env (SAFE)
+  // PayPal env (stable)
   const PAYPAL_CURRENCY = import.meta.env.VITE_PAYPAL_CURRENCY || "USD";
   const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID || "";
   const PAYPAL_ENABLED = Boolean(PAYPAL_CLIENT_ID) && PAYPAL_CLIENT_ID !== "test";
@@ -929,6 +906,7 @@ const RiderDashboard = () => {
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
     };
   }, []);
 
@@ -951,7 +929,9 @@ const RiderDashboard = () => {
       const params = lat && lng ? `?lat=${lat}&lng=${lng}` : "";
       const res = await api.get(`/surge/status${params}`);
       setSurgeInfo(res.data);
-    } catch {}
+    } catch (e) {
+      // silent
+    }
   }, []);
 
   const calculateRoute = useCallback(async () => {
@@ -980,13 +960,54 @@ const RiderDashboard = () => {
             totalDuration += leg.duration.value;
           });
           setRouteInfo({
-            distance: Math.round(totalDistance / 100) / 10, // km
-            duration: Math.round(totalDuration / 60), // min
+            distance: Math.round(totalDistance / 100) / 10,
+            duration: Math.round(totalDuration / 60),
           });
         }
       }
     );
   }, [mapsLoaded, pickup, destination, stops]);
+
+  const pollRideStatus = useCallback(
+    (rideId) => {
+      if (!rideId) return;
+      if (pollRef.current) clearInterval(pollRef.current);
+
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await api.get(`/rides/${rideId}`);
+          const ride = normalizeRide(res.data);
+          setActiveRide(ride);
+
+          if (["completed", "cancelled", "no_drivers"].includes(ride.status)) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+
+            if (ride.status === "completed") {
+              setCompletedRideInfo(ride);
+              setShowRatingModal(true);
+              // refresh history
+              try {
+                const hist = await api.get("/rider/history");
+                setRideHistory(hist.data?.rides || []);
+              } catch {}
+            } else if (ride.status === "no_drivers") {
+              toast.error("No drivers available. You can retry.");
+            } else {
+              toast.info(t("ride_cancelled"));
+              setActiveRide(null);
+            }
+          }
+        } catch (error) {
+          if (error?.response?.status === 404 && pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        }
+      }, 3000);
+    },
+    [t]
+  );
 
   const fetchActiveRide = useCallback(async () => {
     try {
@@ -998,7 +1019,7 @@ const RiderDashboard = () => {
         pollRideStatus(ride.id);
       }
     } catch {}
-  }, []);
+  }, [pollRideStatus]);
 
   const fetchRideHistory = useCallback(async () => {
     try {
@@ -1041,43 +1062,14 @@ const RiderDashboard = () => {
 
   const removeStop = (index) => setStops(stops.filter((_, i) => i !== index));
 
-  const pollRideStatus = (rideId) => {
-    if (!rideId) return;
-    if (pollRef.current) clearInterval(pollRef.current);
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await api.get(`/rides/${rideId}`);
-        const ride = normalizeRide(res.data);
-        setActiveRide(ride);
-
-        if (["completed", "cancelled", "no_drivers"].includes(ride.status)) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-
-          if (ride.status === "completed") {
-            setCompletedRideInfo(ride);
-            setShowRatingModal(true);
-            fetchRideHistory();
-          } else if (ride.status === "no_drivers") {
-            toast.error("No drivers available. You can retry.");
-            setActiveRide(ride);
-          } else {
-            toast.info(t("ride_cancelled"));
-            setActiveRide(null);
-          }
-        }
-      } catch (error) {
-        if (error?.response?.status === 404 && pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
-      }
-    }, 3000);
-  };
-
   const handleBookRide = async ({ paymentOrderId = null } = {}) => {
     if (!pickup?.lat || !pickup?.lng || !pickup?.address) return toast.error("Please select pickup location");
+
+    // stop PayPal method if not configured (prevents invisible crashes)
+    if (paymentMethod === "card" && !PAYPAL_ENABLED) {
+      toast.error("PayPal not configured. Choose Cash or set VITE_PAYPAL_CLIENT_ID.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -1099,8 +1091,9 @@ const RiderDashboard = () => {
       const res = await api.post("/rides/request", rideData);
       toast.success(t("searching_driver"));
 
+      const rideId = res.data?.ride_id || res.data?.id;
       const tempRide = normalizeRide({
-        id: res.data?.ride_id,
+        id: rideId,
         status: "searching",
         estimated_fare: res.data?.estimated_fare,
         fare_breakdown: res.data?.fare_breakdown,
@@ -1114,8 +1107,9 @@ const RiderDashboard = () => {
 
       setActiveRide(tempRide);
       setActiveTab("active");
-      pollRideStatus(res.data?.ride_id);
+      pollRideStatus(rideId);
     } catch (error) {
+      console.error("REQUEST RIDE ERROR:", error?.response?.data || error);
       toast.error(error?.response?.data?.detail || "Failed to request ride");
     } finally {
       setLoading(false);
@@ -1131,7 +1125,8 @@ const RiderDashboard = () => {
       updateUser({ ...user, wallet_balance: (user.wallet_balance || 0) + amount });
       toast.success(`Success! ₾${amount} added to wallet.`);
       setTopupAmount("");
-    } catch {
+    } catch (e) {
+      console.error("TOPUP ERROR:", e?.response?.data || e);
       toast.error("Top up failed");
     }
   };
@@ -1141,10 +1136,12 @@ const RiderDashboard = () => {
     try {
       await api.post(`/rides/${activeRide.id}/cancel`);
       if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
       toast.success("Ride cancelled");
       setActiveRide(null);
       setActiveTab("book");
-    } catch {
+    } catch (e) {
+      console.error("CANCEL ERROR:", e?.response?.data || e);
       toast.error("Failed to cancel ride");
     }
   };
@@ -1164,6 +1161,7 @@ const RiderDashboard = () => {
       );
       pollRideStatus(activeRide.id);
     } catch (error) {
+      console.error("RETRY ERROR:", error?.response?.data || error);
       toast.error(error?.response?.data?.detail || "Failed to retry ride");
     }
   };
@@ -1177,7 +1175,8 @@ const RiderDashboard = () => {
       setShowRatingModal(false);
       setRating(0);
       setReview("");
-    } catch {
+    } catch (e) {
+      console.error("RATING ERROR:", e?.response?.data || e);
       toast.error("Failed to submit rating");
     }
   };
@@ -1204,18 +1203,9 @@ const RiderDashboard = () => {
   };
 
   const rideForUI = normalizeRide(activeRide);
-
   const pickupPoint = rideForUI?.pickupLat ? { lat: rideForUI.pickupLat, lng: rideForUI.pickupLng } : null;
   const destinationPoint = rideForUI?.destinationLat ? { lat: rideForUI.destinationLat, lng: rideForUI.destinationLng } : null;
   const driverPoint = rideForUI?.driver_location?.lat ? rideForUI.driver_location : null;
-
-  // Wrapper so PayPal never crashes when not configured
-  const PaypalWrapper = ({ children }) =>
-    PAYPAL_ENABLED ? (
-      <PayPalScriptProvider options={{ "client-id": PAYPAL_CLIENT_ID, currency: PAYPAL_CURRENCY }}>{children}</PayPalScriptProvider>
-    ) : (
-      <>{children}</>
-    );
 
   return (
     <div className="min-h-screen bg-black">
@@ -1246,7 +1236,7 @@ const RiderDashboard = () => {
       </header>
 
       <main className="container mx-auto p-4 max-w-2xl">
-        <PaypalWrapper>
+        <PaypalProvider enabled={PAYPAL_ENABLED} clientId={PAYPAL_CLIENT_ID} currency={PAYPAL_CURRENCY}>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid grid-cols-5 bg-black/50 border border-[#00ff88]/20 mb-6">
               <TabsTrigger value="book" className="data-[state=active]:bg-[#00ff88] data-[state=active]:text-black text-xs sm:text-sm">
@@ -1278,14 +1268,7 @@ const RiderDashboard = () => {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label className="text-[#00ff88]">{t("pickup_label")}</Label>
-                    <LocationInput
-                      value={pickup}
-                      onChange={setPickup}
-                      placeholder={t("current_location")}
-                      icon={MapPin}
-                      iconColor="text-[#00ff88]"
-                      mapsLoaded={mapsLoaded}
-                    />
+                    <LocationInput value={pickup} onChange={setPickup} placeholder={t("current_location")} icon={MapPin} iconColor="text-[#00ff88]" mapsLoaded={mapsLoaded} />
                   </div>
 
                   {stops.map((stop, index) => (
@@ -1317,27 +1300,8 @@ const RiderDashboard = () => {
 
                   <div className="space-y-2">
                     <Label className="text-[#00d4ff]">{t("destination_label")}</Label>
-                    <LocationInput
-                      value={destination}
-                      onChange={setDestination}
-                      placeholder={t("where_to")}
-                      icon={Navigation}
-                      iconColor="text-[#00d4ff]"
-                      mapsLoaded={mapsLoaded}
-                    />
+                    <LocationInput value={destination} onChange={setDestination} placeholder={t("where_to")} icon={Navigation} iconColor="text-[#00d4ff]" mapsLoaded={mapsLoaded} />
                   </div>
-
-                  {Boolean((surgeInfo?.multiplier || 1) > 1 || surgeInfo?.is_surge) && (
-                    <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500 rounded-xl p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-orange-400 font-bold">Surge Pricing Active</p>
-                          <p className="text-orange-300/70 text-sm">{surgeInfo?.surge_reason || "High demand / traffic"}</p>
-                        </div>
-                        <Badge className="bg-orange-500 text-black text-lg px-3 py-1">x{surgeInfo?.multiplier || 1.0}</Badge>
-                      </div>
-                    </div>
-                  )}
 
                   {routeInfo && fareEstimate && (
                     <div className="bg-[#1a1a2e] border border-[#00ff88]/30 rounded-xl overflow-hidden">
@@ -1355,12 +1319,6 @@ const RiderDashboard = () => {
                           <span>{t("base_fare")}</span>
                           <span>₾{fareEstimate.base.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-gray-400">
-                          <span>
-                            {t("mileage")} ({routeInfo.distance}km)
-                          </span>
-                          <span>₾{fareEstimate.distance.toFixed(2)}</span>
-                        </div>
 
                         {fareEstimate.surgeFee > 0 && (
                           <div className="flex justify-between text-orange-400 font-bold bg-orange-500/10 p-1 rounded">
@@ -1377,12 +1335,6 @@ const RiderDashboard = () => {
                           <span className="text-white font-bold">{t("total_estimate")}</span>
                           <span className="text-[#00ff88] text-xl font-bold">₾{fareEstimate.total.toFixed(2)}</span>
                         </div>
-
-                        {PAYPAL_CURRENCY !== "GEL" && paymentMethod === "card" && (
-                          <p className="text-[11px] text-gray-400 mt-2">
-                            PayPal currency is set to <b>{PAYPAL_CURRENCY}</b>. If you want GEL, set <code>VITE_PAYPAL_CURRENCY=GEL</code> (only if PayPal supports it on your account).
-                          </p>
-                        )}
                       </div>
                     </div>
                   )}
@@ -1399,11 +1351,6 @@ const RiderDashboard = () => {
                       >
                         <span className="text-xl">{type.icon}</span>
                         <span className="text-white text-xs mt-1">{type.label}</span>
-                        <span className="text-[#00ff88] text-xs font-bold mt-1">
-                          {routeInfo
-                            ? `₾${calculateFare(type.value, routeInfo.distance, 0, 0, 0, surgeInfo?.multiplier || 1.0).total.toFixed(0)}`
-                            : `₾${type.base}`}
-                        </span>
                       </button>
                     ))}
                   </div>
@@ -1427,21 +1374,20 @@ const RiderDashboard = () => {
                     </Button>
                   </div>
 
-                  {/* PAYPAL (SAFE) */}
                   {paymentMethod === "card" ? (
                     PAYPAL_ENABLED ? (
                       <div className="mt-4 p-2 bg-white rounded-xl">
                         <PayPalButtons
                           style={{ layout: "vertical", shape: "rect" }}
-                          disabled={!fareEstimate || !pickup?.lat}
+                          disabled={!fareEstimate || !pickup?.lat || loading}
                           forceReRender={[fareEstimate?.total, PAYPAL_CURRENCY]}
-                          createOrder={async (data, actions) =>
-                            actions.order.create({
-                              purchase_units: [
-                                { amount: { value: String(fareEstimate?.total || 0), currency_code: PAYPAL_CURRENCY } },
-                              ],
-                            })
-                          }
+                          createOrder={async (data, actions) => {
+                            const total = Number(fareEstimate?.total || 0);
+                            if (!Number.isFinite(total) || total <= 0) throw new Error("Invalid total for PayPal");
+                            return actions.order.create({
+                              purchase_units: [{ amount: { value: total.toFixed(2), currency_code: PAYPAL_CURRENCY } }],
+                            });
+                          }}
                           onApprove={async (data, actions) => {
                             await actions.order.capture();
                             await handleBookRide({ paymentOrderId: data.orderID });
@@ -1450,12 +1396,12 @@ const RiderDashboard = () => {
                       </div>
                     ) : (
                       <div className="mt-4 p-3 bg-white rounded-xl text-black text-center">
-                        PayPal not configured yet
+                        PayPal not configured. Set <b>VITE_PAYPAL_CLIENT_ID</b> or use Cash.
                       </div>
                     )
                   ) : (
                     <Button
-                      className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6 mt-4 shadow-[0_0_20px_rgba(0,255,136,0.3)] hover:shadow-[0_0_30px_rgba(0,255,136,0.5)] transition-all"
+                      className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6 mt-4"
                       onClick={() => handleBookRide({ paymentOrderId: null })}
                       disabled={loading || !pickup?.lat}
                       type="button"
@@ -1472,13 +1418,7 @@ const RiderDashboard = () => {
               {rideForUI?.id ? (
                 <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30 overflow-hidden">
                   {["accepted", "arrived", "in_progress"].includes(rideForUI.status) && (
-                    <LiveTrackingMap
-                      mapsLoaded={mapsLoaded}
-                      pickup={pickupPoint}
-                      destination={destinationPoint}
-                      driverLocation={driverPoint}
-                      status={rideForUI.status}
-                    />
+                    <LiveTrackingMap mapsLoaded={mapsLoaded} pickup={pickupPoint} destination={destinationPoint} driverLocation={driverPoint} status={rideForUI.status} />
                   )}
 
                   <CardContent className="space-y-4 pt-4">
@@ -1498,10 +1438,6 @@ const RiderDashboard = () => {
                           <Loader2 className="w-5 h-5 animate-spin mr-3 text-yellow-400" />
                           <span className="text-yellow-400 font-medium">{rideForUI.matching_status || "Searching for drivers..."}</span>
                         </div>
-
-                        {Number(rideForUI.drivers_notified_count) > 0 && (
-                          <p className="text-yellow-400/70 text-sm pl-8">{rideForUI.drivers_notified_count} drivers notified</p>
-                        )}
                       </div>
                     )}
 
@@ -1511,8 +1447,6 @@ const RiderDashboard = () => {
                           <Target className="w-5 h-5 mr-2" />
                           <span className="font-medium">No drivers available</span>
                         </div>
-
-                        <p className="text-gray-400 text-sm">All nearby drivers are busy. You can retry now or book a new ride.</p>
 
                         <div className="flex gap-2">
                           <Button className="flex-1 bg-[#00ff88] text-black font-bold" onClick={handleRetryRide} type="button">
@@ -1534,72 +1468,8 @@ const RiderDashboard = () => {
                       </div>
                     )}
 
-                    {rideForUI.driver_info && (
-                      <div className="bg-[#1a1a2e] rounded-xl p-4 border border-[#00d4ff]/20 shadow-lg relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-2 bg-[#00d4ff]/10 rounded-bl-xl text-[#00d4ff] text-xs font-bold">
-                          {rideForUI.driver_info.car_make} {rideForUI.driver_info.car_model}
-                        </div>
-
-                        <div className="flex items-center gap-4 mt-2">
-                          <div className="w-16 h-16 rounded-full bg-gray-700 border-2 border-[#00ff88] flex items-center justify-center overflow-hidden">
-                            <User className="w-8 h-8 text-gray-400" />
-                          </div>
-
-                          <div className="flex-1">
-                            <h3 className="text-white font-bold text-lg">{rideForUI.driver_info.name}</h3>
-                            <div className="flex items-center text-yellow-400 text-sm">
-                              <Star size={14} fill="currentColor" className="mr-1" /> {Number(rideForUI.driver_info.rating || 5.0).toFixed(1)}
-                            </div>
-                            <div className="mt-2 bg-white text-black font-mono font-bold px-3 py-1 rounded inline-block border-l-4 border-blue-600">
-                              {rideForUI.driver_info.license_plate}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col gap-2">
-                            <Button size="icon" className="rounded-full bg-[#00ff88] text-black hover:bg-[#00ff88]/80" type="button">
-                              <Phone size={18} />
-                            </Button>
-
-                            <Sheet>
-                              <SheetTrigger asChild>
-                                <Button size="icon" className="rounded-full bg-[#00d4ff] text-black hover:bg-[#00d4ff]/80 relative" type="button">
-                                  <MessageSquare size={18} />
-                                </Button>
-                              </SheetTrigger>
-                              <SheetContent side="bottom" className="h-[80vh] bg-black border-t border-[#00ff88]/30">
-                                <ChatInterface rideId={rideForUI.id} />
-                              </SheetContent>
-                            </Sheet>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-4 px-2 relative">
-                      <div className="absolute left-[19px] top-3 bottom-8 w-0.5 bg-gray-700" />
-                      <div className="flex gap-3 relative z-10">
-                        <div className="w-4 h-4 rounded-full bg-[#00ff88] mt-1 shadow-[0_0_10px_#00ff88]" />
-                        <div>
-                          <p className="text-xs text-gray-500">{t("pickup_label")}</p>
-                          <p className="text-white text-sm">{rideForUI.pickup}</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-3 relative z-10">
-                        <div className="w-4 h-4 rounded-full bg-[#00d4ff] mt-1 shadow-[0_0_10px_#00d4ff]" />
-                        <div>
-                          <p className="text-xs text-gray-500">{t("destination_label")}</p>
-                          <p className="text-white text-sm">{rideForUI.destination || t("where_to")}</p>
-                        </div>
-                      </div>
-                    </div>
-
                     {["searching", "accepted"].includes(rideForUI.status) && (
-                      <Button
-                        variant="ghost"
-                        className="w-full text-red-500 hover:text-red-400 hover:bg-red-500/10 mt-4"
-                        onClick={handleCancelRide}
-                        type="button"
-                      >
+                      <Button variant="ghost" className="w-full text-red-500 hover:bg-red-500/10 mt-4" onClick={handleCancelRide} type="button">
                         {t("cancel_ride")}
                       </Button>
                     )}
@@ -1630,13 +1500,7 @@ const RiderDashboard = () => {
 
                   <div className="space-y-2">
                     <Label>{t("add_money")}</Label>
-                    <Input
-                      type="number"
-                      placeholder={t("enter_amount")}
-                      value={topupAmount}
-                      onChange={(e) => setTopupAmount(e.target.value)}
-                      className="bg-black/50 border-[#00d4ff]/30 text-white"
-                    />
+                    <Input type="number" placeholder={t("enter_amount")} value={topupAmount} onChange={(e) => setTopupAmount(e.target.value)} className="bg-black/50 border-[#00d4ff]/30 text-white" />
                   </div>
 
                   {topupAmount && parseFloat(topupAmount) > 0 && (
@@ -1644,11 +1508,7 @@ const RiderDashboard = () => {
                       <div className="bg-white p-2 rounded-lg">
                         <PayPalButtons
                           style={{ layout: "vertical", shape: "rect" }}
-                          createOrder={(data, actions) =>
-                            actions.order.create({
-                              purchase_units: [{ amount: { value: String(topupAmount), currency_code: PAYPAL_CURRENCY } }],
-                            })
-                          }
+                          createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: String(topupAmount), currency_code: PAYPAL_CURRENCY } }] })}
                           onApprove={async (data, actions) => {
                             await actions.order.capture();
                             handleWalletTopUp(data);
@@ -1678,9 +1538,7 @@ const RiderDashboard = () => {
                       {rideHistory.map((r) => (
                         <div key={r.id} className="bg-black/50 border border-[#00ff88]/10 rounded-xl p-4 space-y-2">
                           <div className="flex justify-between">
-                            <Badge className={statusColors[r.status] || "bg-gray-500 text-white"}>
-                              {String(r.status || "").replace(/_/g, " ").toUpperCase()}
-                            </Badge>
+                            <Badge className={statusColors[r.status] || "bg-gray-500 text-white"}>{String(r.status || "").replace(/_/g, " ").toUpperCase()}</Badge>
                             <span className="text-gray-400 text-sm">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "N/A"}</span>
                           </div>
                           <div>
@@ -1711,9 +1569,7 @@ const RiderDashboard = () => {
                       <User className="w-10 h-10 text-black" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-bold">
-                        {user?.name} {user?.surname}
-                      </h3>
+                      <h3 className="text-2xl font-bold">{user?.name} {user?.surname}</h3>
                       <p className="text-[#00d4ff]">{user?.cellphone}</p>
                     </div>
                   </div>
@@ -1741,19 +1597,11 @@ const RiderDashboard = () => {
               <DialogHeader>
                 <DialogTitle className="text-[#00ff88]">{t("rate_driver")}</DialogTitle>
               </DialogHeader>
-              <DialogDescription className="text-gray-400">
-                How was your ride with {completedRideInfo?.driver_info?.name}?
-              </DialogDescription>
+              <DialogDescription className="text-gray-400">How was your ride with {completedRideInfo?.driver_info?.name}?</DialogDescription>
 
               <div className="flex justify-center space-x-2 my-4">
                 {[1, 2, 3, 4, 5].map((s) => (
-                  <Button
-                    key={s}
-                    variant="ghost"
-                    onClick={() => setRating(s)}
-                    className={`p-1 hover:bg-transparent ${s <= rating ? "text-yellow-400" : "text-gray-600"}`}
-                    type="button"
-                  >
+                  <Button key={s} variant="ghost" onClick={() => setRating(s)} className={`p-1 hover:bg-transparent ${s <= rating ? "text-yellow-400" : "text-gray-600"}`} type="button">
                     <Star className={`w-8 h-8 ${s <= rating ? "fill-current" : ""}`} />
                   </Button>
                 ))}
@@ -1771,7 +1619,7 @@ const RiderDashboard = () => {
               </Button>
             </DialogContent>
           </Dialog>
-        </PaypalWrapper>
+        </PaypalProvider>
       </main>
     </div>
   );
@@ -1784,10 +1632,8 @@ const RiderPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
 
-  // If not logged in, show auth screen
   if (!user) return <RiderAuth />;
 
-  // If a non-rider user tries to access rider portal, send to driver
   if (user.user_type && user.user_type !== "rider") {
     return <Navigate to="/driver" replace state={{ from: location.pathname }} />;
   }
