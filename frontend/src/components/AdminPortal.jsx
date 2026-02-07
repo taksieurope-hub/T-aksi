@@ -34,32 +34,44 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
     
+    // 🔥 FIX: Check Master Key FIRST (Local Override)
+    // This ensures you can login even if the backend API is down or "admin" user doesn't exist.
+    if (password === ADMIN_PASSWORD) {
+        const adminUser = {
+          id: "admin_local",
+          name: "System",
+          surname: "Admin",
+          user_type: "admin",
+          cellphone: "admin_master"
+        };
+        
+        // Simulate network delay for UX
+        setTimeout(() => {
+            login("master_admin_token", adminUser);
+            toast.success("⚡ Master Key Accepted. Command Center Unlocked.");
+            navigate("/admin/dashboard");
+            setLoading(false);
+        }, 800);
+        return;
+    }
+
+    // If not master key, try database login
     try {
-      // FIX: Use api.post
       const res = await api.post(`/auth/login`, {
         cellphone: "admin",
         password: password,
       });
       
-      login(res.data.token, { ...res.data.user, user_type: "admin" });
-      toast.success("Welcome to Command Center!");
-      navigate("/admin/dashboard");
-    } catch (error) {
-      // Fallback: check password locally for admin (Bypass if backend fails for demo)
-      if (password === ADMIN_PASSWORD) {
-        const adminUser = {
-          id: "admin",
-          name: "Admin",
-          surname: "User",
-          user_type: "admin",
-          cellphone: "admin"
-        };
-        login("admin_token", adminUser);
-        toast.success("Welcome to Command Center (Local Mode)!");
-        navigate("/admin/dashboard");
+      if(res.data.user.user_type === 'admin') {
+          login(res.data.token, res.data.user);
+          toast.success("Welcome to Command Center!");
+          navigate("/admin/dashboard");
       } else {
-        toast.error("Invalid admin password");
+          toast.error("Access Denied: User is not an admin.");
       }
+    } catch (error) {
+      console.error("Login error", error);
+      toast.error("Invalid Master Key or Credentials");
     } finally {
       setLoading(false);
     }
@@ -140,7 +152,6 @@ const AdminDashboard = () => {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // FIX: Use api.get for all calls
       const [dashRes, ridersRes, driversRes, pendingRes, withdrawalsRes, topupsRes] = await Promise.all([
         api.get(`/admin/dashboard`).catch(() => ({ data: {} })),
         api.get(`/admin/riders`).catch(() => ({ data: { riders: [] } })),
@@ -158,7 +169,7 @@ const AdminDashboard = () => {
       setPendingTopups(topupsRes.data.pending_topups || []);
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast.error("Failed to fetch dashboard data");
+      // Don't show error toast on load to avoid spamming if backend is partial
     } finally {
       setLoading(false);
     }
@@ -714,6 +725,7 @@ const AdminPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
 
+  // Redirect Logic
   if (!user || user.user_type !== "admin") {
     if (location.pathname === "/admin" || location.pathname === "/admin/") {
       return <AdminLogin />;
@@ -721,11 +733,12 @@ const AdminPortal = () => {
     return <Navigate to="/admin" replace />;
   }
 
+  // Admin Routes (Nested)
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
-      <Route path="/dashboard" element={<AdminDashboard />} />
-      <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
+      <Route path="/" element={<Navigate to="dashboard" replace />} />
+      <Route path="dashboard" element={<AdminDashboard />} />
+      <Route path="*" element={<Navigate to="dashboard" replace />} />
     </Routes>
   );
 };

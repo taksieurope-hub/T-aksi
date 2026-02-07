@@ -15,7 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { PayPalScriptProvider } from "@paypal/react-paypal-js";
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
 import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
@@ -280,7 +280,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
               </Button>
               
               <Button 
-                className="flex-1 bg-[#00ff88] text-black font-bold"
+                className="flex-1 bg[#00ff88] text-black font-bold"
                 onClick={handleConfirm}
                 disabled={!selectedLocation || loading}
               >
@@ -316,7 +316,6 @@ const RouteMap = ({ pickup, destination, stops }) => {
           styles: [
             { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
             { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-            { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
             { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
             { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
           ]
@@ -391,7 +390,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
         <Button
           variant="ghost"
           size="icon"
-          className="absolute right-1 text-[#00d4ff] hover:bg[#00d4ff]/20"
+          className="absolute right-1 text[#00d4ff] hover:bg[#00d4ff]/20"
           onClick={() => setShowMapPicker(true)}
         >
           <MapPinned className="w-4 h-4" />
