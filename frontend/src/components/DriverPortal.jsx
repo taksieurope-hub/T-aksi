@@ -1,23 +1,28 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/App";
-import axios from "axios";
+
+// FIX: Import from @/config and @/api
+import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
+import api from "@/api";
+
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import {
-  Car, MapPin, Clock, Star, History, Home, LogOut, User,
-  Phone, Lock, ArrowLeft, Navigation, Wallet, DollarSign, Loader2,
-  CheckCircle2, XCircle, AlertTriangle, Banknote, Rocket,
-  ExternalLink, CreditCard, Plus, Activity, Timer, Crosshair,
-  Route as RouteIcon, Play, Square, MapPinned
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+
+import { 
+  Car, MapPin, Star, History, Home, LogOut, User,
+  Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
+  Plus, X, Zap, TrendingUp, MessageSquare, 
+  Target, Crosshair, Send 
 } from "lucide-react";
 
 const DRIVER_COMMISSION_RATE = 0.23;
