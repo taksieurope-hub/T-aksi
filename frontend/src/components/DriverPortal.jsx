@@ -488,7 +488,8 @@ const DriverDashboard = () => {
     try {
       await api.post(`/driver/status?is_online=${online}`);
       setIsOnline(online);
-      updateUser({ is_online: online });
+      // 🔥 FIX: Spread ...user to prevent losing user_type
+      updateUser({ ...user, is_online: online });
       toast.success(online ? "You are now online!" : "You are now offline");
     } catch (error) {
       toast.error("Failed to update status");
@@ -506,8 +507,10 @@ const DriverDashboard = () => {
       });
       
       toast.success(`Vehicle registered! Tier: ${res.data.tier}`);
+      // 🔥 FIX: Spread ...user to prevent losing user_type
       updateUser({
-        driver_info: { vehicle: vehicleData, vehicle_tier: res.data.tier },
+        ...user,
+        driver_info: { ...user.driver_info, vehicle: vehicleData, vehicle_tier: res.data.tier },
         registration_status: "pending_review"
       });
     } catch (error) {
@@ -532,7 +535,9 @@ const DriverDashboard = () => {
       toast.success(`Ride accepted! Commission: ₾${res.data.commission_deducted?.toFixed(2)}`);
       
       if (res.data.new_balance) {
+        // 🔥 FIX: Spread ...user to prevent losing user_type and logging out
         updateUser({
+          ...user,
           earnings: { ...user.earnings, balance: res.data.new_balance }
         });
       }
@@ -583,7 +588,7 @@ const DriverDashboard = () => {
         setRideStartTime(null);
         fetchRideHistory();
         const userRes = await api.get(`/auth/me`);
-        updateUser(userRes.data);
+        updateUser(userRes.data); // This is safe as it gets the full object
         return;
       }
       
