@@ -1289,8 +1289,7 @@ const RiderDashboard = () => {
                         </div>
                         <div>
                           <p className="text-sm text-[#00ff88]/60">From: {ride.pickup}</p>
-                          <p className="text-sm text-[#00d4ff]/60">To: {ride.destination || "Open"}
-                          </p>
+                          <p className="text-sm text-[#00d4ff]/60">To: {ride.destination || "Open"}</p>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-400 capitalize">{ride.carType}</span>
