@@ -80,7 +80,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
       fields: ['formatted_address', 'geometry', 'name']
     });
     
-    autocomplete.addListener('place_changed', () => {
+    const listener = autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       if (place.geometry) {
         onPlaceSelect({
@@ -92,12 +92,12 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     });
     
     return () => {
-      window.google.maps.event.clearInstanceListeners(autocomplete);
+      window.google.maps.event.removeListener(listener);
     };
   }, [inputRef, onPlaceSelect]);
 };
 
-// Map Picker Component
+// --- FIXED Map Picker Component ---
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -107,74 +107,81 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   const [loading, setLoading] = useState(false);
   
   useEffect(() => {
+    // Only initialize if dialog is OPEN
     if (!isOpen || !mapRef.current || !window.google) return;
     
-    const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 }; // Tbilisi
-    
-    if (!mapInstanceRef.current) {
-        const map = new window.google.maps.Map(mapRef.current, {
-        center: defaultCenter,
-        zoom: 14,
-        styles: [
-            { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-            { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-            { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-            { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
-            { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
-        ],
-        disableDefaultUI: true,
-        zoomControl: true
-        });
-        mapInstanceRef.current = map;
+    // 🔥 TIMEOUT FIX: Wait for Dialog animation to finish so DIV has height
+    const timer = setTimeout(() => {
+        const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 }; // Tbilisi
+        
+        if (!mapInstanceRef.current) {
+            const map = new window.google.maps.Map(mapRef.current, {
+                center: defaultCenter,
+                zoom: 15,
+                styles: [
+                    { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+                    { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+                    { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
+                    { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
+                    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
+                    { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
+                ],
+                disableDefaultUI: true,
+                zoomControl: true,
+                clickableIcons: false
+            });
+            mapInstanceRef.current = map;
 
-        const marker = new window.google.maps.Marker({
-            map,
-            draggable: true,
-            icon: {
-                path: window.google.maps.SymbolPath.CIRCLE,
-                scale: 12,
-                fillColor: "#00ff88",
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 3
+            const marker = new window.google.maps.Marker({
+                map,
+                draggable: true,
+                position: defaultCenter,
+                icon: {
+                    path: window.google.maps.SymbolPath.CIRCLE,
+                    scale: 10,
+                    fillColor: "#00ff88",
+                    fillOpacity: 1,
+                    strokeColor: "#ffffff",
+                    strokeWeight: 2
+                }
+            });
+            markerRef.current = marker;
+
+            // Click listener
+            map.addListener('click', (e) => {
+                const lat = e.latLng.lat();
+                const lng = e.latLng.lng();
+                updateMarker(lat, lng);
+            });
+
+            // Drag listener
+            marker.addListener('dragend', () => {
+                const pos = marker.getPosition();
+                updateMarker(pos.lat(), pos.lng());
+            });
+        } else {
+            // If map exists, trigger resize so it fills the modal correctly
+            window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
+            if (initialLocation) {
+                const pos = new window.google.maps.LatLng(initialLocation.lat, initialLocation.lng);
+                mapInstanceRef.current.setCenter(pos);
+                markerRef.current.setPosition(pos);
             }
-        });
-        markerRef.current = marker;
+        }
+    }, 200); // 200ms delay
 
-        // Click listener
-        map.addListener('click', (e) => {
-            const lat = e.latLng.lat();
-            const lng = e.latLng.lng();
-            marker.setPosition(e.latLng);
-            setSelectedLocation({ lat, lng });
-            reverseGeocode(lat, lng);
-        });
-
-        // Drag listener
-        marker.addListener('dragend', () => {
-            const pos = marker.getPosition();
-            const lat = pos.lat();
-            const lng = pos.lng();
-            setSelectedLocation({ lat, lng });
-            reverseGeocode(lat, lng);
-        });
-    }
-    
-    // Set initial location if provided
-    if (initialLocation && mapInstanceRef.current && markerRef.current) {
-        const pos = new window.google.maps.LatLng(initialLocation.lat, initialLocation.lng);
-        mapInstanceRef.current.setCenter(pos);
-        markerRef.current.setPosition(pos);
-        setSelectedLocation(initialLocation);
-        reverseGeocode(initialLocation.lat, initialLocation.lng);
-    }
-    
+    return () => clearTimeout(timer);
   }, [isOpen, initialLocation]);
   
+  const updateMarker = (lat, lng) => {
+    const pos = new window.google.maps.LatLng(lat, lng);
+    markerRef.current.setPosition(pos);
+    setSelectedLocation({ lat, lng });
+    reverseGeocode(lat, lng);
+  };
+
   const reverseGeocode = async (lat, lng) => {
     if (!window.google) return;
-    
     const geocoder = new window.google.maps.Geocoder();
     geocoder.geocode({ location: { lat, lng } }, (results, status) => {
       if (status === 'OK' && results[0]) {
@@ -189,18 +196,14 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        const pos = { lat, lng };
         
         if (mapInstanceRef.current) {
-          mapInstanceRef.current.setCenter(pos);
-          mapInstanceRef.current.setZoom(16);
+          mapInstanceRef.current.setCenter({ lat, lng });
+          mapInstanceRef.current.setZoom(17);
         }
         if (markerRef.current) {
-          markerRef.current.setPosition(pos);
+          updateMarker(lat, lng);
         }
-        
-        setSelectedLocation(pos);
-        reverseGeocode(lat, lng);
         setLoading(false);
       },
       (error) => {
@@ -212,9 +215,9 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   };
   
   const handleConfirm = () => {
-    if (selectedLocation && address) {
+    if (selectedLocation) {
       onLocationSelect({
-        address,
+        address: address || "Selected Location",
         lat: selectedLocation.lat,
         lng: selectedLocation.lng
       });
@@ -228,7 +231,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-black border border-[#00ff88]/30 max-w-2xl max-h-[90vh]">
+      <DialogContent className="bg-black border border-[#00ff88]/30 max-w-2xl w-[95vw] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="text-[#00ff88] flex items-center">
             <MapPin className="w-5 h-5 mr-2" /> {title || "Select Location"}
@@ -238,39 +241,36 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         <div className="space-y-4">
           <div 
             ref={mapRef} 
-            className="w-full h-[400px] rounded-xl border border-[#00ff88]/20"
+            className="w-full h-[400px] rounded-xl border border-[#00ff88]/20 bg-[#1a1a2e]"
           />
           
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="border-[#00d4ff]/30 text-[#00d4ff]"
-              onClick={getCurrentLocation}
-              disabled={loading}
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Crosshair className="w-4 h-4 mr-2" />}
-              My Location
-            </Button>
-          </div>
-          
-          {address && (
-            <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-3">
-              <p className="text-[#00ff88] text-sm font-medium">Selected:</p>
-              <p className="text-white">{address}</p>
+          <div className="flex flex-col gap-2">
+            {address && (
+                <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-2">
+                    <p className="text-[#00ff88] text-xs font-bold uppercase">Selected Address</p>
+                    <p className="text-white text-sm truncate">{address}</p>
+                </div>
+            )}
+
+            <div className="flex gap-2">
+                <Button
+                variant="outline"
+                className="border-[#00d4ff]/30 text-[#00d4ff] flex-1"
+                onClick={getCurrentLocation}
+                disabled={loading}
+                >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Crosshair className="w-4 h-4 mr-2" />}
+                Locate Me
+                </Button>
+                
+                <Button 
+                className="flex-1 bg-[#00ff88] text-black font-bold"
+                onClick={handleConfirm}
+                disabled={!selectedLocation}
+                >
+                Confirm Location
+                </Button>
             </div>
-          )}
-          
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button 
-              className="flex-1 bg-[#00ff88] text-black font-bold"
-              onClick={handleConfirm}
-              disabled={!selectedLocation}
-            >
-              Confirm Location
-            </Button>
           </div>
         </div>
       </DialogContent>
@@ -278,7 +278,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// Route Visualization Map 
+// Route Visualization Map
 const RouteMap = ({ pickup, destination, stops }) => {
     const mapRef = useRef(null);
     const mapInstanceRef = useRef(null);
@@ -331,7 +331,7 @@ const RouteMap = ({ pickup, destination, stops }) => {
 };
 
 // Location Input Component
-const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor }) => {
+const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   
@@ -345,6 +345,8 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor }) 
         <Icon className={`absolute left-3 h-4 w-4 ${iconColor}`} />
         <Input
           ref={inputRef}
+          id={id}
+          name={name}
           value={value?.address || ""}
           onChange={(e) => onChange({ ...value, address: e.target.value })}
           className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white"
@@ -430,49 +432,61 @@ const RiderAuth = () => {
             {!isLogin && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-[#00ff88]">First Name</Label>
+                  <Label htmlFor="rider-name" className="text-[#00ff88]">First Name</Label>
                   <Input
+                    id="rider-name"
+                    name="name"
                     value={formData.name}
                     onChange={e => setFormData({...formData, name: e.target.value})}
                     className="bg-black/50 border-[#00ff88]/30 text-white"
                     required
+                    autoComplete="given-name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[#00ff88]">Last Name</Label>
+                  <Label htmlFor="rider-surname" className="text-[#00ff88]">Last Name</Label>
                   <Input
+                    id="rider-surname"
+                    name="surname"
                     value={formData.surname}
                     onChange={e => setFormData({...formData, surname: e.target.value})}
                     className="bg-black/50 border-[#00ff88]/30 text-white"
                     required
+                    autoComplete="family-name"
                   />
                 </div>
               </div>
             )}
             <div className="space-y-2">
-              <Label className="text-[#00ff88]">Phone Number</Label>
+              <Label htmlFor="rider-phone" className="text-[#00ff88]">Phone Number</Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-3 h-4 w-4 text-[#00ff88]/50" />
                 <Input
+                  id="rider-phone"
+                  name="cellphone"
                   type="tel"
                   value={formData.cellphone}
                   onChange={e => setFormData({...formData, cellphone: e.target.value})}
                   className="pl-10 bg-black/50 border-[#00ff88]/30 text-white"
                   placeholder="+995 XXX XXX XXX"
                   required
+                  autoComplete="tel"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label className="text-[#00ff88]">Password</Label>
+              <Label htmlFor="rider-password" className="text-[#00ff88]">Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-[#00ff88]/50" />
                 <Input
+                  id="rider-password"
+                  name="password"
                   type="password"
                   value={formData.password}
                   onChange={e => setFormData({...formData, password: e.target.value})}
                   className="pl-10 bg-black/50 border-[#00ff88]/30 text-white"
                   required
+                  autoComplete="current-password"
                 />
               </div>
             </div>
@@ -502,6 +516,7 @@ const RiderDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("book");
   const [loading, setLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false); // Separate loading state for Location
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [activeRide, setActiveRide] = useState(null);
   const [rideHistory, setRideHistory] = useState([]);
@@ -747,9 +762,26 @@ const RiderDashboard = () => {
     }
   };
 
+  // 🔥 FIXED: GPS Location with Timeout and Unblock
   const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setLocationLoading(true); // Only block the button, not input fields
+
+    // Safety timeout: Unlock after 10s if browser hangs
+    const safetyTimer = setTimeout(() => {
+        if(locationLoading) {
+            setLocationLoading(false);
+            toast.error("GPS Request timed out. Please enter address manually.");
+        }
+    }, 10000);
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        clearTimeout(safetyTimer);
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         
@@ -757,6 +789,7 @@ const RiderDashboard = () => {
         if (window.google) {
           const geocoder = new window.google.maps.Geocoder();
           geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+            setLocationLoading(false);
             if (status === 'OK' && results[0]) {
               setPickup({
                 address: results[0].formatted_address,
@@ -764,12 +797,28 @@ const RiderDashboard = () => {
                 lng
               });
               toast.success("Location detected!");
+            } else {
+              // Fallback if geocoding fails
+              setPickup({
+                address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+                lat,
+                lng
+              });
+              toast.warning("Address lookup failed, using coordinates");
             }
           });
+        } else {
+            setLocationLoading(false);
+            toast.error("Maps not loaded yet");
         }
       },
-      () => toast.error("Could not get location"),
-      { enableHighAccuracy: true }
+      (error) => {
+        clearTimeout(safetyTimer);
+        setLocationLoading(false);
+        console.error("Geolocation error:", error);
+        toast.error("Could not get your location. Check permissions.");
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
     );
   };
 
@@ -843,7 +892,7 @@ const RiderDashboard = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 
-                {/* Visual Route Map - FIXED NAVIGATION */}
+                {/* Visual Route Map */}
                 {mapsLoaded && pickup.lat && destination.lat && (
                     <RouteMap pickup={pickup} destination={destination} stops={stops} />
                 )}
@@ -851,17 +900,20 @@ const RiderDashboard = () => {
                 {/* Pickup */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-[#00ff88]">Pickup Location</Label>
+                    <Label htmlFor="pickup-input" className="text-[#00ff88]">Pickup Location</Label>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="text-[#00d4ff] h-6"
                       onClick={getCurrentLocation}
+                      disabled={locationLoading}
                     >
-                      <Crosshair className="w-3 h-3 mr-1" /> Use My Location
+                      {locationLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Crosshair className="w-3 h-3 mr-1" />} Use My Location
                     </Button>
                   </div>
                   <LocationInput
+                    id="pickup-input"
+                    name="pickup"
                     value={pickup}
                     onChange={setPickup}
                     placeholder="Where to pick you up?"
@@ -874,7 +926,7 @@ const RiderDashboard = () => {
                 {stops.map((stop, index) => (
                   <div key={index} className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label className="text-yellow-400">Stop {index + 1}</Label>
+                      <Label htmlFor={`stop-${index}`} className="text-yellow-400">Stop {index + 1}</Label>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -885,6 +937,8 @@ const RiderDashboard = () => {
                       </Button>
                     </div>
                     <LocationInput
+                      id={`stop-${index}`}
+                      name={`stop_${index}`}
                       value={stop}
                       onChange={(data) => updateStop(index, data)}
                       placeholder={`Stop ${index + 1} address`}
@@ -894,7 +948,7 @@ const RiderDashboard = () => {
                   </div>
                 ))}
 
-                {/* Add Stop Button - FIX: Updated Text */}
+                {/* Add Stop Button */}
                 {stops.length < 3 && (
                   <Button
                     variant="outline"
@@ -907,8 +961,10 @@ const RiderDashboard = () => {
 
                 {/* Destination */}
                 <div className="space-y-2">
-                  <Label className="text-[#00d4ff]">Destination</Label>
+                  <Label htmlFor="destination-input" className="text-[#00d4ff]">Destination</Label>
                   <LocationInput
+                    id="destination-input"
+                    name="destination"
                     value={destination}
                     onChange={setDestination}
                     placeholder="Where to go?"
