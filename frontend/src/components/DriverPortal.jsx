@@ -1,30 +1,23 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-
-// FIX: Import from @/config and @/api
-import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
-import api from "@/api";
-
+import { useAuth, API, GOOGLE_MAPS_API_KEY } from "@/App";
+import axios from "axios";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-
-// Added missing icons (Banknote, AlertTriangle, etc.)
-import { 
-  Car, MapPin, Star, History, Home, LogOut, User,
-  Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
-  Plus, X, Zap, TrendingUp, MessageSquare, 
-  Target, Crosshair, Send,
-  Banknote, CreditCard, ExternalLink, AlertTriangle, Activity,
-  MapPinned, CheckCircle2, XCircle, Play, Timer
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import {
+  Car, MapPin, Clock, Star, History, Home, LogOut, User,
+  Phone, Lock, ArrowLeft, Navigation, Wallet, DollarSign, Loader2,
+  CheckCircle2, XCircle, AlertTriangle, Banknote, Rocket,
+  ExternalLink, CreditCard, Plus, Activity, Timer, Crosshair,
+  Route as RouteIcon, Play, Square, MapPinned
 } from "lucide-react";
 
 const DRIVER_COMMISSION_RATE = 0.23;
@@ -46,9 +39,8 @@ const DriverAuth = () => {
     setLoading(true);
     
     try {
-      const endpoint = isLogin ? "/auth/login" : "/auth/register/driver";
-      // FIX: Use api.post
-      const res = await api.post(endpoint, formData);
+      const endpoint = isLogin ? "/driver/login" : "/auth/register/driver";
+      const res = await axios.post(`${API}${endpoint}`, formData);
       
       if (res.data && res.data.token && res.data.user) {
         login(res.data.token, res.data.user);
@@ -88,61 +80,49 @@ const DriverAuth = () => {
             {!isLogin && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="driver-name" className="text-[#00d4ff]">First Name</Label>
+                  <Label className="text-[#00d4ff]">First Name</Label>
                   <Input
-                    id="driver-name"
-                    name="name"
                     value={formData.name}
                     onChange={e => setFormData({...formData, name: e.target.value})}
                     className="bg-black/50 border-[#00d4ff]/30 text-white"
                     required
-                    autoComplete="given-name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="driver-surname" className="text-[#00d4ff]">Last Name</Label>
+                  <Label className="text-[#00d4ff]">Last Name</Label>
                   <Input
-                    id="driver-surname"
-                    name="surname"
                     value={formData.surname}
                     onChange={e => setFormData({...formData, surname: e.target.value})}
                     className="bg-black/50 border-[#00d4ff]/30 text-white"
                     required
-                    autoComplete="family-name"
                   />
                 </div>
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="driver-phone" className="text-[#00d4ff]">Phone Number</Label>
+              <Label className="text-[#00d4ff]">Phone Number</Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-3 h-4 w-4 text-[#00d4ff]/50" />
                 <Input
-                  id="driver-phone"
-                  name="cellphone"
                   type="tel"
                   value={formData.cellphone}
                   onChange={e => setFormData({...formData, cellphone: e.target.value})}
                   className="pl-10 bg-black/50 border-[#00d4ff]/30 text-white"
                   placeholder="+995 XXX XXX XXX"
                   required
-                  autoComplete="tel"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="driver-password" className="text-[#00d4ff]">Password</Label>
+              <Label className="text-[#00d4ff]">Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-[#00d4ff]/50" />
                 <Input
-                  id="driver-password"
-                  name="password"
                   type="password"
                   value={formData.password}
                   onChange={e => setFormData({...formData, password: e.target.value})}
                   className="pl-10 bg-black/50 border-[#00d4ff]/30 text-white"
                   required
-                  autoComplete="current-password"
                 />
               </div>
             </div>
@@ -377,8 +357,7 @@ const DriverDashboard = () => {
     setDriverLocation(location);
     
     try {
-      // FIX: Use api.post
-      await api.post(`/driver/location`, location);
+      await axios.post(`${API}/driver/location`, location);
       
       // If in active ride, track distance
       if (activeRide && activeRide.status === "in_progress" && lastPositionRef.current) {
@@ -389,7 +368,7 @@ const DriverDashboard = () => {
         setDistanceTraveled(prev => prev + dist);
         
         // Update ride tracking
-        await api.post(`/rides/${activeRide.id}/update-tracking`, location);
+        await axios.post(`${API}/rides/${activeRide.id}/update-tracking`, location);
       }
       
       lastPositionRef.current = location;
@@ -440,8 +419,7 @@ const DriverDashboard = () => {
 
   const fetchAvailableRides = async () => {
     try {
-      // FIX: Use api.get
-      const res = await api.get(`/driver/rides/available`);
+      const res = await axios.get(`${API}/driver/rides/available`);
       setAvailableRides(res.data.rides || []);
     } catch (error) {
       console.error("Error fetching rides:", error);
@@ -450,8 +428,7 @@ const DriverDashboard = () => {
 
   const fetchActiveRide = async () => {
     try {
-      // FIX: Use api.get
-      const res = await api.get(`/driver/active-ride`);
+      const res = await axios.get(`${API}/driver/active-ride`);
       if (res.data) {
         setActiveRide(res.data);
         setActiveTab("rides");
@@ -463,8 +440,7 @@ const DriverDashboard = () => {
 
   const fetchRideHistory = async () => {
     try {
-      // FIX: Use api.get
-      const res = await api.get(`/driver/history`);
+      const res = await axios.get(`${API}/driver/history`);
       setRideHistory(res.data.rides || []);
     } catch (error) {
       console.error("Error fetching history:", error);
@@ -473,8 +449,7 @@ const DriverDashboard = () => {
 
   const fetchNearbyRides = async () => {
     try {
-      // FIX: Use api.get
-      const res = await api.get(`/driver/rides/nearby?radius=${searchRadius}`);
+      const res = await axios.get(`${API}/driver/rides/nearby?radius=${searchRadius}`);
       setNearbyRides(res.data.rides || []);
     } catch (error) {
       console.error("Error fetching nearby rides:", error);
@@ -484,7 +459,7 @@ const DriverDashboard = () => {
   const handleRequestToJoin = async (rideId) => {
     try {
       setLoading(true);
-      await api.post(`/rides/${rideId}/request-join`);
+      await axios.post(`${API}/rides/${rideId}/request-join`);
       toast.success("You can now accept this ride!");
       // Move ride from nearby to available
       fetchAvailableRides();
@@ -498,7 +473,7 @@ const DriverDashboard = () => {
 
   const handleToggleOnline = async (online) => {
     try {
-      await api.post(`/driver/status?is_online=${online}`);
+      await axios.post(`${API}/driver/status?is_online=${online}`);
       setIsOnline(online);
       updateUser({ is_online: online });
       toast.success(online ? "You are now online!" : "You are now offline");
@@ -512,7 +487,7 @@ const DriverDashboard = () => {
     setLoading(true);
     
     try {
-      const res = await api.post(`/driver/vehicle`, {
+      const res = await axios.post(`${API}/driver/vehicle`, {
         ...vehicleData,
         car_year: parseInt(vehicleData.car_year)
       });
@@ -540,16 +515,14 @@ const DriverDashboard = () => {
     
     setLoading(true);
     try {
-      const res = await api.post(`/rides/${rideId}/accept`);
-      toast.success(`Ride accepted! Commission: ₾${res.data.commission_deducted?.toFixed(2)}`);
+      const res = await axios.post(`${API}/rides/${rideId}/accept`);
+      toast.success(`Ride accepted! Commission: ₾${res.data.commission_deducted.toFixed(2)}`);
       
-      if (res.data.new_balance) {
-        updateUser({
-          earnings: { ...user.earnings, balance: res.data.new_balance }
-        });
-      }
+      updateUser({
+        earnings: { ...user.earnings, balance: res.data.new_balance }
+      });
       
-      const rideRes = await api.get(`/rides/${rideId}`);
+      const rideRes = await axios.get(`${API}/rides/${rideId}`);
       setActiveRide(rideRes.data);
       setAvailableRides(prev => prev.filter(r => r.id !== rideId));
       setDistanceTraveled(0);
@@ -562,7 +535,7 @@ const DriverDashboard = () => {
 
   const handleDeclineRide = async (rideId) => {
     try {
-      await api.post(`/rides/${rideId}/decline`);
+      await axios.post(`${API}/rides/${rideId}/decline`);
       setAvailableRides(prev => prev.filter(r => r.id !== rideId));
       toast.info("Ride declined");
     } catch (error) {
@@ -576,17 +549,17 @@ const DriverDashboard = () => {
     setLoading(true);
     try {
       if (action === "arrived") {
-        await api.post(`/rides/${activeRide.id}/arrived`);
+        await axios.post(`${API}/rides/${activeRide.id}/arrived`);
         setArrivedTime(Date.now());
         toast.success("Marked as arrived - wait timer started");
       } else if (action === "start") {
-        await api.post(`/rides/${activeRide.id}/start`);
+        await axios.post(`${API}/rides/${activeRide.id}/start`);
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
         lastPositionRef.current = driverLocation;
         toast.success("Ride started - tracking distance");
       } else if (action === "complete") {
-        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${distanceTraveled.toFixed(2)}&total_wait_minutes=${waitTimer}`);
+        const res = await axios.post(`${API}/rides/${activeRide.id}/complete?final_distance=${distanceTraveled.toFixed(2)}&total_wait_minutes=${waitTimer}`);
         toast.success(`Ride completed! Final fare: ₾${res.data.final_fare.toFixed(2)}`);
         setActiveRide(null);
         setDistanceTraveled(0);
@@ -594,12 +567,12 @@ const DriverDashboard = () => {
         setArrivedTime(null);
         setRideStartTime(null);
         fetchRideHistory();
-        const userRes = await api.get(`/auth/me`);
+        const userRes = await axios.get(`${API}/auth/me`);
         updateUser(userRes.data);
         return;
       }
       
-      const rideRes = await api.get(`/rides/${activeRide.id}`);
+      const rideRes = await axios.get(`${API}/rides/${activeRide.id}`);
       setActiveRide(rideRes.data);
     } catch (error) {
       toast.error(`Failed to ${action}`);
@@ -616,7 +589,7 @@ const DriverDashboard = () => {
     
     setLoading(true);
     try {
-      const res = await api.post(`/driver/topup/request`, {
+      const res = await axios.post(`${API}/driver/topup/request`, {
         amount: parseFloat(topupAmount),
         payment_reference: topupReference
       });
@@ -640,7 +613,7 @@ const DriverDashboard = () => {
     
     setLoading(true);
     try {
-      await api.post(`/driver/withdraw`, {
+      await axios.post(`${API}/driver/withdraw`, {
         amount: parseFloat(withdrawalData.amount),
         bank_details: withdrawalData.bank_details
       });
@@ -696,13 +669,11 @@ const DriverDashboard = () => {
                 <span className={`text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>
                   {isOnline ? "Online" : "Offline"}
                 </span>
-                <Button 
-                  size="sm" 
-                  className={isOnline ? "bg-[#00ff88] text-black" : "bg-gray-600"}
-                  onClick={() => handleToggleOnline(!isOnline)}
-                >
-                  {isOnline ? "ON" : "OFF"}
-                </Button>
+                <Switch
+                  checked={isOnline}
+                  onCheckedChange={handleToggleOnline}
+                  className="data-[state=checked]:bg-[#00ff88]"
+                />
               </div>
             )}
             <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={() => navigate("/")}>
@@ -825,7 +796,7 @@ const DriverDashboard = () => {
                       )}
                       {activeRide.status === "in_progress" && (
                         <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center">
-                          <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
+                          <RouteIcon className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
                           <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(1)} km</p>
                           <p className="text-xs text-[#00ff88]/70">Distance Traveled</p>
                         </div>
@@ -961,7 +932,7 @@ const DriverDashboard = () => {
             )}
           </TabsContent>
 
-          {/* Nearby Rides Tab */}
+          {/* Nearby Rides Tab - Discover rides in your area */}
           <TabsContent value="nearby">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30 mb-4">
               <CardHeader className="pb-2">
@@ -976,12 +947,14 @@ const DriverDashboard = () => {
                     <Navigation className="w-4 h-4 mr-1" /> Refresh
                   </Button>
                 </CardTitle>
+                <p className="text-gray-400 text-sm">
+                  Discover all ride requests in your area, even if you weren't notified
+                </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
-                  <Label htmlFor="search-radius" className="text-white">Search Radius:</Label>
+                  <Label className="text-white">Search Radius:</Label>
                   <select 
-                    id="search-radius"
                     value={searchRadius} 
                     onChange={(e) => { setSearchRadius(Number(e.target.value)); fetchNearbyRides(); }}
                     className="bg-black/50 border border-[#00d4ff]/30 text-white rounded-md px-3 py-2"
@@ -1120,10 +1093,8 @@ const DriverDashboard = () => {
                   <form onSubmit={handleRegisterVehicle} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="car-make" className="text-[#00d4ff]">Make</Label>
+                        <Label className="text-[#00d4ff]">Make</Label>
                         <Input
-                          id="car-make"
-                          name="car_make"
                           value={vehicleData.car_make}
                           onChange={e => setVehicleData({...vehicleData, car_make: e.target.value})}
                           className="bg-black/50 border-[#00d4ff]/30 text-white"
@@ -1132,10 +1103,8 @@ const DriverDashboard = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="car-model" className="text-[#00d4ff]">Model</Label>
+                        <Label className="text-[#00d4ff]">Model</Label>
                         <Input
-                          id="car-model"
-                          name="car_model"
                           value={vehicleData.car_model}
                           onChange={e => setVehicleData({...vehicleData, car_model: e.target.value})}
                           className="bg-black/50 border-[#00d4ff]/30 text-white"
@@ -1146,10 +1115,8 @@ const DriverDashboard = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="car-year" className="text-[#00d4ff]">Year</Label>
+                        <Label className="text-[#00d4ff]">Year</Label>
                         <Input
-                          id="car-year"
-                          name="car_year"
                           type="number"
                           value={vehicleData.car_year}
                           onChange={e => setVehicleData({...vehicleData, car_year: e.target.value})}
@@ -1159,10 +1126,8 @@ const DriverDashboard = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="car-color" className="text-[#00d4ff]">Color</Label>
+                        <Label className="text-[#00d4ff]">Color</Label>
                         <Input
-                          id="car-color"
-                          name="car_color"
                           value={vehicleData.car_color}
                           onChange={e => setVehicleData({...vehicleData, car_color: e.target.value})}
                           className="bg-black/50 border-[#00d4ff]/30 text-white"
@@ -1172,10 +1137,8 @@ const DriverDashboard = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="license-plate" className="text-[#00d4ff]">License Plate</Label>
+                      <Label className="text-[#00d4ff]">License Plate</Label>
                       <Input
-                        id="license-plate"
-                        name="license_plate"
                         value={vehicleData.license_plate}
                         onChange={e => setVehicleData({...vehicleData, license_plate: e.target.value.toUpperCase()})}
                         className="bg-black/50 border-[#00d4ff]/30 text-white font-mono"
@@ -1224,10 +1187,8 @@ const DriverDashboard = () => {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="topup-amount" className="text-[#00ff88]">Amount (₾)</Label>
+                      <Label className="text-[#00ff88]">Amount (₾)</Label>
                       <Input
-                        id="topup-amount"
-                        name="topup_amount"
                         type="number"
                         value={topupAmount}
                         onChange={e => setTopupAmount(e.target.value)}
@@ -1236,10 +1197,8 @@ const DriverDashboard = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="topup-ref" className="text-[#00ff88]">Reference (optional)</Label>
+                      <Label className="text-[#00ff88]">Reference (optional)</Label>
                       <Input
-                        id="topup-ref"
-                        name="topup_reference"
                         value={topupReference}
                         onChange={e => setTopupReference(e.target.value)}
                         className="bg-black/50 border-[#00ff88]/30 text-white"
@@ -1267,10 +1226,8 @@ const DriverDashboard = () => {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="withdraw-amount" className="text-[#00d4ff]">Amount (₾)</Label>
+                    <Label className="text-[#00d4ff]">Amount (₾)</Label>
                     <Input
-                      id="withdraw-amount"
-                      name="withdraw_amount"
                       type="number"
                       value={withdrawalData.amount}
                       onChange={e => setWithdrawalData({...withdrawalData, amount: e.target.value})}
@@ -1278,10 +1235,8 @@ const DriverDashboard = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="withdraw-bank" className="text-[#00d4ff]">Bank Details / IBAN</Label>
+                    <Label className="text-[#00d4ff]">Bank Details / IBAN</Label>
                     <Input
-                      id="withdraw-bank"
-                      name="bank_details"
                       value={withdrawalData.bank_details}
                       onChange={e => setWithdrawalData({...withdrawalData, bank_details: e.target.value})}
                       className="bg-black/50 border-[#00d4ff]/30 text-white"
