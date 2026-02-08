@@ -70,239 +70,154 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// Google Maps Autocomplete Hook (with guard)
+// 🔥 FIXED: Google Maps Autocomplete (Stops resetting on every keystroke)
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
+  // 1. Store the callback in a Ref so we don't restart the map listener on every render
+  const callbackRef = useRef(onPlaceSelect);
+
+  // 2. Always keep the callback fresh
+  useEffect(() => {
+    callbackRef.current = onPlaceSelect;
+  }, [onPlaceSelect]);
+
   useEffect(() => {
     if (!inputRef.current || !window.google) return;
-    
+
+    // 3. Initialize Autocomplete ONLY ONCE
     const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: 'ge' },
       fields: ['formatted_address', 'geometry', 'name']
     });
-    
+
     const listener = autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
+      // 4. Call the stored callback
       if (place.geometry) {
-        onPlaceSelect({
+        callbackRef.current({
           address: place.formatted_address || place.name,
           lat: place.geometry.location.lat(),
           lng: place.geometry.location.lng()
         });
       }
     });
-    
+
+    // Cleanup
     return () => {
       if (window.google?.maps?.event) {
         window.google.maps.event.removeListener(listener);
+        window.google.maps.event.clearInstanceListeners(autocomplete);
       }
     };
-  }, [inputRef, onPlaceSelect]);
+  }, []); // 🔥 Empty dependency array = Runs once on mount, never resets
 };
 
-// 🔥 FIXED: Map Picker (Solves Grey Map using ResizeObserver)
+// 🔥 FIXED: Uber-Style Full Screen Picker (Pin stays in center)
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
-  const markerRef = useRef(null);
-  const [selectedLocation, setSelectedLocation] = useState(null);
-  const [address, setAddress] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  // 1. Initialize Map
+  const [center, setCenter] = useState(initialLocation || { lat: 41.7151, lng: 44.8271 });
+  const [address, setAddress] = useState("Move map to select location...");
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Initialize Map
   useEffect(() => {
-    if (!isOpen || !mapRef.current) return;
-    
-    if (!window.google) {
-      setError("Google Maps not loaded yet. Please wait or refresh.");
-      setLoading(false);
-      return;
-    }
-    
-    try {
-        const defaultCenter = initialLocation || { lat: 41.7151, lng: 44.8271 };
-        
-        // Only initialize if not already done
-        if (!mapInstanceRef.current) {
-          const map = new window.google.maps.Map(mapRef.current, {
-            center: defaultCenter,
-            zoom: 15,
+    if (!isOpen || !mapRef.current || !window.google) return;
+
+    if (!mapInstanceRef.current) {
+        // Create map with NO clickable icons and NO default UI
+        const map = new window.google.maps.Map(mapRef.current, {
+            center: center,
+            zoom: 17, // Close zoom for precision
             disableDefaultUI: true,
-            zoomControl: true,
             clickableIcons: false,
+            backgroundColor: '#1a1a2e',
             styles: [
                 { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
                 { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
                 { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
                 { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-                { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
             ]
-          });
-          mapInstanceRef.current = map;
+        });
+        mapInstanceRef.current = map;
 
-          const marker = new window.google.maps.Marker({
-            map,
-            draggable: true,
-            position: defaultCenter,
-            icon: {
-              path: window.google.maps.SymbolPath.CIRCLE,
-              scale: 10,
-              fillColor: "#00ff88",
-              fillOpacity: 1,
-              strokeColor: "#ffffff",
-              strokeWeight: 2
-            }
-          });
-          markerRef.current = marker;
+        // Listener: When map stops moving, update coordinates & address
+        map.addListener("idle", () => {
+            setIsDragging(false);
+            const newCenter = map.getCenter();
+            const lat = newCenter.lat();
+            const lng = newCenter.lng();
+            setCenter({ lat, lng });
+            
+            // Reverse Geocode the center point
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                if (status === 'OK' && results[0]) {
+                    setAddress(results[0].formatted_address);
+                } else {
+                    setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+                }
+            });
+        });
 
-          map.addListener('click', (e) => {
-            const lat = e.latLng.lat();
-            const lng = e.latLng.lng();
-            marker.setPosition({ lat, lng });
-            setSelectedLocation({ lat, lng });
-            reverseGeocode(lat, lng);
-          });
-
-          marker.addListener('dragend', () => {
-            const pos = marker.getPosition();
-            setSelectedLocation({ lat: pos.lat(), lng: pos.lng() });
-            reverseGeocode(pos.lat(), pos.lng());
-          });
-        } 
-        
-        setLoading(false);
-        setError(null);
-    } catch (err) {
-        console.error("Map init error:", err);
-        setError("Failed to load map.");
-        setLoading(false);
+        // Listener: Detect dragging to update UI state
+        map.addListener("dragstart", () => setIsDragging(true));
     }
   }, [isOpen]);
-
-  // 2. 🔥 NEW: Observe div resize to fix Grey Map
-  useEffect(() => {
-      if (!isOpen || !mapRef.current || !mapInstanceRef.current) return;
-
-      const observer = new ResizeObserver(() => {
-          if (mapInstanceRef.current) {
-              window.google.maps.event.trigger(mapInstanceRef.current, "resize");
-              const center = markerRef.current ? markerRef.current.getPosition() : mapInstanceRef.current.getCenter();
-              mapInstanceRef.current.setCenter(center);
-          }
-      });
-
-      observer.observe(mapRef.current);
-      return () => observer.disconnect();
-  }, [isOpen]);
-
-  const reverseGeocode = (lat, lng) => {
-    if (!window.google) return;
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-      if (status === 'OK' && results[0]) {
-        setAddress(results[0].formatted_address);
-      } else {
-        setAddress("Unknown location");
-      }
-    });
-  };
-
-  const getCurrentLocationInPicker = () => {
-    if (!navigator.geolocation) {
-      toast.error("Geolocation not supported");
-      return;
-    }
-    setLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.setCenter({ lat, lng });
-          mapInstanceRef.current.setZoom(17);
-        }
-        markerRef.current.setPosition({ lat, lng });
-        setSelectedLocation({ lat, lng });
-        reverseGeocode(lat, lng);
-        setLoading(false);
-      },
-      (error) => {
-        toast.error("Could not get location");
-        setLoading(false);
-      },
-      { enableHighAccuracy: true }
-    );
-  };
 
   const handleConfirm = () => {
-    if (selectedLocation) {
-      onLocationSelect({
-        address: address || "Selected Location",
-        lat: selectedLocation.lat,
-        lng: selectedLocation.lng
-      });
-      onClose();
-    } else {
-      toast.error("Please select a location on the map");
-    }
+    onLocationSelect({ address: address, lat: center.lat, lng: center.lng });
+    onClose();
   };
 
   if (!isOpen) return null;
-  
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-black border border-[#00ff88]/30 max-w-2xl w-[95vw] max-h-[90vh]">
-        <DialogHeader>
-          <DialogTitle className="text-[#00ff88] flex items-center">
-            <MapPin className="w-5 h-5 mr-2" /> {title || "Select Location"}
-          </DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <div 
-            ref={mapRef} 
-            className="w-full h-[400px] rounded-xl border border-[#00ff88]/20 bg-[#1a1a2e]"
-          />
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl">
-              <Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" />
-            </div>
-          )}
-          {error && (
-            <div className="text-red-500 p-2 bg-red-900/20 rounded text-sm">{error}</div>
-          )}
-          
-          <div className="flex flex-col gap-2">
-            {address && (
-              <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-2">
-                <p className="text-[#00ff88] text-xs font-bold uppercase">Selected Address</p>
-                <p className="text-white text-sm truncate">{address}</p>
-              </div>
-            )}
 
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="border-[#00d4ff]/30 text-[#00d4ff] flex-1"
-                onClick={getCurrentLocationInPicker}
-                disabled={loading}
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Crosshair className="w-4 h-4 mr-2" />}
-                Locate Me
-              </Button>
-              
-              <Button 
-                className="flex-1 bg-[#00ff88] text-black font-bold"
-                onClick={handleConfirm}
-                disabled={!selectedLocation || loading}
-              >
-                Confirm Location
-              </Button>
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
+        {/* Header / Back Button */}
+        <div className="absolute top-0 left-0 right-0 p-4 z-10 flex items-center justify-between pointer-events-none">
+            <Button variant="ghost" size="icon" onClick={onClose} className="bg-black/50 text-white rounded-full pointer-events-auto backdrop-blur-md border border-[#00ff88]/30">
+                <ArrowLeft className="w-6 h-6" />
+            </Button>
+            <div className="bg-black/50 backdrop-blur-md px-4 py-2 rounded-full border border-[#00ff88]/30">
+                <p className="text-[#00ff88] font-bold text-sm">{title || "Select Location"}</p>
             </div>
-          </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* Map Container */}
+        <div className="relative flex-1 w-full h-full">
+            <div ref={mapRef} className="w-full h-full" />
+            
+            {/* 🔥 FIXED CENTER PIN (Stays in middle of screen) */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center pb-10">
+                <div className="relative flex flex-col items-center">
+                    {/* The Pin */}
+                    <MapPin 
+                        className={`w-12 h-12 text-[#00ff88] drop-shadow-2xl transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`} 
+                        fill="black" 
+                    />
+                    {/* The Shadow Point */}
+                    <div className="w-2 h-2 bg-black/50 rounded-full blur-[2px] mt-[-5px]" />
+                </div>
+            </div>
+        </div>
+
+        {/* Bottom Sheet */}
+        <div className="bg-[#1a1a2e] p-6 rounded-t-3xl border-t border-[#00ff88]/30 -mt-6 relative z-10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)]">
+            <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-4" />
+            <p className="text-[#00ff88] text-xs font-bold uppercase mb-1">Selected Location</p>
+            <h3 className="text-white text-lg font-bold truncate mb-6">
+                {isDragging ? "Locating..." : address}
+            </h3>
+            
+            <Button 
+                className="w-full bg-[#00ff88] text-black font-bold h-14 text-lg rounded-xl shadow-[0_0_20px_rgba(0,255,136,0.3)]" 
+                onClick={handleConfirm} 
+                disabled={isDragging}
+            >
+                {isDragging ? "Release to Select" : "Confirm Location"}
+            </Button>
+        </div>
+    </div>
   );
 };
 
@@ -461,7 +376,6 @@ const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
   );
 };
 
-// Location Input Component
 const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -474,31 +388,32 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
     <>
       <div className="relative flex items-center">
         <Icon className={`absolute left-3 h-4 w-4 ${iconColor}`} />
-        <Input
-          ref={inputRef}
-          id={id}
-          name={name}
-          value={value?.address || ""}
-          onChange={(e) => onChange({ ...value, address: e.target.value })}
-          className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white"
-          placeholder={placeholder}
+        <Input 
+            ref={inputRef} 
+            id={id} 
+            name={name} 
+            value={value?.address || ""} 
+            onChange={(e) => onChange({ ...value, address: e.target.value })} 
+            className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white" 
+            placeholder={placeholder} 
         />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20"
-          onClick={() => setShowMapPicker(true)}
+        <Button 
+            variant="ghost" 
+            size="icon" 
+            className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20" 
+            onClick={() => setShowMapPicker(true)}
         >
-          <MapPinned className="w-4 h-4" />
+            <MapPinned className="w-4 h-4" />
         </Button>
       </div>
       
-      <MapPicker
-        isOpen={showMapPicker}
-        onClose={() => setShowMapPicker(false)}
-        onLocationSelect={(loc) => onChange(loc)}
-        title={placeholder}
-        initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null}
+      {/* Updated MapPicker usage */}
+      <MapPicker 
+        isOpen={showMapPicker} 
+        onClose={() => setShowMapPicker(false)} 
+        onLocationSelect={(loc) => onChange(loc)} 
+        title={placeholder} // e.g., "Pickup Address" or "Destination"
+        initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null} 
       />
     </>
   );
