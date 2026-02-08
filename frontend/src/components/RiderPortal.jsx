@@ -111,23 +111,35 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, []); // 🔥 Empty dependency array = Runs once on mount, never resets
 };
 
-// 🔥 FIXED: Uber-Style Full Screen Picker (Pin stays in center)
+// 🔥 FIXED: Uber-Style Picker + Crash-Proof "Locate Me"
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
-  const [center, setCenter] = useState(initialLocation || { lat: 41.7151, lng: 44.8271 });
+  
+  // 1. SAFETY: Force coordinates to be numbers. Fallback to Tbilisi if null.
+  const getSafeCoords = (loc) => {
+    if (!loc || !loc.lat || !loc.lng) return { lat: 41.7151, lng: 44.8271 };
+    return { 
+        lat: parseFloat(loc.lat), 
+        lng: parseFloat(loc.lng) 
+    };
+  };
+
+  const [center, setCenter] = useState(getSafeCoords(initialLocation));
   const [address, setAddress] = useState("Move map to select location...");
   const [isDragging, setIsDragging] = useState(false);
+  const [locating, setLocating] = useState(false);
 
   // Initialize Map
   useEffect(() => {
     if (!isOpen || !mapRef.current || !window.google) return;
 
     if (!mapInstanceRef.current) {
-        // Create map with NO clickable icons and NO default UI
+        const safeCenter = getSafeCoords(initialLocation);
+        
         const map = new window.google.maps.Map(mapRef.current, {
-            center: center,
-            zoom: 17, // Close zoom for precision
+            center: safeCenter,
+            zoom: 17,
             disableDefaultUI: true,
             clickableIcons: false,
             backgroundColor: '#1a1a2e',
@@ -140,7 +152,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         });
         mapInstanceRef.current = map;
 
-        // Listener: When map stops moving, update coordinates & address
+        // Listener: Update center when map stops moving
         map.addListener("idle", () => {
             setIsDragging(false);
             const newCenter = map.getCenter();
@@ -148,7 +160,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
             const lng = newCenter.lng();
             setCenter({ lat, lng });
             
-            // Reverse Geocode the center point
             const geocoder = new window.google.maps.Geocoder();
             geocoder.geocode({ location: { lat, lng } }, (results, status) => {
                 if (status === 'OK' && results[0]) {
@@ -159,10 +170,35 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
             });
         });
 
-        // Listener: Detect dragging to update UI state
         map.addListener("dragstart", () => setIsDragging(true));
     }
   }, [isOpen]);
+
+  // 🔥 NEW: Crash-Proof "Locate Me" Function
+  const handleLocateMe = () => {
+    if (!navigator.geolocation) return toast.error("Geolocation not supported");
+    setLocating(true);
+
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = parseFloat(position.coords.latitude); // Force Number
+            const lng = parseFloat(position.coords.longitude); // Force Number
+
+            if (mapInstanceRef.current) {
+                const pos = { lat, lng };
+                mapInstanceRef.current.panTo(pos);
+                mapInstanceRef.current.setZoom(17);
+                setCenter(pos);
+            }
+            setLocating(false);
+        },
+        () => {
+            toast.error("Could not find you.");
+            setLocating(false);
+        },
+        { enableHighAccuracy: true }
+    );
+  };
 
   const handleConfirm = () => {
     onLocationSelect({ address: address, lat: center.lat, lng: center.lng });
@@ -173,7 +209,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
-        {/* Header / Back Button */}
+        {/* Header */}
         <div className="absolute top-0 left-0 right-0 p-4 z-10 flex items-center justify-between pointer-events-none">
             <Button variant="ghost" size="icon" onClick={onClose} className="bg-black/50 text-white rounded-full pointer-events-auto backdrop-blur-md border border-[#00ff88]/30">
                 <ArrowLeft className="w-6 h-6" />
@@ -187,33 +223,31 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         <div className="relative flex-1 w-full h-full">
             <div ref={mapRef} className="w-full h-full" />
             
-            {/* 🔥 FIXED CENTER PIN (Stays in middle of screen) */}
+            {/* Center Pin */}
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center pb-10">
                 <div className="relative flex flex-col items-center">
-                    {/* The Pin */}
-                    <MapPin 
-                        className={`w-12 h-12 text-[#00ff88] drop-shadow-2xl transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`} 
-                        fill="black" 
-                    />
-                    {/* The Shadow Point */}
+                    <MapPin className={`w-12 h-12 text-[#00ff88] drop-shadow-2xl transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`} fill="black" />
                     <div className="w-2 h-2 bg-black/50 rounded-full blur-[2px] mt-[-5px]" />
                 </div>
             </div>
+
+            {/* 🔥 NEW: Floating Locate Me Button */}
+            <Button 
+                size="icon" 
+                className="absolute bottom-6 right-4 rounded-full w-12 h-12 bg-black/80 border border-[#00ff88]/50 text-[#00ff88] shadow-lg z-20"
+                onClick={handleLocateMe}
+                disabled={locating}
+            >
+                {locating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Crosshair className="w-6 h-6" />}
+            </Button>
         </div>
 
         {/* Bottom Sheet */}
         <div className="bg-[#1a1a2e] p-6 rounded-t-3xl border-t border-[#00ff88]/30 -mt-6 relative z-10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)]">
             <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-4" />
             <p className="text-[#00ff88] text-xs font-bold uppercase mb-1">Selected Location</p>
-            <h3 className="text-white text-lg font-bold truncate mb-6">
-                {isDragging ? "Locating..." : address}
-            </h3>
-            
-            <Button 
-                className="w-full bg-[#00ff88] text-black font-bold h-14 text-lg rounded-xl shadow-[0_0_20px_rgba(0,255,136,0.3)]" 
-                onClick={handleConfirm} 
-                disabled={isDragging}
-            >
+            <h3 className="text-white text-lg font-bold truncate mb-6">{isDragging ? "Locating..." : address}</h3>
+            <Button className="w-full bg-[#00ff88] text-black font-bold h-14 text-lg rounded-xl" onClick={handleConfirm} disabled={isDragging}>
                 {isDragging ? "Release to Select" : "Confirm Location"}
             </Button>
         </div>
