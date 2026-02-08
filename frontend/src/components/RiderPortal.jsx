@@ -255,157 +255,129 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   );
 };
 
-// 🔥 CRASH-PROOF ROUTE MAP
-const RouteMap = ({ pickup, destination, stops, driverLocation }) => {
+
+// 🔥 FIXED: Smart Live Tracking Map (Driver -> Pickup OR Driver -> Dest)
+const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const driverMarkerRef = useRef(null);
 
-  // Helper: Verify coordinate is a valid number
-  const isValidCoord = (val) => {
+  // Helper: Force safe numbers
+  const getSafeCoord = (val) => {
     const num = parseFloat(val);
-    return !isNaN(num) && num !== 0;
+    return !isNaN(num) && num !== 0 ? num : null;
   };
+
+  const pLat = getSafeCoord(pickup?.lat);
+  const pLng = getSafeCoord(pickup?.lng);
+  const dLat = getSafeCoord(destination?.lat);
+  const dLng = getSafeCoord(destination?.lng);
+  const driverLat = getSafeCoord(driverLocation?.lat);
+  const driverLng = getSafeCoord(driverLocation?.lng);
 
   // 1. Initialize Map
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
 
-    try {
-      if (!mapInstanceRef.current) {
-        const pLat = isValidCoord(pickup?.lat) ? parseFloat(pickup.lat) : 41.7151;
-        const pLng = isValidCoord(pickup?.lng) ? parseFloat(pickup.lng) : 44.8271;
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+        center: { lat: pLat || 41.7151, lng: pLng || 44.8271 },
+        zoom: 14,
+        disableDefaultUI: true,
+        backgroundColor: '#1a1a2e',
+        styles: [
+          { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+          { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+          { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+          { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+          { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+        ]
+      });
 
-        mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-          center: { lat: pLat, lng: pLng },
-          zoom: 14,
-          disableDefaultUI: true,
-          backgroundColor: '#1a1a2e',
-          styles: [
-            { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-            { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-            { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-            { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
-          ]
-        });
-
-        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-          map: mapInstanceRef.current,
-          suppressMarkers: false,
-          polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
-        });
-      }
-
-      // Force Resize to prevent Grey Map
-      setTimeout(() => {
-        if (mapInstanceRef.current) {
-          window.google.maps.event.trigger(mapInstanceRef.current, "resize");
-          if (isValidCoord(pickup?.lat)) {
-            mapInstanceRef.current.setCenter({ lat: parseFloat(pickup.lat), lng: parseFloat(pickup.lng) });
-          }
-        }
-      }, 500);
-
-    } catch (err) {
-      console.error("Map Init Error (Handled):", err);
+      directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+        map: mapInstanceRef.current,
+        suppressMarkers: false, // We use custom markers
+        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
+      });
     }
   }, []);
 
-  // 2. Handle Routing (With Try/Catch)
+  // 2. SMART ROUTING LOGIC
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
-    try {
-      const pLat = parseFloat(pickup?.lat);
-      const pLng = parseFloat(pickup?.lng);
-      
-      // Stop here if pickup is invalid (Prevents crash)
-      if (!isValidCoord(pLat) || !isValidCoord(pLng)) return;
+    const directionsService = new window.google.maps.DirectionsService();
+    let origin = null;
+    let target = null;
 
-      // Only route if Destination is valid
-      if (destination && isValidCoord(destination.lat) && isValidCoord(destination.lng)) {
-        const directionsService = new window.google.maps.DirectionsService();
-        
-        // Clean stops data
-        const waypoints = (stops || [])
-          .filter(s => isValidCoord(s.lat) && isValidCoord(s.lng))
-          .map(s => ({ location: { lat: parseFloat(s.lat), lng: parseFloat(s.lng) }, stopover: true }));
-
-        directionsService.route({
-          origin: { lat: pLat, lng: pLng },
-          destination: { lat: parseFloat(destination.lat), lng: parseFloat(destination.lng) },
-          waypoints,
-          travelMode: window.google.maps.TravelMode.DRIVING
-        }, (result, status) => {
-          if (status === 'OK' && directionsRendererRef.current) {
-            directionsRendererRef.current.setDirections(result);
-          } else {
-             console.warn("Route failed or ignored:", status);
-          }
-        });
-      } else {
-        // Fallback: Just center on pickup
-        mapInstanceRef.current.panTo({ lat: pLat, lng: pLng });
-        new window.google.maps.Marker({
-          position: { lat: pLat, lng: pLng },
-          map: mapInstanceRef.current,
-          icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#00ff88", fillOpacity: 1, strokeColor: "white", strokeWeight: 2 }
-        });
-      }
-    } catch (err) {
-      console.error("Routing Error (Handled):", err);
+    // SCENARIO A: Waiting for Driver (Driver -> Pickup)
+    if (['accepted', 'arrived'].includes(status) && driverLat && driverLng && pLat && pLng) {
+       origin = { lat: driverLat, lng: driverLng };
+       target = { lat: pLat, lng: pLng };
+    } 
+    // SCENARIO B: Inside the Car (Driver -> Destination)
+    else if (status === 'in_progress' && driverLat && driverLng && dLat && dLng) {
+       origin = { lat: driverLat, lng: driverLng };
+       target = { lat: dLat, lng: dLng };
     }
-  }, [pickup, destination, stops]);
+    // SCENARIO C: Just looking at the route (Pickup -> Dest)
+    else if (pLat && pLng && dLat && dLng) {
+       origin = { lat: pLat, lng: pLng };
+       target = { lat: dLat, lng: dLng };
+    }
 
-  // 3. Driver Tracking (Safe Mode)
+    if (origin && target) {
+      directionsService.route({
+        origin: origin,
+        destination: target,
+        travelMode: window.google.maps.TravelMode.DRIVING
+      }, (result, status) => {
+        if (status === 'OK' && directionsRendererRef.current) {
+          directionsRendererRef.current.setDirections(result);
+        }
+      });
+    }
+  }, [pLat, pLng, dLat, dLng, driverLat, driverLng, status]);
+
+  // 3. Driver Marker Logic
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !driverLocation) return;
+    if (!mapInstanceRef.current || !window.google || !driverLat || !driverLng) return;
 
-    try {
-      const lat = parseFloat(driverLocation.lat);
-      const lng = parseFloat(driverLocation.lng);
-      
-      // 🔥 If driver data is bad, IGNORE IT (Don't crash)
-      if (!isValidCoord(lat) || !isValidCoord(lng)) return;
+    const pos = { lat: driverLat, lng: driverLng };
+    const heading = parseFloat(driverLocation.heading) || 0;
 
-      const pos = { lat, lng };
-      const heading = parseFloat(driverLocation.heading) || 0;
-
-      if (!driverMarkerRef.current) {
-        driverMarkerRef.current = new window.google.maps.Marker({
-          position: pos,
-          map: mapInstanceRef.current,
-          icon: {
-            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 6,
-            fillColor: "#00d4ff",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-            rotation: heading
-          },
-          zIndex: 1000
-        });
-      } else {
-        driverMarkerRef.current.setPosition(pos);
-        const icon = driverMarkerRef.current.getIcon();
-        icon.rotation = heading;
-        driverMarkerRef.current.setIcon(icon);
-      }
-      
-      // Pan map to driver
-      mapInstanceRef.current.panTo(pos);
-
-    } catch (err) {
-      console.error("Driver Tracking Error (Handled):", err);
+    if (!driverMarkerRef.current) {
+      driverMarkerRef.current = new window.google.maps.Marker({
+        position: pos,
+        map: mapInstanceRef.current,
+        icon: {
+          path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 6,
+          fillColor: "#00d4ff",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+          rotation: heading
+        },
+        zIndex: 1000
+      });
+    } else {
+      driverMarkerRef.current.setPosition(pos);
+      const icon = driverMarkerRef.current.getIcon();
+      icon.rotation = heading;
+      driverMarkerRef.current.setIcon(icon);
     }
-  }, [driverLocation]);
+  }, [driverLat, driverLng]);
 
   return (
     <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]">
-      <div ref={mapRef} style={{ height: '250px', width: '100%', minHeight: '250px' }} />
+      <div ref={mapRef} style={{ height: '300px', width: '100%', minHeight: '300px' }} />
+      
+      {/* Status Badge */}
+      <div className="absolute top-3 right-3 bg-black/80 px-3 py-1 rounded-full border border-[#00ff88]/50 text-[#00ff88] text-xs font-bold shadow-lg">
+        {status === 'accepted' ? 'Driver En Route' : status === 'in_progress' ? 'On Trip' : 'Route Preview'}
+      </div>
     </div>
   );
 };
