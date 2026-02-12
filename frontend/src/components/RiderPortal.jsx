@@ -1,7 +1,6 @@
 ﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 
-// 🔥 FIX: Import from @/config and @/api
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api"; 
 
@@ -293,12 +292,11 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
         </Button>
       </div>
       
-      {/* Updated MapPicker usage */}
       <MapPicker 
         isOpen={showMapPicker} 
         onClose={() => setShowMapPicker(false)} 
         onLocationSelect={(loc) => onChange(loc)} 
-        title={placeholder} // e.g., "Pickup Address" or "Destination"
+        title={placeholder}
         initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null} 
       />
     </>
@@ -1073,6 +1071,7 @@ const RiderDashboard = () => {
                     driverLocation={null} // No driver yet
                   />
                 )}
+                {!mapsLoaded && <p className="text-red-500 text-center">Maps not loaded - check console for errors</p>}
                 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -1175,6 +1174,7 @@ const RiderDashboard = () => {
                         status={activeRide.status}
                     />
                   )}
+                  {!mapsLoaded && <p className="text-red-500 text-center">Maps not loaded - check console for errors</p>}
 
                   <div className="space-y-3">
                     <div><p className="text-[#00ff88]/60 text-sm">Pickup</p><p>{activeRide.pickup}</p></div>
