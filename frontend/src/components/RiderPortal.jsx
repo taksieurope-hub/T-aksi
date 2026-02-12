@@ -1122,7 +1122,14 @@ const RiderDashboard = () => {
                     <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")} className={paymentMethod === "card" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}>💳 Card</Button>
                   </div>
                 </div>
-                <Button className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6" onClick={handleBookRide} disabled={loading || !pickup.lat}>{loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />} Request Ride</Button>
+                <Button 
+    className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6" 
+    onClick={handleBookRide} 
+    disabled={loading} 
+>
+    {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />} 
+    Request Ride
+</Button>
               </CardContent>
             </Card>
           </TabsContent>
