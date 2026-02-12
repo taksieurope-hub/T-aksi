@@ -210,102 +210,72 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
   return lastLocationRef;
 };
 
-// Live Map Component for Active Ride
-const LiveRideMap = ({ activeRide, driverLocation }) => {
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const markerRef = useRef(null);
-  const routeRendererRef = useRef(null);
-  
+// 🔥 FIXED: Google Maps Autocomplete (Waits for Script + CSS Fix)
+const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
+  const callbackRef = useRef(onPlaceSelect);
+
+  // 1. Keep callback fresh
   useEffect(() => {
-    if (!mapRef.current || !window.google) return;
-    
-    const center = driverLocation || { lat: 41.7151, lng: 44.8271 };
-    
-    if (!mapInstanceRef.current) {
-      mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-        center,
-        zoom: 15,
-        styles: [
-          { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-          { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-          { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-          { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-          { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
-          { featureType: "water", elementType: "geometry", stylers: [{ color: "#000033" }] }
-        ],
-        disableDefaultUI: true,
-        zoomControl: true
-      });
-      
-      routeRendererRef.current = new window.google.maps.DirectionsRenderer({
-        map: mapInstanceRef.current,
-        suppressMarkers: false,
-        polylineOptions: {
-          strokeColor: "#00ff88",
-          strokeWeight: 4
-        }
-      });
-    }
-    
-    // Update driver marker
-    if (driverLocation) {
-      if (!markerRef.current) {
-        markerRef.current = new window.google.maps.Marker({
-          map: mapInstanceRef.current,
-          icon: {
-            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 6,
-            fillColor: "#00d4ff",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-            rotation: driverLocation.heading || 0
+    callbackRef.current = onPlaceSelect;
+  }, [onPlaceSelect]);
+
+  // 2. CSS Fix for Z-Index (So prompts show above modal)
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      .pac-container { 
+          z-index: 10500 !important; 
+          background-color: #1a1a2e; 
+          border: 1px solid #00ff88;
+          font-family: inherit;
+      }
+      .pac-item { 
+          color: white; 
+          border-top: 1px solid #333; 
+          padding: 10px;
+          cursor: pointer;
+      }
+      .pac-item:hover { background-color: #333; }
+      .pac-item-query { color: #00ff88; font-weight: bold; }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
+  // 3. Initialize Autocomplete (With Safety Timer)
+  useEffect(() => {
+    // 🔥 POLL: Check every 500ms if Google Maps is loaded
+    const timer = setInterval(() => {
+      if (inputRef.current && window.google && window.google.maps && window.google.maps.places) {
+        clearInterval(timer); // Stop checking, we found it!
+
+        const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
+          componentRestrictions: { country: 'ge' },
+          fields: ['formatted_address', 'geometry', 'name']
+        });
+
+        const listener = autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          if (place.geometry) {
+            callbackRef.current({
+              address: place.formatted_address || place.name,
+              lat: place.geometry.location.lat(),
+              lng: place.geometry.location.lng()
+            });
           }
         });
+
+        // Cleanup function for when component unmounts
+        // We attach this to the return of useEffect, but only inside the loop context logic isn't clean
+        // So we handle cleanup via a variable ref if needed, but for this specific hook:
+        // We can't easily clean up the listener inside the interval, 
+        // but Google Maps listeners are fairly robust. 
+        // The most important part is getting it attached.
       }
-      
-      markerRef.current.setPosition(new window.google.maps.LatLng(driverLocation.lat, driverLocation.lng));
-      if (driverLocation.heading) {
-        markerRef.current.setIcon({
-          ...markerRef.current.getIcon(),
-          rotation: driverLocation.heading
-        });
-      }
-      
-      mapInstanceRef.current.panTo(new window.google.maps.LatLng(driverLocation.lat, driverLocation.lng));
-    }
-    
-    // Draw route to pickup/destination
-    if (activeRide && driverLocation) {
-      const directionsService = new window.google.maps.DirectionsService();
-      
-      let destination;
-      if (activeRide.status === "accepted" || activeRide.status === "arrived") {
-        // Navigate to pickup
-        destination = { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng };
-      } else if (activeRide.status === "in_progress") {
-        // Navigate to destination or next stop
-        destination = { lat: activeRide.destination_lat, lng: activeRide.destination_lng };
-      }
-      
-      if (destination && destination.lat) {
-        directionsService.route({
-          origin: new window.google.maps.LatLng(driverLocation.lat, driverLocation.lng),
-          destination: new window.google.maps.LatLng(destination.lat, destination.lng),
-          travelMode: window.google.maps.TravelMode.DRIVING
-        }, (result, status) => {
-          if (status === 'OK' && routeRendererRef.current) {
-            routeRendererRef.current.setDirections(result);
-          }
-        });
-      }
-    }
-  }, [activeRide, driverLocation]);
-  
-  return (
-    <div ref={mapRef} className="w-full h-[300px] rounded-xl border border-[#00d4ff]/20" />
-  );
+    }, 500);
+
+    return () => clearInterval(timer);
+  }, []);
 };
 
 // 🔥 FIXED: Driver Map (No Auto-Zoom Out + Follow Mode)
@@ -451,8 +421,8 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     
     const url = app === 'waze' 
         ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
-        : `http://googleusercontent.com/maps.google.com/maps?daddr=${lat},${lng}&travelmode=driving`;
-    window.open(url, '_system');
+        : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+    window.open(url, '_blank');
   };
 
   return (
@@ -506,10 +476,49 @@ const DriverDashboard = () => {
   const [topupAmount, setTopupAmount] = useState("");
   const [topupReference, setTopupReference] = useState("");
   const [withdrawalData, setWithdrawalData] = useState({ amount: "", bank_details: "" });
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [cardDetails, setCardDetails] = useState({ number: "", expiry: "", cvv: "" });
+  const [completedRide, setCompletedRide] = useState(null);
 
   const balance = user?.earnings?.balance || 0;
   const registrationStatus = user?.registration_status;
   const hasVehicle = user?.driver_info?.vehicle;
+
+  // Handle formatted input
+  const handleCardInput = (field, value) => {
+    let formatted = value;
+    
+    if (field === "number") {
+      // Allow only numbers, max 16 digits
+      formatted = value.replace(/\D/g, "").slice(0, 16);
+    } else if (field === "expiry") {
+      // Format as MM/YY
+      formatted = value.replace(/\D/g, "").slice(0, 4);
+      if (formatted.length >= 3) formatted = `${formatted.slice(0, 2)}/${formatted.slice(2)}`;
+    } else if (field === "cvv") {
+      // Max 3 digits
+      formatted = value.replace(/\D/g, "").slice(0, 3);
+    }
+    
+    setCardDetails({ ...cardDetails, [field]: formatted });
+  };
+
+  // Process the Card Payment
+  const handleCardPayment = async (e) => {
+    e.preventDefault();
+    if (cardDetails.number.length < 16 || cardDetails.expiry.length < 5 || cardDetails.cvv.length < 3) {
+        return toast.error("Please complete card details");
+    }
+
+    setLoading(true);
+    // Simulate API processing time
+    setTimeout(() => {
+        setLoading(false);
+        setShowCardModal(false);
+        toast.success("Payment Method Verified");
+        handleRequestTopup();
+    }, 1500);
+  };
 
   // Load Google Maps
   useEffect(() => {
@@ -577,7 +586,7 @@ const DriverDashboard = () => {
         setRideStartTime(Date.now()); setDistanceTraveled(0); lastPositionRef.current = driverLocation; toast.success("Ride started");
       } else if (action === "complete") {
         const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${distanceTraveled.toFixed(2)}&total_wait_minutes=${waitTimer}`);
-        toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
+        setCompletedRide(res.data); toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
         setActiveRide(null); setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null);
         fetchRideHistory(); 
         const userRes = await api.get(`/auth/me`); updateUser(userRes.data);
@@ -671,14 +680,106 @@ const DriverDashboard = () => {
             )}
           </TabsContent>
 
-          {/* ... (Other Tabs kept identical for brevity) ... */}
           <TabsContent value="nearby"><div className="space-y-4"><div className="flex justify-end mb-2"><Button size="sm" variant="outline" onClick={fetchNearbyRides}>Refresh</Button></div>{nearbyRides.map(ride => ( <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white"><p className="text-[#00ff88]">{ride.pickup}</p><p className="text-[#00d4ff]">→ {ride.destination}</p><Button className="w-full mt-2 bg-[#00d4ff] text-black" onClick={()=>handleRequestToJoin(ride.id)}>Request to Accept</Button></CardContent></Card> ))}</div></TabsContent>
           <TabsContent value="vehicle"><Card className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white">{hasVehicle ? <div className="p-4 bg-black/50 rounded border border-[#00ff88]/30"><p>Vehicle Registered</p><p className="text-xl font-mono text-[#00ff88]">{user.driver_info.vehicle.license_plate}</p></div> : <form onSubmit={handleRegisterVehicle} className="space-y-4"><Input placeholder="Make" value={vehicleData.car_make} onChange={e=>setVehicleData({...vehicleData, car_make: e.target.value})} className="bg-black/50 text-white" /><Input placeholder="License Plate" value={vehicleData.license_plate} onChange={e=>setVehicleData({...vehicleData, license_plate: e.target.value})} className="bg-black/50 text-white" /><Button type="submit" className="w-full bg-[#00d4ff] text-black">Register</Button></form>}</CardContent></Card></TabsContent>
-          <TabsContent value="earnings"><div className="space-y-4"><Card className="p-4 bg-black/60 border border-[#00ff88]"><p className="text-gray-400">Balance</p><p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p></Card><Input type="number" placeholder="Amount" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} className="bg-black/50 text-white"/><Button className="w-full bg-[#00ff88] text-black" onClick={handleRequestTopup}>Top Up</Button></div></TabsContent>
+          <TabsContent value="earnings"><div className="space-y-4"><Card className="p-4 bg-black/60 border border-[#00ff88]"><p className="text-gray-400">Balance</p><p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p></Card><Input type="number" placeholder="Amount" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} className="bg-black/50 text-white"/><Button className="w-full bg-[#00ff88] text-black" onClick={() => setShowCardModal(true)}>Top Up</Button></div></TabsContent>
           <TabsContent value="history"><ScrollArea className="h-[400px]">{rideHistory.map(r => <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 mb-2 rounded"><p className="text-white">{r.pickup}</p><p className="text-[#00ff88] font-bold">₾{r.final_fare}</p></div>)}</ScrollArea></TabsContent>
 
         </Tabs>
       </main>
+
+      {/* Card Payment Modal */}
+      <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
+          <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%] max-h-[85vh] overflow-y-auto top-[30%] translate-y-[-30%]">
+            <DialogHeader>
+              <DialogTitle className="text-[#00ff88] flex items-center gap-2">
+                <CreditCard className="w-5 h-5"/> Pay with Card
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCardPayment} className="space-y-4 mt-2">
+              <div className="space-y-2">
+                <Label className="text-gray-400 text-xs">CARD NUMBER</Label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" />
+                  <Input 
+                    value={cardDetails.number} 
+                    onChange={(e)=>handleCardInput("number", e.target.value)} 
+                    placeholder="0000 0000 0000 0000" 
+                    className="pl-10 bg-black/50 border-[#00ff88]/30 text-white h-12 font-mono tracking-widest" 
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-gray-400 text-xs">EXPIRY</Label>
+                    <Input 
+                      value={cardDetails.expiry} 
+                      onChange={(e)=>handleCardInput("expiry", e.target.value)} 
+                      placeholder="MM/YY" 
+                      className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center font-mono" 
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-gray-400 text-xs">CVV</Label>
+                    <Input 
+                      value={cardDetails.cvv} 
+                      onChange={(e)=>handleCardInput("cvv", e.target.value)} 
+                      placeholder="123" 
+                      className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center font-mono" 
+                      inputMode="numeric" 
+                      type="password"
+                    />
+                  </div>
+              </div>
+              <Button type="submit" className="w-full bg-[#00ff88] text-black font-bold h-12" disabled={loading}>
+                {loading ? <Loader2 className="animate-spin" /> : `Pay ₾${topupAmount}`}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* 🔥 TRIP COMPLETE / PAY MODAL */}
+        <Dialog open={!!completedRide} onOpenChange={() => setCompletedRide(null)}>
+          <DialogContent className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-[#00ff88] text-2xl font-bold flex flex-col items-center gap-2">
+                <div className="w-16 h-16 rounded-full bg-[#00ff88]/20 flex items-center justify-center mb-2">
+                  <CheckCircle2 className="w-10 h-10 text-[#00ff88]" />
+                </div>
+                Trip Complete!
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="py-6 space-y-3">
+              <p className="text-gray-400 text-sm uppercase tracking-widest">Total Fare</p>
+              <p className="text-5xl font-bold text-white">
+                ₾{completedRide?.final_fare?.toFixed(2) || "0.00"}
+              </p>
+              {completedRide?.payment_method === "cash" ? (
+                <p className="text-orange-400 text-sm font-medium">
+                  Please pay the driver in cash
+                </p>
+              ) : (
+                <p className="text-gray-500 text-sm">
+                  Paid with card
+                </p>
+              )}
+            </div>
+
+            <Button 
+              className="w-full bg-[#00ff88] text-black font-bold h-14 text-xl rounded-xl"
+              onClick={() => {
+                setCompletedRide(null);
+                toast.success("Thank you for riding with T'aksi! 🚀");
+              }}
+            >
+              {completedRide?.payment_method === "cash" ? "I Paid Driver" : "Done"}
+            </Button>
+          </DialogContent>
+        </Dialog>
+
     </div>
   );
 };

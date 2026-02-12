@@ -21,7 +21,7 @@ import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp,
-  MapPinned, Edit
+  MapPinned, Edit, CreditCard, CheckCircle2
 } from "lucide-react";
 
 // Pricing Rules
@@ -306,16 +306,155 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
 };
 
 // Placeholder MapPicker to prevent crash
-const MapPicker = ({ isOpen, onClose, onLocationSelect, title }) => {
+const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
+  const mapRef = useRef(null);
+  const map = useRef(null);
+  const marker = useRef(null);
+  const inputRef = useRef(null);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+
+  // Autocomplete inside modal
+  useGoogleMapsAutocomplete(inputRef, (place) => {
+    if (place.lat && place.lng) {
+      const pos = new window.google.maps.LatLng(place.lat, place.lng);
+      map.current.panTo(pos);
+      map.current.setZoom(17);
+      marker.current.setPosition(pos);
+      setSelectedPlace(place);
+    }
+  });
+
+  // Use my location button
+  const handleCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation not supported");
+      return;
+    }
+    toast.info("Getting your location...");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const latLng = new window.google.maps.LatLng(lat, lng);
+        map.current.panTo(latLng);
+        map.current.setZoom(18);
+        marker.current.setPosition(latLng);
+        reverseGeocode(latLng);
+        toast.success("Location updated!");
+      },
+      () => toast.error("Failed to get location")
+    );
+  };
+
+  const reverseGeocode = (latLng) => {
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: latLng }, (results, status) => {
+      let address = `${latLng.lat().toFixed(6)}, ${latLng.lng().toFixed(6)}`;
+      if (status === "OK" && results[0]) {
+        address = results[0].formatted_address;
+      }
+      setSelectedPlace({ address, lat: latLng.lat(), lng: latLng.lng() });
+    });
+  };
+
+  useEffect(() => {
+    if (!isOpen || !window.google?.maps || !mapRef.current) return;
+
+    const center = initialLocation || { lat: 41.7151, lng: 44.8271 };
+    const latLng = new window.google.maps.LatLng(center.lat, center.lng);
+
+    map.current = new window.google.maps.Map(mapRef.current, {
+      center: latLng,
+      zoom: initialLocation ? 17 : 12,
+      disableDefaultUI: false,
+      styles: [
+        { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+      ],
+    });
+
+    marker.current = new window.google.maps.Marker({
+      position: latLng,
+      map: map.current,
+      draggable: true,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 10,
+        fillColor: "#00ff88",
+        fillOpacity: 1,
+        strokeColor: "#000",
+        strokeWeight: 2,
+      },
+    });
+
+    // Click on map → move marker
+    map.current.addListener("click", (e) => {
+      const pos = e.latLng;
+      marker.current.setPosition(pos);
+      reverseGeocode(pos);
+    });
+
+    // Drag end → update address
+    marker.current.addListener("dragend", () => {
+      const pos = marker.current.getPosition();
+      reverseGeocode(pos);
+    });
+
+    // Initial reverse geocode
+    reverseGeocode(latLng);
+
+  }, [isOpen, initialLocation]);
+
+  const handleConfirm = () => {
+    if (selectedPlace) {
+      onLocationSelect(selectedPlace);
+      onClose();
+    }
+  };
+
   if (!isOpen) return null;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-black text-white">
-        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-        <div className="h-40 flex items-center justify-center border border-gray-600">
-          <p className="text-gray-400">Map Picker Component Placeholder</p>
+      <DialogContent className="max-w-4xl h-[90vh] p-0 bg-[#0a0a0a] text-white flex flex-col">
+        <DialogHeader className="p-4 border-b border-[#00ff88]/20 flex flex-row items-center justify-between">
+          <DialogTitle className="text-[#00ff88]">{title}</DialogTitle>
+          <Button variant="ghost" size="icon" onClick={handleCurrentLocation}>
+            <Crosshair className="w-5 h-5 text-[#00d4ff]" />
+          </Button>
+        </DialogHeader>
+
+        {/* Search bar */}
+        <div className="px-4 pt-4">
+          <div className="relative">
+            <MapPin className="absolute left-3 top-3.5 h-4 w-4 text-[#00ff88]" />
+            <Input
+              ref={inputRef}
+              placeholder="Search any address in Georgia..."
+              className="pl-10 bg-black/50 border-[#00ff88]/30 text-white"
+            />
+          </div>
         </div>
-        <Button onClick={onClose} className="w-full bg-[#00ff88] text-black">Close</Button>
+
+        {/* Map */}
+        <div className="flex-1 relative">
+          <div ref={mapRef} className="absolute inset-0" />
+        </div>
+
+        {/* Footer */}
+        <DialogFooter className="p-4 border-t border-[#00ff88]/20 flex flex-col gap-3">
+          <p className="text-sm text-gray-400 truncate max-w-full">
+            {selectedPlace?.address || "Move map or drag pin to select location"}
+          </p>
+          <Button 
+            onClick={handleConfirm} 
+            disabled={!selectedPlace}
+            className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold h-12 text-lg"
+          >
+            Confirm Location
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -641,8 +780,6 @@ const RiderDashboard = () => {
       console.error("Error fetching surge:", error);
     }
   };
-
-  // [DELETED THE DUPLICATE/BROKEN calculateRoute FUNCTION HERE]
 
   const fetchActiveRide = async () => {
     try {
@@ -1157,28 +1294,36 @@ const RiderDashboard = () => {
             <DialogHeader>
               <DialogTitle className="text-[#00ff88] text-2xl font-bold flex flex-col items-center gap-2">
                 <div className="w-16 h-16 rounded-full bg-[#00ff88]/20 flex items-center justify-center mb-2">
-                  <CheckCircle2 className="w-8 h-8 text-[#00ff88]" />
+                  <CheckCircle2 className="w-10 h-10 text-[#00ff88]" />
                 </div>
-                Trip Complete
+                Trip Complete!
               </DialogTitle>
             </DialogHeader>
             
-            <div className="py-6 space-y-2">
+            <div className="py-6 space-y-3">
               <p className="text-gray-400 text-sm uppercase tracking-widest">Total Fare</p>
               <p className="text-5xl font-bold text-white">
                 ₾{completedRide?.final_fare?.toFixed(2) || "0.00"}
               </p>
-              <p className="text-gray-500 text-sm">Paid via {completedRide?.payment_method === 'card' ? 'Card' : 'Cash'}</p>
+              {completedRide?.payment_method === "cash" ? (
+                <p className="text-orange-400 text-sm font-medium">
+                  Please pay the driver in cash
+                </p>
+              ) : (
+                <p className="text-gray-500 text-sm">
+                  Paid with card
+                </p>
+              )}
             </div>
 
             <Button 
-              className="w-full bg-[#00ff88] text-black font-bold h-14 text-xl rounded-xl hover:bg-[#00ff88]/80"
+              className="w-full bg-[#00ff88] text-black font-bold h-14 text-xl rounded-xl"
               onClick={() => {
-                setCompletedRide(null); // Close modal
-                toast.success("Payment Successful!");
+                setCompletedRide(null);
+                toast.success("Thank you for riding with T'aksi! 🚀");
               }}
             >
-              Pay & Close
+              {completedRide?.payment_method === "cash" ? "I Paid Driver" : "Done"}
             </Button>
           </DialogContent>
         </Dialog>
