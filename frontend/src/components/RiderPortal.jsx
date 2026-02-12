@@ -258,18 +258,14 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 };
 
 
-// 🔥 FIXED: Smart Live Tracking Map (Driver -> Pickup OR Driver -> Dest)
+// 🔥 FIXED: Live Map with Auto-Zoom (Fits Driver + Destination)
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const driverMarkerRef = useRef(null);
 
-  // Helper: Force safe numbers
-  const getSafeCoord = (val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num !== 0 ? num : null;
-  };
+  const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
 
   const pLat = getSafeCoord(pickup?.lat);
   const pLng = getSafeCoord(pickup?.lng);
@@ -285,7 +281,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: pLat || 41.7151, lng: pLng || 44.8271 },
-        zoom: 14,
+        zoom: 15, // Started closer
         disableDefaultUI: true,
         backgroundColor: '#1a1a2e',
         styles: [
@@ -293,19 +289,19 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
           { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
           { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
           { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-          { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
         ]
       });
 
       directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
-        suppressMarkers: false, // We use custom markers
-        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5 }
+        suppressMarkers: false,
+        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 }, // Thicker line
+        preserveViewport: false // 🔥 Let the route dictate the zoom
       });
     }
   }, []);
 
-  // 2. SMART ROUTING LOGIC
+  // 2. ROUTING & AUTO-ZOOM LOGIC
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
@@ -313,36 +309,46 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     let origin = null;
     let target = null;
 
-    // SCENARIO A: Waiting for Driver (Driver -> Pickup)
-    if (['accepted', 'arrived'].includes(status) && driverLat && driverLng && pLat && pLng) {
-       origin = { lat: driverLat, lng: driverLng };
-       target = { lat: pLat, lng: pLng };
+    // A. Driver is coming to Pickup
+    if (['accepted', 'arrived'].includes(status) && driverLat && driverLng) {
+        origin = { lat: driverLat, lng: driverLng };
+        target = { lat: pLat, lng: pLng };
     } 
-    // SCENARIO B: Inside the Car (Driver -> Destination)
-    else if (status === 'in_progress' && driverLat && driverLng && dLat && dLng) {
-       origin = { lat: driverLat, lng: driverLng };
-       target = { lat: dLat, lng: dLng };
+    // B. Driver is going to Destination
+    else if (status === 'in_progress' && driverLat && driverLng) {
+        origin = { lat: driverLat, lng: driverLng };
+        target = { lat: dLat, lng: dLng };
     }
-    // SCENARIO C: Just looking at the route (Pickup -> Dest)
+    // C. Default (Preview)
     else if (pLat && pLng && dLat && dLng) {
-       origin = { lat: pLat, lng: pLng };
-       target = { lat: dLat, lng: dLng };
+        origin = { lat: pLat, lng: pLng };
+        target = { lat: dLat, lng: dLng };
     }
 
     if (origin && target) {
-      directionsService.route({
-        origin: origin,
-        destination: target,
-        travelMode: window.google.maps.TravelMode.DRIVING
-      }, (result, status) => {
-        if (status === 'OK' && directionsRendererRef.current) {
-          directionsRendererRef.current.setDirections(result);
-        }
-      });
+        directionsService.route({
+            origin: origin,
+            destination: target,
+            travelMode: window.google.maps.TravelMode.DRIVING
+        }, (result, status) => {
+            if (status === 'OK' && directionsRendererRef.current) {
+                directionsRendererRef.current.setDirections(result);
+                
+                // 🔥 CRITICAL: Force Camera to Fit Bounds (Driver + Dest)
+                const bounds = new window.google.maps.LatLngBounds();
+                bounds.extend(origin);
+                bounds.extend(target);
+                mapInstanceRef.current.fitBounds(bounds);
+                
+                // Add padding so markers aren't on the edge of screen
+                const padding = { top: 50, right: 20, bottom: 50, left: 20 };
+                mapInstanceRef.current.panToBounds(bounds, padding);
+            }
+        });
     }
   }, [pLat, pLng, dLat, dLng, driverLat, driverLng, status]);
 
-  // 3. Driver Marker Logic
+  // 3. Driver Marker
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLat || !driverLng) return;
 
@@ -350,35 +356,42 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     const heading = parseFloat(driverLocation.heading) || 0;
 
     if (!driverMarkerRef.current) {
-      driverMarkerRef.current = new window.google.maps.Marker({
-        position: pos,
-        map: mapInstanceRef.current,
-        icon: {
-          path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 6,
-          fillColor: "#00d4ff",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
-          rotation: heading
-        },
-        zIndex: 1000
-      });
+        driverMarkerRef.current = new window.google.maps.Marker({
+            position: pos,
+            map: mapInstanceRef.current,
+            icon: {
+                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 7,
+                fillColor: "#00d4ff",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 2,
+                rotation: heading,
+                anchor: new window.google.maps.Point(0, 2.5) // Center the arrow
+            },
+            zIndex: 9999 // Force on top
+        });
     } else {
-      driverMarkerRef.current.setPosition(pos);
-      const icon = driverMarkerRef.current.getIcon();
-      icon.rotation = heading;
-      driverMarkerRef.current.setIcon(icon);
+        // Smoothly animate to new position (Native GMaps behavior)
+        driverMarkerRef.current.setPosition(pos);
+        const icon = driverMarkerRef.current.getIcon();
+        icon.rotation = heading;
+        driverMarkerRef.current.setIcon(icon);
     }
   }, [driverLat, driverLng]);
 
+  // Make map taller (450px) for immersive feel
   return (
     <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]">
-      <div ref={mapRef} style={{ height: '300px', width: '100%', minHeight: '300px' }} />
+      <div ref={mapRef} style={{ height: '450px', width: '100%', minHeight: '450px' }} />
       
-      {/* Status Badge */}
-      <div className="absolute top-3 right-3 bg-black/80 px-3 py-1 rounded-full border border-[#00ff88]/50 text-[#00ff88] text-xs font-bold shadow-lg">
-        {status === 'accepted' ? 'Driver En Route' : status === 'in_progress' ? 'On Trip' : 'Route Preview'}
+      {/* Status Overlay */}
+      <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none">
+          <div className="bg-black/80 backdrop-blur px-4 py-2 rounded-xl border border-[#00ff88]/30 shadow-lg">
+             <p className="text-[#00ff88] text-xs font-bold uppercase">
+                {status === 'accepted' ? 'Driver Arriving' : status === 'in_progress' ? 'On Trip' : 'Route Preview'}
+             </p>
+          </div>
       </div>
     </div>
   );
@@ -643,7 +656,7 @@ const RiderDashboard = () => {
     let interval;
     if (activeRide && !["completed", "cancelled", "no_drivers"].includes(activeRide.status)) {
         // Poll active ride every 4 seconds to get latest driver_location
-        interval = setInterval(fetchActiveRide, 4000);
+        interval = setInterval(fetchActiveRide, 2000);
     }
     return () => clearInterval(interval);
   }, [activeRide?.status]); 
