@@ -308,30 +308,29 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
   );
 };
 
-// 🔥 FIXED: Smart Driver Map (Auto-Zooms + Smooth Marker + Route Line)
+// 🔥 FIXED: Smart Driver Map (Follow Mode, Manual Zoom, Nav Buttons)
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
   const routeRendererRef = useRef(null);
   const directionsServiceRef = useRef(null);
+  
+  // 🟢 State to track if camera should lock to driver
+  const [isFollowing, setIsFollowing] = useState(true);
 
-  // Helper: Force coordinates to be numbers
-  const getSafeCoord = (val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num !== 0 ? num : null;
-  };
+  const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
 
-  // 1. Initialize Map (Run once)
+  // 1. Initialize Map
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
 
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 },
-        zoom: 17,
-        disableDefaultUI: true, // Clean driver view
-        zoomControl: true,
+        zoom: 18, // Start at driving zoom level
+        disableDefaultUI: true, // We build our own buttons
+        zoomControl: false,
         styles: [
           { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
           { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
@@ -341,19 +340,22 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         ]
       });
 
-      // The Blue Route Line
+      // 🛑 CRITICAL: Detect user interaction to disable auto-follow
+      mapInstanceRef.current.addListener("dragstart", () => setIsFollowing(false));
+
+      // Route Renderer (The Green Line)
       routeRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
-        suppressMarkers: true, // We use custom icons
+        suppressMarkers: true,
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
-        preserveViewport: false // Allow fitBounds to work
+        preserveViewport: true // 🛑 CRITICAL: Prevents route updates from changing your zoom
       });
 
       directionsServiceRef.current = new window.google.maps.DirectionsService();
     }
   }, []);
 
-  // 2. Update Driver Marker (Runs fast - every GPS update)
+  // 2. Update Driver Marker & Handle Following
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
 
@@ -364,6 +366,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     if (!lat || !lng) return;
     const pos = { lat, lng };
 
+    // Update Marker
     if (!markerRef.current) {
       markerRef.current = new window.google.maps.Marker({
         position: pos,
@@ -381,15 +384,20 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         zIndex: 1000
       });
     } else {
-      // Smoothly move the existing marker
       markerRef.current.setPosition(pos);
       const icon = markerRef.current.getIcon();
       icon.rotation = heading;
       markerRef.current.setIcon(icon);
     }
-  }, [driverLocation]); 
 
-  // 3. Routing Logic (Runs only when status changes)
+    // 🎥 CAMERA LOGIC: Only move camera if "Following" is ON
+    if (isFollowing) {
+        mapInstanceRef.current.panTo(pos);
+        // Note: We don't force setZoom here, so the driver can zoom in/out freely while following
+    }
+  }, [driverLocation, isFollowing]);
+
+  // 3. Routing Logic (Draws line, but DOES NOT mess with camera zoom)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) return;
 
@@ -398,13 +406,10 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     if (!dLat || !dLng) return;
 
     let target = null;
-
-    // A. Driving to Pickup
+    // Determine Target based on status
     if (["accepted", "arrived"].includes(activeRide.status)) {
         target = { lat: parseFloat(activeRide.pickup_lat), lng: parseFloat(activeRide.pickup_lng) };
-    } 
-    // B. Driving to Destination
-    else if (activeRide.status === "in_progress") {
+    } else if (activeRide.status === "in_progress") {
         target = { lat: parseFloat(activeRide.dest_lat || activeRide.destination_lat), lng: parseFloat(activeRide.dest_lng || activeRide.destination_lng) };
     }
 
@@ -416,20 +421,76 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         }, (result, status) => {
             if (status === 'OK' && routeRendererRef.current) {
                 routeRendererRef.current.setDirections(result);
-                
-                // 🔥 THE MAGIC: Auto-Zoom to fit Driver + Target
-                const bounds = new window.google.maps.LatLngBounds();
-                bounds.extend({ lat: dLat, lng: dLng });
-                bounds.extend(target);
-                mapInstanceRef.current.fitBounds(bounds);
-                // Add padding so icons aren't on the edge
-                mapInstanceRef.current.panToBounds(bounds, { top: 50, bottom: 50, left: 30, right: 30 });
+                // We intentionally do NOT call fitBounds here after the first load
+                // so we don't snap the driver's view away while they are driving.
             }
         });
     }
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]);
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]); 
 
-  return <div ref={mapRef} className="w-full h-[400px] rounded-xl border border-[#00d4ff]/20 bg-[#1a1a2e]" />;
+  // 4. External Navigation Buttons
+  const handleNav = (app) => {
+    if (!activeRide) return;
+    let lat, lng;
+    
+    // Logic: Go to pickup if not started, go to dest if started
+    if (["accepted", "arrived"].includes(activeRide.status)) {
+        lat = activeRide.pickup_lat; lng = activeRide.pickup_lng;
+    } else {
+        lat = activeRide.dest_lat || activeRide.destination_lat; lng = activeRide.dest_lng || activeRide.destination_lng;
+    }
+
+    if (!lat) return;
+
+    const url = app === 'waze' 
+        ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
+        : `http://googleusercontent.com/maps.google.com/maps?daddr=${lat},${lng}&travelmode=driving`;
+    
+    window.open(url, '_system');
+  };
+
+  // 5. Recenter Button Logic
+  const recenterMap = () => {
+      setIsFollowing(true);
+      if (driverLocation) {
+          const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
+          mapInstanceRef.current.panTo(pos);
+          mapInstanceRef.current.setZoom(18); // Reset to "Driving Zoom"
+      }
+  };
+
+  return (
+    <div className="relative w-full h-[450px] rounded-xl border border-[#00d4ff]/20 bg-[#1a1a2e] overflow-hidden">
+        {/* The Map */}
+        <div ref={mapRef} className="w-full h-full" />
+
+        {/* OVERLAY: Recenter Button (Only shows if user dragged away) */}
+        {!isFollowing && (
+            <button 
+                onClick={recenterMap}
+                className="absolute bottom-20 right-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in"
+            >
+                <Crosshair className="w-6 h-6 animate-pulse" />
+            </button>
+        )}
+
+        {/* OVERLAY: Navigation Buttons */}
+        <div className="absolute bottom-4 left-4 right-4 flex gap-3 z-10">
+            <Button 
+                onClick={() => handleNav('waze')} 
+                className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20"
+            >
+                <Zap className="w-4 h-4 mr-2" /> Waze
+            </Button>
+            <Button 
+                onClick={() => handleNav('google')} 
+                className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20"
+            >
+                <Navigation className="w-4 h-4 mr-2" /> Maps
+            </Button>
+        </div>
+    </div>
+  );
 };
 
 // Driver Dashboard Component
@@ -501,26 +562,6 @@ const DriverDashboard = () => {
   
   useLocationTracker(isOnline, handleLocationUpdate);
 
-  // 🔥 NEW: Navigation Button Logic
-  const handleExternalNav = (app) => {
-    if (!activeRide) return;
-    let lat, lng;
-    
-    if (["accepted", "arrived"].includes(activeRide.status)) {
-        lat = activeRide.pickup_lat; lng = activeRide.pickup_lng;
-    } else {
-        lat = activeRide.dest_lat || activeRide.destination_lat; lng = activeRide.dest_lng || activeRide.destination_lng;
-    }
-
-    if (!lat || !lng) return toast.error("No location found");
-
-    const url = app === 'waze' 
-        ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
-        : `http://googleusercontent.com/maps.google.com/maps?daddr=${lat},${lng}&travelmode=driving`;
-
-    window.open(url, '_system');
-  };
-
   // Timers & Fetching Logic
   useEffect(() => {
     let interval;
@@ -560,10 +601,6 @@ const DriverDashboard = () => {
     } catch (e) { toast.error("Action failed"); } finally { setLoading(false); }
   };
 
-  // ... (Keep your existing helpers: handleRequestToJoin, handleToggleOnline, handleRegisterVehicle, handleAcceptRide, handleDeclineRide, handleRequestTopup, handleWithdrawal)
-  // [I am abbreviating these strictly to save space, assuming you have the logic from your previous snippet. 
-  //  The critical changes are in the JSX below]
-  
   const handleToggleOnline = async (online) => {
     try { await api.post(`/driver/status?is_online=${online}`); setIsOnline(online); updateUser({ ...user, is_online: online }); toast.success(online ? "Online" : "Offline"); } catch (e) { toast.error("Failed"); }
   };
@@ -611,15 +648,9 @@ const DriverDashboard = () => {
                 <CardHeader><div className="flex justify-between items-center"><CardTitle className="text-[#00ff88]">Active Ride</CardTitle><Badge className={rideStatusColors[activeRide.status]}>{activeRide.status?.replace(/_/g, " ").toUpperCase()}</Badge></div></CardHeader>
                 <CardContent className="space-y-4 text-white">
                   
-                  {/* 🔥 FIXED: The New Smart Map + Nav Buttons */}
+                  {/* 🔥 FIXED: Integrated Map with Nav Buttons */}
                   {mapsLoaded && (
-                    <div className="relative">
-                        <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />
-                        <div className="absolute bottom-4 right-4 flex flex-col gap-2">
-                            <Button size="icon" className="rounded-full bg-blue-500 hover:bg-blue-600 shadow-lg w-12 h-12 border border-white/20" onClick={() => handleExternalNav('waze')}><Zap className="w-6 h-6 text-white" fill="white" /></Button>
-                            <Button size="icon" className="rounded-full bg-green-500 hover:bg-green-600 shadow-lg w-12 h-12 border border-white/20" onClick={() => handleExternalNav('google')}><Navigation className="w-6 h-6 text-white" /></Button>
-                        </div>
-                    </div>
+                    <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />
                   )}
 
                   <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
@@ -647,7 +678,6 @@ const DriverDashboard = () => {
                 </CardContent>
               </Card>
             ) : (
-                // (This block is your standard "No Ride" / "Pending" view - kept identical)
                 registrationStatus !== "approved" ? <Card className="bg-black/60 border border-yellow-500/30 text-center py-12"><AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" /><p className="text-yellow-400 font-semibold">Account Pending</p></Card> : 
                 !isOnline ? <Card className="bg-black/60 border border-gray-500/30 text-center py-12"><Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" /><p className="text-gray-400">Offline</p><Button className="mt-4 bg-[#00ff88] text-black" onClick={() => handleToggleOnline(true)}>Go Online</Button></Card> :
                 availableRides.length === 0 ? <Card className="bg-black/60 border border-[#00d4ff]/30 text-center py-12"><Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" /><p className="text-[#00d4ff]/70">Searching for rides...</p></Card> :
@@ -655,29 +685,11 @@ const DriverDashboard = () => {
             )}
           </TabsContent>
 
-          {/* Other Tabs (Vehicle, Earnings, History, Nearby) */}
-          <TabsContent value="nearby">
-             {/* Nearby Logic Kept Exact */}
-             <div className="space-y-4">
-                <div className="flex justify-end mb-2"><Button size="sm" variant="outline" onClick={fetchNearbyRides}>Refresh</Button></div>
-                {nearbyRides.map(ride => ( <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white"><p className="text-[#00ff88]">{ride.pickup}</p><p className="text-[#00d4ff]">→ {ride.destination}</p><Button className="w-full mt-2 bg-[#00d4ff] text-black" onClick={()=>handleRequestToJoin(ride.id)}>Request to Accept</Button></CardContent></Card> ))}
-             </div>
-          </TabsContent>
-          
-          <TabsContent value="vehicle">
-             {/* Vehicle Logic Kept Exact */}
-             <Card className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white">{hasVehicle ? <div className="p-4 bg-black/50 rounded border border-[#00ff88]/30"><p>Vehicle Registered</p><p className="text-xl font-mono text-[#00ff88]">{user.driver_info.vehicle.license_plate}</p></div> : <form onSubmit={handleRegisterVehicle} className="space-y-4"><Input placeholder="Make" value={vehicleData.car_make} onChange={e=>setVehicleData({...vehicleData, car_make: e.target.value})} className="bg-black/50 text-white" /><Input placeholder="License Plate" value={vehicleData.license_plate} onChange={e=>setVehicleData({...vehicleData, license_plate: e.target.value})} className="bg-black/50 text-white" /><Button type="submit" className="w-full bg-[#00d4ff] text-black">Register</Button></form>}</CardContent></Card>
-          </TabsContent>
-
-          <TabsContent value="earnings">
-             {/* Earnings Logic Kept Exact */}
-             <div className="space-y-4"><Card className="p-4 bg-black/60 border border-[#00ff88]"><p className="text-gray-400">Balance</p><p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p></Card><Input type="number" placeholder="Amount" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} className="bg-black/50 text-white"/><Button className="w-full bg-[#00ff88] text-black" onClick={handleRequestTopup}>Top Up</Button></div>
-          </TabsContent>
-
-          <TabsContent value="history">
-             {/* History Logic Kept Exact */}
-             <ScrollArea className="h-[400px]">{rideHistory.map(r => <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 mb-2 rounded"><p className="text-white">{r.pickup}</p><p className="text-[#00ff88] font-bold">₾{r.final_fare}</p></div>)}</ScrollArea>
-          </TabsContent>
+          {/* ... (Other Tabs kept identical for brevity) ... */}
+          <TabsContent value="nearby"><div className="space-y-4"><div className="flex justify-end mb-2"><Button size="sm" variant="outline" onClick={fetchNearbyRides}>Refresh</Button></div>{nearbyRides.map(ride => ( <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white"><p className="text-[#00ff88]">{ride.pickup}</p><p className="text-[#00d4ff]">→ {ride.destination}</p><Button className="w-full mt-2 bg-[#00d4ff] text-black" onClick={()=>handleRequestToJoin(ride.id)}>Request to Accept</Button></CardContent></Card> ))}</div></TabsContent>
+          <TabsContent value="vehicle"><Card className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white">{hasVehicle ? <div className="p-4 bg-black/50 rounded border border-[#00ff88]/30"><p>Vehicle Registered</p><p className="text-xl font-mono text-[#00ff88]">{user.driver_info.vehicle.license_plate}</p></div> : <form onSubmit={handleRegisterVehicle} className="space-y-4"><Input placeholder="Make" value={vehicleData.car_make} onChange={e=>setVehicleData({...vehicleData, car_make: e.target.value})} className="bg-black/50 text-white" /><Input placeholder="License Plate" value={vehicleData.license_plate} onChange={e=>setVehicleData({...vehicleData, license_plate: e.target.value})} className="bg-black/50 text-white" /><Button type="submit" className="w-full bg-[#00d4ff] text-black">Register</Button></form>}</CardContent></Card></TabsContent>
+          <TabsContent value="earnings"><div className="space-y-4"><Card className="p-4 bg-black/60 border border-[#00ff88]"><p className="text-gray-400">Balance</p><p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p></Card><Input type="number" placeholder="Amount" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} className="bg-black/50 text-white"/><Button className="w-full bg-[#00ff88] text-black" onClick={handleRequestTopup}>Top Up</Button></div></TabsContent>
+          <TabsContent value="history"><ScrollArea className="h-[400px]">{rideHistory.map(r => <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 mb-2 rounded"><p className="text-white">{r.pickup}</p><p className="text-[#00ff88] font-bold">₾{r.final_fare}</p></div>)}</ScrollArea></TabsContent>
 
         </Tabs>
       </main>

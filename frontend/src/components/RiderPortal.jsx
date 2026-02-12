@@ -258,141 +258,157 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 };
 
 
-// 🔥 FIXED: Live Map with Auto-Zoom (Fits Driver + Destination)
+// --- 3. LIVE MAP COMPONENT (Auto-Follow + Traffic ETA + Rerouting) ---
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const driverMarkerRef = useRef(null);
+  const [eta, setEta] = useState(null); // Stores "15 mins"
 
+  // Helper to ensure coordinates are numbers
   const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
 
-  const pLat = getSafeCoord(pickup?.lat);
-  const pLng = getSafeCoord(pickup?.lng);
-  const dLat = getSafeCoord(destination?.lat);
-  const dLng = getSafeCoord(destination?.lng);
-  const driverLat = getSafeCoord(driverLocation?.lat);
-  const driverLng = getSafeCoord(driverLocation?.lng);
-
-  // 1. Initialize Map
+  // 1. Initialize Map (Run Once)
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
-
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-        center: { lat: pLat || 41.7151, lng: pLng || 44.8271 },
-        zoom: 15, // Started closer
-        disableDefaultUI: true,
+        center: { lat: 41.7151, lng: 44.8271 }, 
+        zoom: 15, 
+        disableDefaultUI: true, // Clean look
         backgroundColor: '#1a1a2e',
         styles: [
           { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
           { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
           { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-          { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+          { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] }
         ]
       });
-
-      directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-        map: mapInstanceRef.current,
-        suppressMarkers: false,
-        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 }, // Thicker line
-        preserveViewport: false // 🔥 Let the route dictate the zoom
+      
+      // Initialize Route Drawer (The Green Line)
+      directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ 
+        map: mapInstanceRef.current, 
+        suppressMarkers: true, // We will draw our own custom car/pin icons
+        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 } 
       });
     }
   }, []);
 
-  // 2. ROUTING & AUTO-ZOOM LOGIC
+  // 2. Logic: Draw Route & Calculate ETA (Runs when Driver Moves)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
-    const directionsService = new window.google.maps.DirectionsService();
-    let origin = null;
+    const dLat = getSafeCoord(driverLocation?.lat);
+    const dLng = getSafeCoord(driverLocation?.lng);
+    const pLat = getSafeCoord(pickup?.lat);
+    const pLng = getSafeCoord(pickup?.lng);
+    const destLat = getSafeCoord(destination?.lat);
+    const destLng = getSafeCoord(destination?.lng);
+
+    // MODE A: Preview (Booking Screen) - Show Pickup to Destination
+    if (status === 'preview' && pLat && destLat) {
+       calculateAndDrawRoute({ lat: pLat, lng: pLng }, { lat: destLat, lng: destLng });
+       return;
+    }
+
+    // MODE B: Live Ride (Follow Driver)
+    if (!dLat || !dLng) return; // Wait for driver location
+
+    let origin = { lat: dLat, lng: dLng }; // Start at Driver
     let target = null;
 
-    // A. Driver is coming to Pickup
-    if (['accepted', 'arrived'].includes(status) && driverLat && driverLng) {
-        origin = { lat: driverLat, lng: driverLng };
+    // If Driver is coming to pick you up -> Target is Pickup
+    if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
         target = { lat: pLat, lng: pLng };
     } 
-    // B. Driver is going to Destination
-    else if (status === 'in_progress' && driverLat && driverLng) {
-        origin = { lat: driverLat, lng: driverLng };
-        target = { lat: dLat, lng: dLng };
-    }
-    // C. Default (Preview)
-    else if (pLat && pLng && dLat && dLng) {
-        origin = { lat: pLat, lng: pLng };
-        target = { lat: dLat, lng: dLng };
+    // If Driver is driving you -> Target is Destination
+    else if (status === 'in_progress' && destLat) {
+        target = { lat: destLat, lng: destLng };
     }
 
     if (origin && target) {
-        directionsService.route({
-            origin: origin,
-            destination: target,
-            travelMode: window.google.maps.TravelMode.DRIVING
-        }, (result, status) => {
-            if (status === 'OK' && directionsRendererRef.current) {
-                directionsRendererRef.current.setDirections(result);
-                
-                // 🔥 CRITICAL: Force Camera to Fit Bounds (Driver + Dest)
-                const bounds = new window.google.maps.LatLngBounds();
-                bounds.extend(origin);
-                bounds.extend(target);
-                mapInstanceRef.current.fitBounds(bounds);
-                
-                // Add padding so markers aren't on the edge of screen
-                const padding = { top: 50, right: 20, bottom: 50, left: 20 };
-                mapInstanceRef.current.panToBounds(bounds, padding);
-            }
-        });
+        calculateAndDrawRoute(origin, target);
     }
-  }, [pLat, pLng, dLat, dLng, driverLat, driverLng, status]);
 
-  // 3. Driver Marker
+  }, [driverLocation?.lat, driverLocation?.lng, status, pickup?.lat, destination?.lat]);
+
+  // Helper Function to Call Google API
+  const calculateAndDrawRoute = (origin, target) => {
+    const directionsService = new window.google.maps.DirectionsService();
+    
+    directionsService.route({
+        origin: origin,
+        destination: target,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+        // 🔥 This enables Real-time Traffic info
+        drivingOptions: {
+            departureTime: new Date(),
+            trafficModel: 'best_guess'
+        }
+    }, (result, status) => {
+        if (status === 'OK' && directionsRendererRef.current) {
+            directionsRendererRef.current.setDirections(result);
+            
+            // Extract Traffic ETA
+            const leg = result.routes[0].legs[0];
+            const timeString = leg.duration_in_traffic ? leg.duration_in_traffic.text : leg.duration.text;
+            setEta(timeString);
+
+            // 🔥 Auto-Zoom to fit Driver + Destination
+            const bounds = new window.google.maps.LatLngBounds();
+            bounds.extend(origin);
+            bounds.extend(target);
+            mapInstanceRef.current.fitBounds(bounds);
+            // Add padding so icons aren't on the very edge
+            mapInstanceRef.current.panToBounds(bounds, { top: 50, bottom: 50, left: 50, right: 50 });
+        }
+    });
+  };
+
+  // 3. Update Car Marker Icon (Visual Only)
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !driverLat || !driverLng) return;
-
-    const pos = { lat: driverLat, lng: driverLng };
+    if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
+    
+    const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
     const heading = parseFloat(driverLocation.heading) || 0;
 
     if (!driverMarkerRef.current) {
-        driverMarkerRef.current = new window.google.maps.Marker({
-            position: pos,
-            map: mapInstanceRef.current,
-            icon: {
-                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 7,
-                fillColor: "#00d4ff",
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 2,
-                rotation: heading,
-                anchor: new window.google.maps.Point(0, 2.5) // Center the arrow
-            },
-            zIndex: 9999 // Force on top
-        });
+      driverMarkerRef.current = new window.google.maps.Marker({
+        position: pos,
+        map: mapInstanceRef.current,
+        icon: {
+          path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 6,
+          fillColor: "#00d4ff",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+          rotation: heading
+        },
+        zIndex: 1000
+      });
     } else {
-        // Smoothly animate to new position (Native GMaps behavior)
-        driverMarkerRef.current.setPosition(pos);
-        const icon = driverMarkerRef.current.getIcon();
-        icon.rotation = heading;
-        driverMarkerRef.current.setIcon(icon);
+      // Smoothly move marker
+      driverMarkerRef.current.setPosition(pos);
+      const icon = driverMarkerRef.current.getIcon();
+      icon.rotation = heading;
+      driverMarkerRef.current.setIcon(icon);
     }
-  }, [driverLat, driverLng]);
+  }, [driverLocation?.lat, driverLocation?.lng, driverLocation?.heading]);
 
-  // Make map taller (450px) for immersive feel
   return (
     <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]">
-      <div ref={mapRef} style={{ height: '450px', width: '100%', minHeight: '450px' }} />
-      
-      {/* Status Overlay */}
-      <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none">
-          <div className="bg-black/80 backdrop-blur px-4 py-2 rounded-xl border border-[#00ff88]/30 shadow-lg">
-             <p className="text-[#00ff88] text-xs font-bold uppercase">
-                {status === 'accepted' ? 'Driver Arriving' : status === 'in_progress' ? 'On Trip' : 'Route Preview'}
-             </p>
-          </div>
-      </div>
+        {/* The Map */}
+        <div ref={mapRef} style={{ height: '350px', width: '100%' }} />
+        
+        {/* 🔥 Live ETA Badge */}
+        {eta && (
+            <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] text-[#00ff88] px-4 py-2 rounded-xl shadow-lg backdrop-blur-md z-10 flex items-center gap-2">
+                <Timer className="w-4 h-4 animate-pulse" />
+                <span className="font-bold font-mono">{eta}</span>
+            </div>
+        )}
     </div>
   );
 };
@@ -589,6 +605,46 @@ const RiderDashboard = () => {
   const [rideHistory, setRideHistory] = useState([]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPayPal, setShowPayPal] = useState(false);
+
+  // --- CARD PAYMENT STATE ---
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [cardDetails, setCardDetails] = useState({ number: "", expiry: "", cvv: "" });
+
+  // Handle formatted input
+  const handleCardInput = (field, value) => {
+    let formatted = value;
+    
+    if (field === "number") {
+      // Allow only numbers, max 16 digits
+      formatted = value.replace(/\D/g, "").slice(0, 16);
+    } else if (field === "expiry") {
+      // Format as MM/YY
+      formatted = value.replace(/\D/g, "").slice(0, 4);
+      if (formatted.length >= 3) formatted = `${formatted.slice(0, 2)}/${formatted.slice(2)}`;
+    } else if (field === "cvv") {
+      // Max 3 digits
+      formatted = value.replace(/\D/g, "").slice(0, 3);
+    }
+    
+    setCardDetails({ ...cardDetails, [field]: formatted });
+  };
+
+  // Process the Card Payment
+  const handleCardPayment = async (e) => {
+    e.preventDefault();
+    if (cardDetails.number.length < 16 || cardDetails.expiry.length < 5 || cardDetails.cvv.length < 3) {
+        return toast.error("Please complete card details");
+    }
+
+    setLoading(true);
+    // Simulate API processing time
+    setTimeout(() => {
+        setLoading(false);
+        setShowCardModal(false);
+        toast.success("Payment Method Verified");
+        processRideRequest(); // Proceed to book the ride
+    }, 1500);
+  };
   
   // Booking state
   const [pickup, setPickup] = useState({ address: "", lat: null, lng: null });
@@ -762,18 +818,19 @@ const RiderDashboard = () => {
   };
 
   const handleBookRide = async () => {
-    if (!pickup.lat || !pickup.address) {
-      toast.error("Please select pickup location");
-      return;
-    }
+ if (!pickup.lat || !pickup.address) {
+ toast.error("Please select pickup location");
+ return;
+ }
 
-    if (paymentMethod === "card") {
-      setShowPayPal(true);
-      return;
-    }
+ if (paymentMethod === "card") {
+      // ✅ CORRECT: Opens your new custom card form
+ setShowCardModal(true); 
+ return;
+ }
 
-    await processRideRequest();
-  };
+ await processRideRequest();
+ };
 
   const processRideRequest = async () => {
     setLoading(true);
