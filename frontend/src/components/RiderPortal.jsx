@@ -637,56 +637,59 @@ const RiderDashboard = () => {
     }
   }, [pickup.lat, pickup.lng]);
 
+ // 🔥 FIXED: Route Calculator (Prevents Infinite Loop Crash)
+  const calculateRoute = useCallback(() => {
+    if (!window.google || !pickup.lat || !destination.lat) return;
+
     try {
-        const directionsService = new window.google.maps.DirectionsService();
-        
-        // Ensure stops are valid numbers
-        const waypoints = stops
-            .filter(s => s.lat && s.lng)
-            .map(s => ({ 
-                location: { lat: parseFloat(s.lat), lng: parseFloat(s.lng) }, 
-                stopover: true 
-            }));
+      const directionsService = new window.google.maps.DirectionsService();
 
-        directionsService.route({ 
-            origin: { lat: parseFloat(pickup.lat), lng: parseFloat(pickup.lng) }, 
-            destination: { lat: parseFloat(destination.lat), lng: parseFloat(destination.lng) }, 
-            waypoints: waypoints, 
-            travelMode: window.google.maps.TravelMode.DRIVING 
-        }, (res, status) => {
-            if (status === 'OK' && res.routes[0] && res.routes[0].legs) {
-                let d = 0, t = 0; 
-                res.routes[0].legs.forEach(l => { 
-                    d += l.distance.value; 
-                    t += l.duration.value; 
-                });
-                
-                // Only update state if the values are actually different
-                // This prevents the "flicker" re-render
-                setRouteInfo(prev => {
-                    const newDist = Math.round(d/100)/10;
-                    if (prev && prev.distance === newDist) return prev;
-                    return { 
-                        distance: newDist, // km
-                        duration: Math.round(t/60) // min
-                    };
-                });
-            } else {
-                console.warn("Route failed:", status);
-            }
-        });
+      // Ensure stops are valid numbers
+      const waypoints = stops
+        .filter(s => s.lat && s.lng)
+        .map(s => ({
+          location: { lat: parseFloat(s.lat), lng: parseFloat(s.lng) },
+          stopover: true
+        }));
+
+      directionsService.route({
+        origin: { lat: parseFloat(pickup.lat), lng: parseFloat(pickup.lng) },
+        destination: { lat: parseFloat(destination.lat), lng: parseFloat(destination.lng) },
+        waypoints: waypoints,
+        travelMode: window.google.maps.TravelMode.DRIVING
+      }, (res, status) => {
+        if (status === 'OK' && res.routes[0] && res.routes[0].legs) {
+          let d = 0, t = 0;
+          res.routes[0].legs.forEach(l => {
+            d += l.distance.value;
+            t += l.duration.value;
+          });
+
+          const newDist = Math.round(d / 100) / 10;
+          const newDur = Math.round(t / 60);
+
+          // 🔥 CRITICAL FIX: Loop Stopper
+          // Only update state if the values are ACTUALLY different.
+          setRouteInfo(prev => {
+            if (prev && prev.distance === newDist && prev.duration === newDur) return prev;
+            return { distance: newDist, duration: newDur };
+          });
+        } else {
+          console.warn("Route failed:", status);
+        }
+      });
     } catch (err) {
-        console.error("Route Error:", err);
+      console.error("Route Error:", err);
     }
+  }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stops]);
 
-  // 🔥 TRIGGER: Only run when NUMBERS change
+  // 🔥 TRIGGER: Only run when NUMBERS change (Debounced)
   useEffect(() => {
     if (mapsLoaded && pickup.lat && destination.lat) {
-        // Debounce: Wait 500ms to make sure user finished typing/selecting
-        const timer = setTimeout(() => {
-            calculateRoute();
-        }, 500);
-        return () => clearTimeout(timer);
+      const timer = setTimeout(() => {
+        calculateRoute();
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [mapsLoaded, pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length, calculateRoute]);
 
@@ -698,16 +701,15 @@ const RiderDashboard = () => {
     }
   }, [routeInfo, carType, stops.length, surgeInfo]);
 
-  // 🔥 POLL FOR ACTIVE RIDE + DRIVER LOCATION
+  // 🔥 POLL FOR ACTIVE RIDE
   useEffect(() => {
     let interval;
     if (activeRide && !["completed", "cancelled", "no_drivers"].includes(activeRide.status)) {
-        // Poll active ride every 4 seconds to get latest driver_location
-        interval = setInterval(fetchActiveRide, 2000);
+      interval = setInterval(fetchActiveRide, 3000);
     }
     return () => clearInterval(interval);
-  }, [activeRide?.status]); 
-  
+  }, [activeRide?.status]);
+
   const fetchSurgeStatus = async () => {
     try {
       const params = pickup.lat ? `?lat=${pickup.lat}&lng=${pickup.lng}` : '';
@@ -718,46 +720,7 @@ const RiderDashboard = () => {
     }
   };
 
-  const calculateRoute = async () => {
-    if (!window.google || !pickup.lat || !destination.lat) return;
-    
-    const directionsService = new window.google.maps.DirectionsService();
-    
-    const waypoints = stops
-      .filter(s => s.lat && s.lng)
-      .map(s => ({
-        location: new window.google.maps.LatLng(s.lat, s.lng),
-        stopover: true
-      }));
-    
-    directionsService.route(
-      {
-        origin: new window.google.maps.LatLng(pickup.lat, pickup.lng),
-        destination: new window.google.maps.LatLng(destination.lat, destination.lng),
-        waypoints,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-        optimizeWaypoints: false
-      },
-      (result, status) => {
-        if (status === 'OK') {
-          let totalDistance = 0;
-          let totalDuration = 0;
-          
-          result.routes[0].legs.forEach(leg => {
-            totalDistance += leg.distance.value;
-            totalDuration += leg.duration.value;
-          });
-          
-          setRouteInfo({
-            distance: Math.round(totalDistance / 100) / 10,
-            duration: Math.round(totalDuration / 60)
-          });
-        } else {
-          console.error("Route calculation failed:", status);
-        }
-      }
-    );
-  };
+  // [DELETED THE DUPLICATE/BROKEN calculateRoute FUNCTION HERE]
 
   const fetchActiveRide = async () => {
     try {
@@ -803,12 +766,12 @@ const RiderDashboard = () => {
       toast.error("Please select pickup location");
       return;
     }
-    
+
     if (paymentMethod === "card") {
       setShowPayPal(true);
       return;
     }
-    
+
     await processRideRequest();
   };
 
@@ -833,9 +796,9 @@ const RiderDashboard = () => {
         estimatedDistance: routeInfo?.distance || 5,
         estimatedDuration: routeInfo?.duration || 15
       };
-      
+
       const res = await api.post(`/rides/request`, rideData);
-      
+
       toast.success("Ride requested! Searching for drivers...");
       setActiveRide({
         id: res.data.ride_id,
@@ -844,7 +807,7 @@ const RiderDashboard = () => {
         fare_breakdown: res.data.fare_breakdown
       });
       setActiveTab("active");
-      
+
       pollRideStatus(res.data.ride_id);
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to request ride");
@@ -859,7 +822,7 @@ const RiderDashboard = () => {
       try {
         const res = await api.get(`/rides/${rideId}`);
         setActiveRide(res.data);
-        
+
         if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
           clearInterval(interval);
           if (res.data.status === "completed") {
@@ -879,7 +842,7 @@ const RiderDashboard = () => {
 
   const handleCancelRide = async () => {
     if (!activeRide) return;
-    
+
     try {
       await api.post(`/rides/${activeRide.id}/cancel`);
       toast.success("Ride cancelled");
@@ -892,7 +855,7 @@ const RiderDashboard = () => {
 
   const handleRetryRide = async () => {
     if (!activeRide) return;
-    
+
     try {
       const res = await api.post(`/rides/${activeRide.id}/retry`);
       toast.success("Searching for drivers again...");
@@ -925,7 +888,7 @@ const RiderDashboard = () => {
         clearTimeout(safetyTimer);
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        
+
         if (!window.google) {
           setLocationLoading(false);
           toast.error("Maps not loaded. Using coordinates only.");
@@ -1038,9 +1001,14 @@ const RiderDashboard = () => {
               <CardContent className="space-y-4">
                 {/* Visual Route Map */}
                 {mapsLoaded && pickup.lat && destination.lat && (
-                  <RouteMap pickup={pickup} destination={destination} stops={stops} />
+                  <LiveTrackingMap 
+                    pickup={pickup} 
+                    destination={destination} 
+                    status="preview"
+                    driverLocation={null} // No driver yet
+                  />
                 )}
-                {/* ... (Rest of Book Tab Content same as before) ... */}
+                
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="pickup-input" className="text-[#00ff88]">Pickup Location</Label>
@@ -1104,10 +1072,10 @@ const RiderDashboard = () => {
 
           {/* PayPal Modal */}
           <Dialog open={showPayPal} onOpenChange={setShowPayPal}>
-            <DialogContent><DialogHeader><DialogTitle>Pay with PayPal</DialogTitle></DialogHeader><div className="p-4"><p className="text-center mb-4">Amount: ₾{fareEstimate?.total.toFixed(2)}</p><PayPalButtons createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: (fareEstimate.total * GEL_TO_USD).toFixed(2), currency_code: "USD" } }] })} onApprove={async (data, actions) => { await actions.order.capture(); toast.success("Payment successful!"); await processRideRequest(); }} /></div></DialogContent>
+            <DialogContent><DialogHeader><DialogTitle>Pay with PayPal</DialogTitle></DialogHeader><div className="p-4"><p className="text-center mb-4">Amount: ₾{fareEstimate?.total.toFixed(2)}</p><PayPalButtons createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: (fareEstimate.total * 0.37).toFixed(2), currency_code: "USD" } }] })} onApprove={async (data, actions) => { await actions.order.capture(); toast.success("Payment successful!"); await processRideRequest(); }} /></div></DialogContent>
           </Dialog>
 
-          {/* Active Tab - 🔥 NOW INCLUDES LIVE MAP */}
+          {/* Active Tab */}
           <TabsContent value="active">
             {activeRide ? (
               <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
@@ -1120,21 +1088,21 @@ const RiderDashboard = () => {
                 <CardContent className="space-y-4 text-white">
                   
                   {/* 🔥 SAFE ACTIVE MAP RENDER */}
-{mapsLoaded && activeRide && !isNaN(parseFloat(activeRide.pickup_lat)) && (
-    <RouteMap 
-        pickup={{ 
-            lat: parseFloat(activeRide.pickup_lat), 
-            lng: parseFloat(activeRide.pickup_lng) 
-        }}
-        destination={
-            activeRide.dest_lat && !isNaN(parseFloat(activeRide.dest_lat))
-            ? { lat: parseFloat(activeRide.dest_lat), lng: parseFloat(activeRide.dest_lng) } 
-            : null
-        }
-        stops={activeRide.stops || []}
-        driverLocation={activeRide.driver_location} 
-    />
-)}
+                  {mapsLoaded && activeRide && !isNaN(parseFloat(activeRide.pickup_lat)) && (
+                    <LiveTrackingMap 
+                        pickup={{ 
+                            lat: parseFloat(activeRide.pickup_lat), 
+                            lng: parseFloat(activeRide.pickup_lng) 
+                        }}
+                        destination={
+                            activeRide.dest_lat && !isNaN(parseFloat(activeRide.dest_lat))
+                            ? { lat: parseFloat(activeRide.dest_lat), lng: parseFloat(activeRide.dest_lng) } 
+                            : null
+                        }
+                        driverLocation={activeRide.driver_location} 
+                        status={activeRide.status}
+                    />
+                  )}
 
                   <div className="space-y-3">
                     <div><p className="text-[#00ff88]/60 text-sm">Pickup</p><p>{activeRide.pickup}</p></div>
@@ -1176,6 +1144,7 @@ const RiderDashboard = () => {
             )}
           </TabsContent>
 
+          {/* History Tab */}
           <TabsContent value="history">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
               <CardHeader><CardTitle className="text-[#00ff88]">Ride History</CardTitle></CardHeader>
@@ -1183,6 +1152,7 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
 
+          {/* Profile Tab */}
           <TabsContent value="profile">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
               <CardHeader><CardTitle className="text-[#00ff88]">Profile</CardTitle></CardHeader>
