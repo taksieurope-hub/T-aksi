@@ -637,11 +637,58 @@ const RiderDashboard = () => {
     }
   }, [pickup.lat, pickup.lng]);
 
+    try {
+        const directionsService = new window.google.maps.DirectionsService();
+        
+        // Ensure stops are valid numbers
+        const waypoints = stops
+            .filter(s => s.lat && s.lng)
+            .map(s => ({ 
+                location: { lat: parseFloat(s.lat), lng: parseFloat(s.lng) }, 
+                stopover: true 
+            }));
+
+        directionsService.route({ 
+            origin: { lat: parseFloat(pickup.lat), lng: parseFloat(pickup.lng) }, 
+            destination: { lat: parseFloat(destination.lat), lng: parseFloat(destination.lng) }, 
+            waypoints: waypoints, 
+            travelMode: window.google.maps.TravelMode.DRIVING 
+        }, (res, status) => {
+            if (status === 'OK' && res.routes[0] && res.routes[0].legs) {
+                let d = 0, t = 0; 
+                res.routes[0].legs.forEach(l => { 
+                    d += l.distance.value; 
+                    t += l.duration.value; 
+                });
+                
+                // Only update state if the values are actually different
+                // This prevents the "flicker" re-render
+                setRouteInfo(prev => {
+                    const newDist = Math.round(d/100)/10;
+                    if (prev && prev.distance === newDist) return prev;
+                    return { 
+                        distance: newDist, // km
+                        duration: Math.round(t/60) // min
+                    };
+                });
+            } else {
+                console.warn("Route failed:", status);
+            }
+        });
+    } catch (err) {
+        console.error("Route Error:", err);
+    }
+
+  // 🔥 TRIGGER: Only run when NUMBERS change
   useEffect(() => {
     if (mapsLoaded && pickup.lat && destination.lat) {
-      calculateRoute();
+        // Debounce: Wait 500ms to make sure user finished typing/selecting
+        const timer = setTimeout(() => {
+            calculateRoute();
+        }, 500);
+        return () => clearTimeout(timer);
     }
-  }, [pickup, destination, stops, mapsLoaded]);
+  }, [mapsLoaded, pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length, calculateRoute]);
 
   useEffect(() => {
     if (routeInfo) {
