@@ -21,7 +21,7 @@ import {
   Car, MapPin, Clock, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
   Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp,
-  MapPinned, Edit, CreditCard, CheckCircle2
+  MapPinned, Edit
 } from "lucide-react";
 
 // Pricing Rules
@@ -138,7 +138,127 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, []);
 };
 
-// 🔥 FIXED: Live Map (Follows Driver + Draws Line from Driver to End)
+// 🔥 FIXED: Map Picker (Crash Proof + Center Pin)
+const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const [address, setAddress] = useState("Move map to select location...");
+  const [isDragging, setIsDragging] = useState(false);
+  const [locating, setLocating] = useState(false);
+
+  // Safe center initialization
+  const [center, setCenter] = useState({ lat: 41.7151, lng: 44.8271 });
+
+  // Update center safely when initialLocation changes
+  useEffect(() => {
+      if (initialLocation && initialLocation.lat) {
+          setCenter({
+              lat: parseFloat(initialLocation.lat),
+              lng: parseFloat(initialLocation.lng)
+          });
+      }
+  }, [initialLocation, isOpen]);
+
+  // Initialize Map
+  useEffect(() => {
+    if (!isOpen || !mapRef.current || !window.google) return;
+
+    if (!mapInstanceRef.current) {
+        const map = new window.google.maps.Map(mapRef.current, {
+            center: center,
+            zoom: 17,
+            disableDefaultUI: true,
+            clickableIcons: false,
+            backgroundColor: '#1a1a2e',
+            styles: [
+                { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+                { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+                { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+                { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+            ]
+        });
+        mapInstanceRef.current = map;
+
+        map.addListener("idle", () => {
+            setIsDragging(false);
+            const newCenter = map.getCenter();
+            const lat = newCenter.lat();
+            const lng = newCenter.lng();
+            setCenter({ lat, lng }); 
+            
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                if (status === 'OK' && results[0]) setAddress(results[0].formatted_address);
+                else setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+            });
+        });
+
+        map.addListener("dragstart", () => setIsDragging(true));
+    } else {
+        // If map exists, render it properly
+        mapInstanceRef.current.setCenter(center);
+        window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
+    }
+  }, [isOpen]);
+
+  const handleLocateMe = () => {
+    if (!navigator.geolocation) return toast.error("Geolocation not supported");
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition((position) => {
+        const lat = parseFloat(position.coords.latitude);
+        const lng = parseFloat(position.coords.longitude);
+        if (mapInstanceRef.current) {
+            const pos = { lat, lng };
+            mapInstanceRef.current.panTo(pos);
+            mapInstanceRef.current.setZoom(17);
+            setCenter(pos);
+        }
+        setLocating(false);
+    }, () => { toast.error("Could not find location"); setLocating(false); }, { enableHighAccuracy: true });
+  };
+
+  const handleConfirm = () => {
+    // 🔥 CRITICAL: Ensure we send NUMBERS back
+    onLocationSelect({ 
+        address: address, 
+        lat: parseFloat(center.lat), 
+        lng: parseFloat(center.lng) 
+    });
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
+        <div className="absolute top-0 left-0 right-0 p-4 z-10 flex items-center justify-between pointer-events-none">
+            <Button variant="ghost" size="icon" onClick={onClose} className="bg-black/50 text-white rounded-full pointer-events-auto backdrop-blur-md border border-[#00ff88]/30"><ArrowLeft className="w-6 h-6" /></Button>
+            <div className="bg-black/50 backdrop-blur-md px-4 py-2 rounded-full border border-[#00ff88]/30"><p className="text-[#00ff88] font-bold text-sm">{title || "Select Location"}</p></div>
+        </div>
+        <div className="relative flex-1 w-full h-full">
+            <div ref={mapRef} className="w-full h-full" />
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center pb-10">
+                <div className="relative flex flex-col items-center">
+                    <MapPin className={`w-12 h-12 text-[#00ff88] drop-shadow-2xl transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`} fill="black" />
+                    <div className="w-2 h-2 bg-black/50 rounded-full blur-[2px] mt-[-5px]" />
+                </div>
+            </div>
+            <Button size="icon" className="absolute bottom-6 right-4 rounded-full w-12 h-12 bg-black/80 border border-[#00ff88]/50 text-[#00ff88] shadow-lg z-20" onClick={handleLocateMe} disabled={locating}>
+                {locating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Crosshair className="w-6 h-6" />}
+            </Button>
+        </div>
+        <div className="bg-[#1a1a2e] p-6 rounded-t-3xl border-t border-[#00ff88]/30 -mt-6 relative z-10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)]">
+            <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-4" />
+            <p className="text-[#00ff88] text-xs font-bold uppercase mb-1">Selected Location</p>
+            <h3 className="text-white text-lg font-bold truncate mb-6">{isDragging ? "Locating..." : address}</h3>
+            <Button className="w-full bg-[#00ff88] text-black font-bold h-14 text-lg rounded-xl" onClick={handleConfirm} disabled={isDragging}>{isDragging ? "Release to Select" : "Confirm Location"}</Button>
+        </div>
+    </div>
+  );
+};
+
+
+// --- 3. LIVE MAP COMPONENT (Fixed: Draws Line in Booking Mode) ---
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -153,7 +273,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 }, 
-        zoom: 15, 
+        zoom: 14, 
         disableDefaultUI: true, 
         backgroundColor: '#1a1a2e',
         styles: [
@@ -164,60 +284,52 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
         ]
       });
       
-      // Setup Route Drawer
       directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ 
         map: mapInstanceRef.current, 
-        suppressMarkers: true, // We draw custom icons
-        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
-        preserveViewport: true // We handle the camera manually
+        suppressMarkers: false, // Let Google draw the pins for A -> B
+        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 } 
       });
     }
   }, []);
 
-  // 2. Draw Route & Move Camera
+  // 2. Routing Logic
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
-    const pLat = getSafeCoord(pickup?.lat); const pLng = getSafeCoord(pickup?.lng);
-    const dLat = getSafeCoord(destination?.lat); const dLng = getSafeCoord(destination?.lng);
-    const driverLat = getSafeCoord(driverLocation?.lat); const driverLng = getSafeCoord(driverLocation?.lng);
+    const pLat = getSafeCoord(pickup?.lat);
+    const pLng = getSafeCoord(pickup?.lng);
+    const destLat = getSafeCoord(destination?.lat);
+    const destLng = getSafeCoord(destination?.lng);
+    const dLat = getSafeCoord(driverLocation?.lat);
+    const dLng = getSafeCoord(driverLocation?.lng);
 
-    // CASE A: Booking Mode (No Driver yet) - Show A to B
-    if (status === 'preview' && pLat && dLat) {
-        updateRoute({ lat: pLat, lng: pLng }, { lat: dLat, lng: dLng }, true);
-        return;
+    // MODE A: Preview (Booking) - Draw Line from Pickup to Destination
+    if (status === 'preview') {
+       if (pLat && pLng && destLat && destLng) {
+           calculateAndDrawRoute({ lat: pLat, lng: pLng }, { lat: destLat, lng: destLng });
+       }
+       return; // Stop here, don't look for driver
     }
 
-    // CASE B: Live Ride - We need a driver
-    if (!driverLat || !driverLng) return;
+    // MODE B: Live Ride - Draw Line from Driver
+    if (!dLat || !dLng) return; 
 
-    const driverPos = { lat: driverLat, lng: driverLng };
+    let origin = { lat: dLat, lng: dLng };
     let target = null;
 
-    // If Driver is coming to pickup -> Line from Driver to Pickup
     if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
-        target = { lat: pLat, lng: pLng };
-    } 
-    // If Trip started -> Line from Driver to Destination
-    else if (status === 'in_progress' && dLat) {
-        target = { lat: dLat, lng: dLng };
+        target = { lat: pLat, lng: pLng }; // Driver -> Pickup
+    } else if (status === 'in_progress' && destLat) {
+        target = { lat: destLat, lng: destLng }; // Driver -> Destination
     }
 
-    // Draw line from Driver to Target
-    if (target) {
-        updateRoute(driverPos, target, false);
+    if (origin && target) {
+        calculateAndDrawRoute(origin, target);
     }
 
-    // 🔥 Update Driver Marker
-    updateDriverMarker(driverPos, parseFloat(driverLocation.heading || 0));
+  }, [driverLocation?.lat, driverLocation?.lng, status, pickup?.lat, destination?.lat]);
 
-    // 🔥 Camera Follow Logic: Always center on driver
-    mapInstanceRef.current.panTo(driverPos);
-
-  }, [driverLocation, status, pickup, destination]);
-
-  // Helper: Calculate Route
-  const updateRoute = (origin, target, fitBounds) => {
+  const calculateAndDrawRoute = (origin, target) => {
     const directionsService = new window.google.maps.DirectionsService();
     directionsService.route({
         origin: origin,
@@ -226,19 +338,20 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     }, (result, status) => {
         if (status === 'OK' && directionsRendererRef.current) {
             directionsRendererRef.current.setDirections(result);
-            // Only zoom out to fit route if we are in preview mode or first load
-            if (fitBounds) {
-                const bounds = new window.google.maps.LatLngBounds();
-                bounds.extend(origin);
-                bounds.extend(target);
-                mapInstanceRef.current.fitBounds(bounds);
-            }
+            // Fit bounds to show the whole route
+            const bounds = new window.google.maps.LatLngBounds();
+            bounds.extend(origin);
+            bounds.extend(target);
+            mapInstanceRef.current.fitBounds(bounds);
         }
     });
   };
 
-  // Helper: Move Driver Icon
-  const updateDriverMarker = (pos, heading) => {
+  // 3. Driver Marker (Only in Live Mode)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
+    const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
+    
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
         position: pos,
@@ -246,18 +359,17 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
         icon: {
           path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 6, fillColor: "#00d4ff", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2,
-          rotation: heading,
-          anchor: new window.google.maps.Point(0, 2.5)
+          rotation: parseFloat(driverLocation.heading) || 0
         },
         zIndex: 1000
       });
     } else {
       driverMarkerRef.current.setPosition(pos);
       const icon = driverMarkerRef.current.getIcon();
-      icon.rotation = heading;
+      icon.rotation = parseFloat(driverLocation.heading) || 0;
       driverMarkerRef.current.setIcon(icon);
     }
-  };
+  }, [driverLocation]);
 
   return <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]"><div ref={mapRef} style={{ height: '350px', width: '100%' }} /></div>;
 };
@@ -302,22 +414,6 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
         initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null} 
       />
     </>
-  );
-};
-
-// Placeholder MapPicker to prevent crash
-const MapPicker = ({ isOpen, onClose, onLocationSelect, title }) => {
-  if (!isOpen) return null;
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-black text-white">
-        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-        <div className="h-40 flex items-center justify-center border border-gray-600">
-          <p className="text-gray-400">Map Picker Component Placeholder</p>
-        </div>
-        <Button onClick={onClose} className="w-full bg-[#00ff88] text-black">Close</Button>
-      </DialogContent>
-    </Dialog>
   );
 };
 
@@ -460,7 +556,6 @@ const RiderAuth = () => {
 
 // Dashboard Component
 const RiderDashboard = () => {
-  const [completedRide, setCompletedRide] = useState(null);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("book");
@@ -642,6 +737,8 @@ const RiderDashboard = () => {
     }
   };
 
+  // [DELETED THE DUPLICATE/BROKEN calculateRoute FUNCTION HERE]
+
   const fetchActiveRide = async () => {
     try {
       const res = await api.get(`/rider/active-ride`);
@@ -746,24 +843,21 @@ const RiderDashboard = () => {
         const res = await api.get(`/rides/${rideId}`);
         setActiveRide(res.data);
 
-        // 🔥 STOP POLLING IF COMPLETED
-        if (res.data.status === "completed") {
+        if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
           clearInterval(interval);
-          setCompletedRide(res.data); // <--- Triggers the Modal
-          setActiveRide(null);        // Clear the active view
-          fetchRideHistory();
-        } 
-        else if (["cancelled", "no_drivers"].includes(res.data.status)) {
-          clearInterval(interval);
-          if (res.data.status === "no_drivers") toast.error("No drivers available.");
-        } 
-        else if (res.data.status === "accepted" && res.data.driver_info) {
-          // Optional: toast.success("Driver is coming!");
+          if (res.data.status === "completed") {
+            toast.success("Ride completed!");
+            fetchRideHistory();
+          } else if (res.data.status === "no_drivers") {
+            toast.error("No drivers available. Please try again.");
+          }
+        } else if (res.data.status === "accepted" && res.data.driver_info) {
+          toast.success(`Driver ${res.data.driver_info.name} is coming!`);
         }
       } catch (error) {
         clearInterval(interval);
       }
-    }, 2000);
+    }, 3000);
   };
 
   const handleCancelRide = async () => {
@@ -1097,89 +1191,6 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
         </Tabs>
-        {/* 🔥 INSERT THIS: Card Payment Modal */}
-        <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
-          <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%] max-h-[85vh] overflow-y-auto top-[30%] translate-y-[-30%]">
-            <DialogHeader>
-              <DialogTitle className="text-[#00ff88] flex items-center gap-2">
-                <CreditCard className="w-5 h-5"/> Pay with Card
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCardPayment} className="space-y-4 mt-2">
-              <div className="space-y-2">
-                <Label className="text-gray-400 text-xs">CARD NUMBER</Label>
-                <div className="relative">
-                  <CreditCard className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" />
-                  <Input 
-                    value={cardDetails.number} 
-                    onChange={(e)=>handleCardInput("number", e.target.value)} 
-                    placeholder="0000 0000 0000 0000" 
-                    className="pl-10 bg-black/50 border-[#00ff88]/30 text-white h-12 font-mono tracking-widest" 
-                    inputMode="numeric"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-gray-400 text-xs">EXPIRY</Label>
-                    <Input 
-                      value={cardDetails.expiry} 
-                      onChange={(e)=>handleCardInput("expiry", e.target.value)} 
-                      placeholder="MM/YY" 
-                      className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center font-mono" 
-                      inputMode="numeric"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-gray-400 text-xs">CVV</Label>
-                    <Input 
-                      value={cardDetails.cvv} 
-                      onChange={(e)=>handleCardInput("cvv", e.target.value)} 
-                      placeholder="123" 
-                      className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center font-mono" 
-                      inputMode="numeric" 
-                      type="password"
-                    />
-                  </div>
-              </div>
-              <Button type="submit" className="w-full bg-[#00ff88] text-black font-bold h-12" disabled={loading}>
-                {loading ? <Loader2 className="animate-spin" /> : `Pay ₾${fareEstimate?.total.toFixed(2)}`}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-        
-        {/* 🔥 TRIP COMPLETE / PAY MODAL */}
-        <Dialog open={!!completedRide} onOpenChange={() => setCompletedRide(null)}>
-          <DialogContent className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-2xl">
-            <DialogHeader>
-              <DialogTitle className="text-[#00ff88] text-2xl font-bold flex flex-col items-center gap-2">
-                <div className="w-16 h-16 rounded-full bg-[#00ff88]/20 flex items-center justify-center mb-2">
-                  <CheckCircle2 className="w-10 h-10 text-[#00ff88]" />
-                </div>
-                Trip Complete
-              </DialogTitle>
-            </DialogHeader>
-            
-            <div className="py-6 space-y-2">
-              <p className="text-gray-400 text-sm uppercase tracking-widest">Total Fare</p>
-              <p className="text-5xl font-bold text-white">
-                ₾{completedRide?.final_fare?.toFixed(2) || "0.00"}
-              </p>
-              <p className="text-gray-500 text-sm">Paid via {completedRide?.payment_method === 'card' ? 'Card' : 'Cash'}</p>
-            </div>
-
-            <Button 
-              className="w-full bg-[#00ff88] text-black font-bold h-14 text-xl rounded-xl hover:bg-[#00ff88]/80"
-              onClick={() => {
-                setCompletedRide(null); // Close modal
-                toast.success("Payment Successful!");
-              }}
-            >
-              Pay & Close
-            </Button>
-          </DialogContent>
-        </Dialog>
       </main>
     </div>
   );
