@@ -308,7 +308,7 @@ const LiveRideMap = ({ activeRide, driverLocation }) => {
   );
 };
 
-// 🔥 FIXED: Smart Driver Map (Follow Mode, Manual Zoom, Nav Buttons)
+// 🔥 FIXED: Driver Map (No Auto-Zoom Out + Follow Mode)
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -316,21 +316,21 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const routeRendererRef = useRef(null);
   const directionsServiceRef = useRef(null);
   
-  // 🟢 State to track if camera should lock to driver
+  // 🟢 State: "True" means camera is locked to the car
   const [isFollowing, setIsFollowing] = useState(true);
 
   const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
 
-  // 1. Initialize Map
+  // 1. Initialize Map (Run Once)
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
 
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 },
-        zoom: 18, // Start at driving zoom level
-        disableDefaultUI: true, // We build our own buttons
-        zoomControl: false,
+        zoom: 17, // Starting Zoom
+        disableDefaultUI: true, 
+        zoomControl: false, // We use custom buttons or pinch-to-zoom
         styles: [
           { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
           { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
@@ -340,22 +340,23 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         ]
       });
 
-      // 🛑 CRITICAL: Detect user interaction to disable auto-follow
+      // 🛑 Detect User Interaction -> Stop Following
       mapInstanceRef.current.addListener("dragstart", () => setIsFollowing(false));
 
-      // Route Renderer (The Green Line)
+      // Route Line Configuration
       routeRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
         suppressMarkers: true,
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
-        preserveViewport: true // 🛑 CRITICAL: Prevents route updates from changing your zoom
+        // 🔥 CRITICAL FIX: This stops the map from auto-zooming out
+        preserveViewport: true 
       });
 
       directionsServiceRef.current = new window.google.maps.DirectionsService();
     }
   }, []);
 
-  // 2. Update Driver Marker & Handle Following
+  // 2. Update Driver Marker & Camera (Runs on every GPS update)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
 
@@ -366,7 +367,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     if (!lat || !lng) return;
     const pos = { lat, lng };
 
-    // Update Marker
+    // Update Car Icon
     if (!markerRef.current) {
       markerRef.current = new window.google.maps.Marker({
         position: pos,
@@ -393,11 +394,12 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     // 🎥 CAMERA LOGIC: Only move camera if "Following" is ON
     if (isFollowing) {
         mapInstanceRef.current.panTo(pos);
-        // Note: We don't force setZoom here, so the driver can zoom in/out freely while following
+        // We DO NOT setZoom here. This allows you to zoom in/out manually 
+        // while still following the car.
     }
   }, [driverLocation, isFollowing]);
 
-  // 3. Routing Logic (Draws line, but DOES NOT mess with camera zoom)
+  // 3. Draw Route (Only updates when status changes, doesn't reset zoom)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) return;
 
@@ -406,7 +408,6 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     if (!dLat || !dLng) return;
 
     let target = null;
-    // Determine Target based on status
     if (["accepted", "arrived"].includes(activeRide.status)) {
         target = { lat: parseFloat(activeRide.pickup_lat), lng: parseFloat(activeRide.pickup_lng) };
     } else if (activeRide.status === "in_progress") {
@@ -421,42 +422,37 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         }, (result, status) => {
             if (status === 'OK' && routeRendererRef.current) {
                 routeRendererRef.current.setDirections(result);
-                // We intentionally do NOT call fitBounds here after the first load
-                // so we don't snap the driver's view away while they are driving.
+                // Note: We intentionally removed map.fitBounds() here 
+                // so it doesn't fight your manual zoom.
             }
         });
     }
   }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]); 
 
-  // 4. External Navigation Buttons
+  // 4. Recenter & External Nav Functions
+  const handleRecenter = () => {
+      setIsFollowing(true);
+      if (driverLocation) {
+          const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
+          mapInstanceRef.current.panTo(pos);
+          mapInstanceRef.current.setZoom(17); // Snaps back to driving view
+      }
+  };
+
   const handleNav = (app) => {
     if (!activeRide) return;
     let lat, lng;
-    
-    // Logic: Go to pickup if not started, go to dest if started
     if (["accepted", "arrived"].includes(activeRide.status)) {
         lat = activeRide.pickup_lat; lng = activeRide.pickup_lng;
     } else {
         lat = activeRide.dest_lat || activeRide.destination_lat; lng = activeRide.dest_lng || activeRide.destination_lng;
     }
-
     if (!lat) return;
-
+    
     const url = app === 'waze' 
         ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
         : `http://googleusercontent.com/maps.google.com/maps?daddr=${lat},${lng}&travelmode=driving`;
-    
     window.open(url, '_system');
-  };
-
-  // 5. Recenter Button Logic
-  const recenterMap = () => {
-      setIsFollowing(true);
-      if (driverLocation) {
-          const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
-          mapInstanceRef.current.panTo(pos);
-          mapInstanceRef.current.setZoom(18); // Reset to "Driving Zoom"
-      }
   };
 
   return (
@@ -464,30 +460,20 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         {/* The Map */}
         <div ref={mapRef} className="w-full h-full" />
 
-        {/* OVERLAY: Recenter Button (Only shows if user dragged away) */}
+        {/* OVERLAY: Recenter Button (Only shows if you looked away) */}
         {!isFollowing && (
             <button 
-                onClick={recenterMap}
-                className="absolute bottom-20 right-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in"
+                onClick={handleRecenter}
+                className="absolute bottom-20 right-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in border-2 border-white"
             >
                 <Crosshair className="w-6 h-6 animate-pulse" />
             </button>
         )}
 
-        {/* OVERLAY: Navigation Buttons */}
+        {/* OVERLAY: Nav Buttons */}
         <div className="absolute bottom-4 left-4 right-4 flex gap-3 z-10">
-            <Button 
-                onClick={() => handleNav('waze')} 
-                className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20"
-            >
-                <Zap className="w-4 h-4 mr-2" /> Waze
-            </Button>
-            <Button 
-                onClick={() => handleNav('google')} 
-                className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20"
-            >
-                <Navigation className="w-4 h-4 mr-2" /> Maps
-            </Button>
+            <Button onClick={() => handleNav('waze')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff]"><Zap className="w-4 h-4 mr-2" /> Waze</Button>
+            <Button onClick={() => handleNav('google')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88]"><Navigation className="w-4 h-4 mr-2" /> Maps</Button>
         </div>
     </div>
   );
