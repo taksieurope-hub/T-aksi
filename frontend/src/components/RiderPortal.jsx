@@ -258,25 +258,23 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 };
 
 
-// --- 3. LIVE MAP COMPONENT (Auto-Follow + Traffic ETA + Rerouting) ---
+// --- 3. LIVE MAP COMPONENT (Fixed: Draws Line in Booking Mode) ---
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const driverMarkerRef = useRef(null);
-  const [eta, setEta] = useState(null); // Stores "15 mins"
 
-  // Helper to ensure coordinates are numbers
   const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
 
-  // 1. Initialize Map (Run Once)
+  // 1. Initialize Map
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 }, 
-        zoom: 15, 
-        disableDefaultUI: true, // Clean look
+        zoom: 14, 
+        disableDefaultUI: true, 
         backgroundColor: '#1a1a2e',
         styles: [
           { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
@@ -286,45 +284,43 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
         ]
       });
       
-      // Initialize Route Drawer (The Green Line)
       directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ 
         map: mapInstanceRef.current, 
-        suppressMarkers: true, // We will draw our own custom car/pin icons
+        suppressMarkers: false, // Let Google draw the pins for A -> B
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 } 
       });
     }
   }, []);
 
-  // 2. Logic: Draw Route & Calculate ETA (Runs when Driver Moves)
+  // 2. Routing Logic
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
-    const dLat = getSafeCoord(driverLocation?.lat);
-    const dLng = getSafeCoord(driverLocation?.lng);
     const pLat = getSafeCoord(pickup?.lat);
     const pLng = getSafeCoord(pickup?.lng);
     const destLat = getSafeCoord(destination?.lat);
     const destLng = getSafeCoord(destination?.lng);
+    const dLat = getSafeCoord(driverLocation?.lat);
+    const dLng = getSafeCoord(driverLocation?.lng);
 
-    // MODE A: Preview (Booking Screen) - Show Pickup to Destination
-    if (status === 'preview' && pLat && destLat) {
-       calculateAndDrawRoute({ lat: pLat, lng: pLng }, { lat: destLat, lng: destLng });
-       return;
+    // MODE A: Preview (Booking) - Draw Line from Pickup to Destination
+    if (status === 'preview') {
+       if (pLat && pLng && destLat && destLng) {
+           calculateAndDrawRoute({ lat: pLat, lng: pLng }, { lat: destLat, lng: destLng });
+       }
+       return; // Stop here, don't look for driver
     }
 
-    // MODE B: Live Ride (Follow Driver)
-    if (!dLat || !dLng) return; // Wait for driver location
+    // MODE B: Live Ride - Draw Line from Driver
+    if (!dLat || !dLng) return; 
 
-    let origin = { lat: dLat, lng: dLng }; // Start at Driver
+    let origin = { lat: dLat, lng: dLng };
     let target = null;
 
-    // If Driver is coming to pick you up -> Target is Pickup
     if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
-        target = { lat: pLat, lng: pLng };
-    } 
-    // If Driver is driving you -> Target is Destination
-    else if (status === 'in_progress' && destLat) {
-        target = { lat: destLat, lng: destLng };
+        target = { lat: pLat, lng: pLng }; // Driver -> Pickup
+    } else if (status === 'in_progress' && destLat) {
+        target = { lat: destLat, lng: destLng }; // Driver -> Destination
     }
 
     if (origin && target) {
@@ -333,84 +329,49 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
 
   }, [driverLocation?.lat, driverLocation?.lng, status, pickup?.lat, destination?.lat]);
 
-  // Helper Function to Call Google API
   const calculateAndDrawRoute = (origin, target) => {
     const directionsService = new window.google.maps.DirectionsService();
-    
     directionsService.route({
         origin: origin,
         destination: target,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-        // 🔥 This enables Real-time Traffic info
-        drivingOptions: {
-            departureTime: new Date(),
-            trafficModel: 'best_guess'
-        }
+        travelMode: window.google.maps.TravelMode.DRIVING
     }, (result, status) => {
         if (status === 'OK' && directionsRendererRef.current) {
             directionsRendererRef.current.setDirections(result);
-            
-            // Extract Traffic ETA
-            const leg = result.routes[0].legs[0];
-            const timeString = leg.duration_in_traffic ? leg.duration_in_traffic.text : leg.duration.text;
-            setEta(timeString);
-
-            // 🔥 Auto-Zoom to fit Driver + Destination
+            // Fit bounds to show the whole route
             const bounds = new window.google.maps.LatLngBounds();
             bounds.extend(origin);
             bounds.extend(target);
             mapInstanceRef.current.fitBounds(bounds);
-            // Add padding so icons aren't on the very edge
-            mapInstanceRef.current.panToBounds(bounds, { top: 50, bottom: 50, left: 50, right: 50 });
         }
     });
   };
 
-  // 3. Update Car Marker Icon (Visual Only)
+  // 3. Driver Marker (Only in Live Mode)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
-    
     const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
-    const heading = parseFloat(driverLocation.heading) || 0;
-
+    
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
         position: pos,
         map: mapInstanceRef.current,
         icon: {
           path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 6,
-          fillColor: "#00d4ff",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
-          rotation: heading
+          scale: 6, fillColor: "#00d4ff", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2,
+          rotation: parseFloat(driverLocation.heading) || 0
         },
         zIndex: 1000
       });
     } else {
-      // Smoothly move marker
       driverMarkerRef.current.setPosition(pos);
       const icon = driverMarkerRef.current.getIcon();
-      icon.rotation = heading;
+      icon.rotation = parseFloat(driverLocation.heading) || 0;
       driverMarkerRef.current.setIcon(icon);
     }
-  }, [driverLocation?.lat, driverLocation?.lng, driverLocation?.heading]);
+  }, [driverLocation]);
 
-  return (
-    <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]">
-        {/* The Map */}
-        <div ref={mapRef} style={{ height: '350px', width: '100%' }} />
-        
-        {/* 🔥 Live ETA Badge */}
-        {eta && (
-            <div className="absolute top-4 right-4 bg-black/80 border border-[#00ff88] text-[#00ff88] px-4 py-2 rounded-xl shadow-lg backdrop-blur-md z-10 flex items-center gap-2">
-                <Timer className="w-4 h-4 animate-pulse" />
-                <span className="font-bold font-mono">{eta}</span>
-            </div>
-        )}
-    </div>
-  );
+  return <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]"><div ref={mapRef} style={{ height: '350px', width: '100%' }} /></div>;
 };
 
 const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name }) => {
@@ -818,19 +779,21 @@ const RiderDashboard = () => {
   };
 
   const handleBookRide = async () => {
- if (!pickup.lat || !pickup.address) {
- toast.error("Please select pickup location");
- return;
- }
+    // 1. Validation
+    if (!pickup.lat || !pickup.address) {
+      toast.error("Please select a pickup address");
+      return;
+    }
 
- if (paymentMethod === "card") {
-      // ✅ CORRECT: Opens your new custom card form
- setShowCardModal(true); 
- return;
- }
-
- await processRideRequest();
- };
+    // 2. Open Card Modal if 'card' is selected
+    if (paymentMethod === "card") {
+      setShowCardModal(true); 
+      return;
+    }
+    
+    // 3. Otherwise, book immediately (Cash)
+    await processRideRequest();
+  };
 
   const processRideRequest = async () => {
     setLoading(true);
@@ -1123,7 +1086,7 @@ const RiderDashboard = () => {
                   </div>
                 </div>
                 <Button 
-    className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg py-6" 
+    className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold h-14 text-lg" 
     onClick={handleBookRide} 
     disabled={loading} 
 >
