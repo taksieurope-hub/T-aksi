@@ -895,6 +895,7 @@ const RiderDashboard = () => {
       toast.error("Geolocation not supported by your browser. Enter address manually.");
       return;
     }
+    
 
     setLocationLoading(true);
     const safetyTimer = setTimeout(() => {
@@ -948,6 +949,14 @@ const RiderDashboard = () => {
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
+
+  // 🔥 AUTO-LOCATE RIDER ON APP LOAD
+  useEffect(() => {
+    // As soon as Google Maps is ready, and if we don't already have a pickup set, find the user!
+    if (mapsLoaded && !pickup.lat) {
+      getCurrentLocation();
+    }
+  }, [mapsLoaded]);
 
   const carTypes = Object.entries(PRICING_RULES).map(([key, val]) => ({
     value: key,
