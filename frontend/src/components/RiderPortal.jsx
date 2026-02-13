@@ -788,7 +788,7 @@ const RiderDashboard = () => {
     // 2. Open Card Modal if 'card' is selected
     if (paymentMethod === "card") {
       setShowCardModal(true); 
-      return;
+      return; // <-- CRITICAL: This stops it from booking before payment is entered
     }
     
     // 3. Otherwise, book immediately (Cash)
