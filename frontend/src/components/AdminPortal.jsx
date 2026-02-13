@@ -474,134 +474,148 @@ const AdminDashboard = () => {
                           <TableCell className="text-[#00ff88] font-bold">₾{driver.earnings?.balance?.toFixed(2) || "0.00"}</TableCell>
                           <TableCell>
                             <Badge className={
-                              driver.registration_status === "approved" ? "bg-[#00ff88] text-black" :
-                              driver.registration_status === "pending_review" ? "bg-orange-500 text-black" :
-                              "bg-gray-500 text-white"
-                            }>
+  driver.registration_status === "approved" ? "bg-[#00ff88] text-black" :
+  driver.registration_status?.includes("pending") ? "bg-orange-500 text-black" :
+  "bg-gray-500 text-white"
+}>
                               {driver.registration_status?.replace(/_/g, " ").toUpperCase()}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-gray-400">
-                            {driver.driver_info?.vehicle ? 
-                              `${driver.driver_info.vehicle.car_year} ${driver.driver_info.vehicle.car_make} ${driver.driver_info.vehicle.car_model}` : 
-                              "N/A"}
-                          </TableCell>
-                          <TableCell>
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-[#00d4ff]/30 text-[#00d4ff]"
-                                  onClick={() => fetchUserDetails(driver.id, "driver")}
-                                >
-                                  <PlusCircle className="w-4 h-4 mr-1" /> Add Balance
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="bg-black border border-[#00d4ff]/30">
-                                <DialogHeader>
-                                  <DialogTitle className="text-[#00d4ff]">Add Balance to Driver</DialogTitle>
-                                </DialogHeader>
-                                {selectedUser && (
-                                  <div className="space-y-4">
-                                    <div className="bg-black/50 p-4 rounded-xl border border-[#00d4ff]/20">
-                                      <p className="text-white font-semibold">{selectedUser.name} {selectedUser.surname}</p>
-                                      <p className="text-gray-400 text-sm">{selectedUser.cellphone}</p>
-                                      <p className="text-[#00ff88] font-bold mt-2">
-                                        Current Balance: ₾{selectedUser.earnings?.balance?.toFixed(2) || "0.00"}
-                                      </p>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label className="text-[#00d4ff]">Amount (₾)</Label>
-                                      <Input
-                                        type="number"
-                                        value={fundAmount}
-                                        onChange={e => setFundAmount(e.target.value)}
-                                        className="bg-black/50 border-[#00d4ff]/30 text-white"
-                                        placeholder="50.00"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label className="text-[#00d4ff]">Reason</Label>
-                                      <Input
-                                        value={fundReason}
-                                        onChange={e => setFundReason(e.target.value)}
-                                        className="bg-black/50 border-[#00d4ff]/30 text-white"
-                                        placeholder="Bonus payment"
-                                      />
-                                    </div>
-                                    <Button
-                                      className="w-full bg-[#00d4ff] text-black font-bold"
-                                      onClick={handleAddBalance}
-                                    >
-                                      Add Balance
-                                    </Button>
-                                  </div>
-                                )}
-                              </DialogContent>
-                            </Dialog>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-gray-400">
+                          {driver.driver_info?.vehicle ? 
+                            `${driver.driver_info.vehicle.car_year} ${driver.driver_info.vehicle.car_make} ${driver.driver_info.vehicle.car_model}` : 
+                            "N/A"}
+                        </TableCell>
+                        
+                        {/* 🔥 FIXED ACTION CELL: BOTH BUTTONS SIDE BY SIDE */}
+                        <TableCell className="flex items-center gap-2">
+                          
+                          {/* QUICK APPROVE BUTTON */}
+                          {driver.registration_status?.includes("pending") && (
+                            <Button 
+                              size="sm"
+                              className="bg-[#00ff88] text-black font-bold hover:bg-[#00d4ff]" 
+                              onClick={() => handleApproveDriver(driver.id)} 
+                            >
+                              Approve
+                            </Button>
+                          )}
 
-          {/* Approvals Tab */}
-          <TabsContent value="approvals">
-            <div className="space-y-6">
-              {/* Pending Driver Approvals */}
-              <Card className="bg-black/60 border border-orange-500/30">
-                <CardHeader>
-                  <CardTitle className="text-orange-400">Pending Driver Approvals ({pendingDrivers.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {pendingDrivers.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">No pending driver approvals</div>
-                  ) : (
-                    <div className="space-y-4">
-                      {pendingDrivers.map(driver => (
-                        <div key={driver.id} className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="text-white font-semibold">{driver.name} {driver.surname}</p>
-                              <p className="text-gray-400 text-sm">{driver.cellphone}</p>
-                              {driver.driver_info?.vehicle && (
-                                <div className="mt-2 text-sm">
-                                  <p className="text-[#00d4ff]">
-                                    {driver.driver_info.vehicle.car_year} {driver.driver_info.vehicle.car_make} {driver.driver_info.vehicle.car_model}
-                                  </p>
-                                  <p className="text-gray-500">{driver.driver_info.vehicle.car_color} • {driver.driver_info.vehicle.license_plate}</p>
-                                  <Badge className="mt-1 bg-purple-500/20 text-purple-400">
-                                    Tier: {driver.driver_info.vehicle_tier?.toUpperCase()}
-                                  </Badge>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-[#00d4ff]/30 text-[#00d4ff]"
+                                onClick={() => fetchUserDetails(driver.id, "driver")}
+                              >
+                                <PlusCircle className="w-4 h-4 mr-1" /> Add Balance
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-black border border-[#00d4ff]/30">
+                              <DialogHeader>
+                                <DialogTitle className="text-[#00d4ff]">Add Balance to Driver</DialogTitle>
+                              </DialogHeader>
+                              {selectedUser && (
+                                <div className="space-y-4">
+                                  <div className="bg-black/50 p-4 rounded-xl border border-[#00d4ff]/20">
+                                    <p className="text-white font-semibold">{selectedUser.name} {selectedUser.surname}</p>
+                                    <p className="text-gray-400 text-sm">{selectedUser.cellphone}</p>
+                                    <p className="text-[#00ff88] font-bold mt-2">
+                                      Current Balance: ₾{selectedUser.earnings?.balance?.toFixed(2) || "0.00"}
+                                    </p>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-[#00d4ff]">Amount (₾)</Label>
+                                    <Input
+                                      type="number"
+                                      value={fundAmount}
+                                      onChange={e => setFundAmount(e.target.value)}
+                                      className="bg-black/50 border-[#00d4ff]/30 text-white"
+                                      placeholder="50.00"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-[#00d4ff]">Reason</Label>
+                                    <Input
+                                      value={fundReason}
+                                      onChange={e => setFundReason(e.target.value)}
+                                      className="bg-black/50 border-[#00d4ff]/30 text-white"
+                                      placeholder="Bonus payment"
+                                    />
+                                  </div>
+                                  <Button
+                                    className="w-full bg-[#00d4ff] text-black font-bold"
+                                    onClick={handleAddBalance}
+                                  >
+                                    Add Balance
+                                  </Button>
                                 </div>
                               )}
-                            </div>
-                            <div className="flex space-x-2">
-                              <Button
-                                className="bg-[#00ff88] text-black"
-                                onClick={() => handleApproveDriver(driver.id)}
-                              >
-                                <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                onClick={() => handleRejectDriver(driver.id)}
-                              >
-                                <XCircle className="w-4 h-4 mr-1" /> Reject
-                              </Button>
-                            </div>
+                            </DialogContent>
+                          </Dialog>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Approvals Tab */}
+        <TabsContent value="approvals">
+          <div className="space-y-6">
+            {/* Pending Driver Approvals */}
+            <Card className="bg-black/60 border border-orange-500/30">
+              <CardHeader>
+                <CardTitle className="text-orange-400">Pending Driver Approvals ({pendingDrivers.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {pendingDrivers.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">No pending driver approvals</div>
+                ) : (
+                  <div className="space-y-4">
+                    {pendingDrivers.map(driver => (
+                      <div key={driver.id} className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="text-white font-semibold">{driver.name} {driver.surname}</p>
+                            <p className="text-gray-400 text-sm">{driver.cellphone}</p>
+                            {driver.driver_info?.vehicle && (
+                              <div className="mt-2 text-sm">
+                                <p className="text-[#00d4ff]">
+                                  {driver.driver_info.vehicle.car_year} {driver.driver_info.vehicle.car_make} {driver.driver_info.vehicle.car_model}
+                                </p>
+                                <p className="text-gray-500">{driver.driver_info.vehicle.car_color} • {driver.driver_info.vehicle.license_plate}</p>
+                                <Badge className="mt-1 bg-purple-500/20 text-purple-400">
+                                  Tier: {driver.driver_info.vehicle_tier?.toUpperCase()}
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex space-x-2">
+                            <Button
+                              className="bg-[#00ff88] text-black"
+                              onClick={() => handleApproveDriver(driver.id)}
+                            >
+                              <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              onClick={() => handleRejectDriver(driver.id)}
+                            >
+                              <XCircle className="w-4 h-4 mr-1" /> Reject
+                            </Button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
               {/* Pending Top-up Requests */}
               <Card className="bg-black/60 border border-purple-500/30">
