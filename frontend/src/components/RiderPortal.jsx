@@ -70,51 +70,33 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// 🔥 FIXED: Google Maps Autocomplete (Waits for Script + CSS Fix)
+// Google Maps Autocomplete (LIGHT THEME DROPDOWN)
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   const callbackRef = useRef(onPlaceSelect);
+  useEffect(() => { callbackRef.current = onPlaceSelect; }, [onPlaceSelect]);
 
-  // 1. Keep callback fresh
-  useEffect(() => {
-    callbackRef.current = onPlaceSelect;
-  }, [onPlaceSelect]);
-
-  // 2. CSS Fix for Z-Index (So prompts show above modal)
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
-      .pac-container { 
-          z-index: 10500 !important; 
-          background-color: #1a1a2e; 
-          border: 1px solid #00ff88;
-          font-family: inherit;
-      }
-      .pac-item { 
-          color: white; 
-          border-top: 1px solid #333; 
-          padding: 10px;
-          cursor: pointer;
-      }
-      .pac-item:hover { background-color: #333; }
-      .pac-item-query { color: #00ff88; font-weight: bold; }
+      .pac-container { z-index: 10500 !important; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; font-family: inherit; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); } 
+      .pac-item { color: #374151; border-top: 1px solid #f3f4f6; padding: 10px; cursor: pointer; } 
+      .pac-item:hover { background-color: #f3f4f6; } 
+      .pac-item-query { color: #000000; font-weight: bold; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
   }, []);
 
-  // 3. Initialize Autocomplete (With Safety Timer)
+  // Initialize Autocomplete (With Safety Timer)
   useEffect(() => {
-    // 🔥 POLL: Check every 500ms if Google Maps is loaded
     const timer = setInterval(() => {
       if (inputRef.current && window.google && window.google.maps && window.google.maps.places) {
-        clearInterval(timer); // Stop checking, we found it!
-
+        clearInterval(timer);
         const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
           componentRestrictions: { country: 'ge' },
           fields: ['formatted_address', 'geometry', 'name']
         });
-
-        const listener = autocomplete.addListener('place_changed', () => {
+        autocomplete.addListener('place_changed', () => {
           const place = autocomplete.getPlace();
           if (place.geometry) {
             callbackRef.current({
@@ -124,16 +106,8 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
             });
           }
         });
-
-        // Cleanup function for when component unmounts
-        // We attach this to the return of useEffect, but only inside the loop context logic isn't clean
-        // So we handle cleanup via a variable ref if needed, but for this specific hook:
-        // We can't easily clean up the listener inside the interval, 
-        // but Google Maps listeners are fairly robust. 
-        // The most important part is getting it attached.
       }
     }, 500);
-
     return () => clearInterval(timer);
   }, []);
 };
@@ -374,6 +348,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   return <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]"><div ref={mapRef} style={{ height: '350px', width: '100%' }} /></div>;
 };
 
+// LocationInput (LIGHT THEME BOXES)
 const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -384,34 +359,31 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
   
   return (
     <>
-      <div className="relative flex items-center">
-        <Icon className={`absolute left-3 h-4 w-4 ${iconColor}`} />
+      <div className="relative flex items-center shadow-sm rounded-md">
+        <Icon className={`absolute left-3 h-5 w-5 ${iconColor} z-10`} />
         <Input 
             ref={inputRef} 
             id={id} 
             name={name} 
             value={value?.address || ""} 
             onChange={(e) => onChange({ ...value, address: e.target.value })} 
-            className="pl-10 pr-10 bg-black/50 border-[#00ff88]/30 text-white" 
+            className="pl-10 pr-10 bg-white border-gray-300 text-black font-medium placeholder:text-gray-400 focus-visible:ring-[#00ff88]" 
             placeholder={placeholder} 
         />
         <Button 
             variant="ghost" 
             size="icon" 
-            className="absolute right-1 text-[#00d4ff] hover:bg-[#00d4ff]/20" 
+            className="absolute right-1 text-gray-500 hover:text-black hover:bg-gray-100 z-10" 
             onClick={() => setShowMapPicker(true)}
         >
-            <MapPinned className="w-4 h-4" />
+            <MapPinned className="w-5 h-5" />
         </Button>
       </div>
-      
-      {/* Updated MapPicker usage */}
       <MapPicker 
         isOpen={showMapPicker} 
         onClose={() => setShowMapPicker(false)} 
         onLocationSelect={(loc) => onChange(loc)} 
-        title={placeholder} // e.g., "Pickup Address" or "Destination"
-        initialLocation={value?.lat ? { lat: value.lat, lng: value.lng } : null} 
+        title={placeholder} 
       />
     </>
   );
