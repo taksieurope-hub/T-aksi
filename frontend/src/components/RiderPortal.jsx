@@ -1135,10 +1135,28 @@ const RiderDashboard = () => {
           </DialogContent>
         </Dialog>
 
-          {/* PayPal Modal */}
-          <Dialog open={showPayPal} onOpenChange={setShowPayPal}>
-            <DialogContent><DialogHeader><DialogTitle>Pay with PayPal</DialogTitle></DialogHeader><div className="p-4"><p className="text-center mb-4">Amount: ₾{fareEstimate?.total.toFixed(2)}</p><PayPalButtons createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: (fareEstimate.total * 0.37).toFixed(2), currency_code: "USD" } }] })} onApprove={async (data, actions) => { await actions.order.capture(); toast.success("Payment successful!"); await processRideRequest(); }} /></div></DialogContent>
-          </Dialog>
+          <PayPalButtons 
+  fundingSource="card" 
+  style={{ layout: "vertical", shape: "rect" }}
+  createOrder={(data, actions) => {
+    return actions.order.create({
+      purchase_units: [{
+        amount: { 
+          value: (fareEstimate.total * 0.37).toFixed(2), 
+          currency_code: "USD" 
+        }
+      }],
+      application_context: {
+        shipping_preference: "NO_SHIPPING" // 🔥 This deletes the address/zip code fields
+      }
+    });
+  }} 
+  onApprove={async (data, actions) => { 
+    await actions.order.capture(); 
+    toast.success("Payment successful!"); 
+    await processRideRequest(); 
+  }} 
+/>
 
           {/* Active Tab */}
           <TabsContent value="active">
