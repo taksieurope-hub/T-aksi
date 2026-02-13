@@ -17,11 +17,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
-import {
-  Car, MapPin, Clock, Star, History, Home, LogOut, User,
-  Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
-  Route as RouteIcon, Plus, X, Target, Timer, Crosshair, Zap, TrendingUp,
-  MapPinned, Edit
+import { 
+  Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, 
+  Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned, 
+  Loader2, CreditCard, CheckCircle2, Phone, Lock, ArrowLeft, Wallet, 
+  Route as RouteIcon, Edit, Activity, Clock, Star 
 } from "lucide-react";
 
 // Pricing Rules
