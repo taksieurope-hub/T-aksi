@@ -1097,6 +1097,45 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
 
+          {/* 🔥 THE MISSING CARD MODAL */}
+        <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
+          <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]">
+            <DialogHeader>
+              <DialogTitle className="text-[#00ff88] flex items-center gap-2">
+                <CreditCard className="w-5 h-5"/> Pay with Card
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCardPayment} className="space-y-4 mt-2">
+              <div className="space-y-2">
+                <Label className="text-gray-400 text-xs">CARD NUMBER</Label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" />
+                  <Input 
+                    value={cardDetails.number} 
+                    onChange={(e)=>handleCardInput("number", e.target.value)} 
+                    placeholder="0000 0000 0000 0000" 
+                    className="pl-10 bg-black/50 border-[#00ff88]/30 text-white h-12" 
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-gray-400 text-xs">EXPIRY</Label>
+                    <Input value={cardDetails.expiry} onChange={(e)=>handleCardInput("expiry", e.target.value)} placeholder="MM/YY" className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center" inputMode="numeric"/>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-gray-400 text-xs">CVV</Label>
+                    <Input value={cardDetails.cvv} onChange={(e)=>handleCardInput("cvv", e.target.value)} placeholder="123" className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center" inputMode="numeric" type="password"/>
+                  </div>
+              </div>
+              <Button type="submit" className="w-full bg-[#00ff88] text-black font-bold h-12" disabled={loading}>
+                {loading ? <Loader2 className="animate-spin" /> : `Pay`}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+
           {/* PayPal Modal */}
           <Dialog open={showPayPal} onOpenChange={setShowPayPal}>
             <DialogContent><DialogHeader><DialogTitle>Pay with PayPal</DialogTitle></DialogHeader><div className="p-4"><p className="text-center mb-4">Amount: ₾{fareEstimate?.total.toFixed(2)}</p><PayPalButtons createOrder={(data, actions) => actions.order.create({ purchase_units: [{ amount: { value: (fareEstimate.total * 0.37).toFixed(2), currency_code: "USD" } }] })} onApprove={async (data, actions) => { await actions.order.capture(); toast.success("Payment successful!"); await processRideRequest(); }} /></div></DialogContent>
