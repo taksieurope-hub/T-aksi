@@ -1187,7 +1187,10 @@ async def retry_ride_matching(ride_id: str, background_tasks: BackgroundTasks, u
     if ride_data.get("status") not in ["no_drivers", "cancelled"]:
         raise HTTPException(400, f"Cannot retry ride with status: {ride_data.get('status')}")
 
-    if ride_data.get("userId") != user_id:
+    # 🔥 FIXED: Check both spellings of the ID to prevent 403 Forbidden errors
+    ride_owner = ride_data.get("userId") or ride_data.get("user_id")
+    
+    if ride_owner != user_id:
         raise HTTPException(403, "You can only retry your own rides")
 
     db.collection("rides").document(ride_id).update({
