@@ -779,19 +779,18 @@ const RiderDashboard = () => {
   };
 
   const handleBookRide = async () => {
-    // 1. Validation
     if (!pickup.lat || !pickup.address) {
       toast.error("Please select a pickup address");
       return;
     }
 
-    // 2. Open Card Modal if 'card' is selected
+    // 🔥 CRITICAL FIX: Open the REAL PayPal widget, not the dummy card form
     if (paymentMethod === "card") {
-      setShowCardModal(true); 
-      return; // <-- CRITICAL: This stops it from booking before payment is entered
+      setShowPayPal(true); 
+      return; 
     }
     
-    // 3. Otherwise, book immediately (Cash)
+    // Otherwise, book immediately (Cash)
     await processRideRequest();
   };
 
