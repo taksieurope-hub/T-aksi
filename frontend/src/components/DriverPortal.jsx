@@ -472,7 +472,23 @@ const DriverDashboard = () => {
   const lastPositionRef = useRef(null);
   
   // Vehicle registration
-  const [vehicleData, setVehicleData] = useState({ car_make: "", car_model: "", car_year: "", car_color: "", license_plate: "" });
+  // Expanded Vehicle & Document Registration
+  const [vehicleData, setVehicleData] = useState({ 
+    car_make: "", 
+    car_model: "", 
+    car_year: "", 
+    car_color: "", 
+    license_plate: "",
+    // Document Uploads (Files)
+    license_front: null,
+    license_back: null,
+    reg_front: null,
+    reg_back: null,
+    car_photo_front: null,
+    car_photo_back: null,
+    car_photo_left: null,
+    car_photo_right: null
+  });
   const [topupAmount, setTopupAmount] = useState("");
   const [topupReference, setTopupReference] = useState("");
   const [withdrawalData, setWithdrawalData] = useState({ amount: "", bank_details: "" });
@@ -599,7 +615,47 @@ const DriverDashboard = () => {
   const handleToggleOnline = async (online) => {
     try { await api.post(`/driver/status?is_online=${online}`); setIsOnline(online); updateUser({ ...user, is_online: online }); toast.success(online ? "Online" : "Offline"); } catch (e) { toast.error("Failed"); }
   };
-  const handleRegisterVehicle = async (e) => { e.preventDefault(); setLoading(true); try { const res = await api.post(`/driver/vehicle`, { ...vehicleData, car_year: parseInt(vehicleData.car_year) }); toast.success("Registered"); updateUser({ ...user, driver_info: { ...user.driver_info, vehicle: vehicleData, vehicle_tier: res.data.tier }, registration_status: "pending_review" }); } catch (e) { toast.error("Failed"); } finally { setLoading(false); } };
+  // 🔥 UPGRADED: Handles File Uploads via FormData
+  const handleRegisterVehicle = async (e) => { 
+    e.preventDefault(); 
+    setLoading(true); 
+    try { 
+      // Package text and files into FormData
+      const formData = new FormData();
+      formData.append("car_make", vehicleData.car_make);
+      formData.append("car_model", vehicleData.car_model);
+      formData.append("car_year", parseInt(vehicleData.car_year));
+      formData.append("car_color", vehicleData.car_color);
+      formData.append("license_plate", vehicleData.license_plate);
+
+      // Append files if they exist
+      if (vehicleData.license_front) formData.append("license_front", vehicleData.license_front);
+      if (vehicleData.license_back) formData.append("license_back", vehicleData.license_back);
+      if (vehicleData.reg_front) formData.append("reg_front", vehicleData.reg_front);
+      if (vehicleData.reg_back) formData.append("reg_back", vehicleData.reg_back);
+      if (vehicleData.car_photo_front) formData.append("car_photo_front", vehicleData.car_photo_front);
+      if (vehicleData.car_photo_back) formData.append("car_photo_back", vehicleData.car_photo_back);
+      if (vehicleData.car_photo_left) formData.append("car_photo_left", vehicleData.car_photo_left);
+      if (vehicleData.car_photo_right) formData.append("car_photo_right", vehicleData.car_photo_right);
+
+      // Send to backend (Axios auto-sets multipart/form-data headers)
+      const res = await api.post(`/driver/vehicle`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }); 
+      
+      toast.success("Documents submitted for review!"); 
+      updateUser({ 
+        ...user, 
+        driver_info: { ...user.driver_info, vehicle: vehicleData, vehicle_tier: res.data?.tier || "standard" }, 
+        registration_status: "pending_review" 
+      }); 
+    } catch (e) { 
+      console.error(e);
+      toast.error("Upload failed. Please try again."); 
+    } finally { 
+      setLoading(false); 
+    } 
+  };
   const handleAcceptRide = async (rideId, estimatedFare) => { if (balance < estimatedFare * 0.23) return toast.error("Insufficient balance"); setLoading(true); try { await api.post(`/rides/${rideId}/accept`); toast.success("Accepted!"); const rideRes = await api.get(`/rides/${rideId}`); setActiveRide(rideRes.data); setAvailableRides(p => p.filter(r => r.id !== rideId)); setDistanceTraveled(0); } catch (e) { toast.error("Failed"); } finally { setLoading(false); } };
   const handleDeclineRide = async (rideId) => { try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(p => p.filter(r => r.id !== rideId)); toast.info("Declined"); } catch (e) {} };
   const handleRequestToJoin = async (rideId) => { setLoading(true); try { await api.post(`/rides/${rideId}/request-join`); toast.success("Requested!"); fetchAvailableRides(); } catch (e) {} finally { setLoading(false); } };
@@ -681,8 +737,71 @@ const DriverDashboard = () => {
           </TabsContent>
 
           <TabsContent value="nearby"><div className="space-y-4"><div className="flex justify-end mb-2"><Button size="sm" variant="outline" onClick={fetchNearbyRides}>Refresh</Button></div>{nearbyRides.map(ride => ( <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white"><p className="text-[#00ff88]">{ride.pickup}</p><p className="text-[#00d4ff]">→ {ride.destination}</p><Button className="w-full mt-2 bg-[#00d4ff] text-black" onClick={()=>handleRequestToJoin(ride.id)}>Request to Accept</Button></CardContent></Card> ))}</div></TabsContent>
-          <TabsContent value="vehicle"><Card className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white">{hasVehicle ? <div className="p-4 bg-black/50 rounded border border-[#00ff88]/30"><p>Vehicle Registered</p><p className="text-xl font-mono text-[#00ff88]">{user.driver_info.vehicle.license_plate}</p></div> : <form onSubmit={handleRegisterVehicle} className="space-y-4"><Input placeholder="Make" value={vehicleData.car_make} onChange={e=>setVehicleData({...vehicleData, car_make: e.target.value})} className="bg-black/50 text-white" /><Input placeholder="License Plate" value={vehicleData.license_plate} onChange={e=>setVehicleData({...vehicleData, license_plate: e.target.value})} className="bg-black/50 text-white" /><Button type="submit" className="w-full bg-[#00d4ff] text-black">Register</Button></form>}</CardContent></Card></TabsContent>
-          <TabsContent value="earnings"><div className="space-y-4"><Card className="p-4 bg-black/60 border border-[#00ff88]"><p className="text-gray-400">Balance</p><p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p></Card><Input type="number" placeholder="Amount" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} className="bg-black/50 text-white"/><Button className="w-full bg-[#00ff88] text-black" onClick={() => setShowCardModal(true)}>Top Up</Button></div></TabsContent>
+          {/* 🔥 UPGRADED VEHICLE REGISTRATION TAB */}
+          <TabsContent value="vehicle">
+            <Card className="bg-black/60 border border-[#00d4ff]/30">
+              <CardHeader>
+                <CardTitle className="text-[#00d4ff]">Vehicle Registration</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 text-white">
+                {hasVehicle ? (
+                  <div className="p-4 bg-black/50 rounded border border-[#00ff88]/30 text-center">
+                    <CheckCircle2 className="w-12 h-12 text-[#00ff88] mx-auto mb-2" />
+                    <p className="text-lg font-bold">Documents Under Review</p>
+                    <p className="text-xl font-mono text-[#00ff88] mt-2">{user.driver_info.vehicle.license_plate}</p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleRegisterVehicle} className="space-y-6">
+                    {/* 1. TEXT DETAILS */}
+                    <div className="space-y-3">
+                      <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Details</h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Make (e.g. Toyota)</Label><Input required placeholder="Make" value={vehicleData.car_make} onChange={e=>setVehicleData({...vehicleData, car_make: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Model (e.g. Prius)</Label><Input required placeholder="Model" value={vehicleData.car_model} onChange={e=>setVehicleData({...vehicleData, car_model: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Year</Label><Input required type="number" placeholder="2015" value={vehicleData.car_year} onChange={e=>setVehicleData({...vehicleData, car_year: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Color</Label><Input required placeholder="Silver" value={vehicleData.car_color} onChange={e=>setVehicleData({...vehicleData, car_color: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                      </div>
+                      <div className="space-y-1"><Label className="text-gray-400 text-xs">License Plate</Label><Input required placeholder="AB-123-CD" value={vehicleData.license_plate} onChange={e=>setVehicleData({...vehicleData, license_plate: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30 uppercase font-mono" /></div>
+                    </div>
+
+                    {/* 2. DRIVER'S LICENSE */}
+                    <div className="space-y-3">
+                      <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Driver's License</h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, license_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, license_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                      </div>
+                    </div>
+
+                    {/* 3. REGISTRATION */}
+                    <div className="space-y-3">
+                      <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Registration</h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, reg_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, reg_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                      </div>
+                    </div>
+
+                    {/* 4. CAR PHOTOS */}
+                    <div className="space-y-3">
+                      <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Car Photos</h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front (Shows Plate)</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back (Shows Plate)</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Left Side</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_left: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Right Side</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_right: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                      </div>
+                    </div>
+
+                    <Button type="submit" className="w-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold h-12 mt-4" disabled={loading}>
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
+                      Submit Documents
+                    </Button>
+                  </form>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>          <TabsContent value="earnings"><div className="space-y-4"><Card className="p-4 bg-black/60 border border-[#00ff88]"><p className="text-gray-400">Balance</p><p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p></Card><Input type="number" placeholder="Amount" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} className="bg-black/50 text-white"/><Button className="w-full bg-[#00ff88] text-black" onClick={() => setShowCardModal(true)}>Top Up</Button></div></TabsContent>
           <TabsContent value="history"><ScrollArea className="h-[400px]">{rideHistory.map(r => <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 mb-2 rounded"><p className="text-white">{r.pickup}</p><p className="text-[#00ff88] font-bold">₾{r.final_fare}</p></div>)}</ScrollArea></TabsContent>
 
         </Tabs>

@@ -19,7 +19,8 @@ from pathlib import Path
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form
+import shutil
 from pydantic import BaseModel, Field, ConfigDict
 from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -853,7 +854,22 @@ async def get_current_user(user_id: str = Depends(get_current_user_id)):
 # =========================
 
 @app.post("/api/driver/vehicle", tags=["Driver"])
-async def register_vehicle(vehicle: VehicleInfo, user_id: str = Depends(get_current_user_id)):
+async def register_vehicle(
+    car_make: str = Form(...),
+    car_model: str = Form(...),
+    car_year: int = Form(...),
+    car_color: str = Form(...),
+    license_plate: str = Form(...),
+    license_front: Optional[UploadFile] = File(None),
+    license_back: Optional[UploadFile] = File(None),
+    reg_front: Optional[UploadFile] = File(None),
+    reg_back: Optional[UploadFile] = File(None),
+    car_photo_front: Optional[UploadFile] = File(None),
+    car_photo_back: Optional[UploadFile] = File(None),
+    car_photo_left: Optional[UploadFile] = File(None),
+    car_photo_right: Optional[UploadFile] = File(None),
+    user_id: str = Depends(get_current_user_id)
+):
     if not user_id:
         raise HTTPException(401, "Not authenticated")
 
@@ -862,7 +878,33 @@ async def register_vehicle(vehicle: VehicleInfo, user_id: str = Depends(get_curr
     if not doc.exists:
         raise HTTPException(404, "Driver not found")
 
-    make_lower = (vehicle.car_make or "").lower()
+    # Create a local folder to hold the uploaded images
+    os.makedirs("uploads", exist_ok=True)
+
+    # Helper function to save a file and return its path
+    def save_file(file: UploadFile, prefix: str):
+        if not file:
+            return None
+        file_ext = file.filename.split(".")[-1]
+        file_name = f"{user_id}_{prefix}.{file_ext}"
+        file_path = f"uploads/{file_name}"
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return f"/uploads/{file_name}"
+
+    # Save all files that were uploaded
+    document_urls = {
+        "license_front": save_file(license_front, "lic_front"),
+        "license_back": save_file(license_back, "lic_back"),
+        "reg_front": save_file(reg_front, "reg_front"),
+        "reg_back": save_file(reg_back, "reg_back"),
+        "car_photo_front": save_file(car_photo_front, "car_front"),
+        "car_photo_back": save_file(car_photo_back, "car_back"),
+        "car_photo_left": save_file(car_photo_left, "car_left"),
+        "car_photo_right": save_file(car_photo_right, "car_right"),
+    }
+
+    make_lower = (car_make or "").lower()
     if any(m in make_lower for m in ["mercedes", "bmw", "lexus", "audi", "tesla"]):
         tier = "comfort"
     elif any(m in make_lower for m in ["jeep", "land rover", "range rover", "toyota land"]):
@@ -870,14 +912,24 @@ async def register_vehicle(vehicle: VehicleInfo, user_id: str = Depends(get_curr
     else:
         tier = "economy"
 
+    # Package the text data and the image paths into one object
+    vehicle_data = {
+        "car_make": car_make,
+        "car_model": car_model,
+        "car_year": car_year,
+        "car_color": car_color,
+        "license_plate": license_plate,
+        "documents": document_urls
+    }
+
     db.collection("users").document(user_id).update({
-        "driver_info.vehicle": vehicle.model_dump(),
+        "driver_info.vehicle": vehicle_data,
         "driver_info.vehicle_tier": tier,
         "registration_status": "pending_review",
         "updated_at": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": "Vehicle registered successfully", "tier": tier}
+    return {"message": "Vehicle and documents registered successfully", "tier": tier}
 
 
 @app.post("/api/driver/status", tags=["Driver"])
