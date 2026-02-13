@@ -784,7 +784,7 @@ const RiderDashboard = () => {
       return;
     }
 
-    // 🔥 CRITICAL FIX: Open the REAL PayPal widget, not the dummy card form
+    // Trigger the real PayPal integration
     if (paymentMethod === "card") {
       setShowPayPal(true); 
       return; 
@@ -1247,7 +1247,10 @@ const RiderPortal = () => {
   }
 
   return (
-    <PayPalScriptProvider options={{ "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test", currency: "USD" }}>
+    <PayPalScriptProvider options={{ 
+    "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID, 
+    currency: "USD" 
+}}>
       <Routes>
         <Route path="/" element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<RiderDashboard />} />
