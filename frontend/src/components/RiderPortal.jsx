@@ -245,6 +245,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 
 
 // --- 3. LIVE MAP COMPONENT (Upgraded: Auto-Follow + Re-Center) ---
+// --- 3. LIVE MAP COMPONENT (Fixed: Defines 'target' before using it) ---
 const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, status }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -280,19 +281,14 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 }
       });
 
-      // 🔥 Detect manual interaction to pause "Auto-Follow"
+      // Detect manual interaction to pause "Auto-Follow"
       map.addListener("dragstart", () => setIsFollowing(false));
-      map.addListener("zoom_changed", () => {
-          // Optional: You might want to keep following even on zoom, 
-          // but usually zoom implies manual control.
-          // setIsFollowing(false); 
-      });
 
       mapInstanceRef.current = map;
     }
   }, []);
 
-  // 2. Routing Logic (Draws lines A -> B -> C)
+  // 2. Routing Logic
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
@@ -319,13 +315,25 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
        return; 
     }
 
-    // MODE B: Live Ride
-    // We only recalculate route if points change significantly to avoid flickering
-    if (origin && target) { 
-        // Logic handled below via helper
+    // MODE B: Live Ride (Driver Active)
+    if (!dLat || !dLng) return; // Wait for driver location
+
+    // 🔥 THIS WAS MISSING - DEFINING ORIGIN & TARGET
+    const origin = { lat: dLat, lng: dLng };
+    let target = null;
+
+    if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
+        target = { lat: pLat, lng: pLng }; // Driver -> Pickup
+    } else if (status === 'in_progress' && destLat) {
+        target = { lat: destLat, lng: destLng }; // Driver -> Destination
     }
 
-  }, [pickup?.lat, destination?.lat, stops.length, status]); 
+    // Now safe to use
+    if (origin && target) { 
+        calculateAndDrawRoute(origin, target, []); // Ignore waypoints for driver->pickup leg
+    }
+
+  }, [pickup?.lat, destination?.lat, stops.length, status, driverLocation?.lat]); 
 
   const calculateAndDrawRoute = (origin, target, waypoints = []) => {
     const directionsService = new window.google.maps.DirectionsService();
@@ -378,7 +386,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
       driverMarkerRef.current.setIcon(icon);
     }
 
-    // 🔥 AUTO-FOLLOW LOGIC
+    // Auto-Follow Logic
     if (isFollowing) {
         mapInstanceRef.current.panTo(pos);
     }
@@ -400,7 +408,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]">
         <div ref={mapRef} style={{ height: '350px', width: '100%' }} />
         
-        {/* Re-Center Button (Only shows if user moved map away) */}
+        {/* Re-Center Button */}
         {!isFollowing && driverLocation && (
             <button 
                 onClick={handleRecenter}
