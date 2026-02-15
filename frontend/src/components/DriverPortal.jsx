@@ -626,35 +626,37 @@ const DriverDashboard = () => {
         lastPositionRef.current = driverLocation; 
         toast.success("Ride started");
       } else if (action === "complete") {
-        // 🔥 FIX: Default to 0.00 if distance/time are missing so it doesn't crash
+        // 1. Safe Inputs (Prevent sending NaN)
         const safeDist = (distanceTraveled || 0).toFixed(2);
         const safeWait = (waitTimer || 0);
 
         const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${safeDist}&total_wait_minutes=${safeWait}`);
         
-        // Success! Show the modal
+        // 2. 🔥 CRASH FIX: Check if final_fare exists before using .toFixed()
+        const fareAmount = res.data.final_fare ? Number(res.data.final_fare).toFixed(2) : "0.00";
+
         setCompletedRide(res.data); 
-        toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
+        toast.success(`Ride completed! Fare: ₾${fareAmount}`);
         
-        // Clear the active ride from the screen immediately
-        setActiveRide(null);
-        setDistanceTraveled(0);
-        setWaitTimer(0);
+        // 3. Clear State
+        setActiveRide(null); 
+        setDistanceTraveled(0); 
+        setWaitTimer(0); 
+        setArrivedTime(null); 
+        setRideStartTime(null);
         
-        // Refresh balance
+        fetchRideHistory(); 
         const userRes = await api.get(`/auth/me`); 
         updateUser(userRes.data);
         return;
       }
       
-      // If not completing, refresh the ride status
       if (action !== "complete") {
           const rideRes = await api.get(`/rides/${activeRide.id}`); 
           setActiveRide(rideRes.data);
       }
     } catch (e) { 
       console.error(e);
-      // Show the actual error message from the server if possible
       toast.error(e.response?.data?.detail || "Action failed"); 
     } finally { 
       setLoading(false); 
