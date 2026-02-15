@@ -413,6 +413,51 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
   );
 };
 
+// LocationInput (LIGHT THEME BOXES)
+const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name }) => {
+  const inputRef = useRef(null);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+
+  // Uses the hook we defined earlier
+  useGoogleMapsAutocomplete(inputRef, (place) => {
+    onChange({ address: place.address, lat: place.lat, lng: place.lng });
+  });
+
+  return (
+    <>
+      <div className="relative flex items-center shadow-sm rounded-md">
+        <Icon className={`absolute left-3 h-5 w-5 ${iconColor} z-10`} />
+        <Input
+            ref={inputRef}
+            id={id}
+            name={name}
+            value={value?.address || ""}
+            onChange={(e) => onChange({ ...value, address: e.target.value })}
+            className="pl-10 pr-10 bg-white border-gray-300 text-black font-medium placeholder:text-gray-400 focus-visible:ring-[#00ff88]"
+            placeholder={placeholder}
+        />
+        <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-1 text-gray-500 hover:text-black hover:bg-gray-100 z-10"
+            onClick={() => setShowMapPicker(true)}
+        >
+            <MapPinned className="w-5 h-5" />
+        </Button>
+      </div>
+      
+      {/* Re-uses the MapPicker component */}
+      <MapPicker
+        isOpen={showMapPicker}
+        onClose={() => setShowMapPicker(false)}
+        onLocationSelect={(loc) => onChange(loc)}
+        title={placeholder}
+        initialLocation={value}
+      />
+    </>
+  );
+};
+
 // Auth Component
 const RiderAuth = () => {
   const { login } = useAuth();
