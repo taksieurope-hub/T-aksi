@@ -617,66 +617,50 @@ const DriverDashboard = () => {
     try {
       if (action === "arrived") {
         await api.post(`/rides/${activeRide.id}/arrived`);
-        setArrivedTime(Date.now()); toast.success("Marked as arrived");
+        setArrivedTime(Date.now()); 
+        toast.success("Marked as arrived");
       } else if (action === "start") {
         await api.post(`/rides/${activeRide.id}/start`);
-        setRideStartTime(Date.now()); setDistanceTraveled(0); lastPositionRef.current = driverLocation; toast.success("Ride started");
+        setRideStartTime(Date.now()); 
+        setDistanceTraveled(0); 
+        lastPositionRef.current = driverLocation; 
+        toast.success("Ride started");
       } else if (action === "complete") {
-        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${distanceTraveled.toFixed(2)}&total_wait_minutes=${waitTimer}`);
-        setCompletedRide(res.data); toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
-        setActiveRide(null); setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null);
-        fetchRideHistory(); 
-        const userRes = await api.get(`/auth/me`); updateUser(userRes.data);
+        // 🔥 FIX: Default to 0.00 if distance/time are missing so it doesn't crash
+        const safeDist = (distanceTraveled || 0).toFixed(2);
+        const safeWait = (waitTimer || 0);
+
+        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${safeDist}&total_wait_minutes=${safeWait}`);
+        
+        // Success! Show the modal
+        setCompletedRide(res.data); 
+        toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
+        
+        // Clear the active ride from the screen immediately
+        setActiveRide(null);
+        setDistanceTraveled(0);
+        setWaitTimer(0);
+        
+        // Refresh balance
+        const userRes = await api.get(`/auth/me`); 
+        updateUser(userRes.data);
         return;
       }
-      const rideRes = await api.get(`/rides/${activeRide.id}`); setActiveRide(rideRes.data);
-    } catch (e) { toast.error("Action failed"); } finally { setLoading(false); }
-  };
-
-  const handleToggleOnline = async (online) => {
-    try { await api.post(`/driver/status?is_online=${online}`); setIsOnline(online); updateUser({ ...user, is_online: online }); toast.success(online ? "Online" : "Offline"); } catch (e) { toast.error("Failed"); }
-  };
-  // 🔥 UPGRADED: Handles File Uploads via FormData
-  const handleRegisterVehicle = async (e) => { 
-    e.preventDefault(); 
-    setLoading(true); 
-    try { 
-      // Package text and files into FormData
-      const formData = new FormData();
-      formData.append("car_make", vehicleData.car_make);
-      formData.append("car_model", vehicleData.car_model);
-      formData.append("car_year", parseInt(vehicleData.car_year));
-      formData.append("car_color", vehicleData.car_color);
-      formData.append("license_plate", vehicleData.license_plate);
-
-      // Append files if they exist
-      if (vehicleData.license_front) formData.append("license_front", vehicleData.license_front);
-      if (vehicleData.license_back) formData.append("license_back", vehicleData.license_back);
-      if (vehicleData.reg_front) formData.append("reg_front", vehicleData.reg_front);
-      if (vehicleData.reg_back) formData.append("reg_back", vehicleData.reg_back);
-      if (vehicleData.car_photo_front) formData.append("car_photo_front", vehicleData.car_photo_front);
-      if (vehicleData.car_photo_back) formData.append("car_photo_back", vehicleData.car_photo_back);
-      if (vehicleData.car_photo_left) formData.append("car_photo_left", vehicleData.car_photo_left);
-      if (vehicleData.car_photo_right) formData.append("car_photo_right", vehicleData.car_photo_right);
-
-      // Send to backend (Axios auto-sets multipart/form-data headers)
-      const res = await api.post(`/driver/vehicle`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      }); 
       
-      toast.success("Documents submitted for review!"); 
-      updateUser({ 
-        ...user, 
-        driver_info: { ...user.driver_info, vehicle: vehicleData, vehicle_tier: res.data?.tier || "standard" }, 
-        registration_status: "pending_review" 
-      }); 
+      // If not completing, refresh the ride status
+      if (action !== "complete") {
+          const rideRes = await api.get(`/rides/${activeRide.id}`); 
+          setActiveRide(rideRes.data);
+      }
     } catch (e) { 
       console.error(e);
-      toast.error("Upload failed. Please try again."); 
+      // Show the actual error message from the server if possible
+      toast.error(e.response?.data?.detail || "Action failed"); 
     } finally { 
       setLoading(false); 
-    } 
+    }
   };
+
   const handleAcceptRide = async (rideId, estimatedFare) => { if (balance < estimatedFare * 0.23) return toast.error("Insufficient balance"); setLoading(true); try { await api.post(`/rides/${rideId}/accept`); toast.success("Accepted!"); const rideRes = await api.get(`/rides/${rideId}`); setActiveRide(rideRes.data); setAvailableRides(p => p.filter(r => r.id !== rideId)); setDistanceTraveled(0); } catch (e) { toast.error("Failed"); } finally { setLoading(false); } };
   const handleDeclineRide = async (rideId) => { try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(p => p.filter(r => r.id !== rideId)); toast.info("Declined"); } catch (e) {} };
   const handleRequestToJoin = async (rideId) => { setLoading(true); try { await api.post(`/rides/${rideId}/request-join`); toast.success("Requested!"); fetchAvailableRides(); } catch (e) {} finally { setLoading(false); } };
@@ -902,44 +886,46 @@ const DriverDashboard = () => {
         </Dialog>
 
         {/* 🔥 TRIP COMPLETE / PAY MODAL */}
-        <Dialog open={!!completedRide} onOpenChange={() => setCompletedRide(null)}>
-          <DialogContent className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-2xl">
-            <DialogHeader>
-              <DialogTitle className="text-[#00ff88] text-2xl font-bold flex flex-col items-center gap-2">
-                <div className="w-16 h-16 rounded-full bg-[#00ff88]/20 flex items-center justify-center mb-2">
-                  <CheckCircle2 className="w-10 h-10 text-[#00ff88]" />
-                </div>
-                Trip Complete!
-              </DialogTitle>
-            </DialogHeader>
+        {/* Trip Complete Modal - DRIVER VERSION */}
+      <Dialog open={!!completedRide} onOpenChange={() => setCompletedRide(null)}>
+        <DialogContent 
+            className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-2xl"
+            aria-describedby={undefined} // <--- Fixes the console warning
+        >
+          <DialogHeader>
+            <DialogTitle className="text-[#00ff88] text-2xl font-bold">Trip Complete!</DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-6 space-y-3">
+            <p className="text-gray-400 text-sm uppercase tracking-widest">Total Fare</p>
+            <p className="text-5xl font-bold text-white">
+              ₾{completedRide?.final_fare?.toFixed(2) || "0.00"}
+            </p>
             
-            <div className="py-6 space-y-3">
-              <p className="text-gray-400 text-sm uppercase tracking-widest">Total Fare</p>
-              <p className="text-5xl font-bold text-white">
-                ₾{completedRide?.final_fare?.toFixed(2) || "0.00"}
-              </p>
-              {completedRide?.payment_method === "cash" ? (
-                <p className="text-orange-400 text-sm font-medium">
-                  Please pay the driver in cash
-                </p>
-              ) : (
-                <p className="text-gray-500 text-sm">
-                  Paid with card
-                </p>
-              )}
-            </div>
-
-            <Button 
-              className="w-full bg-[#00ff88] text-black font-bold h-14 text-xl rounded-xl"
-              onClick={() => {
-                setCompletedRide(null);
-                toast.success("Thank you for riding with T'aksi! 🚀");
-              }}
-            >
-              {completedRide?.payment_method === "cash" ? "I Paid Driver" : "Done"}
-            </Button>
-          </DialogContent>
-        </Dialog>
+            {/* Logic: If card, say Paid. If cash, say Collect. */}
+            {(completedRide?.payment_method || "").toLowerCase() === 'card' ? (
+                 <div className="bg-[#00ff88]/20 border border-[#00ff88] p-3 rounded-lg">
+                    <p className="text-[#00ff88] text-sm font-bold flex items-center justify-center gap-2">
+                        <CreditCard className="w-4 h-4" /> PAID ONLINE - DO NOT CHARGE
+                    </p>
+                </div>
+            ) : (
+                 <div className="bg-yellow-500/20 border border-yellow-500 p-3 rounded-lg animate-pulse">
+                    <p className="text-yellow-400 text-sm font-bold flex items-center justify-center gap-2">
+                        <Banknote className="w-4 h-4" /> COLLECT CASH FROM CLIENT
+                    </p>
+                </div>
+            )}
+          </div>
+          
+          <Button
+            className="w-full bg-[#00ff88] text-black font-bold h-14 text-xl rounded-xl"
+            onClick={() => setCompletedRide(null)}
+          >
+            Confirm & Close
+          </Button>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
