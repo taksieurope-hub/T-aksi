@@ -921,6 +921,7 @@ const DriverPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
 
+  // Redirect if not logged in or not a driver
   if (!user || user.user_type !== "driver") {
     if (location.pathname === "/driver" || location.pathname === "/driver/") {
       return <DriverAuth />;
@@ -930,9 +931,9 @@ const DriverPortal = () => {
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/driver/dashboard" replace />} />
-      <Route path="/dashboard" element={<DriverDashboard />} />
-      <Route path="*" element={<Navigate to="/driver/dashboard" replace />} />
+      <Route path="/" element={<Navigate to="dashboard" replace />} />
+      <Route path="dashboard" element={<DriverDashboard />} />
+      <Route path="*" element={<Navigate to="dashboard" replace />} />
     </Routes>
   );
 };
