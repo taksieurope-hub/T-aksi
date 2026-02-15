@@ -33,7 +33,7 @@ const PRICING_RULES = {
   jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
-const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0) => {
+const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0, paymentMethod = 'cash') => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
   subtotal += distanceKm * rules.perKm;
@@ -56,7 +56,12 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
 
   // Surge
   const surgeFee = subtotal * (surgeMultiplier - 1.0);
-  const total = subtotal + surgeFee;
+
+  // 🔥 NEW: Service Fee for Card Payments
+  const serviceFee = paymentMethod === 'card' ? 2.00 : 0.00;
+
+  // Calculate Total
+  const total = subtotal + surgeFee + serviceFee;
   
   return {
     base: rules.base,
@@ -65,6 +70,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
     stops: numStops * rules.stopFee,
     subtotal: Math.round(subtotal * 100) / 100,
     surgeFee: Math.round(surgeFee * 100) / 100,
+    serviceFee: serviceFee.toFixed(2), // Added to breakdown
     surgeMultiplier,
     total: Math.round(total * 100) / 100
   };
@@ -682,13 +688,15 @@ const RiderDashboard = () => {
     }
   }, [mapsLoaded, pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length, calculateRoute]);
 
-  useEffect(() => {
-    if (routeInfo) {
-      const surge = surgeInfo?.multiplier || 1.0;
-      const fare = calculateFare(carType, routeInfo.distance, 0, 0, stops.length, surge);
-      setFareEstimate(fare);
-    }
-  }, [routeInfo, carType, stops.length, surgeInfo]);
+  // Inside RiderDashboard component...
+useEffect(() => {
+  if (routeInfo) {
+    const surge = surgeInfo?.multiplier || 1.0;
+    // Pass paymentMethod here 👇
+    const fare = calculateFare(carType, routeInfo.distance, 0, 0, stops.length, surge, paymentMethod);
+    setFareEstimate(fare);
+  }
+}, [routeInfo, carType, stops.length, surgeInfo, paymentMethod]); // Add paymentMethod to dependency array
 
   // 🔥 POLL FOR ACTIVE RIDE
   useEffect(() => {
