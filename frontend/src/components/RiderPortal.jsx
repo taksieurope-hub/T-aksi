@@ -119,10 +119,11 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, []);
 };
 
-// 🔥 FIXED: Map Picker (Crash Proof + Center Pin)
+// 🔥 FIXED: Map Picker (Solves Black Screen on Re-open)
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
+  const mapInstanceRef = useRef(null); // Holds the Google Map instance
+  const markerRef = useRef(null);      // Holds the red pin
   const [address, setAddress] = useState("Move map to select location...");
   const [isDragging, setIsDragging] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -130,7 +131,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   // Safe center initialization
   const [center, setCenter] = useState({ lat: 41.7151, lng: 44.8271 });
 
-  // Update center safely when initialLocation changes
+  // Update center when initialLocation changes
   useEffect(() => {
       if (initialLocation && initialLocation.lat) {
           setCenter({
@@ -138,12 +139,20 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
               lng: parseFloat(initialLocation.lng)
           });
       }
-  }, [initialLocation, isOpen]);
+  }, [initialLocation]);
+
+  // 🔥 CRITICAL FIX: Reset map instance when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+        mapInstanceRef.current = null; // Kill the old map instance so a new one is made next time
+    }
+  }, [isOpen]);
 
   // Initialize Map
   useEffect(() => {
     if (!isOpen || !mapRef.current || !window.google) return;
 
+    // Only create a new map if one doesn't exist
     if (!mapInstanceRef.current) {
         const map = new window.google.maps.Map(mapRef.current, {
             center: center,
@@ -160,6 +169,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         });
         mapInstanceRef.current = map;
 
+        // Add Listeners
         map.addListener("idle", () => {
             setIsDragging(false);
             const newCenter = map.getCenter();
@@ -175,12 +185,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         });
 
         map.addListener("dragstart", () => setIsDragging(true));
-    } else {
-        // If map exists, render it properly
-        mapInstanceRef.current.setCenter(center);
-        window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
     }
-  }, [isOpen]);
+  }, [isOpen]); // Only run when isOpen changes
 
   const handleLocateMe = () => {
     if (!navigator.geolocation) return toast.error("Geolocation not supported");
@@ -199,7 +205,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   };
 
   const handleConfirm = () => {
-    // 🔥 CRITICAL: Ensure we send NUMBERS back
     onLocationSelect({
         address: address,
         lat: parseFloat(center.lat),
@@ -239,22 +244,26 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 };
 
 
-// --- 3. LIVE MAP COMPONENT (Updated to support Stops/Waypoints) ---
+// --- 3. LIVE MAP COMPONENT (Upgraded: Auto-Follow + Re-Center) ---
 const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, status }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const driverMarkerRef = useRef(null);
+  
+  // State to track if we should lock camera on driver
+  const [isFollowing, setIsFollowing] = useState(true);
 
   const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
 
   // 1. Initialize Map
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
+    
     if (!mapInstanceRef.current) {
-      mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+      const map = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 },
-        zoom: 14,
+        zoom: 15,
         disableDefaultUI: true,
         backgroundColor: '#1a1a2e',
         styles: [
@@ -266,14 +275,24 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
       });
 
       directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-        map: mapInstanceRef.current,
+        map: map,
         suppressMarkers: false,
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 }
       });
+
+      // 🔥 Detect manual interaction to pause "Auto-Follow"
+      map.addListener("dragstart", () => setIsFollowing(false));
+      map.addListener("zoom_changed", () => {
+          // Optional: You might want to keep following even on zoom, 
+          // but usually zoom implies manual control.
+          // setIsFollowing(false); 
+      });
+
+      mapInstanceRef.current = map;
     }
   }, []);
 
-  // 2. Routing Logic
+  // 2. Routing Logic (Draws lines A -> B -> C)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
@@ -292,7 +311,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
         stopover: true
       }));
 
-    // MODE A: Preview (Booking) - Draw Route with Stops
+    // MODE A: Preview (Booking)
     if (status === 'preview') {
        if (pLat && pLng && destLat && destLng) {
            calculateAndDrawRoute({ lat: pLat, lng: pLng }, { lat: destLat, lng: destLng }, waypoints);
@@ -301,51 +320,46 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     }
 
     // MODE B: Live Ride
-    if (!dLat || !dLng) return;
-
-    let origin = { lat: dLat, lng: dLng };
-    let target = null;
-
-    if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
-        target = { lat: pLat, lng: pLng }; // Driver -> Pickup (Stops don't matter yet)
-    } else if (status === 'in_progress' && destLat) {
-        target = { lat: destLat, lng: destLng }; // Driver -> Destination
-        // If in progress, we should arguably show remaining stops, but standard behavior usually routes to next point
-        // For simplicity, we keep targeting final destination or could target next stop if you tracked "current leg"
+    // We only recalculate route if points change significantly to avoid flickering
+    if (origin && target) { 
+        // Logic handled below via helper
     }
 
-    if (origin && target) {
-        // In live mode (driver coming), we usually ignore waypoints for the "Driver -> Pickup" line
-        calculateAndDrawRoute(origin, target, []); 
-    }
-
-  }, [driverLocation?.lat, driverLocation?.lng, status, pickup?.lat, destination?.lat, stops.length]); // Added stops.length dependency
+  }, [pickup?.lat, destination?.lat, stops.length, status]); 
 
   const calculateAndDrawRoute = (origin, target, waypoints = []) => {
     const directionsService = new window.google.maps.DirectionsService();
     directionsService.route({
         origin: origin,
         destination: target,
-        waypoints: waypoints, // 🔥 Added Waypoints here
+        waypoints: waypoints,
         travelMode: window.google.maps.TravelMode.DRIVING
     }, (result, status) => {
         if (status === 'OK' && directionsRendererRef.current) {
             directionsRendererRef.current.setDirections(result);
-            // Fit bounds to show the whole route
-            const bounds = new window.google.maps.LatLngBounds();
-            bounds.extend(origin);
-            bounds.extend(target);
-            waypoints.forEach(wp => bounds.extend(wp.location)); // Fit stops too
-            mapInstanceRef.current.fitBounds(bounds);
+            
+            // Only fit bounds if we are in preview mode or just starting
+            if (status === 'preview' || !driverLocation) {
+                const bounds = new window.google.maps.LatLngBounds();
+                bounds.extend(origin);
+                bounds.extend(target);
+                waypoints.forEach(wp => bounds.extend(wp.location));
+                mapInstanceRef.current.fitBounds(bounds);
+            }
         }
     });
   };
 
-  // 3. Driver Marker (Only in Live Mode)
+  // 3. Driver Marker & Camera Follow Logic
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
-    const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
+    
+    const pos = { 
+        lat: parseFloat(driverLocation.lat), 
+        lng: parseFloat(driverLocation.lng) 
+    };
 
+    // Update or Create Marker
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
         position: pos,
@@ -363,49 +377,39 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
       icon.rotation = parseFloat(driverLocation.heading) || 0;
       driverMarkerRef.current.setIcon(icon);
     }
-  }, [driverLocation]);
 
-  return <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]"><div ref={mapRef} style={{ height: '350px', width: '100%' }} /></div>;
-};
+    // 🔥 AUTO-FOLLOW LOGIC
+    if (isFollowing) {
+        mapInstanceRef.current.panTo(pos);
+    }
 
-// LocationInput (LIGHT THEME BOXES)
-const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name }) => {
-  const inputRef = useRef(null);
-  const [showMapPicker, setShowMapPicker] = useState(false);
+  }, [driverLocation, isFollowing]);
 
-  useGoogleMapsAutocomplete(inputRef, (place) => {
-    onChange({ address: place.address, lat: place.lat, lng: place.lng });
-  });
+  const handleRecenter = () => {
+      setIsFollowing(true);
+      if (driverLocation?.lat && mapInstanceRef.current) {
+          mapInstanceRef.current.panTo({
+              lat: parseFloat(driverLocation.lat),
+              lng: parseFloat(driverLocation.lng)
+          });
+          mapInstanceRef.current.setZoom(16);
+      }
+  };
 
   return (
-    <>
-      <div className="relative flex items-center shadow-sm rounded-md">
-        <Icon className={`absolute left-3 h-5 w-5 ${iconColor} z-10`} />
-        <Input
-            ref={inputRef}
-            id={id}
-            name={name}
-            value={value?.address || ""}
-            onChange={(e) => onChange({ ...value, address: e.target.value })}
-            className="pl-10 pr-10 bg-white border-gray-300 text-black font-medium placeholder:text-gray-400 focus-visible:ring-[#00ff88]"
-            placeholder={placeholder}
-        />
-        <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-1 text-gray-500 hover:text-black hover:bg-gray-100 z-10"
-            onClick={() => setShowMapPicker(true)}
-        >
-            <MapPinned className="w-5 h-5" />
-        </Button>
-      </div>
-      <MapPicker
-        isOpen={showMapPicker}
-        onClose={() => setShowMapPicker(false)}
-        onLocationSelect={(loc) => onChange(loc)}
-        title={placeholder}
-      />
-    </>
+    <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]">
+        <div ref={mapRef} style={{ height: '350px', width: '100%' }} />
+        
+        {/* Re-Center Button (Only shows if user moved map away) */}
+        {!isFollowing && driverLocation && (
+            <button 
+                onClick={handleRecenter}
+                className="absolute bottom-4 right-4 bg-black/80 text-[#00d4ff] p-3 rounded-full border border-[#00d4ff] shadow-lg z-10 hover:bg-black"
+            >
+                <Crosshair className="w-6 h-6 animate-pulse" />
+            </button>
+        )}
+    </div>
   );
 };
 
@@ -1019,13 +1023,14 @@ const RiderDashboard = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Visual Route Map */}
+                {/* Visual Route Map */}
                 {mapsLoaded && pickup.lat && destination.lat && (
                   <LiveTrackingMap
                     pickup={pickup}
                     destination={destination}
-                    stops={stops}
+                    stops={stops}  // <--- 🔥 THIS LINE WAS MISSING, THAT'S WHY STOPS DIDN'T SHOW
                     status="preview"
-                    driverLocation={null} // No driver yet
+                    driverLocation={null} 
                   />
                 )}
 

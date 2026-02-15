@@ -299,14 +299,14 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, []);
 };
 
-// 🔥 FIXED: Driver Map (No Auto-Zoom Out + Follow Mode)
+// 🔥 FIXED: Driver Map (No Auto-Zoom Out + Follow Mode + External Nav)
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
   const routeRendererRef = useRef(null);
   const directionsServiceRef = useRef(null);
-  
+
   // 🟢 State: "True" means camera is locked to the car
   const [isFollowing, setIsFollowing] = useState(true);
 
@@ -320,7 +320,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 },
         zoom: 17, // Starting Zoom
-        disableDefaultUI: true, 
+        disableDefaultUI: true,
         zoomControl: false, // We use custom buttons or pinch-to-zoom
         styles: [
           { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
@@ -337,10 +337,9 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       // Route Line Configuration
       routeRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
-        suppressMarkers: true,
+        suppressMarkers: false, // Show A/B markers for clarity
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
-        // 🔥 CRITICAL FIX: This stops the map from auto-zooming out
-        preserveViewport: true 
+        preserveViewport: true // 🔥 CRITICAL FIX: Stops map from auto-zooming out
       });
 
       directionsServiceRef.current = new window.google.maps.DirectionsService();
@@ -385,12 +384,11 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     // 🎥 CAMERA LOGIC: Only move camera if "Following" is ON
     if (isFollowing) {
         mapInstanceRef.current.panTo(pos);
-        // We DO NOT setZoom here. This allows you to zoom in/out manually 
-        // while still following the car.
+        // mapInstanceRef.current.setZoom(17); // Optional: Force zoom level
     }
   }, [driverLocation, isFollowing]);
 
-  // 3. Draw Route (Only updates when status changes, doesn't reset zoom)
+  // 3. Draw Route (Only updates when status changes)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) return;
 
@@ -413,12 +411,11 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         }, (result, status) => {
             if (status === 'OK' && routeRendererRef.current) {
                 routeRendererRef.current.setDirections(result);
-                // Note: We intentionally removed map.fitBounds() here 
-                // so it doesn't fight your manual zoom.
+                // preserveViewport is true, so we don't fitBounds here
             }
         });
     }
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]); 
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]);
 
   // 4. Recenter & External Nav Functions
   const handleRecenter = () => {
@@ -426,23 +423,28 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       if (driverLocation) {
           const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
           mapInstanceRef.current.panTo(pos);
-          mapInstanceRef.current.setZoom(17); // Snaps back to driving view
+          mapInstanceRef.current.setZoom(17); // Snap back to driving view
       }
   };
 
   const handleNav = (app) => {
     if (!activeRide) return;
     let lat, lng;
+    
+    // Logic: Navigate to Pickup OR Destination based on status
     if (["accepted", "arrived"].includes(activeRide.status)) {
         lat = activeRide.pickup_lat; lng = activeRide.pickup_lng;
     } else {
-        lat = activeRide.dest_lat || activeRide.destination_lat; lng = activeRide.dest_lng || activeRide.destination_lng;
+        lat = activeRide.dest_lat || activeRide.destination_lat; 
+        lng = activeRide.dest_lng || activeRide.destination_lng;
     }
-    if (!lat) return;
     
-    const url = app === 'waze' 
+    if (!lat) return toast.error("No destination coordinates found");
+
+    const url = app === 'waze'
         ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
-        : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+        : `http://googleusercontent.com/maps.google.com/?q=${lat},${lng}&travelmode=driving`;
+    
     window.open(url, '_blank');
   };
 
@@ -453,7 +455,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
         {/* OVERLAY: Recenter Button (Only shows if you looked away) */}
         {!isFollowing && (
-            <button 
+            <button
                 onClick={handleRecenter}
                 className="absolute bottom-20 right-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in border-2 border-white"
             >
@@ -463,8 +465,12 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
         {/* OVERLAY: Nav Buttons */}
         <div className="absolute bottom-4 left-4 right-4 flex gap-3 z-10">
-            <Button onClick={() => handleNav('waze')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff]"><Zap className="w-4 h-4 mr-2" /> Waze</Button>
-            <Button onClick={() => handleNav('google')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88]"><Navigation className="w-4 h-4 mr-2" /> Maps</Button>
+            <Button onClick={() => handleNav('waze')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20">
+                <Zap className="w-4 h-4 mr-2" /> Waze
+            </Button>
+            <Button onClick={() => handleNav('google')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20">
+                <Navigation className="w-4 h-4 mr-2" /> Maps
+            </Button>
         </div>
     </div>
   );
