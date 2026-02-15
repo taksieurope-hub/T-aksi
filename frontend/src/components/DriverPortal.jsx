@@ -420,22 +420,44 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
   const handleNav = (app) => {
     if (!activeRide) return;
-    let lat, lng;
+    
+    let destLat, destLng;
+    let waypoints = "";
 
-    // Logic: Navigate to Pickup OR Destination based on status
+    // PHASE 1: GOING TO PICKUP
     if (["accepted", "arrived"].includes(activeRide.status)) {
-        lat = activeRide.pickup_lat; lng = activeRide.pickup_lng;
-    } else {
-        lat = activeRide.dest_lat || activeRide.destination_lat;
-        lng = activeRide.dest_lng || activeRide.destination_lng;
+        destLat = activeRide.pickup_lat; 
+        destLng = activeRide.pickup_lng;
+    } 
+    // PHASE 2: GOING TO DESTINATION (AND STOPS)
+    else {
+        destLat = activeRide.dest_lat || activeRide.destination_lat;
+        destLng = activeRide.dest_lng || activeRide.destination_lng;
+
+        // If using Google Maps, add the intermediate stops
+        if (activeRide.stops && activeRide.stops.length > 0 && app === 'google') {
+            const stopsStr = activeRide.stops
+                .filter(s => s.lat && s.lng) // Ensure valid coordinates
+                .map(s => `${s.lat},${s.lng}`)
+                .join('|');
+            
+            if (stopsStr) {
+                waypoints = `&waypoints=${stopsStr}`;
+            }
+        }
     }
+    
+    if (!destLat || !destLng) return toast.error("No destination coordinates found");
 
-    if (!lat) return toast.error("No destination coordinates found");
-
-    const url = app === 'waze'
-        ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
-        : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
-
+    let url = "";
+    if (app === 'waze') {
+        // Waze unfortunately treats deep links as single destinations
+        url = `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`;
+    } else {
+        // Google Maps Universal Link with Waypoints
+        url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
+    }
+    
     window.open(url, '_blank');
   };
 
