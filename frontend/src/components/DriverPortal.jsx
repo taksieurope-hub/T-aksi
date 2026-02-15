@@ -17,7 +17,7 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
-  DialogDescription, 
+  DialogDescription, // <--- Added to fix warning
   DialogFooter 
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -220,12 +220,10 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   const callbackRef = useRef(onPlaceSelect);
 
-  // 1. Keep callback fresh
   useEffect(() => {
     callbackRef.current = onPlaceSelect;
   }, [onPlaceSelect]);
 
-  // 2. CSS Fix for Z-Index
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
@@ -248,7 +246,6 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     return () => document.head.removeChild(style);
   }, []);
 
-  // 3. Initialize Autocomplete
   useEffect(() => {
     const timer = setInterval(() => {
       if (inputRef.current && window.google && window.google.maps && window.google.maps.places) {
@@ -570,7 +567,7 @@ const DriverDashboard = () => {
 
   useEffect(() => {
     let interval;
-    // Safely parse initial timer state from activeRide if available (prevents NaN on refresh)
+    // 🔥 FIXED: Recover timer state from backend if missing locally
     if (activeRide?.status === "arrived") {
         if (!arrivedTime && activeRide.arrived_at) {
             setArrivedTime(new Date(activeRide.arrived_at).getTime());
@@ -602,7 +599,7 @@ const DriverDashboard = () => {
         await api.post(`/rides/${activeRide.id}/start`);
         setRideStartTime(Date.now()); setDistanceTraveled(0); lastPositionRef.current = driverLocation; toast.success("Ride started");
       } else if (action === "complete") {
-        // 🔥 FIX: Ensure we never send NaN or undefined
+        // 🔥 FIXED: Prevent "NaN" crash by defaulting to 0
         const safeDistance = isNaN(distanceTraveled) ? 0 : distanceTraveled.toFixed(2);
         const safeWait = isNaN(waitTimer) ? 0 : waitTimer;
         
@@ -611,7 +608,7 @@ const DriverDashboard = () => {
         setCompletedRide(res.data); 
         toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
         
-        // Clear Local State
+        // Reset State Immediately
         setActiveRide(null); 
         setDistanceTraveled(0); 
         setWaitTimer(0); 
@@ -624,7 +621,6 @@ const DriverDashboard = () => {
         return;
       }
       
-      // Update local state for non-complete actions
       if (action !== "complete") {
           const rideRes = await api.get(`/rides/${activeRide.id}`); 
           setActiveRide(rideRes.data);
