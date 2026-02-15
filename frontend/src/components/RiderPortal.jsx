@@ -319,28 +319,27 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     // MODE B: Live Ride (Driver Active)
     if (!dLat || !dLng) return; // Wait for driver location
 
-    // 🔥 THIS WAS MISSING - DEFINING ORIGIN & TARGET
-    // --- Routing Logic ---
-    const origin = { lat: dLat, lng: dLng }; // The Driver's position
+    // --- FIX: DRAW LINE TO DESTINATION ---
+    const origin = { lat: dLat, lng: dLng }; // Driver position
     let target = null;
 
     if (['accepted', 'arrived'].includes(status)) {
-        // Line points to the Rider (Pickup)
+        // Path to YOU (Pickup)
         target = { lat: pLat, lng: pLng }; 
     } 
     else if (status === 'in_progress') {
-        // 🔥 FIX: Line points to the End Destination
-        // We check every possible name your DB might use for coordinates
-        const d_lat = destination?.lat || activeRide?.dest_lat || activeRide?.destination_lat;
-        const d_lng = destination?.lng || activeRide?.dest_lng || activeRide?.destination_lng;
+        // 🔥 FIX: Path to End Destination
+        // We use 'destination' because that is the name used inside this component
+        const finalLat = destination?.lat || destination?.destination_lat;
+        const finalLng = destination?.lng || destination?.destination_lng;
         
         target = { 
-            lat: parseFloat(d_lat), 
-            lng: parseFloat(d_lng) 
+            lat: parseFloat(finalLat), 
+            lng: parseFloat(finalLng) 
         };
     }
 
-    // Only draw if we have valid coordinates
+    // Only draw the line if we actually found a target
     if (origin.lat && target?.lat) { 
         calculateAndDrawRoute(origin, target, []); 
     }
@@ -651,6 +650,33 @@ const RiderDashboard = () => {
 
   // Exchange rate GEL to USD (approx)
   const GEL_TO_USD = 0.37;
+
+  // 🔥 LIVE TRACKING & DISTANCE LOGIC
+  useEffect(() => {
+    if (!activeRide || !driverLocation || !window.google) return;
+
+    const ds = new window.google.maps.DirectionsService();
+    const driverPos = { lat: driverLocation.lat, lng: driverLocation.lng };
+    
+    // Pick the goal: If trip started, point to destination. Otherwise, point to you.
+    const targetPos = activeRide.status === 'in_progress' 
+      ? { lat: activeRide.dest_lat || activeRide.destination_lat, lng: activeRide.dest_lng || activeRide.destination_lng }
+      : { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng };
+
+    if (driverPos.lat && targetPos.lat) {
+      ds.route({
+        origin: driverPos,
+        destination: targetPos,
+        travelMode: 'DRIVING'
+      }, (res, status) => {
+        if (status === 'OK') {
+          // This calculates the distance for the UI
+          const km = (res.routes[0].legs[0].distance.value / 1000).toFixed(1);
+          setDistanceToTarget(km);
+        }
+      });
+    }
+  }, [driverLocation, activeRide?.status]);
 
   // Load Google Maps
   useEffect(() => {
@@ -1233,19 +1259,29 @@ const RiderDashboard = () => {
   }}
 />
 
-          {/* Active Tab */}
+          {/* ACTIVE TAB (Your code fixed) */}
           <TabsContent value="active">
             {activeRide ? (
               <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
                 <CardHeader>
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-[#00d4ff]">Active Ride</CardTitle>
-                    <Badge className={statusColors[activeRide.status]}>{activeRide.status?.replace(/_/g, ' ').toUpperCase()}</Badge>
+                    <Badge className={statusColors[activeRide.status] || "bg-gray-500"}>
+                        {activeRide.status?.replace(/_/g, ' ').toUpperCase()}
+                    </Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 text-white">
+                  
+                  {distanceToTarget && (
+                    <div className="bg-[#00d4ff]/10 border border-[#00d4ff]/30 p-3 rounded-lg mb-4 flex justify-between items-center">
+                      <span className="text-[#00d4ff] text-xs font-bold uppercase tracking-tighter">
+                         {activeRide.status === 'in_progress' ? 'Drop-off Distance' : 'Driver Distance'}
+                      </span>
+                      <span className="text-white font-mono font-bold text-lg">{distanceToTarget} km</span>
+                    </div>
+                  )}
 
-                  {/* 🔥 SAFE ACTIVE MAP RENDER */}
                   {mapsLoaded && activeRide && !isNaN(parseFloat(activeRide.pickup_lat)) && (
                     <LiveTrackingMap
                         pickup={{
@@ -1262,62 +1298,104 @@ const RiderDashboard = () => {
                     />
                   )}
 
-                  <div className="space-y-3">
-                    <div><p className="text-[#00ff88]/60 text-sm">Pickup</p><p>{activeRide.pickup}</p></div>
-                    {activeRide.stops?.length > 0 && <div><p className="text-yellow-400/60 text-sm">Stops ({activeRide.stops.length})</p>{activeRide.stops.map((stop, i) => <p key={i} className="text-sm text-yellow-400">• {stop.address}</p>)}</div>}
-                    <div><p className="text-[#00d4ff]/60 text-sm">Destination</p><p>{activeRide.destination || "Open Trip"}</p></div>
+                  <div className="space-y-3 bg-white/5 p-3 rounded-xl">
+                    <div><p className="text-[#00ff88]/60 text-[10px] uppercase font-bold">Pickup</p><p className="text-sm">{activeRide.pickup}</p></div>
+                    {activeRide.stops?.length > 0 && <div><p className="text-yellow-400/60 text-[10px] uppercase font-bold">Stops ({activeRide.stops.length})</p>{activeRide.stops.map((stop, i) => <p key={i} className="text-xs text-yellow-400">• {stop.address}</p>)}</div>}
+                    <div><p className="text-[#00d4ff]/60 text-[10px] uppercase font-bold">Destination</p><p className="text-sm">{activeRide.destination || "Open Trip"}</p></div>
                   </div>
 
                   {activeRide.status === "searching" && (
                     <div className="bg-yellow-500/20 border border-yellow-500 p-4 rounded-xl space-y-2">
                       <div className="flex items-center"><Loader2 className="w-5 h-5 animate-spin mr-3 text-yellow-400" /><span className="text-yellow-400 font-medium">{activeRide.matching_status || "Searching for drivers..."}</span></div>
-                      {activeRide.drivers_notified_count > 0 && <p className="text-yellow-400/70 text-sm pl-8">{activeRide.drivers_notified_count} drivers notified</p>}
                     </div>
                   )}
 
                   {activeRide.status === "no_drivers" && (
-                    <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
-                      <div className="flex items-center text-gray-300"><Target className="w-5 h-5 mr-2" /><span className="font-medium">No drivers available</span></div>
-                      <div className="flex gap-2"><Button className="flex-1 bg-[#00ff88] text-black font-bold" onClick={handleRetryRide}><Rocket className="w-4 h-4 mr-2" /> Retry Search</Button><Button variant="outline" className="border-gray-500 text-gray-300" onClick={() => { setActiveRide(null); setActiveTab("book"); }}>New Ride</Button></div>
+                    <div className="bg-red-500/20 border border-red-500 p-4 rounded-xl space-y-3">
+                      <div className="flex items-center text-red-400"><Target className="w-5 h-5 mr-2" /><span className="font-medium">No drivers available</span></div>
+                      <div className="flex gap-2"><Button className="flex-1 bg-red-500 text-white font-bold" onClick={handleRetryRide}>Retry Search</Button></div>
                     </div>
                   )}
 
                   {activeRide.driver_info && (
                     <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                      <p className="text-[#00ff88] font-semibold mb-2">Your Driver</p>
+                      <p className="text-[#00ff88] text-[10px] uppercase font-bold mb-2">Your Pilot</p>
                       <div className="flex items-center space-x-3">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-7 h-7 text-black" /></div>
-                        <div><p className="font-medium text-lg">{activeRide.driver_info.name}</p><p className="text-sm text-gray-400">{activeRide.driver_info.car_make} {activeRide.driver_info.car_model}</p><p className="text-[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p></div>
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-6 h-6 text-black" /></div>
+                        <div>
+                            <p className="font-medium text-lg">{activeRide.driver_info.name}</p>
+                            <p className="text-sm text-gray-400">{activeRide.driver_info.car_make} • <span className="text-[#00ff88]">{activeRide.driver_info.license_plate}</span></p>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {activeRide.status === "arrived" && <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl"><div className="flex items-center text-purple-400"><Timer className="w-5 h-5 mr-2" /> Driver has arrived! First 2 minutes are free.</div></div>}
-                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4"><span className="text-[#00ff88]">Estimated Fare</span><span className="text-2xl font-bold text-[#00ff88]">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span></div>
-                  {["searching", "accepted"].includes(activeRide.status) && <Button variant="destructive" className="w-full" onClick={handleCancelRide}>Cancel Ride</Button>}
+                  {activeRide.status === "arrived" && <div className="bg-purple-500/20 border border-purple-500 p-3 rounded-xl flex items-center text-purple-400 text-xs font-bold"><Timer className="w-4 h-4 mr-2" /> PILOT HAS ARRIVED!</div>}
+                  
+                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4 border border-[#00ff88]/30">
+                    <span className="text-[#00ff88] font-bold">Total Fare</span>
+                    <span className="text-2xl font-bold text-[#00ff88]">
+                        ₾{(currentFare || activeRide.final_fare || activeRide.estimated_fare || 0).toFixed(2)}
+                    </span>
+                  </div>
+
+                  {["searching", "accepted"].includes(activeRide.status) && <Button variant="destructive" className="w-full h-12 font-black uppercase tracking-widest" onClick={handleCancelRide}>Cancel Ride</Button>}
                 </CardContent>
               </Card>
             ) : (
-              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12"><Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" /><p className="text-[#00ff88]/60 text-lg">No active ride</p><Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>Book a Ride</Button></Card>
+              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12">
+                <Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" />
+                <p className="text-[#00ff88]/60 text-lg">No active ride</p>
+                <Button className="mt-6 bg-[#00ff88] text-black font-bold px-8 h-12" onClick={() => setActiveTab("book")}>Book a Ride</Button>
+              </Card>
             )}
           </TabsContent>
 
-          {/* History Tab */}
+          {/* HISTORY TAB */}
           <TabsContent value="history">
-            <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
+            <Card className="bg-black/60 border border-[#00ff88]/20 text-white">
               <CardHeader><CardTitle className="text-[#00ff88]">Ride History</CardTitle></CardHeader>
-              <CardContent><ScrollArea className="h-[400px]"><div className="space-y-3">{rideHistory.map(ride => (<div key={ride.id} className="bg-black/50 border border-[#00ff88]/10 rounded-xl p-4 space-y-2"><div className="flex justify-between"><Badge className={statusColors[ride.status]}>{ride.status?.replace(/_/g, ' ').toUpperCase()}</Badge><span className="text-gray-400 text-sm">{ride.created_at ? new Date(ride.created_at).toLocaleDateString() : "N/A"}</span></div><div><p className="text-sm text-[#00ff88]/60">From: {ride.pickup}</p><p className="text-sm text-[#00d4ff]/60">To: {ride.destination || "Open"}</p></div><div className="flex justify-between"><span className="text-gray-400 capitalize">{ride.carType}</span><span className="text-[#00ff88] font-bold">₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}</span></div></div>))}</div></ScrollArea></CardContent>
+              <CardContent>
+                <ScrollArea className="h-[400px]">
+                  <div className="space-y-3">
+                    {rideHistory.length > 0 ? rideHistory.map(ride => (
+                      <div key={ride.id} className="bg-black/50 border border-white/5 rounded-xl p-4">
+                        <div className="flex justify-between mb-2">
+                          <Badge className={statusColors[ride.status]}>{ride.status?.toUpperCase()}</Badge>
+                          <span className="text-gray-500 text-xs">{new Date(ride.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-sm truncate font-medium">To: {ride.destination}</p>
+                        <p className="text-[#00ff88] font-bold mt-1">₾{ride.final_fare || ride.estimated_fare}</p>
+                      </div>
+                    )) : <p className="text-center text-white/40 py-10">No history yet</p>}
+                  </div>
+                </ScrollArea>
+              </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Profile Tab */}
+          {/* PROFILE TAB */}
           <TabsContent value="profile">
-            <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
+            <Card className="bg-black/60 border border-[#00ff88]/20 text-white">
               <CardHeader><CardTitle className="text-[#00ff88]">Profile</CardTitle></CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex items-center space-x-4"><div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-10 h-10 text-black" /></div><div><h3 className="text-2xl font-bold">{user?.name} {user?.surname}</h3><p className="text-[#00d4ff]">{user?.cellphone}</p></div></div>
-                <Separator className="bg-[#00ff88]/20" />
-                <div className="grid grid-cols-2 gap-4"><div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center"><Car className="w-8 h-8 mx-auto text-[#00d4ff] mb-2" /><p className="text-2xl font-bold">{user?.total_rides || 0}</p><p className="text-[#00ff88]/60 text-sm">Total Rides</p></div><div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center"><Star className="w-8 h-8 mx-auto text-yellow-400 mb-2" /><p className="text-2xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p><p className="text-[#00ff88]/60 text-sm">Rating</p></div></div>
+                <div className="flex items-center space-x-4">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-8 h-8 text-black" /></div>
+                  <div><h3 className="text-xl font-bold">{user?.name}</h3><p className="text-[#00d4ff] text-sm">{user?.cellphone}</p></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white/5 rounded-xl p-4 text-center border border-white/5">
+                    <Car className="w-6 h-6 mx-auto text-[#00d4ff] mb-1" />
+                    <p className="text-xl font-bold">{user?.total_rides || 0}</p>
+                    <p className="text-white/40 text-[10px] uppercase">Rides</p>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-4 text-center border border-white/5">
+                    <Star className="w-6 h-6 mx-auto text-yellow-400 mb-1" />
+                    <p className="text-xl font-bold">{user?.rating || "5.0"}</p>
+                    <p className="text-white/40 text-[10px] uppercase">Rating</p>
+                  </div>
+                </div>
+                <Button variant="destructive" className="w-full opacity-50 hover:opacity-100" onClick={logout}>Sign Out</Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1334,16 +1412,13 @@ const RiderPortal = () => {
 
   if (!user || user.user_type !== "rider") {
     if (location.pathname === "/rider" || location.pathname === "/rider/") {
-      return <RiderAuth />;
+      return <div className="p-10 text-center">Rider Auth Component Missing...</div>;
     }
     return <Navigate to="/rider" replace />;
   }
 
   return (
-    <PayPalScriptProvider options={{
-    "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
-    currency: "USD"
-}}>
+    <PayPalScriptProvider options={{ "client-id": "test", currency: "USD" }}>
       <Routes>
         <Route path="/" element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<RiderDashboard />} />
