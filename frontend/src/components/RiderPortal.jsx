@@ -769,13 +769,39 @@ const RiderDashboard = () => {
   }, [routeInfo, carType, stops.length, surgeInfo, paymentMethod]);
 
   // 🔥 POLL FOR ACTIVE RIDE
+  // 🔥 FIXED MONEY LOGIC (Rider): Keeps fee after start
   useEffect(() => {
     let interval;
-    if (activeRide && !["completed", "cancelled", "no_drivers"].includes(activeRide.status)) {
-      interval = setInterval(fetchActiveRide, 3000);
+    const baseFare = activeRide?.estimated_fare || 0;
+
+    const calculateFee = (startTime, endTime) => {
+        const duration = endTime - startTime;
+        const minutes = Math.floor(duration / 60000);
+        if (!endTime) setWaitTimer(Math.max(0, minutes));
+
+        const billableMinutes = Math.max(0, minutes - 2);
+        return baseFare + (billableMinutes * 0.40);
+    };
+
+    if (activeRide?.status === "arrived" && activeRide.arrived_at) {
+        // Live Waiting
+        const start = new Date(activeRide.arrived_at).getTime();
+        const tick = () => setCurrentFare(calculateFee(start, Date.now()));
+        tick();
+        interval = setInterval(tick, 1000);
+
+    } else if ((activeRide?.status === "in_progress" || activeRide?.status === "completed") && activeRide?.arrived_at && activeRide?.started_at) {
+        // Trip Started - Lock in the fee
+        const start = new Date(activeRide.arrived_at).getTime();
+        const end = new Date(activeRide.started_at).getTime();
+        setCurrentFare(calculateFee(start, end));
+
+    } else {
+        setCurrentFare(baseFare);
     }
+
     return () => clearInterval(interval);
-  }, [activeRide?.status]);
+  }, [activeRide?.status, activeRide?.arrived_at, activeRide?.started_at, activeRide?.estimated_fare]);
 
   const fetchSurgeStatus = async () => {
     try {

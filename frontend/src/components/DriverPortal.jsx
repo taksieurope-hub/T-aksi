@@ -607,35 +607,54 @@ const DriverDashboard = () => {
   const fetchNearbyRides = async () => { try { const res = await api.get(`/driver/rides/nearby?radius=${searchRadius}`); setNearbyRides(res.data.rides || []); } catch (e) {} };
 
 // 🔥 LIVE MONEY LOGIC (Driver)
+  // 🔥 FIXED MONEY LOGIC: Keeps the fee even after trip starts
   useEffect(() => {
     let interval;
     const baseFare = activeRide?.estimated_fare || 0;
 
-    const calculateLiveFare = (startTime) => {
-        const now = Date.now();
-        const minutes = Math.floor((now - startTime) / 60000);
-        setWaitTimer(Math.max(0, minutes)); 
+    // Helper: Calculate fee based on time difference
+    const calculateFee = (startTime, endTime) => {
+        const duration = endTime - startTime;
+        const minutes = Math.floor(duration / 60000);
+        
+        // Update the timer display if we are still waiting
+        if (!endTime) setWaitTimer(Math.max(0, minutes));
 
-        // First 2 mins free, then 0.40 per min
+        // Money Math: First 2 mins free, then 0.40 per min
         const billableMinutes = Math.max(0, minutes - 2);
         const extraCharge = billableMinutes * 0.40;
-        setCurrentFare(baseFare + extraCharge);
+        return baseFare + extraCharge;
     };
 
     if (activeRide?.status === "arrived") {
-        // Recover start time
+        // --- CASE 1: WAITING (Live Counter) ---
         const start = arrivedTime || (activeRide.arrived_at ? new Date(activeRide.arrived_at).getTime() : Date.now());
         if (!arrivedTime) setArrivedTime(start);
 
-        calculateLiveFare(start); // Run now
-        interval = setInterval(() => calculateLiveFare(start), 1000); // Run every second
+        // Update every second
+        const tick = () => setCurrentFare(calculateFee(start, Date.now()));
+        tick(); 
+        interval = setInterval(tick, 1000);
+
+    } else if (activeRide?.status === "in_progress" || activeRide?.status === "completed") {
+        // --- CASE 2: TRIP STARTED (Lock in the Fee) ---
+        // If we have timestamps, calculate the final locked fee
+        if (activeRide.arrived_at && activeRide.started_at) {
+            const start = new Date(activeRide.arrived_at).getTime();
+            const end = new Date(activeRide.started_at).getTime();
+            setCurrentFare(calculateFee(start, end));
+        } else {
+            // Fallback if timestamps are missing (shouldn't happen)
+            setCurrentFare(baseFare);
+        }
     } else {
+        // --- CASE 3: JUST ACCEPTED ---
         setCurrentFare(baseFare);
     }
 
     return () => clearInterval(interval);
-  }, [activeRide?.status, activeRide?.estimated_fare, activeRide?.arrived_at, arrivedTime]);
-
+  }, [activeRide?.status, activeRide?.estimated_fare, activeRide?.arrived_at, activeRide?.started_at, arrivedTime]);
+  
   const handleRideAction = async (action) => {
     if (!activeRide) return;
     setLoading(true);
