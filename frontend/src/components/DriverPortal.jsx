@@ -278,8 +278,8 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
 
             // 🔥 CALCULATE LIVE FARE
             const baseFare = activeRide.estimated_fare || 0;
-            const billableMinutes = Math.max(0, minutes - FREE_WAIT_MINUTES);
-            const extraCharge = billableMinutes * WAIT_RATE_PER_MIN;
+            const billableMinutes = Math.max(2, minutes - FREE_WAIT_MINUTES);
+            const extraCharge = Math.max(0.40, billableMinutes * WAIT_RATE_PER_MIN);
             
             setCurrentFare(baseFare + extraCharge);
         }, 1000);
@@ -477,7 +477,7 @@ const DriverDashboard = () => {
   const [driverLocation, setDriverLocation] = useState(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [currentFare, setCurrentFare] = useState(0);
-  const WAIT_RATE_PER_MIN = 0.40; // 40 tetri per minute
+  const WAIT_RATE_PER_MIN = 0.40;
   const FREE_WAIT_MINUTES = 2;
   
   // Ride tracking state
@@ -606,6 +606,36 @@ const DriverDashboard = () => {
   const fetchRideHistory = async () => { try { const res = await api.get(`/driver/history`); setRideHistory(res.data.rides || []); } catch (e) {} };
   const fetchNearbyRides = async () => { try { const res = await api.get(`/driver/rides/nearby?radius=${searchRadius}`); setNearbyRides(res.data.rides || []); } catch (e) {} };
 
+// 🔥 LIVE MONEY LOGIC (Driver)
+  useEffect(() => {
+    let interval;
+    const baseFare = activeRide?.estimated_fare || 0;
+
+    const calculateLiveFare = (startTime) => {
+        const now = Date.now();
+        const minutes = Math.floor((now - startTime) / 60000);
+        setWaitTimer(Math.max(0, minutes)); 
+
+        // First 2 mins free, then 0.40 per min
+        const billableMinutes = Math.max(0, minutes - 2);
+        const extraCharge = billableMinutes * 0.40;
+        setCurrentFare(baseFare + extraCharge);
+    };
+
+    if (activeRide?.status === "arrived") {
+        // Recover start time
+        const start = arrivedTime || (activeRide.arrived_at ? new Date(activeRide.arrived_at).getTime() : Date.now());
+        if (!arrivedTime) setArrivedTime(start);
+
+        calculateLiveFare(start); // Run now
+        interval = setInterval(() => calculateLiveFare(start), 1000); // Run every second
+    } else {
+        setCurrentFare(baseFare);
+    }
+
+    return () => clearInterval(interval);
+  }, [activeRide?.status, activeRide?.estimated_fare, activeRide?.arrived_at, arrivedTime]);
+
   const handleRideAction = async (action) => {
     if (!activeRide) return;
     setLoading(true);
@@ -721,19 +751,22 @@ const DriverDashboard = () => {
                     </div>
                   )}
 
+                 {/* 🔥 LIVE PRICE DISPLAY (Safe Version) */}
                   <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4 border border-[#00ff88]/30">
-  <div>
-    <span className="text-[#00ff88] block text-xs uppercase tracking-widest">Current Fare</span>
-    {activeRide.status === "arrived" && waitTimer > 2 && (
-      <span className="text-yellow-400 text-[10px] animate-pulse">
-        +₾{((waitTimer - 2) * 0.40).toFixed(2)} Wait Fee
-      </span>
-    )}
-  </div>
-  <span className="text-3xl font-bold text-[#00ff88]">
-    ₾{currentFare.toFixed(2)}
-  </span>
-</div>
+                    <div>
+                        <span className="text-[#00ff88] block text-xs uppercase tracking-widest">Total Fare</span>
+                        {/* Check activeRide? to prevent crash */}
+                        {activeRide?.status === "arrived" && (waitTimer || 0) > 2 && (
+                            <span className="text-yellow-400 text-[10px] font-bold animate-pulse">
+                                +₾{(((waitTimer || 0) - 2) * 0.40).toFixed(2)} Wait Fee Added
+                            </span>
+                        )}
+                    </div>
+                    <span className="text-3xl font-bold text-[#00ff88]">
+                        {/* Fallback to 0 if undefined */}
+                        ₾{(currentFare || 0).toFixed(2)}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-1 gap-2">
                     {activeRide.status === "accepted" && <Button className="bg-purple-500 text-white h-14 text-lg" onClick={() => handleRideAction("arrived")} disabled={loading}><MapPin className="w-5 h-5 mr-2" /> I've Arrived</Button>}
                     {activeRide.status === "arrived" && <Button className="bg-blue-500 text-white h-14 text-lg" onClick={() => handleRideAction("start")} disabled={loading}><Play className="w-5 h-5 mr-2" /> Start Trip</Button>}
