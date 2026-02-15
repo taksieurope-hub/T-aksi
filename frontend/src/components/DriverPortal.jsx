@@ -41,6 +41,27 @@ const DriverAuth = () => {
     name: "", surname: "", cellphone: "", password: ""
   });
 
+  // Toggle for showing the Garage vs the Add Car form
+  const [isAddingVehicle, setIsAddingVehicle] = useState(false);
+
+  // Function to swap the active car for the current shift
+  const handleSetActiveVehicle = async (vehicleId) => {
+    setLoading(true);
+    try {
+      await api.post(`/driver/vehicle/${vehicleId}/active`);
+      toast.success("Active vehicle updated!");
+      // Refresh user data so the UI instantly updates
+      const userRes = await api.get(`/auth/me`); 
+      updateUser(userRes.data);
+    } catch (e) {
+      toast.error("Failed to update active vehicle");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -752,6 +773,7 @@ const DriverDashboard = () => {
                   </div>
                 ) : (
                   <form onSubmit={handleRegisterVehicle} className="space-y-6">
+                    
                     {/* 1. TEXT DETAILS */}
                     <div className="space-y-3">
                       <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Details</h3>
@@ -801,9 +823,29 @@ const DriverDashboard = () => {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>          <TabsContent value="earnings"><div className="space-y-4"><Card className="p-4 bg-black/60 border border-[#00ff88]"><p className="text-gray-400">Balance</p><p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p></Card><Input type="number" placeholder="Amount" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} className="bg-black/50 text-white"/><Button className="w-full bg-[#00ff88] text-black" onClick={() => setShowCardModal(true)}>Top Up</Button></div></TabsContent>
-          <TabsContent value="history"><ScrollArea className="h-[400px]">{rideHistory.map(r => <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 mb-2 rounded"><p className="text-white">{r.pickup}</p><p className="text-[#00ff88] font-bold">₾{r.final_fare}</p></div>)}</ScrollArea></TabsContent>
+          </TabsContent>
 
+          <TabsContent value="earnings">
+            <div className="space-y-4">
+              <Card className="p-4 bg-black/60 border border-[#00ff88]">
+                <p className="text-gray-400">Balance</p>
+                <p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p>
+              </Card>
+              <Input type="number" placeholder="Amount" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} className="bg-black/50 text-white"/>
+              <Button className="w-full bg-[#00ff88] text-black" onClick={() => setShowCardModal(true)}>Top Up</Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="history">
+            <ScrollArea className="h-[400px]">
+              {rideHistory.map(r => (
+                <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 mb-2 rounded">
+                  <p className="text-white">{r.pickup}</p>
+                  <p className="text-[#00ff88] font-bold">₾{r.final_fare}</p>
+                </div>
+              ))}
+            </ScrollArea>
+          </TabsContent>
         </Tabs>
       </main>
 

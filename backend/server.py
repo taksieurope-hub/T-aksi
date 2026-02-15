@@ -606,6 +606,7 @@ def calculate_fare(
     if surge_multiplier > 1.0:
         surge_fee = subtotal * (surge_multiplier - 1.0)
 
+    # ... (keep all your existing calculation logic above)
     total = subtotal + surge_fee
 
     return {
@@ -619,7 +620,8 @@ def calculate_fare(
         "subtotal": round(subtotal, 2),
         "surge_fee": round(surge_fee, 2),
         "surge_multiplier": surge_multiplier,
-        "total": round(total, 2),
+        "base_total": round(total, 2),  
+        "total": round(total, 2),       
         "breakdown": {
             "distance_km": round(distance_km, 2),
             "wait_minutes": wait_minutes,
@@ -853,6 +855,8 @@ async def get_current_user(user_id: str = Depends(get_current_user_id)):
 # DRIVER ROUTES
 # =========================
 
+import uuid # Needed to generate unique IDs for each car in the garage
+
 @app.post("/api/driver/vehicle", tags=["Driver"])
 async def register_vehicle(
     car_make: str = Form(...),
@@ -886,7 +890,7 @@ async def register_vehicle(
         if not file:
             return None
         file_ext = file.filename.split(".")[-1]
-        file_name = f"{user_id}_{prefix}.{file_ext}"
+        file_name = f"{user_id}_{prefix}_{uuid.uuid4().hex[:6]}.{file_ext}"
         file_path = f"uploads/{file_name}"
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -904,32 +908,32 @@ async def register_vehicle(
         "car_photo_right": save_file(car_photo_right, "car_right"),
     }
 
-    make_lower = (car_make or "").lower()
-    if any(m in make_lower for m in ["mercedes", "bmw", "lexus", "audi", "tesla"]):
-        tier = "comfort"
-    elif any(m in make_lower for m in ["jeep", "land rover", "range rover", "toyota land"]):
-        tier = "suv"
-    else:
-        tier = "economy"
+    # 🔥 UPGRADED: Let Gemini intelligently decide the tier
+    tier = await get_vehicle_tier_from_ai(car_make, car_model, car_year)
+    logger.info(f"🤖 AI categorized the {car_year} {car_make} {car_model} as: {tier.upper()}")
 
-    # Package the text data and the image paths into one object
+    # Package the text data, image paths, and tier into one object
     vehicle_data = {
+        "id": str(uuid.uuid4()),
         "car_make": car_make,
         "car_model": car_model,
         "car_year": car_year,
         "car_color": car_color,
         "license_plate": license_plate,
-        "documents": document_urls
+        "tier": tier,
+        "documents": document_urls,
+        "status": "pending"
     }
 
+    # 🔥 UPGRADED: Use ArrayUnion to add to a "Garage" instead of overwriting
     db.collection("users").document(user_id).update({
-        "driver_info.vehicle": vehicle_data,
-        "driver_info.vehicle_tier": tier,
+        "driver_info.vehicles": firestore.ArrayUnion([vehicle_data]),
+        "driver_info.active_vehicle_id": vehicle_data["id"],
         "registration_status": "pending_review",
         "updated_at": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": "Vehicle and documents registered successfully", "tier": tier}
+    return {"message": "Vehicle added to your garage successfully!", "tier": tier}
 
 
 @app.post("/api/driver/status", tags=["Driver"])
@@ -1298,6 +1302,15 @@ async def request_ride(ride_data: RideRequest, background_tasks: BackgroundTasks
         surge_multiplier
     )
 
+    # --- ADD THE FEE LOGIC HERE ---
+    payment_method = ride_data.payment_method
+    service_fee = 2.0 if payment_method == "card" else 0.0
+    
+    fare["service_fee"] = service_fee
+    fare["base_total"] = fare["total"]    # Ride price (e.g., 10 GEL)
+    fare["total"] += service_fee          # Total charge (e.g., 12 GEL)
+    # ------------------------------
+
     stops_data = [{"address": s.address, "lat": s.lat, "lng": s.lng, "order": s.order} for s in ride_data.stops]
 
     ride_ref = db.collection("rides").document()
@@ -1313,12 +1326,13 @@ async def request_ride(ride_data: RideRequest, background_tasks: BackgroundTasks
         "destination_lng": ride_data.destination_lng,
         "stops": stops_data,
         "num_stops": num_stops,
-        "payment_method": ride_data.payment_method,
+        "payment_method": payment_method,
         "payment_order_id": ride_data.payment_order_id,
         "estimated_distance": ride_data.estimated_distance,
         "estimated_duration": ride_data.estimated_duration,
-        "estimated_fare": fare["total"],
+        "estimated_fare": fare["total"], # Now correctly includes the 2 GEL
         "fare_breakdown": fare,
+        "service_fee": service_fee,      # Explicitly save the fee for records
         "surge_multiplier": surge_multiplier,
         "surge_info": surge_info,
         "commission_rate": commission_rate,
@@ -1345,16 +1359,24 @@ async def request_ride(ride_data: RideRequest, background_tasks: BackgroundTasks
     }
 
 
-@app.get("/api/rides/estimate", tags=["Rides"])
+@app.get("/api/surge/estimate", tags=["Rides"]) # or /api/rides/estimate
 async def estimate_fare(
     car_type: str = "economy",
     distance: float = 5,
     stops: int = 0,
     lat: float = Query(None),
     lng: float = Query(None),
+    payment_method: str = "cash" # Add this parameter
 ):
     surge_info = get_surge_multiplier(lat, lng)
     fare = calculate_fare(car_type, distance, 0, 0, stops, surge_info["multiplier"])
+    
+    # Calculate fee for the estimate
+    service_fee = 2.0 if payment_method == "card" else 0.0
+    fare["service_fee"] = service_fee
+    fare["base_total"] = fare["total"]
+    fare["total"] += service_fee
+
     return {**fare, "surge": surge_info}
 
 
@@ -1622,42 +1644,50 @@ async def stop_reached(ride_id: str, stop_index: int, wait_minutes: int = 0, use
 async def complete_ride(
     ride_id: str,
     final_distance: Optional[float] = None,
-    total_wait_minutes: Optional[int] = None,  # kept for compatibility
+    total_wait_minutes: Optional[int] = None,
     user_id: str = Depends(get_current_user_id),
 ):
     db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    ride_snap = ride_ref.get()
 
-    ride_doc = db.collection("rides").document(ride_id).get()
-    if not ride_doc.exists:
+    if not ride_snap.exists:
         raise HTTPException(404, "Ride not found")
-    ride_data = ride_doc.to_dict()
-
-    estimated = ride_data.get("estimated_distance", 5) or 5
-    reported = final_distance if final_distance is not None else 0
-
-    if reported < (estimated * 0.1):
-        actual_distance = estimated
-        logger.warning(f"Ride {ride_id}: GPS distance {reported}km seems wrong. Using estimate {estimated}km")
-    else:
-        actual_distance = reported
-
-    pickup_wait = ride_data.get("pickup_wait_minutes", 0) or 0
-    stop_wait = ride_data.get("stop_wait_minutes", 0) or 0
-    num_stops = ride_data.get("num_stops", 0) or 0
+    
+    ride_data = ride_snap.to_dict()
+    
+    # 1. Gather variables for the final calculation
+    actual_distance = final_distance if final_distance is not None else ride_data.get("estimated_distance", 0)
+    pickup_wait = ride_data.get("pickup_wait_minutes", 0)
+    stop_wait = ride_data.get("stop_wait_minutes", 0)
+    num_stops = ride_data.get("num_stops", 0)
     car_type = ride_data.get("carType", "economy")
     surge_multiplier = ride_data.get("surge_multiplier", 1.0)
 
+    # 2. Calculate the base fare (the price of the ride itself)
     final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops, surge_multiplier)
-
-    payment_status = "cash_pending"
+    
+    # 3. Apply the 2 GEL Service Fee for Card payments
     payment_method = ride_data.get("payment_method", "cash")
+    service_fee = 2.0 if payment_method == "card" else 0.0
+    
+    # Store the ride price (for driver) and the grand total (for rider)
+    base_fare_amount = final_fare["total"] 
+    total_with_fee = base_fare_amount + service_fee
+    
+    # Update the dictionary we save to the DB
+    final_fare["base_total"] = base_fare_amount
+    final_fare["service_fee"] = service_fee
+    final_fare["total"] = total_with_fee
+
+    # 4. PayPal Verification Logic
+    payment_status = "cash_pending"
     order_id = ride_data.get("payment_order_id")
 
     if payment_method == "card" and order_id:
         try:
-            logger.info(f"Attempting to verify PayPal order: {order_id}")
+            logger.info(f"Verifying PayPal for ride {ride_id}: Order {order_id}")
             access_token = await get_paypal_token()
-
             if access_token:
                 async with httpx.AsyncClient(timeout=25) as client:
                     capture_response = await client.get(
@@ -1667,46 +1697,70 @@ async def complete_ride(
                             "Authorization": f"Bearer {access_token}",
                         },
                     )
-
                     if capture_response.status_code == 200:
                         data = capture_response.json()
                         status = data.get("status")
                         if status in ("COMPLETED", "APPROVED"):
                             payment_status = "paid"
-                            logger.info(f"Payment verified for ride {ride_id}")
                         else:
-                            logger.warning(f"PayPal status: {status}")
                             payment_status = "failed"
                     else:
-                        logger.error(f"PayPal Verify Failed: {capture_response.status_code}")
                         payment_status = "failed"
             else:
                 payment_status = "auth_error"
-
         except Exception as e:
             logger.error(f"Payment Exception: {e}")
             payment_status = "error"
     elif payment_method == "cash":
         payment_status = "cash_collected"
 
-    db.collection("rides").document(ride_id).update({
+    # 5. Update Ride Record
+    ride_ref.update({
         "status": "completed",
         "actual_distance": actual_distance,
-        "final_fare": final_fare["total"],
+        "final_fare": total_with_fee,
         "final_fare_breakdown": final_fare,
         "payment_status": payment_status,
         "completed_at": firestore.SERVER_TIMESTAMP,
     })
+
+    # 6. Driver Earnings (The 2 GEL stays with you!)
+    driver_id = ride_data.get("driver_id")
+    if driver_id:
+        commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
+        held_commission = ride_data.get("commission_paid", 0) or 0
+        
+        # Commission is ONLY on the ride price (e.g. 10 GEL)
+        actual_commission = (base_fare_amount or 0) * commission_rate
+        delta_commission = actual_commission - held_commission 
+
+        # Driver gets their 77% of the ride price ONLY
+        driver_earnings = (base_fare_amount or 0) - actual_commission
+
+        db.collection("users").document(driver_id).update({
+            "earnings.total_earned": firestore.Increment(driver_earnings),
+            "earnings.balance": firestore.Increment(driver_earnings), # Driver's share goes to wallet
+            "total_rides": firestore.Increment(1),
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
+
+    return {"message": "Ride completed", "total": total_with_fee, "payment_status": payment_status}
 
     # DRIVER EARNINGS / COMMISSION RECONCILIATION
     driver_id = ride_data.get("driver_id")
     if driver_id:
         commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
         held_commission = ride_data.get("commission_paid", 0) or 0
-        actual_commission = (final_fare["total"] or 0) * commission_rate
-        delta_commission = actual_commission - held_commission  # + => owes more; - => refund
+        
+        # We use "base_total" (the 10 GEL) so you don't pay 
+        # the driver 77% of your own service fee.
+        base_fare_amount = final_fare.get("base_total", final_fare["total"])
 
-        driver_earnings = (final_fare["total"] or 0) - actual_commission
+        actual_commission = (base_fare_amount or 0) * commission_rate
+        delta_commission = actual_commission - held_commission 
+
+        # Driver gets their cut of the ride price ONLY
+        driver_earnings = (base_fare_amount or 0) - actual_commission
 
         updates = {
             "earnings.total_earned": firestore.Increment(driver_earnings),
