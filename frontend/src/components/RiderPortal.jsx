@@ -1261,114 +1261,92 @@ const RiderDashboard = () => {
 
           {/* Active Tab */}
           <TabsContent value="active">
-  {activeRide ? (
-    <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
-      <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-[#00d4ff]">Active Ride</CardTitle>
-          <Badge className={statusColors[activeRide.status]}>{activeRide.status?.replace(/_/g, ' ').toUpperCase()}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4 text-white">
-        
-        {/* Distance UI */}
-        {distanceToTarget && (
-          <div className="bg-[#00d4ff]/10 border border-[#00d4ff]/30 p-3 rounded-lg mb-4 flex justify-between items-center">
-            <span className="text-[#00d4ff] text-xs font-bold uppercase tracking-tighter">
-               {activeRide.status === 'in_progress' ? 'Drop-off Distance' : 'Driver Distance'}
-            </span>
-            <span className="text-white font-mono font-bold text-lg">{distanceToTarget} km</span>
-          </div>
-        )}
+            {activeRide ? (
+              <Card className="bg-black/60 backdrop-blur-xl border border-[#00d4ff]/30">
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-[#00d4ff]">Active Ride</CardTitle>
+                    <Badge className={statusColors[activeRide.status]}>{activeRide.status?.replace(/_/g, ' ').toUpperCase()}</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4 text-white">
+                  
+                  {/* Distance UI - FIXED: Now points to activeRide.driver_location */}
+                  {activeRide.driver_location && (
+                    <div className="bg-[#00d4ff]/10 border border-[#00d4ff]/30 p-3 rounded-lg mb-4 flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <Navigation className="w-4 h-4 text-[#00d4ff] animate-pulse" />
+                        <span className="text-[#00d4ff] text-xs font-bold uppercase tracking-tighter">
+                           {activeRide.status === 'in_progress' ? 'Drop-off Distance' : 'Driver Distance'}
+                        </span>
+                      </div>
+                      <span className="text-white font-mono font-bold text-lg">
+                        {(Math.sqrt(
+                          Math.pow(activeRide.driver_location.lat - (activeRide.status === 'in_progress' ? (activeRide.dest_lat || activeRide.destination_lat) : activeRide.pickup_lat), 2) +
+                          Math.pow(activeRide.driver_location.lng - (activeRide.status === 'in_progress' ? (activeRide.dest_lng || activeRide.destination_lng) : activeRide.pickup_lng), 2)
+                        ) * 111).toFixed(1)} km
+                      </span>
+                    </div>
+                  )}
 
-        {/* Safe Active Map Render */}
-        {mapsLoaded && activeRide && !isNaN(parseFloat(activeRide.pickup_lat)) && (
-          <LiveTrackingMap
-            pickup={{
-              lat: parseFloat(activeRide.pickup_lat),
-              lng: parseFloat(activeRide.pickup_lng)
-            }}
-            destination={
-              (activeRide.dest_lat || activeRide.destination_lat) && !isNaN(parseFloat(activeRide.dest_lat || activeRide.destination_lat))
-                ? { lat: parseFloat(activeRide.dest_lat || activeRide.destination_lat), lng: parseFloat(activeRide.dest_lng || activeRide.destination_lng) }
-                : null
-            }
-            driverLocation={activeRide.driver_location}
-            status={activeRide.status}
-          />
-        )}
+                  {/* Safe Active Map Render */}
+                  {mapsLoaded && activeRide && !isNaN(parseFloat(activeRide.pickup_lat)) && (
+                    <LiveTrackingMap
+                        pickup={{
+                            lat: parseFloat(activeRide.pickup_lat),
+                            lng: parseFloat(activeRide.pickup_lng)
+                        }}
+                        destination={
+                            (activeRide.dest_lat || activeRide.destination_lat) && !isNaN(parseFloat(activeRide.dest_lat || activeRide.destination_lat))
+                            ? { lat: parseFloat(activeRide.dest_lat || activeRide.destination_lat), lng: parseFloat(activeRide.dest_lng || activeRide.destination_lng) }
+                            : null
+                        }
+                        driverLocation={activeRide.driver_location}
+                        status={activeRide.status}
+                    />
+                  )}
 
-        <div className="space-y-3">
-          <div><p className="text-[#00ff88]/60 text-sm">Pickup</p><p>{activeRide.pickup}</p></div>
-          {activeRide.stops?.length > 0 && (
-            <div>
-              <p className="text-yellow-400/60 text-sm">Stops ({activeRide.stops.length})</p>
-              {activeRide.stops.map((stop, i) => <p key={i} className="text-sm text-yellow-400">• {stop.address}</p>)}
-            </div>
-          )}
-          <div><p className="text-[#00d4ff]/60 text-sm">Destination</p><p>{activeRide.destination || "Open Trip"}</p></div>
-        </div>
+                  <div className="space-y-3">
+                    <div><p className="text-[#00ff88]/60 text-sm font-bold uppercase tracking-tighter">Pickup</p><p>{activeRide.pickup}</p></div>
+                    {activeRide.stops?.length > 0 && <div><p className="text-yellow-400/60 text-sm font-bold uppercase tracking-tighter">Stops ({activeRide.stops.length})</p>{activeRide.stops.map((stop, i) => <p key={i} className="text-sm text-yellow-400">• {stop.address}</p>)}</div>}
+                    <div><p className="text-[#00d4ff]/60 text-sm font-bold uppercase tracking-tighter">Destination</p><p>{activeRide.destination || "Open Trip"}</p></div>
+                  </div>
 
-        {activeRide.status === "searching" && (
-          <div className="bg-yellow-500/20 border border-yellow-500 p-4 rounded-xl space-y-2">
-            <div className="flex items-center">
-              <Loader2 className="w-5 h-5 animate-spin mr-3 text-yellow-400" />
-              <span className="text-yellow-400 font-medium">{activeRide.matching_status || "Searching for drivers..."}</span>
-            </div>
-            {activeRide.drivers_notified_count > 0 && <p className="text-yellow-400/70 text-sm pl-8">{activeRide.drivers_notified_count} drivers notified</p>}
-          </div>
-        )}
+                  {activeRide.status === "searching" && (
+                    <div className="bg-yellow-500/20 border border-yellow-500 p-4 rounded-xl space-y-2">
+                      <div className="flex items-center"><Loader2 className="w-5 h-5 animate-spin mr-3 text-yellow-400" /><span className="text-yellow-400 font-medium">{activeRide.matching_status || "Searching for drivers..."}</span></div>
+                      {activeRide.drivers_notified_count > 0 && <p className="text-yellow-400/70 text-sm pl-8">{activeRide.drivers_notified_count} drivers notified</p>}
+                    </div>
+                  )}
 
-        {activeRide.status === "no_drivers" && (
-          <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
-            <div className="flex items-center text-gray-300"><Target className="w-5 h-5 mr-2" /><span className="font-medium">No drivers available</span></div>
-            <div className="flex gap-2">
-              <Button className="flex-1 bg-[#00ff88] text-black font-bold" onClick={handleRetryRide}><Rocket className="w-4 h-4 mr-2" /> Retry Search</Button>
-              <Button variant="outline" className="border-gray-500 text-gray-300" onClick={() => { setActiveRide(null); setActiveTab("book"); }}>New Ride</Button>
-            </div>
-          </div>
-        )}
+                  {activeRide.driver_info && (
+                    <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
+                      <p className="text-[#00ff88] font-semibold mb-2">Your Pilot</p>
+                      <div className="flex items-center space-x-3">
+                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-7 h-7 text-black" /></div>
+                        <div><p className="font-medium text-lg">{activeRide.driver_info.name}</p><p className="text-sm text-gray-400">{activeRide.driver_info.car_make} {activeRide.driver_info.car_model}</p><p className="text-[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p></div>
+                      </div>
+                    </div>
+                  )}
 
-        {activeRide.driver_info && (
-          <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-            <p className="text-[#00ff88] font-semibold mb-2">Your Driver</p>
-            <div className="flex items-center space-x-3">
-              <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-7 h-7 text-black" /></div>
-              <div>
-                <p className="font-medium text-lg">{activeRide.driver_info.name}</p>
-                <p className="text-sm text-gray-400">{activeRide.driver_info.car_make} {activeRide.driver_info.car_model}</p>
-                <p className="text-[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeRide.status === "arrived" && (
-          <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl">
-            <div className="flex items-center text-purple-400"><Timer className="w-5 h-5 mr-2" /> Driver has arrived! First 2 minutes are free.</div>
-          </div>
-        )}
-
-        <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
-          <span className="text-[#00ff88]">Total Fare</span>
-          <span className="text-2xl font-bold text-[#00ff88]">
-            ₾{Number(activeRide.final_fare || activeRide.estimated_fare || 0).toFixed(2)}
-          </span>
-        </div>
-
-        {["searching", "accepted"].includes(activeRide.status) && (
-          <Button variant="destructive" className="w-full" onClick={handleCancelRide}>Cancel Ride</Button>
-        )}
-      </CardContent>
-    </Card>
-  ) : (
-    <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12">
-      <Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" />
-      <p className="text-[#00ff88]/60 text-lg">No active ride</p>
-      <Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>Book a Ride</Button>
-    </Card>
-  )}
-</TabsContent>
+                  {activeRide.status === "arrived" && <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl"><div className="flex items-center text-purple-400 font-bold"><Timer className="w-5 h-5 mr-2" /> PILOT HAS ARRIVED!</div></div>}
+                  
+                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4 border border-[#00ff88]/30">
+                    <span className="text-[#00ff88] font-bold">Estimated Fare</span>
+                    <span className="text-2xl font-bold text-[#00ff88]">₾{Number(activeRide.final_fare || activeRide.estimated_fare || 0).toFixed(2)}</span>
+                  </div>
+                  
+                  {["searching", "accepted"].includes(activeRide.status) && <Button variant="destructive" className="w-full font-bold uppercase" onClick={handleCancelRide}>Cancel Ride</Button>}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12">
+                <Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" />
+                <p className="text-[#00ff88]/60 text-lg">No active ride</p>
+                <Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>Book a Ride</Button>
+              </Card>
+            )}
+          </TabsContent>
 
           {/* Profile Tab */}
           <TabsContent value="profile">
