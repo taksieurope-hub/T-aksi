@@ -127,7 +127,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   const [address, setAddress] = useState("Move map to select location...");
   const [isDragging, setIsDragging] = useState(false);
   const [locating, setLocating] = useState(false);
-  
 
   // Safe center initialization
   const [center, setCenter] = useState({ lat: 41.7151, lng: 44.8271 });
@@ -319,30 +318,54 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     // MODE B: Live Ride (Driver Active)
     if (!dLat || !dLng) return; // Wait for driver location
 
-    // --- FIX: DRAW LINE TO DESTINATION ---
-    const origin = { lat: dLat, lng: dLng }; // Driver position
+    // 🔥 THIS WAS MISSING - DEFINING ORIGIN & TARGET
+    const origin = { lat: dLat, lng: dLng };
     let target = null;
 
-    if (['accepted', 'arrived'].includes(status)) {
-        // Path to YOU (Pickup)
-        target = { lat: pLat, lng: pLng }; 
-    } 
-    else if (status === 'in_progress') {
-        // 🔥 FIX: Path to End Destination
-        // We use 'destination' because that is the name used inside this component
-        const finalLat = destination?.lat || destination?.destination_lat;
-        const finalLng = destination?.lng || destination?.destination_lng;
-        
-        target = { 
-            lat: parseFloat(finalLat), 
-            lng: parseFloat(finalLng) 
-        };
+    if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
+        target = { lat: pLat, lng: pLng }; // Driver -> Pickup
+    } else if (status === 'in_progress' && destLat) {
+        target = { lat: destLat, lng: destLng }; // Driver -> Destination
     }
 
-    // Only draw the line if we actually found a target
-    if (origin.lat && target?.lat) { 
-        calculateAndDrawRoute(origin, target, []); 
+    // Now safe to use
+    if (origin && target) { 
+        calculateAndDrawRoute(origin, target, []); // Ignore waypoints for driver->pickup leg
     }
+
+  }, [pickup?.lat, destination?.lat, stops.length, status, driverLocation?.lat]); 
+
+  const calculateAndDrawRoute = (origin, target, waypoints = []) => {
+    const directionsService = new window.google.maps.DirectionsService();
+    directionsService.route({
+        origin: origin,
+        destination: target,
+        waypoints: waypoints,
+        travelMode: window.google.maps.TravelMode.DRIVING
+    }, (result, status) => {
+        if (status === 'OK' && directionsRendererRef.current) {
+            directionsRendererRef.current.setDirections(result);
+            
+            // Only fit bounds if we are in preview mode or just starting
+            if (status === 'preview' || !driverLocation) {
+                const bounds = new window.google.maps.LatLngBounds();
+                bounds.extend(origin);
+                bounds.extend(target);
+                waypoints.forEach(wp => bounds.extend(wp.location));
+                mapInstanceRef.current.fitBounds(bounds);
+            }
+        }
+    });
+  };
+
+  // 3. Driver Marker & Camera Follow Logic
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
+    
+    const pos = { 
+        lat: parseFloat(driverLocation.lat), 
+        lng: parseFloat(driverLocation.lng) 
+    };
 
     // Update or Create Marker
     if (!driverMarkerRef.current) {
@@ -592,7 +615,6 @@ const RiderDashboard = () => {
   const [rideHistory, setRideHistory] = useState([]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPayPal, setShowPayPal] = useState(false);
-  const [currentFare, setCurrentFare] = useState(0);
 
   // --- CARD PAYMENT STATE ---
   const [showCardModal, setShowCardModal] = useState(false);
@@ -650,33 +672,6 @@ const RiderDashboard = () => {
 
   // Exchange rate GEL to USD (approx)
   const GEL_TO_USD = 0.37;
-
-  // 🔥 LIVE TRACKING & DISTANCE LOGIC
-  useEffect(() => {
-    if (!activeRide || !driverLocation || !window.google) return;
-
-    const ds = new window.google.maps.DirectionsService();
-    const driverPos = { lat: driverLocation.lat, lng: driverLocation.lng };
-    
-    // Pick the goal: If trip started, point to destination. Otherwise, point to you.
-    const targetPos = activeRide.status === 'in_progress' 
-      ? { lat: activeRide.dest_lat || activeRide.destination_lat, lng: activeRide.dest_lng || activeRide.destination_lng }
-      : { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng };
-
-    if (driverPos.lat && targetPos.lat) {
-      ds.route({
-        origin: driverPos,
-        destination: targetPos,
-        travelMode: 'DRIVING'
-      }, (res, status) => {
-        if (status === 'OK') {
-          // This calculates the distance for the UI
-          const km = (res.routes[0].legs[0].distance.value / 1000).toFixed(1);
-          setDistanceToTarget(km);
-        }
-      });
-    }
-  }, [driverLocation, activeRide?.status]);
 
   // Load Google Maps
   useEffect(() => {
@@ -774,39 +769,13 @@ const RiderDashboard = () => {
   }, [routeInfo, carType, stops.length, surgeInfo, paymentMethod]);
 
   // 🔥 POLL FOR ACTIVE RIDE
-  // 🔥 FIXED MONEY LOGIC (Rider): Keeps fee after start
   useEffect(() => {
     let interval;
-    const baseFare = activeRide?.estimated_fare || 0;
-
-    const calculateFee = (startTime, endTime) => {
-        const duration = endTime - startTime;
-        const minutes = Math.floor(duration / 60000);
-        if (!endTime) setWaitTimer(Math.max(0, minutes));
-
-        const billableMinutes = Math.max(0, minutes - 2);
-        return baseFare + (billableMinutes * 0.40);
-    };
-
-    if (activeRide?.status === "arrived" && activeRide.arrived_at) {
-        // Live Waiting
-        const start = new Date(activeRide.arrived_at).getTime();
-        const tick = () => setCurrentFare(calculateFee(start, Date.now()));
-        tick();
-        interval = setInterval(tick, 1000);
-
-    } else if ((activeRide?.status === "in_progress" || activeRide?.status === "completed") && activeRide?.arrived_at && activeRide?.started_at) {
-        // Trip Started - Lock in the fee
-        const start = new Date(activeRide.arrived_at).getTime();
-        const end = new Date(activeRide.started_at).getTime();
-        setCurrentFare(calculateFee(start, end));
-
-    } else {
-        setCurrentFare(baseFare);
+    if (activeRide && !["completed", "cancelled", "no_drivers"].includes(activeRide.status)) {
+      interval = setInterval(fetchActiveRide, 3000);
     }
-
     return () => clearInterval(interval);
-  }, [activeRide?.status, activeRide?.arrived_at, activeRide?.started_at, activeRide?.estimated_fare]);
+  }, [activeRide?.status]);
 
   const fetchSurgeStatus = async () => {
     try {
@@ -1270,26 +1239,8 @@ const RiderDashboard = () => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 text-white">
-                  
-                  {/* Distance UI - FIXED: Now points to activeRide.driver_location */}
-                  {activeRide.driver_location && (
-                    <div className="bg-[#00d4ff]/10 border border-[#00d4ff]/30 p-3 rounded-lg mb-4 flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <Navigation className="w-4 h-4 text-[#00d4ff] animate-pulse" />
-                        <span className="text-[#00d4ff] text-xs font-bold uppercase tracking-tighter">
-                           {activeRide.status === 'in_progress' ? 'Drop-off Distance' : 'Driver Distance'}
-                        </span>
-                      </div>
-                      <span className="text-white font-mono font-bold text-lg">
-                        {(Math.sqrt(
-                          Math.pow(activeRide.driver_location.lat - (activeRide.status === 'in_progress' ? (activeRide.dest_lat || activeRide.destination_lat) : activeRide.pickup_lat), 2) +
-                          Math.pow(activeRide.driver_location.lng - (activeRide.status === 'in_progress' ? (activeRide.dest_lng || activeRide.destination_lng) : activeRide.pickup_lng), 2)
-                        ) * 111).toFixed(1)} km
-                      </span>
-                    </div>
-                  )}
 
-                  {/* Safe Active Map Render */}
+                  {/* 🔥 SAFE ACTIVE MAP RENDER */}
                   {mapsLoaded && activeRide && !isNaN(parseFloat(activeRide.pickup_lat)) && (
                     <LiveTrackingMap
                         pickup={{
@@ -1297,8 +1248,8 @@ const RiderDashboard = () => {
                             lng: parseFloat(activeRide.pickup_lng)
                         }}
                         destination={
-                            (activeRide.dest_lat || activeRide.destination_lat) && !isNaN(parseFloat(activeRide.dest_lat || activeRide.destination_lat))
-                            ? { lat: parseFloat(activeRide.dest_lat || activeRide.destination_lat), lng: parseFloat(activeRide.dest_lng || activeRide.destination_lng) }
+                            activeRide.dest_lat && !isNaN(parseFloat(activeRide.dest_lat))
+                            ? { lat: parseFloat(activeRide.dest_lat), lng: parseFloat(activeRide.dest_lng) }
                             : null
                         }
                         driverLocation={activeRide.driver_location}
@@ -1307,9 +1258,9 @@ const RiderDashboard = () => {
                   )}
 
                   <div className="space-y-3">
-                    <div><p className="text-[#00ff88]/60 text-sm font-bold uppercase tracking-tighter">Pickup</p><p>{activeRide.pickup}</p></div>
-                    {activeRide.stops?.length > 0 && <div><p className="text-yellow-400/60 text-sm font-bold uppercase tracking-tighter">Stops ({activeRide.stops.length})</p>{activeRide.stops.map((stop, i) => <p key={i} className="text-sm text-yellow-400">• {stop.address}</p>)}</div>}
-                    <div><p className="text-[#00d4ff]/60 text-sm font-bold uppercase tracking-tighter">Destination</p><p>{activeRide.destination || "Open Trip"}</p></div>
+                    <div><p className="text-[#00ff88]/60 text-sm">Pickup</p><p>{activeRide.pickup}</p></div>
+                    {activeRide.stops?.length > 0 && <div><p className="text-yellow-400/60 text-sm">Stops ({activeRide.stops.length})</p>{activeRide.stops.map((stop, i) => <p key={i} className="text-sm text-yellow-400">• {stop.address}</p>)}</div>}
+                    <div><p className="text-[#00d4ff]/60 text-sm">Destination</p><p>{activeRide.destination || "Open Trip"}</p></div>
                   </div>
 
                   {activeRide.status === "searching" && (
@@ -1319,9 +1270,16 @@ const RiderDashboard = () => {
                     </div>
                   )}
 
+                  {activeRide.status === "no_drivers" && (
+                    <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
+                      <div className="flex items-center text-gray-300"><Target className="w-5 h-5 mr-2" /><span className="font-medium">No drivers available</span></div>
+                      <div className="flex gap-2"><Button className="flex-1 bg-[#00ff88] text-black font-bold" onClick={handleRetryRide}><Rocket className="w-4 h-4 mr-2" /> Retry Search</Button><Button variant="outline" className="border-gray-500 text-gray-300" onClick={() => { setActiveRide(null); setActiveTab("book"); }}>New Ride</Button></div>
+                    </div>
+                  )}
+
                   {activeRide.driver_info && (
                     <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                      <p className="text-[#00ff88] font-semibold mb-2">Your Pilot</p>
+                      <p className="text-[#00ff88] font-semibold mb-2">Your Driver</p>
                       <div className="flex items-center space-x-3">
                         <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-7 h-7 text-black" /></div>
                         <div><p className="font-medium text-lg">{activeRide.driver_info.name}</p><p className="text-sm text-gray-400">{activeRide.driver_info.car_make} {activeRide.driver_info.car_model}</p><p className="text-[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p></div>
@@ -1329,23 +1287,22 @@ const RiderDashboard = () => {
                     </div>
                   )}
 
-                  {activeRide.status === "arrived" && <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl"><div className="flex items-center text-purple-400 font-bold"><Timer className="w-5 h-5 mr-2" /> PILOT HAS ARRIVED!</div></div>}
-                  
-                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4 border border-[#00ff88]/30">
-                    <span className="text-[#00ff88] font-bold">Estimated Fare</span>
-                    <span className="text-2xl font-bold text-[#00ff88]">₾{Number(activeRide.final_fare || activeRide.estimated_fare || 0).toFixed(2)}</span>
-                  </div>
-                  
-                  {["searching", "accepted"].includes(activeRide.status) && <Button variant="destructive" className="w-full font-bold uppercase" onClick={handleCancelRide}>Cancel Ride</Button>}
+                  {activeRide.status === "arrived" && <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl"><div className="flex items-center text-purple-400"><Timer className="w-5 h-5 mr-2" /> Driver has arrived! First 2 minutes are free.</div></div>}
+                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4"><span className="text-[#00ff88]">Estimated Fare</span><span className="text-2xl font-bold text-[#00ff88]">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span></div>
+                  {["searching", "accepted"].includes(activeRide.status) && <Button variant="destructive" className="w-full" onClick={handleCancelRide}>Cancel Ride</Button>}
                 </CardContent>
               </Card>
             ) : (
-              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12">
-                <Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" />
-                <p className="text-[#00ff88]/60 text-lg">No active ride</p>
-                <Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>Book a Ride</Button>
-              </Card>
+              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12"><Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" /><p className="text-[#00ff88]/60 text-lg">No active ride</p><Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>Book a Ride</Button></Card>
             )}
+          </TabsContent>
+
+          {/* History Tab */}
+          <TabsContent value="history">
+            <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
+              <CardHeader><CardTitle className="text-[#00ff88]">Ride History</CardTitle></CardHeader>
+              <CardContent><ScrollArea className="h-[400px]"><div className="space-y-3">{rideHistory.map(ride => (<div key={ride.id} className="bg-black/50 border border-[#00ff88]/10 rounded-xl p-4 space-y-2"><div className="flex justify-between"><Badge className={statusColors[ride.status]}>{ride.status?.replace(/_/g, ' ').toUpperCase()}</Badge><span className="text-gray-400 text-sm">{ride.created_at ? new Date(ride.created_at).toLocaleDateString() : "N/A"}</span></div><div><p className="text-sm text-[#00ff88]/60">From: {ride.pickup}</p><p className="text-sm text-[#00d4ff]/60">To: {ride.destination || "Open"}</p></div><div className="flex justify-between"><span className="text-gray-400 capitalize">{ride.carType}</span><span className="text-[#00ff88] font-bold">₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}</span></div></div>))}</div></ScrollArea></CardContent>
+            </Card>
           </TabsContent>
 
           {/* Profile Tab */}
