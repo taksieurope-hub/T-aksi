@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 
 // 🔥 FIX: Import from @/config and @/api
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
-import api from "@/api"; 
+import api from "@/api";
 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,27 +17,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
-import { 
-  Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, 
-  Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned, 
-  Loader2, CreditCard, CheckCircle2, Phone, Lock, ArrowLeft, Wallet, 
-  Route as RouteIcon, Edit, Activity, Clock, Star 
+import {
+  Car, MapPin, History, Home, LogOut, User, Navigation, Rocket,
+  Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned,
+  Loader2, CreditCard, CheckCircle2, Phone, Lock, ArrowLeft, Wallet,
+  Route as RouteIcon, Edit, Activity, Clock, Star
 } from "lucide-react";
 
-// Pricing Rules
+// Pricing Rules (Updated to your specific base prices)
 const PRICING_RULES = {
-  economy: { name: 'Economy', base: 2.00, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
-  comfort: { name: 'Comfort', base: 2.50, perKm: 0.55, perMinWait: 0.45, freeWait: 2, stopFee: 0.00, icon: "🚙" },
-  suv: { name: 'SUV / XL', base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐" },
-  personal: { name: 'Personal', base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 3, stopFee: 0.00, icon: "👤" },
+  economy: { name: 'Economy', base: 2.80, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
+  comfort: { name: 'Comfort', base: 3.38, perKm: 0.55, perMinWait: 0.45, freeWait: 2, stopFee: 0.00, icon: "🚙" },
+  suv: { name: 'SUV / XL', base: 5.18, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐" },
+  personal: { name: 'Personal', base: 5.12, perKm: 0.70, perMinWait: 0.50, freeWait: 3, stopFee: 0.00, icon: "👤" },
   jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡" }
 };
 
+// 🔥 UPDATED: Adds +2.00 GEL if paymentMethod is 'card'
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0, paymentMethod = 'cash') => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
   subtotal += distanceKm * rules.perKm;
-  
+
   // Long distance logic
   if (distanceKm > 7) {
     subtotal += (distanceKm - 7) * 0.15;
@@ -45,7 +46,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   if (distanceKm > 30) {
     subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
   }
-  
+
   // Wait fees
   const billableWait = Math.max(0, waitMin - rules.freeWait);
   subtotal += billableWait * rules.perMinWait;
@@ -57,12 +58,12 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   // Surge
   const surgeFee = subtotal * (surgeMultiplier - 1.0);
 
-  // 🔥 NEW: Service Fee for Card Payments
+  // 🔥 SERVICE FEE LOGIC
   const serviceFee = paymentMethod === 'card' ? 2.00 : 0.00;
 
   // Calculate Total
   const total = subtotal + surgeFee + serviceFee;
-  
+
   return {
     base: rules.base,
     distance: Math.round(distanceKm * rules.perKm * 100) / 100,
@@ -70,7 +71,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
     stops: numStops * rules.stopFee,
     subtotal: Math.round(subtotal * 100) / 100,
     surgeFee: Math.round(surgeFee * 100) / 100,
-    serviceFee: serviceFee.toFixed(2), // Added to breakdown
+    serviceFee: serviceFee.toFixed(2), // Added to return object
     surgeMultiplier,
     total: Math.round(total * 100) / 100
   };
@@ -84,9 +85,9 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
-      .pac-container { z-index: 10500 !important; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; font-family: inherit; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); } 
-      .pac-item { color: #374151; border-top: 1px solid #f3f4f6; padding: 10px; cursor: pointer; } 
-      .pac-item:hover { background-color: #f3f4f6; } 
+      .pac-container { z-index: 10500 !important; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; font-family: inherit; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+      .pac-item { color: #374151; border-top: 1px solid #f3f4f6; padding: 10px; cursor: pointer; }
+      .pac-item:hover { background-color: #f3f4f6; }
       .pac-item-query { color: #000000; font-weight: bold; }
     `;
     document.head.appendChild(style);
@@ -164,8 +165,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
             const newCenter = map.getCenter();
             const lat = newCenter.lat();
             const lng = newCenter.lng();
-            setCenter({ lat, lng }); 
-            
+            setCenter({ lat, lng });
+
             const geocoder = new window.google.maps.Geocoder();
             geocoder.geocode({ location: { lat, lng } }, (results, status) => {
                 if (status === 'OK' && results[0]) setAddress(results[0].formatted_address);
@@ -199,10 +200,10 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 
   const handleConfirm = () => {
     // 🔥 CRITICAL: Ensure we send NUMBERS back
-    onLocationSelect({ 
-        address: address, 
-        lat: parseFloat(center.lat), 
-        lng: parseFloat(center.lng) 
+    onLocationSelect({
+        address: address,
+        lat: parseFloat(center.lat),
+        lng: parseFloat(center.lng)
     });
     onClose();
   };
@@ -252,9 +253,9 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     if (!mapRef.current || !window.google) return;
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-        center: { lat: 41.7151, lng: 44.8271 }, 
-        zoom: 14, 
-        disableDefaultUI: true, 
+        center: { lat: 41.7151, lng: 44.8271 },
+        zoom: 14,
+        disableDefaultUI: true,
         backgroundColor: '#1a1a2e',
         styles: [
           { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
@@ -263,11 +264,11 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
           { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] }
         ]
       });
-      
-      directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ 
-        map: mapInstanceRef.current, 
+
+      directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+        map: mapInstanceRef.current,
         suppressMarkers: false, // Let Google draw the pins for A -> B
-        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 } 
+        polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 }
       });
     }
   }, []);
@@ -292,7 +293,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     }
 
     // MODE B: Live Ride - Draw Line from Driver
-    if (!dLat || !dLng) return; 
+    if (!dLat || !dLng) return;
 
     let origin = { lat: dLat, lng: dLng };
     let target = null;
@@ -331,7 +332,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
     const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
-    
+
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
         position: pos,
@@ -358,38 +359,38 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
 const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name }) => {
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
-  
+
   useGoogleMapsAutocomplete(inputRef, (place) => {
     onChange({ address: place.address, lat: place.lat, lng: place.lng });
   });
-  
+
   return (
     <>
       <div className="relative flex items-center shadow-sm rounded-md">
         <Icon className={`absolute left-3 h-5 w-5 ${iconColor} z-10`} />
-        <Input 
-            ref={inputRef} 
-            id={id} 
-            name={name} 
-            value={value?.address || ""} 
-            onChange={(e) => onChange({ ...value, address: e.target.value })} 
-            className="pl-10 pr-10 bg-white border-gray-300 text-black font-medium placeholder:text-gray-400 focus-visible:ring-[#00ff88]" 
-            placeholder={placeholder} 
+        <Input
+            ref={inputRef}
+            id={id}
+            name={name}
+            value={value?.address || ""}
+            onChange={(e) => onChange({ ...value, address: e.target.value })}
+            className="pl-10 pr-10 bg-white border-gray-300 text-black font-medium placeholder:text-gray-400 focus-visible:ring-[#00ff88]"
+            placeholder={placeholder}
         />
-        <Button 
-            variant="ghost" 
-            size="icon" 
-            className="absolute right-1 text-gray-500 hover:text-black hover:bg-gray-100 z-10" 
+        <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-1 text-gray-500 hover:text-black hover:bg-gray-100 z-10"
             onClick={() => setShowMapPicker(true)}
         >
             <MapPinned className="w-5 h-5" />
         </Button>
       </div>
-      <MapPicker 
-        isOpen={showMapPicker} 
-        onClose={() => setShowMapPicker(false)} 
-        onLocationSelect={(loc) => onChange(loc)} 
-        title={placeholder} 
+      <MapPicker
+        isOpen={showMapPicker}
+        onClose={() => setShowMapPicker(false)}
+        onLocationSelect={(loc) => onChange(loc)}
+        title={placeholder}
       />
     </>
   );
@@ -408,11 +409,11 @@ const RiderAuth = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       const endpoint = isLogin ? "/auth/login" : "/auth/register/rider";
       const res = await api.post(endpoint, formData);
-      
+
       if (res.data && res.data.token && res.data.user) {
         login(res.data.token, res.data.user);
         toast.success(isLogin ? "Welcome back!" : "Account created!");
@@ -552,7 +553,7 @@ const RiderDashboard = () => {
   // Handle formatted input
   const handleCardInput = (field, value) => {
     let formatted = value;
-    
+
     if (field === "number") {
       // Allow only numbers, max 16 digits
       formatted = value.replace(/\D/g, "").slice(0, 16);
@@ -564,7 +565,7 @@ const RiderDashboard = () => {
       // Max 3 digits
       formatted = value.replace(/\D/g, "").slice(0, 3);
     }
-    
+
     setCardDetails({ ...cardDetails, [field]: formatted });
   };
 
@@ -584,18 +585,18 @@ const RiderDashboard = () => {
         processRideRequest(); // Proceed to book the ride
     }, 1500);
   };
-  
+
   // Booking state
   const [pickup, setPickup] = useState({ address: "", lat: null, lng: null });
   const [destination, setDestination] = useState({ address: "", lat: null, lng: null });
   const [stops, setStops] = useState([]);
   const [carType, setCarType] = useState("economy");
   const [paymentMethod, setPaymentMethod] = useState("cash");
-  
+
   // Route info
   const [routeInfo, setRouteInfo] = useState(null);
   const [fareEstimate, setFareEstimate] = useState(null);
-  
+
   // Surge pricing
   const [surgeInfo, setSurgeInfo] = useState(null);
 
@@ -608,7 +609,7 @@ const RiderDashboard = () => {
       setMapsLoaded(true);
       return;
     }
-    
+
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
     script.async = true;
@@ -625,7 +626,7 @@ const RiderDashboard = () => {
     fetchRideHistory();
     fetchSurgeStatus();
   }, []);
-  
+
   useEffect(() => {
     if (pickup.lat) {
       fetchSurgeStatus();
@@ -688,15 +689,14 @@ const RiderDashboard = () => {
     }
   }, [mapsLoaded, pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length, calculateRoute]);
 
-  // Inside RiderDashboard component...
-useEffect(() => {
-  if (routeInfo) {
-    const surge = surgeInfo?.multiplier || 1.0;
-    // Pass paymentMethod here 👇
-    const fare = calculateFare(carType, routeInfo.distance, 0, 0, stops.length, surge, paymentMethod);
-    setFareEstimate(fare);
-  }
-}, [routeInfo, carType, stops.length, surgeInfo, paymentMethod]); // Add paymentMethod to dependency array
+  // 🔥 FIX: Added 'paymentMethod' to dependency array so price updates instantly
+  useEffect(() => {
+    if (routeInfo) {
+      const surge = surgeInfo?.multiplier || 1.0;
+      const fare = calculateFare(carType, routeInfo.distance, 0, 0, stops.length, surge, paymentMethod);
+      setFareEstimate(fare);
+    }
+  }, [routeInfo, carType, stops.length, surgeInfo, paymentMethod]);
 
   // 🔥 POLL FOR ACTIVE RIDE
   useEffect(() => {
@@ -716,8 +716,6 @@ useEffect(() => {
       console.error("Error fetching surge:", error);
     }
   };
-
-  // [DELETED THE DUPLICATE/BROKEN calculateRoute FUNCTION HERE]
 
   const fetchActiveRide = async () => {
     try {
@@ -766,10 +764,10 @@ useEffect(() => {
 
     // Trigger the real PayPal integration
     if (paymentMethod === "card") {
-      setShowPayPal(true); 
-      return; 
+      setShowPayPal(true);
+      return;
     }
-    
+
     // Otherwise, book immediately (Cash)
     await processRideRequest();
   };
@@ -875,7 +873,7 @@ useEffect(() => {
       toast.error("Geolocation not supported by your browser. Enter address manually.");
       return;
     }
-    
+
 
     setLocationLoading(true);
     const safetyTimer = setTimeout(() => {
@@ -1009,14 +1007,14 @@ useEffect(() => {
               <CardContent className="space-y-4">
                 {/* Visual Route Map */}
                 {mapsLoaded && pickup.lat && destination.lat && (
-                  <LiveTrackingMap 
-                    pickup={pickup} 
-                    destination={destination} 
+                  <LiveTrackingMap
+                    pickup={pickup}
+                    destination={destination}
                     status="preview"
                     driverLocation={null} // No driver yet
                   />
                 )}
-                
+
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="pickup-input" className="text-[#00ff88]">Pickup Location</Label>
@@ -1054,14 +1052,25 @@ useEffect(() => {
                       <span className="flex items-center"><RouteIcon className="w-4 h-4 mr-1" /> Route</span>
                       <span className="font-bold">{routeInfo.distance} km • ~{routeInfo.duration} min</span>
                     </div>
-                    {fareEstimate && <div className="flex justify-between text-lg text-[#00ff88] font-bold"><span>Estimated Total</span><span>₾{fareEstimate.total.toFixed(2)}</span></div>}
+                    {fareEstimate && (
+                        <div className="flex flex-col">
+                            <div className="flex justify-between text-lg text-[#00ff88] font-bold">
+                                <span>Estimated Total</span>
+                                <span>₾{fareEstimate.total.toFixed(2)}</span>
+                            </div>
+                            {paymentMethod === 'card' && (
+                                <p className="text-xs text-[#00d4ff] text-right mt-1">+₾2.00 Card Service Fee included</p>
+                            )}
+                        </div>
+                    )}
                   </div>
                 )}
                 <div className="space-y-2">
                   <Label className="text-[#00ff88]">Vehicle Class</Label>
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                     {carTypes.map((type) => {
-                      const typeFare = routeInfo ? calculateFare(type.value, routeInfo.distance, 0, 0, stops.length, surgeInfo?.multiplier || 1.0).total : type.base * (surgeInfo?.multiplier || 1.0);
+                      // 🔥 UPDATED: Pass paymentMethod to update card logic dynamically
+                      const typeFare = routeInfo ? calculateFare(type.value, routeInfo.distance, 0, 0, stops.length, surgeInfo?.multiplier || 1.0, paymentMethod).total : type.base * (surgeInfo?.multiplier || 1.0);
                       return <button key={type.value} onClick={() => setCarType(type.value)} className={`p-3 rounded-xl border-2 transition-all ${carType === type.value ? "border-[#00ff88] bg-[#00ff88]/20" : "border-[#00ff88]/20 bg-black/30"}`}><div className="text-2xl mb-1">{type.icon}</div><div className="text-white font-medium text-xs">{type.label}</div><div className="text-[#00ff88] text-sm">₾{typeFare.toFixed(2)}</div></button>;
                     })}
                   </div>
@@ -1073,12 +1082,12 @@ useEffect(() => {
                     <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")} className={paymentMethod === "card" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}>💳 Card</Button>
                   </div>
                 </div>
-                <Button 
-    className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold h-14 text-lg" 
-    onClick={handleBookRide} 
-    disabled={loading} 
+                <Button
+    className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold h-14 text-lg"
+    onClick={handleBookRide}
+    disabled={loading}
 >
-    {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />} 
+    {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />}
     Request Ride
 </Button>
               </CardContent>
@@ -1098,11 +1107,11 @@ useEffect(() => {
                 <Label className="text-gray-400 text-xs">CARD NUMBER</Label>
                 <div className="relative">
                   <CreditCard className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" />
-                  <Input 
-                    value={cardDetails.number} 
-                    onChange={(e)=>handleCardInput("number", e.target.value)} 
-                    placeholder="0000 0000 0000 0000" 
-                    className="pl-10 bg-black/50 border-[#00ff88]/30 text-white h-12" 
+                  <Input
+                    value={cardDetails.number}
+                    onChange={(e)=>handleCardInput("number", e.target.value)}
+                    placeholder="0000 0000 0000 0000"
+                    className="pl-10 bg-black/50 border-[#00ff88]/30 text-white h-12"
                     inputMode="numeric"
                   />
                 </div>
@@ -1124,27 +1133,27 @@ useEffect(() => {
           </DialogContent>
         </Dialog>
 
-          <PayPalButtons 
-  fundingSource="card" 
+          <PayPalButtons
+  fundingSource="card"
   style={{ layout: "vertical", shape: "rect" }}
   createOrder={(data, actions) => {
     return actions.order.create({
       purchase_units: [{
-        amount: { 
-          value: (fareEstimate.total * 0.37).toFixed(2), 
-          currency_code: "USD" 
+        amount: {
+          value: (fareEstimate.total * 0.37).toFixed(2),
+          currency_code: "USD"
         }
       }],
       application_context: {
         shipping_preference: "NO_SHIPPING" // 🔥 This deletes the address/zip code fields
       }
     });
-  }} 
-  onApprove={async (data, actions) => { 
-    await actions.order.capture(); 
-    toast.success("Payment successful!"); 
-    await processRideRequest(); 
-  }} 
+  }}
+  onApprove={async (data, actions) => {
+    await actions.order.capture();
+    toast.success("Payment successful!");
+    await processRideRequest();
+  }}
 />
 
           {/* Active Tab */}
@@ -1158,20 +1167,20 @@ useEffect(() => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 text-white">
-                  
+
                   {/* 🔥 SAFE ACTIVE MAP RENDER */}
                   {mapsLoaded && activeRide && !isNaN(parseFloat(activeRide.pickup_lat)) && (
-                    <LiveTrackingMap 
-                        pickup={{ 
-                            lat: parseFloat(activeRide.pickup_lat), 
-                            lng: parseFloat(activeRide.pickup_lng) 
+                    <LiveTrackingMap
+                        pickup={{
+                            lat: parseFloat(activeRide.pickup_lat),
+                            lng: parseFloat(activeRide.pickup_lng)
                         }}
                         destination={
                             activeRide.dest_lat && !isNaN(parseFloat(activeRide.dest_lat))
-                            ? { lat: parseFloat(activeRide.dest_lat), lng: parseFloat(activeRide.dest_lng) } 
+                            ? { lat: parseFloat(activeRide.dest_lat), lng: parseFloat(activeRide.dest_lng) }
                             : null
                         }
-                        driverLocation={activeRide.driver_location} 
+                        driverLocation={activeRide.driver_location}
                         status={activeRide.status}
                     />
                   )}
@@ -1254,9 +1263,9 @@ const RiderPortal = () => {
   }
 
   return (
-    <PayPalScriptProvider options={{ 
-    "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID, 
-    currency: "USD" 
+    <PayPalScriptProvider options={{
+    "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
+    currency: "USD"
 }}>
       <Routes>
         <Route path="/" element={<Navigate to="dashboard" replace />} />
