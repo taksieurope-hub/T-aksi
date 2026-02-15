@@ -320,53 +320,30 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     if (!dLat || !dLng) return; // Wait for driver location
 
     // 🔥 THIS WAS MISSING - DEFINING ORIGIN & TARGET
-    const origin = { lat: dLat, lng: dLng };
+    // --- Routing Logic ---
+    const origin = { lat: dLat, lng: dLng }; // The Driver's position
     let target = null;
 
-    if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
-        target = { lat: pLat, lng: pLng }; // Driver -> Pickup
-    } else if (status === 'in_progress' && destLat) {
-        target = { lat: destLat, lng: destLng }; // Driver -> Destination
+    if (['accepted', 'arrived'].includes(status)) {
+        // Line points to the Rider (Pickup)
+        target = { lat: pLat, lng: pLng }; 
+    } 
+    else if (status === 'in_progress') {
+        // 🔥 FIX: Line points to the End Destination
+        // We check every possible name your DB might use for coordinates
+        const d_lat = destination?.lat || activeRide?.dest_lat || activeRide?.destination_lat;
+        const d_lng = destination?.lng || activeRide?.dest_lng || activeRide?.destination_lng;
+        
+        target = { 
+            lat: parseFloat(d_lat), 
+            lng: parseFloat(d_lng) 
+        };
     }
 
-    // Now safe to use
-    if (origin && target) { 
-        calculateAndDrawRoute(origin, target, []); // Ignore waypoints for driver->pickup leg
+    // Only draw if we have valid coordinates
+    if (origin.lat && target?.lat) { 
+        calculateAndDrawRoute(origin, target, []); 
     }
-
-  }, [pickup?.lat, destination?.lat, stops.length, status, driverLocation?.lat]); 
-
-  const calculateAndDrawRoute = (origin, target, waypoints = []) => {
-    const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route({
-        origin: origin,
-        destination: target,
-        waypoints: waypoints,
-        travelMode: window.google.maps.TravelMode.DRIVING
-    }, (result, status) => {
-        if (status === 'OK' && directionsRendererRef.current) {
-            directionsRendererRef.current.setDirections(result);
-            
-            // Only fit bounds if we are in preview mode or just starting
-            if (status === 'preview' || !driverLocation) {
-                const bounds = new window.google.maps.LatLngBounds();
-                bounds.extend(origin);
-                bounds.extend(target);
-                waypoints.forEach(wp => bounds.extend(wp.location));
-                mapInstanceRef.current.fitBounds(bounds);
-            }
-        }
-    });
-  };
-
-  // 3. Driver Marker & Camera Follow Logic
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
-    
-    const pos = { 
-        lat: parseFloat(driverLocation.lat), 
-        lng: parseFloat(driverLocation.lng) 
-    };
 
     // Update or Create Marker
     if (!driverMarkerRef.current) {
