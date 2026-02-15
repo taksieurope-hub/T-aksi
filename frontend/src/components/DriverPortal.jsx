@@ -12,16 +12,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, // <--- Added to fix warning
+  DialogFooter 
+} from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
-// Added missing icons (Banknote, AlertTriangle, etc.)
-import { 
+// Added missing icons
+import {
   Car, MapPin, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
-  Plus, X, Zap, TrendingUp, MessageSquare, 
+  Plus, X, Zap, TrendingUp, MessageSquare,
   Target, Crosshair, Send,
   Banknote, CreditCard, ExternalLink, AlertTriangle, Activity,
   MapPinned, CheckCircle2, XCircle, Play, Timer
@@ -41,36 +48,14 @@ const DriverAuth = () => {
     name: "", surname: "", cellphone: "", password: ""
   });
 
-  // Toggle for showing the Garage vs the Add Car form
-  const [isAddingVehicle, setIsAddingVehicle] = useState(false);
-
-  // Function to swap the active car for the current shift
-  const handleSetActiveVehicle = async (vehicleId) => {
-    setLoading(true);
-    try {
-      await api.post(`/driver/vehicle/${vehicleId}/active`);
-      toast.success("Active vehicle updated!");
-      // Refresh user data so the UI instantly updates
-      const userRes = await api.get(`/auth/me`); 
-      updateUser(userRes.data);
-    } catch (e) {
-      toast.error("Failed to update active vehicle");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       const endpoint = isLogin ? "/auth/login" : "/auth/register/driver";
-      // FIX: Use api.post
       const res = await api.post(endpoint, formData);
-      
+
       if (res.data && res.data.token && res.data.user) {
         login(res.data.token, res.data.user);
         toast.success(isLogin ? "Welcome back, Pilot!" : "Account created!");
@@ -180,7 +165,7 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
   const watchIdRef = useRef(null);
   const intervalRef = useRef(null);
   const lastLocationRef = useRef(null);
-  
+
   useEffect(() => {
     if (!isOnline) {
       if (watchIdRef.current) {
@@ -193,7 +178,7 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
       }
       return;
     }
-    
+
     // Start watching location
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
@@ -210,14 +195,14 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-    
+
     // Send location updates at interval
     intervalRef.current = setInterval(() => {
       if (lastLocationRef.current) {
         onLocationUpdate(lastLocationRef.current);
       }
     }, LOCATION_UPDATE_INTERVAL);
-    
+
     return () => {
       if (watchIdRef.current) {
         navigator.geolocation.clearWatch(watchIdRef.current);
@@ -227,32 +212,30 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
       }
     };
   }, [isOnline, onLocationUpdate]);
-  
+
   return lastLocationRef;
 };
 
-// 🔥 FIXED: Google Maps Autocomplete (Waits for Script + CSS Fix)
+// 🔥 FIXED: Google Maps Autocomplete
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   const callbackRef = useRef(onPlaceSelect);
 
-  // 1. Keep callback fresh
   useEffect(() => {
     callbackRef.current = onPlaceSelect;
   }, [onPlaceSelect]);
 
-  // 2. CSS Fix for Z-Index (So prompts show above modal)
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
-      .pac-container { 
-          z-index: 10500 !important; 
-          background-color: #1a1a2e; 
+      .pac-container {
+          z-index: 10500 !important;
+          background-color: #1a1a2e;
           border: 1px solid #00ff88;
           font-family: inherit;
       }
-      .pac-item { 
-          color: white; 
-          border-top: 1px solid #333; 
+      .pac-item {
+          color: white;
+          border-top: 1px solid #333;
           padding: 10px;
           cursor: pointer;
       }
@@ -264,56 +247,54 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, []);
 
   useEffect(() => {
-    let interval;
-    if (activeRide?.status === "arrived") {
-        // Recover start time if page refreshed
-        const start = arrivedTime || (activeRide.arrived_at ? new Date(activeRide.arrived_at).getTime() : Date.now());
-        
-        if (!arrivedTime) setArrivedTime(start);
+    const timer = setInterval(() => {
+      if (inputRef.current && window.google && window.google.maps && window.google.maps.places) {
+        clearInterval(timer);
 
-        interval = setInterval(() => { 
-            const now = Date.now();
-            const minutes = Math.floor((now - start) / 60000);
-            setWaitTimer(Math.max(0, minutes));
+        const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
+          componentRestrictions: { country: 'ge' },
+          fields: ['formatted_address', 'geometry', 'name']
+        });
 
-            // 🔥 CALCULATE LIVE FARE
-            const baseFare = activeRide.estimated_fare || 0;
-            const billableMinutes = Math.max(2, minutes - FREE_WAIT_MINUTES);
-            const extraCharge = Math.max(0.40, billableMinutes * WAIT_RATE_PER_MIN);
-            
-            setCurrentFare(baseFare + extraCharge);
-        }, 1000);
-    } else if (activeRide) {
-        // If not "arrived" (e.g. accepted or in_progress), show normal price
-        setCurrentFare(activeRide.estimated_fare || 0);
-    }
-    return () => clearInterval(interval);
-  }, [arrivedTime, activeRide?.status, activeRide?.estimated_fare]);
-}
+        const listener = autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          if (place.geometry) {
+            callbackRef.current({
+              address: place.formatted_address || place.name,
+              lat: place.geometry.location.lat(),
+              lng: place.geometry.location.lng()
+            });
+          }
+        });
+      }
+    }, 500);
 
-// 🔥 FIXED: Driver Map (No Auto-Zoom Out + Follow Mode)
+    return () => clearInterval(timer);
+  }, []);
+};
+
+// 🔥 FIXED: Driver Map
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
   const routeRendererRef = useRef(null);
   const directionsServiceRef = useRef(null);
-  
-  // 🟢 State: "True" means camera is locked to the car
+
   const [isFollowing, setIsFollowing] = useState(true);
 
   const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
 
-  // 1. Initialize Map (Run Once)
+  // 1. Initialize Map
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
 
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 },
-        zoom: 17, // Starting Zoom
-        disableDefaultUI: true, 
-        zoomControl: false, // We use custom buttons or pinch-to-zoom
+        zoom: 17,
+        disableDefaultUI: true,
+        zoomControl: false,
         styles: [
           { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
           { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
@@ -323,23 +304,20 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         ]
       });
 
-      // 🛑 Detect User Interaction -> Stop Following
       mapInstanceRef.current.addListener("dragstart", () => setIsFollowing(false));
 
-      // Route Line Configuration
       routeRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
-        suppressMarkers: true,
+        suppressMarkers: false,
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
-        // 🔥 CRITICAL FIX: This stops the map from auto-zooming out
-        preserveViewport: true 
+        preserveViewport: true
       });
 
       directionsServiceRef.current = new window.google.maps.DirectionsService();
     }
   }, []);
 
-  // 2. Update Driver Marker & Camera (Runs on every GPS update)
+  // 2. Update Driver Marker
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
 
@@ -350,7 +328,6 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     if (!lat || !lng) return;
     const pos = { lat, lng };
 
-    // Update Car Icon
     if (!markerRef.current) {
       markerRef.current = new window.google.maps.Marker({
         position: pos,
@@ -374,15 +351,12 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       markerRef.current.setIcon(icon);
     }
 
-    // 🎥 CAMERA LOGIC: Only move camera if "Following" is ON
     if (isFollowing) {
         mapInstanceRef.current.panTo(pos);
-        // We DO NOT setZoom here. This allows you to zoom in/out manually 
-        // while still following the car.
     }
   }, [driverLocation, isFollowing]);
 
-  // 3. Draw Route (Only updates when status changes, doesn't reset zoom)
+  // 3. Draw Route
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) return;
 
@@ -405,47 +379,67 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         }, (result, status) => {
             if (status === 'OK' && routeRendererRef.current) {
                 routeRendererRef.current.setDirections(result);
-                // Note: We intentionally removed map.fitBounds() here 
-                // so it doesn't fight your manual zoom.
             }
         });
     }
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]); 
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]);
 
-  // 4. Recenter & External Nav Functions
   const handleRecenter = () => {
       setIsFollowing(true);
       if (driverLocation) {
           const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
           mapInstanceRef.current.panTo(pos);
-          mapInstanceRef.current.setZoom(17); // Snaps back to driving view
+          mapInstanceRef.current.setZoom(17);
       }
   };
 
   const handleNav = (app) => {
     if (!activeRide) return;
-    let lat, lng;
-    if (["accepted", "arrived"].includes(activeRide.status)) {
-        lat = activeRide.pickup_lat; lng = activeRide.pickup_lng;
-    } else {
-        lat = activeRide.dest_lat || activeRide.destination_lat; lng = activeRide.dest_lng || activeRide.destination_lng;
-    }
-    if (!lat) return;
     
-    const url = app === 'waze' 
-        ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
-        : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+    let destLat, destLng;
+    let waypoints = "";
+
+    // PHASE 1: GOING TO PICKUP
+    if (["accepted", "arrived"].includes(activeRide.status)) {
+        destLat = activeRide.pickup_lat; 
+        destLng = activeRide.pickup_lng;
+    } 
+    // PHASE 2: GOING TO DESTINATION (AND STOPS)
+    else {
+        destLat = activeRide.dest_lat || activeRide.destination_lat;
+        destLng = activeRide.dest_lng || activeRide.destination_lng;
+
+        // If using Google Maps, add the intermediate stops
+        if (activeRide.stops && activeRide.stops.length > 0 && app === 'google') {
+            const stopsStr = activeRide.stops
+                .filter(s => s.lat && s.lng) // Ensure valid coordinates
+                .map(s => `${s.lat},${s.lng}`)
+                .join('|');
+            
+            if (stopsStr) {
+                waypoints = `&waypoints=${stopsStr}`;
+            }
+        }
+    }
+    
+    if (!destLat || !destLng) return toast.error("No destination coordinates found");
+
+    let url = "";
+    if (app === 'waze') {
+        url = `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`;
+    } else {
+        url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
+    }
+    
     window.open(url, '_blank');
   };
 
   return (
     <div className="relative w-full h-[450px] rounded-xl border border-[#00d4ff]/20 bg-[#1a1a2e] overflow-hidden">
-        {/* The Map */}
         <div ref={mapRef} className="w-full h-full" />
 
-        {/* OVERLAY: Recenter Button (Only shows if you looked away) */}
         {!isFollowing && (
-            <button 
+            <button
                 onClick={handleRecenter}
                 className="absolute bottom-20 right-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in border-2 border-white"
             >
@@ -453,10 +447,13 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
             </button>
         )}
 
-        {/* OVERLAY: Nav Buttons */}
         <div className="absolute bottom-4 left-4 right-4 flex gap-3 z-10">
-            <Button onClick={() => handleNav('waze')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff]"><Zap className="w-4 h-4 mr-2" /> Waze</Button>
-            <Button onClick={() => handleNav('google')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88]"><Navigation className="w-4 h-4 mr-2" /> Maps</Button>
+            <Button onClick={() => handleNav('waze')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20">
+                <Zap className="w-4 h-4 mr-2" /> Waze
+            </Button>
+            <Button onClick={() => handleNav('google')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20">
+                <Navigation className="w-4 h-4 mr-2" /> Maps
+            </Button>
         </div>
     </div>
   );
@@ -476,26 +473,21 @@ const DriverDashboard = () => {
   const [rideHistory, setRideHistory] = useState([]);
   const [driverLocation, setDriverLocation] = useState(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
-  const [currentFare, setCurrentFare] = useState(0);
-  const WAIT_RATE_PER_MIN = 0.40;
-  const FREE_WAIT_MINUTES = 2;
-  
+
   // Ride tracking state
   const [rideStartTime, setRideStartTime] = useState(null);
   const [arrivedTime, setArrivedTime] = useState(null);
   const [waitTimer, setWaitTimer] = useState(0);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
   const lastPositionRef = useRef(null);
-  
+
   // Vehicle registration
-  // Expanded Vehicle & Document Registration
-  const [vehicleData, setVehicleData] = useState({ 
-    car_make: "", 
-    car_model: "", 
-    car_year: "", 
-    car_color: "", 
+  const [vehicleData, setVehicleData] = useState({
+    car_make: "",
+    car_model: "",
+    car_year: "",
+    car_color: "",
     license_plate: "",
-    // Document Uploads (Files)
     license_front: null,
     license_back: null,
     reg_front: null,
@@ -516,34 +508,22 @@ const DriverDashboard = () => {
   const registrationStatus = user?.registration_status;
   const hasVehicle = user?.driver_info?.vehicle;
 
-  // Handle formatted input
   const handleCardInput = (field, value) => {
     let formatted = value;
-    
-    if (field === "number") {
-      // Allow only numbers, max 16 digits
-      formatted = value.replace(/\D/g, "").slice(0, 16);
-    } else if (field === "expiry") {
-      // Format as MM/YY
+    if (field === "number") formatted = value.replace(/\D/g, "").slice(0, 16);
+    else if (field === "expiry") {
       formatted = value.replace(/\D/g, "").slice(0, 4);
       if (formatted.length >= 3) formatted = `${formatted.slice(0, 2)}/${formatted.slice(2)}`;
-    } else if (field === "cvv") {
-      // Max 3 digits
-      formatted = value.replace(/\D/g, "").slice(0, 3);
-    }
-    
+    } else if (field === "cvv") formatted = value.replace(/\D/g, "").slice(0, 3);
     setCardDetails({ ...cardDetails, [field]: formatted });
   };
 
-  // Process the Card Payment
   const handleCardPayment = async (e) => {
     e.preventDefault();
     if (cardDetails.number.length < 16 || cardDetails.expiry.length < 5 || cardDetails.cvv.length < 3) {
         return toast.error("Please complete card details");
     }
-
     setLoading(true);
-    // Simulate API processing time
     setTimeout(() => {
         setLoading(false);
         setShowCardModal(false);
@@ -552,7 +532,6 @@ const DriverDashboard = () => {
     }, 1500);
   };
 
-  // Load Google Maps
   useEffect(() => {
     if (window.google) { setMapsLoaded(true); return; }
     const script = document.createElement('script');
@@ -562,7 +541,6 @@ const DriverDashboard = () => {
     document.head.appendChild(script);
   }, []);
 
-  // Calculate distance (Haversine)
   const calculateDistance = (lat1, lng1, lat2, lng2) => {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -572,12 +550,10 @@ const DriverDashboard = () => {
     return R * c;
   };
 
-  // Location Update Handler
   const handleLocationUpdate = useCallback(async (location) => {
     setDriverLocation(location);
     try {
       await api.post(`/driver/location`, location);
-      
       if (activeRide && activeRide.status === "in_progress" && lastPositionRef.current) {
         const dist = calculateDistance(lastPositionRef.current.lat, lastPositionRef.current.lng, location.lat, location.lng);
         setDistanceTraveled(prev => prev + dist);
@@ -586,14 +562,20 @@ const DriverDashboard = () => {
       lastPositionRef.current = location;
     } catch (error) { console.error("Failed to update location:", error); }
   }, [activeRide]);
-  
+
   useLocationTracker(isOnline, handleLocationUpdate);
 
-  // Timers & Fetching Logic
   useEffect(() => {
     let interval;
-    if (arrivedTime && activeRide?.status === "arrived") {
-      interval = setInterval(() => { setWaitTimer(Math.floor((Date.now() - arrivedTime) / 60000)); }, 1000);
+    // 🔥 FIXED: Recover timer state from backend if missing locally
+    if (activeRide?.status === "arrived") {
+        if (!arrivedTime && activeRide.arrived_at) {
+            setArrivedTime(new Date(activeRide.arrived_at).getTime());
+        }
+        interval = setInterval(() => { 
+            const start = arrivedTime || Date.now();
+            setWaitTimer(Math.max(0, Math.floor((Date.now() - start) / 60000))); 
+        }, 1000);
     }
     return () => clearInterval(interval);
   }, [arrivedTime, activeRide]);
@@ -606,90 +588,34 @@ const DriverDashboard = () => {
   const fetchRideHistory = async () => { try { const res = await api.get(`/driver/history`); setRideHistory(res.data.rides || []); } catch (e) {} };
   const fetchNearbyRides = async () => { try { const res = await api.get(`/driver/rides/nearby?radius=${searchRadius}`); setNearbyRides(res.data.rides || []); } catch (e) {} };
 
-// 🔥 LIVE MONEY LOGIC (Driver)
-  // 🔥 FIXED MONEY LOGIC: Keeps the fee even after trip starts
-  useEffect(() => {
-    let interval;
-    const baseFare = activeRide?.estimated_fare || 0;
-
-    // Helper: Calculate fee based on time difference
-    const calculateFee = (startTime, endTime) => {
-        const duration = endTime - startTime;
-        const minutes = Math.floor(duration / 60000);
-        
-        // Update the timer display if we are still waiting
-        if (!endTime) setWaitTimer(Math.max(0, minutes));
-
-        // Money Math: First 2 mins free, then 0.40 per min
-        const billableMinutes = Math.max(0, minutes - 2);
-        const extraCharge = billableMinutes * 0.40;
-        return baseFare + extraCharge;
-    };
-
-    if (activeRide?.status === "arrived") {
-        // --- CASE 1: WAITING (Live Counter) ---
-        const start = arrivedTime || (activeRide.arrived_at ? new Date(activeRide.arrived_at).getTime() : Date.now());
-        if (!arrivedTime) setArrivedTime(start);
-
-        // Update every second
-        const tick = () => setCurrentFare(calculateFee(start, Date.now()));
-        tick(); 
-        interval = setInterval(tick, 1000);
-
-    } else if (activeRide?.status === "in_progress" || activeRide?.status === "completed") {
-        // --- CASE 2: TRIP STARTED (Lock in the Fee) ---
-        // If we have timestamps, calculate the final locked fee
-        if (activeRide.arrived_at && activeRide.started_at) {
-            const start = new Date(activeRide.arrived_at).getTime();
-            const end = new Date(activeRide.started_at).getTime();
-            setCurrentFare(calculateFee(start, end));
-        } else {
-            // Fallback if timestamps are missing (shouldn't happen)
-            setCurrentFare(baseFare);
-        }
-    } else {
-        // --- CASE 3: JUST ACCEPTED ---
-        setCurrentFare(baseFare);
-    }
-
-    return () => clearInterval(interval);
-  }, [activeRide?.status, activeRide?.estimated_fare, activeRide?.arrived_at, activeRide?.started_at, arrivedTime]);
-  
   const handleRideAction = async (action) => {
     if (!activeRide) return;
     setLoading(true);
     try {
       if (action === "arrived") {
         await api.post(`/rides/${activeRide.id}/arrived`);
-        setArrivedTime(Date.now()); 
-        toast.success("Marked as arrived");
+        setArrivedTime(Date.now()); toast.success("Marked as arrived");
       } else if (action === "start") {
         await api.post(`/rides/${activeRide.id}/start`);
-        setRideStartTime(Date.now()); 
-        setDistanceTraveled(0); 
-        lastPositionRef.current = driverLocation; 
-        toast.success("Ride started");
+        setRideStartTime(Date.now()); setDistanceTraveled(0); lastPositionRef.current = driverLocation; toast.success("Ride started");
       } else if (action === "complete") {
-        // 1. Safe Inputs (Prevent sending NaN)
-        const safeDist = (distanceTraveled || 0).toFixed(2);
-        const safeWait = (waitTimer || 0);
-
-        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${safeDist}&total_wait_minutes=${safeWait}`);
+        // 🔥 FIXED: Prevent "NaN" crash by defaulting to 0
+        const safeDistance = isNaN(distanceTraveled) ? 0 : distanceTraveled.toFixed(2);
+        const safeWait = isNaN(waitTimer) ? 0 : waitTimer;
         
-        // 2. 🔥 CRASH FIX: Check if final_fare exists before using .toFixed()
-        const fareAmount = res.data.final_fare ? Number(res.data.final_fare).toFixed(2) : "0.00";
-
+        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${safeDistance}&total_wait_minutes=${safeWait}`);
+        
         setCompletedRide(res.data); 
-        toast.success(`Ride completed! Fare: ₾${fareAmount}`);
+        toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
         
-        // 3. Clear State
+        // Reset State Immediately
         setActiveRide(null); 
         setDistanceTraveled(0); 
         setWaitTimer(0); 
         setArrivedTime(null); 
         setRideStartTime(null);
         
-        fetchRideHistory(); 
+        fetchRideHistory();
         const userRes = await api.get(`/auth/me`); 
         updateUser(userRes.data);
         return;
@@ -700,10 +626,53 @@ const DriverDashboard = () => {
           setActiveRide(rideRes.data);
       }
     } catch (e) { 
-      console.error(e);
-      toast.error(e.response?.data?.detail || "Action failed"); 
+        console.error(e);
+        const errorMsg = e.response?.data?.detail || "Action failed";
+        toast.error(errorMsg); 
     } finally { 
-      setLoading(false); 
+        setLoading(false); 
+    }
+  };
+
+  const handleToggleOnline = async (online) => {
+    try { await api.post(`/driver/status?is_online=${online}`); setIsOnline(online); updateUser({ ...user, is_online: online }); toast.success(online ? "Online" : "Offline"); } catch (e) { toast.error("Failed"); }
+  };
+
+  const handleRegisterVehicle = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("car_make", vehicleData.car_make);
+      formData.append("car_model", vehicleData.car_model);
+      formData.append("car_year", parseInt(vehicleData.car_year));
+      formData.append("car_color", vehicleData.car_color);
+      formData.append("license_plate", vehicleData.license_plate);
+
+      if (vehicleData.license_front) formData.append("license_front", vehicleData.license_front);
+      if (vehicleData.license_back) formData.append("license_back", vehicleData.license_back);
+      if (vehicleData.reg_front) formData.append("reg_front", vehicleData.reg_front);
+      if (vehicleData.reg_back) formData.append("reg_back", vehicleData.reg_back);
+      if (vehicleData.car_photo_front) formData.append("car_photo_front", vehicleData.car_photo_front);
+      if (vehicleData.car_photo_back) formData.append("car_photo_back", vehicleData.car_photo_back);
+      if (vehicleData.car_photo_left) formData.append("car_photo_left", vehicleData.car_photo_left);
+      if (vehicleData.car_photo_right) formData.append("car_photo_right", vehicleData.car_photo_right);
+
+      const res = await api.post(`/driver/vehicle`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success("Documents submitted for review!");
+      updateUser({
+        ...user,
+        driver_info: { ...user.driver_info, vehicle: vehicleData, vehicle_tier: res.data?.tier || "standard" },
+        registration_status: "pending_review"
+      });
+    } catch (e) {
+      console.error(e);
+      toast.error("Upload failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -749,8 +718,8 @@ const DriverDashboard = () => {
               <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
                 <CardHeader><div className="flex justify-between items-center"><CardTitle className="text-[#00ff88]">Active Ride</CardTitle><Badge className={rideStatusColors[activeRide.status]}>{activeRide.status?.replace(/_/g, " ").toUpperCase()}</Badge></div></CardHeader>
                 <CardContent className="space-y-4 text-white">
-                  
-                  {/* 🔥 FIXED: Integrated Map with Nav Buttons */}
+
+                  {/* 🔥 FIXED: Driver Map with Waze/Google Button */}
                   {mapsLoaded && (
                     <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />
                   )}
@@ -770,22 +739,8 @@ const DriverDashboard = () => {
                     </div>
                   )}
 
-                 {/* 🔥 LIVE PRICE DISPLAY (Safe Version) */}
-                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4 border border-[#00ff88]/30">
-                    <div>
-                        <span className="text-[#00ff88] block text-xs uppercase tracking-widest">Total Fare</span>
-                        {/* Check activeRide? to prevent crash */}
-                        {activeRide?.status === "arrived" && (waitTimer || 0) > 2 && (
-                            <span className="text-yellow-400 text-[10px] font-bold animate-pulse">
-                                +₾{(((waitTimer || 0) - 2) * 0.40).toFixed(2)} Wait Fee Added
-                            </span>
-                        )}
-                    </div>
-                    <span className="text-3xl font-bold text-[#00ff88]">
-                        {/* Fallback to 0 if undefined */}
-                        ₾{(currentFare || 0).toFixed(2)}
-                    </span>
-                  </div>
+                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4"><span className="text-[#00ff88]">Fare</span><span className="text-2xl font-bold text-[#00ff88]">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span></div>
+
                   <div className="grid grid-cols-1 gap-2">
                     {activeRide.status === "accepted" && <Button className="bg-purple-500 text-white h-14 text-lg" onClick={() => handleRideAction("arrived")} disabled={loading}><MapPin className="w-5 h-5 mr-2" /> I've Arrived</Button>}
                     {activeRide.status === "arrived" && <Button className="bg-blue-500 text-white h-14 text-lg" onClick={() => handleRideAction("start")} disabled={loading}><Play className="w-5 h-5 mr-2" /> Start Trip</Button>}
@@ -794,7 +749,7 @@ const DriverDashboard = () => {
                 </CardContent>
               </Card>
             ) : (
-                registrationStatus !== "approved" ? <Card className="bg-black/60 border border-yellow-500/30 text-center py-12"><AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" /><p className="text-yellow-400 font-semibold">Account Pending</p></Card> : 
+                registrationStatus !== "approved" ? <Card className="bg-black/60 border border-yellow-500/30 text-center py-12"><AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" /><p className="text-yellow-400 font-semibold">Account Pending</p></Card> :
                 !isOnline ? <Card className="bg-black/60 border border-gray-500/30 text-center py-12"><Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" /><p className="text-gray-400">Offline</p><Button className="mt-4 bg-[#00ff88] text-black" onClick={() => handleToggleOnline(true)}>Go Online</Button></Card> :
                 availableRides.length === 0 ? <Card className="bg-black/60 border border-[#00d4ff]/30 text-center py-12"><Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" /><p className="text-[#00d4ff]/70">Searching for rides...</p></Card> :
                 <div className="space-y-4">{availableRides.map(ride => { const comm = (ride.estimated_fare || 0) * 0.23; const canAccept = balance >= comm; return <Card key={ride.id} className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30"><CardContent className="p-4 text-white"><div className="flex justify-between items-start mb-3"><div className="flex-1"><p className="text-[#00ff88] font-semibold">{ride.pickup}</p><p className="text-[#00d4ff]/70 text-sm">→ {ride.destination}</p></div><div className="text-right"><p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p></div></div><div className="flex gap-2"><Button className="flex-1 bg-[#00ff88] text-black font-bold h-12" onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)} disabled={loading || !canAccept}>{canAccept ? "Accept" : "Low Balance"}</Button><Button variant="outline" className="border-red-500 text-red-500 h-12" onClick={() => handleDeclineRide(ride.id)}><XCircle className="w-5 h-5" /></Button></div></CardContent></Card> })}</div>
@@ -802,7 +757,7 @@ const DriverDashboard = () => {
           </TabsContent>
 
           <TabsContent value="nearby"><div className="space-y-4"><div className="flex justify-end mb-2"><Button size="sm" variant="outline" onClick={fetchNearbyRides}>Refresh</Button></div>{nearbyRides.map(ride => ( <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white"><p className="text-[#00ff88]">{ride.pickup}</p><p className="text-[#00d4ff]">→ {ride.destination}</p><Button className="w-full mt-2 bg-[#00d4ff] text-black" onClick={()=>handleRequestToJoin(ride.id)}>Request to Accept</Button></CardContent></Card> ))}</div></TabsContent>
-          {/* 🔥 UPGRADED VEHICLE REGISTRATION TAB */}
+
           <TabsContent value="vehicle">
             <Card className="bg-black/60 border border-[#00d4ff]/30">
               <CardHeader>
@@ -817,51 +772,45 @@ const DriverDashboard = () => {
                   </div>
                 ) : (
                   <form onSubmit={handleRegisterVehicle} className="space-y-6">
-                    
-                    {/* 1. TEXT DETAILS */}
                     <div className="space-y-3">
                       <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Details</h3>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Make (e.g. Toyota)</Label><Input required placeholder="Make" value={vehicleData.car_make} onChange={e=>setVehicleData({...vehicleData, car_make: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Model (e.g. Prius)</Label><Input required placeholder="Model" value={vehicleData.car_model} onChange={e=>setVehicleData({...vehicleData, car_model: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Make</Label><Input required placeholder="Make" value={vehicleData.car_make} onChange={e=>setVehicleData({...vehicleData, car_make: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Model</Label><Input required placeholder="Model" value={vehicleData.car_model} onChange={e=>setVehicleData({...vehicleData, car_model: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
                         <div className="space-y-1"><Label className="text-gray-400 text-xs">Year</Label><Input required type="number" placeholder="2015" value={vehicleData.car_year} onChange={e=>setVehicleData({...vehicleData, car_year: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
                         <div className="space-y-1"><Label className="text-gray-400 text-xs">Color</Label><Input required placeholder="Silver" value={vehicleData.car_color} onChange={e=>setVehicleData({...vehicleData, car_color: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
                       </div>
                       <div className="space-y-1"><Label className="text-gray-400 text-xs">License Plate</Label><Input required placeholder="AB-123-CD" value={vehicleData.license_plate} onChange={e=>setVehicleData({...vehicleData, license_plate: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30 uppercase font-mono" /></div>
                     </div>
 
-                    {/* 2. DRIVER'S LICENSE */}
                     <div className="space-y-3">
                       <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Driver's License</h3>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, license_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, license_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, license_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, license_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
                       </div>
                     </div>
 
-                    {/* 3. REGISTRATION */}
                     <div className="space-y-3">
                       <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Registration</h3>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, reg_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, reg_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, reg_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, reg_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
                       </div>
                     </div>
 
-                    {/* 4. CAR PHOTOS */}
                     <div className="space-y-3">
                       <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Car Photos</h3>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front (Shows Plate)</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back (Shows Plate)</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Left Side</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_left: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Right Side</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_right: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black file:border-0 file:rounded" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Left</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_left: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Right</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_right: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
                       </div>
                     </div>
 
                     <Button type="submit" className="w-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold h-12 mt-4" disabled={loading}>
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
-                      Submit Documents
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : "Submit Documents"}
                     </Button>
                   </form>
                 )}
@@ -893,49 +842,36 @@ const DriverDashboard = () => {
         </Tabs>
       </main>
 
-      {/* Card Payment Modal */}
+      {/* Top Up Modal */}
       <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
-          <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%] max-h-[85vh] overflow-y-auto top-[30%] translate-y-[-30%]">
+          <DialogContent 
+            className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]"
+            aria-describedby={undefined}
+          >
             <DialogHeader>
               <DialogTitle className="text-[#00ff88] flex items-center gap-2">
                 <CreditCard className="w-5 h-5"/> Pay with Card
               </DialogTitle>
+              <DialogDescription className="sr-only">Enter card details to top up your driver balance.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCardPayment} className="space-y-4 mt-2">
               <div className="space-y-2">
                 <Label className="text-gray-400 text-xs">CARD NUMBER</Label>
-                <div className="relative">
-                  <CreditCard className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" />
-                  <Input 
-                    value={cardDetails.number} 
-                    onChange={(e)=>handleCardInput("number", e.target.value)} 
-                    placeholder="0000 0000 0000 0000" 
-                    className="pl-10 bg-black/50 border-[#00ff88]/30 text-white h-12 font-mono tracking-widest" 
-                    inputMode="numeric"
-                  />
-                </div>
+                <Input
+                  value={cardDetails.number}
+                  onChange={(e)=>handleCardInput("number", e.target.value)}
+                  placeholder="0000 0000 0000 0000"
+                  className="bg-black/50 border-[#00ff88]/30 text-white"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-gray-400 text-xs">EXPIRY</Label>
-                    <Input 
-                      value={cardDetails.expiry} 
-                      onChange={(e)=>handleCardInput("expiry", e.target.value)} 
-                      placeholder="MM/YY" 
-                      className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center font-mono" 
-                      inputMode="numeric"
-                    />
+                    <Input value={cardDetails.expiry} onChange={(e)=>handleCardInput("expiry", e.target.value)} placeholder="MM/YY" className="bg-black/50 border-[#00ff88]/30 text-white"/>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-gray-400 text-xs">CVV</Label>
-                    <Input 
-                      value={cardDetails.cvv} 
-                      onChange={(e)=>handleCardInput("cvv", e.target.value)} 
-                      placeholder="123" 
-                      className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center font-mono" 
-                      inputMode="numeric" 
-                      type="password"
-                    />
+                    <Input value={cardDetails.cvv} onChange={(e)=>handleCardInput("cvv", e.target.value)} placeholder="123" type="password" className="bg-black/50 border-[#00ff88]/30 text-white"/>
                   </div>
               </div>
               <Button type="submit" className="w-full bg-[#00ff88] text-black font-bold h-12" disabled={loading}>
@@ -943,17 +879,17 @@ const DriverDashboard = () => {
               </Button>
             </form>
           </DialogContent>
-        </Dialog>
+      </Dialog>
 
-        {/* 🔥 TRIP COMPLETE / PAY MODAL */}
-        {/* Trip Complete Modal - DRIVER VERSION */}
+      {/* Trip Complete Modal (CORRECT DRIVER TEXT) */}
       <Dialog open={!!completedRide} onOpenChange={() => setCompletedRide(null)}>
         <DialogContent 
             className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-2xl"
-            aria-describedby={undefined} // <--- Fixes the console warning
+            aria-describedby={undefined}
         >
           <DialogHeader>
             <DialogTitle className="text-[#00ff88] text-2xl font-bold">Trip Complete!</DialogTitle>
+            <DialogDescription className="sr-only">Summary of fare and payment collection.</DialogDescription>
           </DialogHeader>
           
           <div className="py-6 space-y-3">
@@ -962,11 +898,11 @@ const DriverDashboard = () => {
               ₾{completedRide?.final_fare?.toFixed(2) || "0.00"}
             </p>
             
-            {/* Logic: If card, say Paid. If cash, say Collect. */}
+            {/* CORRECT LOGIC: Card = Paid, Cash = Collect */}
             {(completedRide?.payment_method || "").toLowerCase() === 'card' ? (
                  <div className="bg-[#00ff88]/20 border border-[#00ff88] p-3 rounded-lg">
                     <p className="text-[#00ff88] text-sm font-bold flex items-center justify-center gap-2">
-                        <CreditCard className="w-4 h-4" /> PAID ONLINE - DO NOT CHARGE
+                        <CreditCard className="w-4 h-4" /> PAID ONLINE - DO NOT CHARGE CLIENT
                     </p>
                 </div>
             ) : (
@@ -1005,9 +941,9 @@ const DriverPortal = () => {
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/driver/dashboard" replace />} />
-      <Route path="/dashboard" element={<DriverDashboard />} />
-      <Route path="*" element={<Navigate to="/driver/dashboard" replace />} />
+      <Route path="/" element={<Navigate to="dashboard" replace />} />
+      <Route path="dashboard" element={<DriverDashboard />} />
+      <Route path="*" element={<Navigate to="dashboard" replace />} />
     </Routes>
   );
 };
