@@ -263,41 +263,33 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     return () => document.head.removeChild(style);
   }, []);
 
-  // 3. Initialize Autocomplete (With Safety Timer)
   useEffect(() => {
-    // 🔥 POLL: Check every 500ms if Google Maps is loaded
-    const timer = setInterval(() => {
-      if (inputRef.current && window.google && window.google.maps && window.google.maps.places) {
-        clearInterval(timer); // Stop checking, we found it!
+    let interval;
+    if (activeRide?.status === "arrived") {
+        // Recover start time if page refreshed
+        const start = arrivedTime || (activeRide.arrived_at ? new Date(activeRide.arrived_at).getTime() : Date.now());
+        
+        if (!arrivedTime) setArrivedTime(start);
 
-        const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-          componentRestrictions: { country: 'ge' },
-          fields: ['formatted_address', 'geometry', 'name']
-        });
+        interval = setInterval(() => { 
+            const now = Date.now();
+            const minutes = Math.floor((now - start) / 60000);
+            setWaitTimer(Math.max(0, minutes));
 
-        const listener = autocomplete.addListener('place_changed', () => {
-          const place = autocomplete.getPlace();
-          if (place.geometry) {
-            callbackRef.current({
-              address: place.formatted_address || place.name,
-              lat: place.geometry.location.lat(),
-              lng: place.geometry.location.lng()
-            });
-          }
-        });
-
-        // Cleanup function for when component unmounts
-        // We attach this to the return of useEffect, but only inside the loop context logic isn't clean
-        // So we handle cleanup via a variable ref if needed, but for this specific hook:
-        // We can't easily clean up the listener inside the interval, 
-        // but Google Maps listeners are fairly robust. 
-        // The most important part is getting it attached.
-      }
-    }, 500);
-
-    return () => clearInterval(timer);
-  }, []);
-};
+            // 🔥 CALCULATE LIVE FARE
+            const baseFare = activeRide.estimated_fare || 0;
+            const billableMinutes = Math.max(0, minutes - FREE_WAIT_MINUTES);
+            const extraCharge = billableMinutes * WAIT_RATE_PER_MIN;
+            
+            setCurrentFare(baseFare + extraCharge);
+        }, 1000);
+    } else if (activeRide) {
+        // If not "arrived" (e.g. accepted or in_progress), show normal price
+        setCurrentFare(activeRide.estimated_fare || 0);
+    }
+    return () => clearInterval(interval);
+  }, [arrivedTime, activeRide?.status, activeRide?.estimated_fare]);
+}
 
 // 🔥 FIXED: Driver Map (No Auto-Zoom Out + Follow Mode)
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
@@ -484,6 +476,9 @@ const DriverDashboard = () => {
   const [rideHistory, setRideHistory] = useState([]);
   const [driverLocation, setDriverLocation] = useState(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
+  const [currentFare, setCurrentFare] = useState(0);
+  const WAIT_RATE_PER_MIN = 0.40; // 40 tetri per minute
+  const FREE_WAIT_MINUTES = 2;
   
   // Ride tracking state
   const [rideStartTime, setRideStartTime] = useState(null);
@@ -726,8 +721,19 @@ const DriverDashboard = () => {
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4"><span className="text-[#00ff88]">Fare</span><span className="text-2xl font-bold text-[#00ff88]">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span></div>
-
+                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4 border border-[#00ff88]/30">
+  <div>
+    <span className="text-[#00ff88] block text-xs uppercase tracking-widest">Current Fare</span>
+    {activeRide.status === "arrived" && waitTimer > 2 && (
+      <span className="text-yellow-400 text-[10px] animate-pulse">
+        +₾{((waitTimer - 2) * 0.40).toFixed(2)} Wait Fee
+      </span>
+    )}
+  </div>
+  <span className="text-3xl font-bold text-[#00ff88]">
+    ₾{currentFare.toFixed(2)}
+  </span>
+</div>
                   <div className="grid grid-cols-1 gap-2">
                     {activeRide.status === "accepted" && <Button className="bg-purple-500 text-white h-14 text-lg" onClick={() => handleRideAction("arrived")} disabled={loading}><MapPin className="w-5 h-5 mr-2" /> I've Arrived</Button>}
                     {activeRide.status === "arrived" && <Button className="bg-blue-500 text-white h-14 text-lg" onClick={() => handleRideAction("start")} disabled={loading}><Play className="w-5 h-5 mr-2" /> Start Trip</Button>}
