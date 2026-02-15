@@ -239,8 +239,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 };
 
 
-// --- 3. LIVE MAP COMPONENT (Fixed: Draws Line in Booking Mode) ---
-const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
+// --- 3. LIVE MAP COMPONENT (Updated to support Stops/Waypoints) ---
+const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, status }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
@@ -267,7 +267,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
 
       directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
-        suppressMarkers: false, // Let Google draw the pins for A -> B
+        suppressMarkers: false,
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 }
       });
     }
@@ -284,37 +284,49 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
     const dLat = getSafeCoord(driverLocation?.lat);
     const dLng = getSafeCoord(driverLocation?.lng);
 
-    // MODE A: Preview (Booking) - Draw Line from Pickup to Destination
+    // Format stops for Google Maps API
+    const waypoints = stops
+      .filter(s => s.lat && s.lng)
+      .map(s => ({
+        location: { lat: parseFloat(s.lat), lng: parseFloat(s.lng) },
+        stopover: true
+      }));
+
+    // MODE A: Preview (Booking) - Draw Route with Stops
     if (status === 'preview') {
        if (pLat && pLng && destLat && destLng) {
-           calculateAndDrawRoute({ lat: pLat, lng: pLng }, { lat: destLat, lng: destLng });
+           calculateAndDrawRoute({ lat: pLat, lng: pLng }, { lat: destLat, lng: destLng }, waypoints);
        }
-       return; // Stop here, don't look for driver
+       return; 
     }
 
-    // MODE B: Live Ride - Draw Line from Driver
+    // MODE B: Live Ride
     if (!dLat || !dLng) return;
 
     let origin = { lat: dLat, lng: dLng };
     let target = null;
 
     if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
-        target = { lat: pLat, lng: pLng }; // Driver -> Pickup
+        target = { lat: pLat, lng: pLng }; // Driver -> Pickup (Stops don't matter yet)
     } else if (status === 'in_progress' && destLat) {
         target = { lat: destLat, lng: destLng }; // Driver -> Destination
+        // If in progress, we should arguably show remaining stops, but standard behavior usually routes to next point
+        // For simplicity, we keep targeting final destination or could target next stop if you tracked "current leg"
     }
 
     if (origin && target) {
-        calculateAndDrawRoute(origin, target);
+        // In live mode (driver coming), we usually ignore waypoints for the "Driver -> Pickup" line
+        calculateAndDrawRoute(origin, target, []); 
     }
 
-  }, [driverLocation?.lat, driverLocation?.lng, status, pickup?.lat, destination?.lat]);
+  }, [driverLocation?.lat, driverLocation?.lng, status, pickup?.lat, destination?.lat, stops.length]); // Added stops.length dependency
 
-  const calculateAndDrawRoute = (origin, target) => {
+  const calculateAndDrawRoute = (origin, target, waypoints = []) => {
     const directionsService = new window.google.maps.DirectionsService();
     directionsService.route({
         origin: origin,
         destination: target,
+        waypoints: waypoints, // 🔥 Added Waypoints here
         travelMode: window.google.maps.TravelMode.DRIVING
     }, (result, status) => {
         if (status === 'OK' && directionsRendererRef.current) {
@@ -323,6 +335,7 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
             const bounds = new window.google.maps.LatLngBounds();
             bounds.extend(origin);
             bounds.extend(target);
+            waypoints.forEach(wp => bounds.extend(wp.location)); // Fit stops too
             mapInstanceRef.current.fitBounds(bounds);
         }
     });
@@ -1010,6 +1023,7 @@ const RiderDashboard = () => {
                   <LiveTrackingMap
                     pickup={pickup}
                     destination={destination}
+                    stops={stops}
                     status="preview"
                     driverLocation={null} // No driver yet
                   />
