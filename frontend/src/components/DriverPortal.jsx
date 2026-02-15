@@ -17,14 +17,14 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
-  DialogDescription, // <--- Added to fix warning
+  DialogDescription, 
   DialogFooter 
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
-// Added missing icons (Banknote, AlertTriangle, etc.)
+// Added missing icons
 import {
   Car, MapPin, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
@@ -54,7 +54,6 @@ const DriverAuth = () => {
 
     try {
       const endpoint = isLogin ? "/auth/login" : "/auth/register/driver";
-      // FIX: Use api.post
       const res = await api.post(endpoint, formData);
 
       if (res.data && res.data.token && res.data.user) {
@@ -571,8 +570,15 @@ const DriverDashboard = () => {
 
   useEffect(() => {
     let interval;
-    if (arrivedTime && activeRide?.status === "arrived") {
-      interval = setInterval(() => { setWaitTimer(Math.floor((Date.now() - arrivedTime) / 60000)); }, 1000);
+    // Safely parse initial timer state from activeRide if available (prevents NaN on refresh)
+    if (activeRide?.status === "arrived") {
+        if (!arrivedTime && activeRide.arrived_at) {
+            setArrivedTime(new Date(activeRide.arrived_at).getTime());
+        }
+        interval = setInterval(() => { 
+            const start = arrivedTime || Date.now();
+            setWaitTimer(Math.max(0, Math.floor((Date.now() - start) / 60000))); 
+        }, 1000);
     }
     return () => clearInterval(interval);
   }, [arrivedTime, activeRide]);
@@ -596,18 +602,40 @@ const DriverDashboard = () => {
         await api.post(`/rides/${activeRide.id}/start`);
         setRideStartTime(Date.now()); setDistanceTraveled(0); lastPositionRef.current = driverLocation; toast.success("Ride started");
       } else if (action === "complete") {
-        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${distanceTraveled.toFixed(2)}&total_wait_minutes=${waitTimer}`);
-        setCompletedRide(res.data); toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
-        setActiveRide(null); setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null);
+        // 🔥 FIX: Ensure we never send NaN or undefined
+        const safeDistance = isNaN(distanceTraveled) ? 0 : distanceTraveled.toFixed(2);
+        const safeWait = isNaN(waitTimer) ? 0 : waitTimer;
+        
+        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${safeDistance}&total_wait_minutes=${safeWait}`);
+        
+        setCompletedRide(res.data); 
+        toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
+        
+        // Clear Local State
+        setActiveRide(null); 
+        setDistanceTraveled(0); 
+        setWaitTimer(0); 
+        setArrivedTime(null); 
+        setRideStartTime(null);
+        
         fetchRideHistory();
-        const userRes = await api.get(`/auth/me`); updateUser(userRes.data);
+        const userRes = await api.get(`/auth/me`); 
+        updateUser(userRes.data);
         return;
       }
+      
+      // Update local state for non-complete actions
       if (action !== "complete") {
           const rideRes = await api.get(`/rides/${activeRide.id}`); 
           setActiveRide(rideRes.data);
       }
-    } catch (e) { toast.error("Action failed"); } finally { setLoading(false); }
+    } catch (e) { 
+        console.error(e);
+        const errorMsg = e.response?.data?.detail || "Action failed";
+        toast.error(errorMsg); 
+    } finally { 
+        setLoading(false); 
+    }
   };
 
   const handleToggleOnline = async (online) => {
