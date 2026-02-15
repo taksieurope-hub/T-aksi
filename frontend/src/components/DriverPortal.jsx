@@ -12,7 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, // <--- Added to fix warning
+  DialogFooter 
+} from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -40,25 +47,6 @@ const DriverAuth = () => {
   const [formData, setFormData] = useState({
     name: "", surname: "", cellphone: "", password: ""
   });
-
-  // Toggle for showing the Garage vs the Add Car form
-  const [isAddingVehicle, setIsAddingVehicle] = useState(false);
-
-  // Function to swap the active car for the current shift
-  const handleSetActiveVehicle = async (vehicleId) => {
-    setLoading(true);
-    try {
-      await api.post(`/driver/vehicle/${vehicleId}/active`);
-      toast.success("Active vehicle updated!");
-      // Refresh user data so the UI instantly updates
-      const userRes = await api.get(`/auth/me`);
-      updateUser(userRes.data);
-    } catch (e) {
-      toast.error("Failed to update active vehicle");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -229,7 +217,7 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
   return lastLocationRef;
 };
 
-// 🔥 FIXED: Google Maps Autocomplete (Waits for Script + CSS Fix)
+// 🔥 FIXED: Google Maps Autocomplete
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   const callbackRef = useRef(onPlaceSelect);
 
@@ -238,7 +226,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     callbackRef.current = onPlaceSelect;
   }, [onPlaceSelect]);
 
-  // 2. CSS Fix for Z-Index (So prompts show above modal)
+  // 2. CSS Fix for Z-Index
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
@@ -261,12 +249,11 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
     return () => document.head.removeChild(style);
   }, []);
 
-  // 3. Initialize Autocomplete (With Safety Timer)
+  // 3. Initialize Autocomplete
   useEffect(() => {
-    // 🔥 POLL: Check every 500ms if Google Maps is loaded
     const timer = setInterval(() => {
       if (inputRef.current && window.google && window.google.maps && window.google.maps.places) {
-        clearInterval(timer); // Stop checking, we found it!
+        clearInterval(timer);
 
         const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
           componentRestrictions: { country: 'ge' },
@@ -290,7 +277,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, []);
 };
 
-// 🔥 FIXED: Driver Map (No Auto-Zoom Out + Follow Mode + External Nav)
+// 🔥 FIXED: Driver Map
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -298,21 +285,20 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const routeRendererRef = useRef(null);
   const directionsServiceRef = useRef(null);
 
-  // 🟢 State: "True" means camera is locked to the car
   const [isFollowing, setIsFollowing] = useState(true);
 
   const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
 
-  // 1. Initialize Map (Run Once)
+  // 1. Initialize Map
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
 
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 },
-        zoom: 17, // Starting Zoom
+        zoom: 17,
         disableDefaultUI: true,
-        zoomControl: false, // We use custom buttons or pinch-to-zoom
+        zoomControl: false,
         styles: [
           { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
           { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
@@ -322,22 +308,20 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         ]
       });
 
-      // 🛑 Detect User Interaction -> Stop Following
       mapInstanceRef.current.addListener("dragstart", () => setIsFollowing(false));
 
-      // Route Line Configuration
       routeRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
-        suppressMarkers: false, // Show A/B markers for clarity
+        suppressMarkers: false,
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
-        preserveViewport: true // 🔥 CRITICAL FIX: Stops map from auto-zooming out
+        preserveViewport: true
       });
 
       directionsServiceRef.current = new window.google.maps.DirectionsService();
     }
   }, []);
 
-  // 2. Update Driver Marker & Camera (Runs on every GPS update)
+  // 2. Update Driver Marker
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
 
@@ -348,7 +332,6 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     if (!lat || !lng) return;
     const pos = { lat, lng };
 
-    // Update Car Icon
     if (!markerRef.current) {
       markerRef.current = new window.google.maps.Marker({
         position: pos,
@@ -372,14 +355,12 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       markerRef.current.setIcon(icon);
     }
 
-    // 🎥 CAMERA LOGIC: Only move camera if "Following" is ON
     if (isFollowing) {
         mapInstanceRef.current.panTo(pos);
-        // mapInstanceRef.current.setZoom(17); // Optional: Force zoom level
     }
   }, [driverLocation, isFollowing]);
 
-  // 3. Draw Route (Only updates when status changes)
+  // 3. Draw Route
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) return;
 
@@ -402,19 +383,17 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         }, (result, status) => {
             if (status === 'OK' && routeRendererRef.current) {
                 routeRendererRef.current.setDirections(result);
-                // preserveViewport is true, so we don't fitBounds here
             }
         });
     }
   }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]);
 
-  // 4. Recenter & External Nav Functions
   const handleRecenter = () => {
       setIsFollowing(true);
       if (driverLocation) {
           const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
           mapInstanceRef.current.panTo(pos);
-          mapInstanceRef.current.setZoom(17); // Snap back to driving view
+          mapInstanceRef.current.setZoom(17);
       }
   };
 
@@ -451,10 +430,8 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
     let url = "";
     if (app === 'waze') {
-        // Waze unfortunately treats deep links as single destinations
         url = `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`;
     } else {
-        // Google Maps Universal Link with Waypoints
         url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
     }
     
@@ -463,10 +440,8 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
   return (
     <div className="relative w-full h-[450px] rounded-xl border border-[#00d4ff]/20 bg-[#1a1a2e] overflow-hidden">
-        {/* The Map */}
         <div ref={mapRef} className="w-full h-full" />
 
-        {/* OVERLAY: Recenter Button (Only shows if you looked away) */}
         {!isFollowing && (
             <button
                 onClick={handleRecenter}
@@ -476,7 +451,6 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
             </button>
         )}
 
-        {/* OVERLAY: Nav Buttons */}
         <div className="absolute bottom-4 left-4 right-4 flex gap-3 z-10">
             <Button onClick={() => handleNav('waze')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20">
                 <Zap className="w-4 h-4 mr-2" /> Waze
@@ -518,7 +492,6 @@ const DriverDashboard = () => {
     car_year: "",
     car_color: "",
     license_plate: "",
-    // Document Uploads (Files)
     license_front: null,
     license_back: null,
     reg_front: null,
@@ -539,29 +512,21 @@ const DriverDashboard = () => {
   const registrationStatus = user?.registration_status;
   const hasVehicle = user?.driver_info?.vehicle;
 
-  // Handle formatted input
   const handleCardInput = (field, value) => {
     let formatted = value;
-
-    if (field === "number") {
-      formatted = value.replace(/\D/g, "").slice(0, 16);
-    } else if (field === "expiry") {
+    if (field === "number") formatted = value.replace(/\D/g, "").slice(0, 16);
+    else if (field === "expiry") {
       formatted = value.replace(/\D/g, "").slice(0, 4);
       if (formatted.length >= 3) formatted = `${formatted.slice(0, 2)}/${formatted.slice(2)}`;
-    } else if (field === "cvv") {
-      formatted = value.replace(/\D/g, "").slice(0, 3);
-    }
-
+    } else if (field === "cvv") formatted = value.replace(/\D/g, "").slice(0, 3);
     setCardDetails({ ...cardDetails, [field]: formatted });
   };
 
-  // Process the Card Payment
   const handleCardPayment = async (e) => {
     e.preventDefault();
     if (cardDetails.number.length < 16 || cardDetails.expiry.length < 5 || cardDetails.cvv.length < 3) {
         return toast.error("Please complete card details");
     }
-
     setLoading(true);
     setTimeout(() => {
         setLoading(false);
@@ -571,7 +536,6 @@ const DriverDashboard = () => {
     }, 1500);
   };
 
-  // Load Google Maps
   useEffect(() => {
     if (window.google) { setMapsLoaded(true); return; }
     const script = document.createElement('script');
@@ -581,7 +545,6 @@ const DriverDashboard = () => {
     document.head.appendChild(script);
   }, []);
 
-  // Calculate distance (Haversine)
   const calculateDistance = (lat1, lng1, lat2, lng2) => {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -591,12 +554,10 @@ const DriverDashboard = () => {
     return R * c;
   };
 
-  // Location Update Handler
   const handleLocationUpdate = useCallback(async (location) => {
     setDriverLocation(location);
     try {
       await api.post(`/driver/location`, location);
-
       if (activeRide && activeRide.status === "in_progress" && lastPositionRef.current) {
         const dist = calculateDistance(lastPositionRef.current.lat, lastPositionRef.current.lng, location.lat, location.lng);
         setDistanceTraveled(prev => prev + dist);
@@ -608,7 +569,6 @@ const DriverDashboard = () => {
 
   useLocationTracker(isOnline, handleLocationUpdate);
 
-  // Timers & Fetching Logic
   useEffect(() => {
     let interval;
     if (arrivedTime && activeRide?.status === "arrived") {
@@ -643,7 +603,10 @@ const DriverDashboard = () => {
         const userRes = await api.get(`/auth/me`); updateUser(userRes.data);
         return;
       }
-      const rideRes = await api.get(`/rides/${activeRide.id}`); setActiveRide(rideRes.data);
+      if (action !== "complete") {
+          const rideRes = await api.get(`/rides/${activeRide.id}`); 
+          setActiveRide(rideRes.data);
+      }
     } catch (e) { toast.error("Action failed"); } finally { setLoading(false); }
   };
 
@@ -855,12 +818,17 @@ const DriverDashboard = () => {
         </Tabs>
       </main>
 
+      {/* Top Up Modal */}
       <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
-          <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]">
+          <DialogContent 
+            className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]"
+            aria-describedby={undefined}
+          >
             <DialogHeader>
               <DialogTitle className="text-[#00ff88] flex items-center gap-2">
                 <CreditCard className="w-5 h-5"/> Pay with Card
               </DialogTitle>
+              <DialogDescription className="sr-only">Enter card details to top up your driver balance.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCardPayment} className="space-y-4 mt-2">
               <div className="space-y-2">
@@ -889,25 +857,44 @@ const DriverDashboard = () => {
           </DialogContent>
       </Dialog>
 
+      {/* Trip Complete Modal (CORRECT DRIVER TEXT) */}
       <Dialog open={!!completedRide} onOpenChange={() => setCompletedRide(null)}>
-        <DialogContent className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-2xl">
+        <DialogContent 
+            className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-2xl"
+            aria-describedby={undefined}
+        >
           <DialogHeader>
             <DialogTitle className="text-[#00ff88] text-2xl font-bold">Trip Complete!</DialogTitle>
+            <DialogDescription className="sr-only">Summary of fare and payment collection.</DialogDescription>
           </DialogHeader>
+          
           <div className="py-6 space-y-3">
             <p className="text-gray-400 text-sm uppercase tracking-widest">Total Fare</p>
             <p className="text-5xl font-bold text-white">
               ₾{completedRide?.final_fare?.toFixed(2) || "0.00"}
             </p>
-            <p className="text-orange-400 text-sm font-medium">
-              Please pay the driver in cash
-            </p>
+            
+            {/* CORRECT LOGIC: Card = Paid, Cash = Collect */}
+            {(completedRide?.payment_method || "").toLowerCase() === 'card' ? (
+                 <div className="bg-[#00ff88]/20 border border-[#00ff88] p-3 rounded-lg">
+                    <p className="text-[#00ff88] text-sm font-bold flex items-center justify-center gap-2">
+                        <CreditCard className="w-4 h-4" /> PAID ONLINE - DO NOT CHARGE CLIENT
+                    </p>
+                </div>
+            ) : (
+                 <div className="bg-yellow-500/20 border border-yellow-500 p-3 rounded-lg animate-pulse">
+                    <p className="text-yellow-400 text-sm font-bold flex items-center justify-center gap-2">
+                        <Banknote className="w-4 h-4" /> COLLECT CASH FROM CLIENT
+                    </p>
+                </div>
+            )}
           </div>
+          
           <Button
             className="w-full bg-[#00ff88] text-black font-bold h-14 text-xl rounded-xl"
             onClick={() => setCompletedRide(null)}
           >
-            I Paid Driver
+            Confirm & Close
           </Button>
         </DialogContent>
       </Dialog>
@@ -921,7 +908,6 @@ const DriverPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
 
-  // Redirect if not logged in or not a driver
   if (!user || user.user_type !== "driver") {
     if (location.pathname === "/driver" || location.pathname === "/driver/") {
       return <DriverAuth />;
