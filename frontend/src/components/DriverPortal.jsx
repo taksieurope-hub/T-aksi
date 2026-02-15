@@ -678,8 +678,24 @@ const DriverDashboard = () => {
 
   const handleAcceptRide = async (rideId, estimatedFare) => { if (balance < estimatedFare * 0.23) return toast.error("Insufficient balance"); setLoading(true); try { await api.post(`/rides/${rideId}/accept`); toast.success("Accepted!"); const rideRes = await api.get(`/rides/${rideId}`); setActiveRide(rideRes.data); setAvailableRides(p => p.filter(r => r.id !== rideId)); setDistanceTraveled(0); } catch (e) { toast.error("Failed"); } finally { setLoading(false); } };
   const handleDeclineRide = async (rideId) => { try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(p => p.filter(r => r.id !== rideId)); toast.info("Declined"); } catch (e) {} };
-  const handleRequestToJoin = async (rideId) => { setLoading(true); try { await api.post(`/rides/${rideId}/request-join`); toast.success("Requested!"); fetchAvailableRides(); } catch (e) {} finally { setLoading(false); } };
-  const handleRequestTopup = async () => { setLoading(true); try { await api.post(`/driver/topup/request`, { amount: parseFloat(topupAmount), payment_reference: topupReference }); toast.success("Request sent"); window.open("https://bankofgeorgia.ge", "_blank"); } catch(e) {} finally { setLoading(false); } };
+  const handleRequestToJoin = async (rideId) => { 
+    setLoading(true); 
+    try { 
+      await api.post(`/rides/${rideId}/request-join`); 
+      toast.success("Requested!"); 
+      fetchAvailableRides(); 
+    } catch (e) { 
+      // 🔥 Better Error Handling
+      console.error(e);
+      if (e.response?.status === 403) {
+          toast.error("Not allowed. Are you verified and online?");
+      } else {
+          toast.error("Request failed. Please try again.");
+      }
+    } finally { 
+      setLoading(false); 
+    } 
+  };const handleRequestTopup = async () => { setLoading(true); try { await api.post(`/driver/topup/request`, { amount: parseFloat(topupAmount), payment_reference: topupReference }); toast.success("Request sent"); window.open("https://bankofgeorgia.ge", "_blank"); } catch(e) {} finally { setLoading(false); } };
   const handleWithdrawal = async () => { setLoading(true); try { await api.post(`/driver/withdraw`, { amount: parseFloat(withdrawalData.amount), bank_details: withdrawalData.bank_details }); toast.success("Requested"); } catch(e) {} finally { setLoading(false); } };
 
   const statusColors = { pending_vehicle: "bg-yellow-500 text-black", pending_review: "bg-orange-500 text-black", approved: "bg-[#00ff88] text-black", rejected: "bg-red-500 text-white" };
