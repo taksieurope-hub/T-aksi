@@ -127,6 +127,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   const [address, setAddress] = useState("Move map to select location...");
   const [isDragging, setIsDragging] = useState(false);
   const [locating, setLocating] = useState(false);
+  
 
   // Safe center initialization
   const [center, setCenter] = useState({ lat: 41.7151, lng: 44.8271 });
@@ -615,6 +616,7 @@ const RiderDashboard = () => {
   const [rideHistory, setRideHistory] = useState([]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPayPal, setShowPayPal] = useState(false);
+  const [currentFare, setCurrentFare] = useState(0);
 
   // --- CARD PAYMENT STATE ---
   const [showCardModal, setShowCardModal] = useState(false);
