@@ -306,7 +306,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, []);
 };
 
-// 🔥 FIXED: Driver Map
+// 🔥 FIXED: Driver Map (Full Screen & Bug Free)
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -334,7 +334,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         // 🔥 Bolt-Style Minimal Light Theme
         styles: [
           { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
-          { elementType: "labels.icon", stylers: [{ visibility: "off" }] }, // Hides store/restaurant icons to reduce clutter
+          { elementType: "labels.icon", stylers: [{ visibility: "off" }] }, 
           { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
           { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
           { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
@@ -349,7 +349,6 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       routeRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
         suppressMarkers: false,
-        // Kept your signature neon colors!
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
         preserveViewport: true
       });
@@ -399,7 +398,11 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
   // 3. Draw Route
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) return;
+    if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) {
+        // Clear route if no active ride
+        if (routeRendererRef.current) routeRendererRef.current.setDirections({routes: []});
+        return;
+    }
 
     const dLat = getSafeCoord(driverLocation.lat);
     const dLng = getSafeCoord(driverLocation.lng);
@@ -423,7 +426,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
             }
         });
     }
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]);
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, driverLocation?.lat]);
 
   const handleRecenter = () => {
       setIsFollowing(true);
@@ -476,26 +479,29 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   };
 
   return (
-    <div className="relative w-full h-[450px] rounded-xl border border-[#00d4ff]/20 bg-[#1a1a2e] overflow-hidden">
+    <div className="fixed inset-0 w-full h-full z-0 pointer-events-auto">
         <div ref={mapRef} className="w-full h-full" />
 
-        {!isFollowing && (
+        {!isFollowing && driverLocation && (
             <button
                 onClick={handleRecenter}
-                className="absolute bottom-20 right-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in border-2 border-white"
+                className="absolute top-24 left-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in border-2 border-white"
             >
                 <Crosshair className="w-6 h-6 animate-pulse" />
             </button>
         )}
 
-        <div className="absolute bottom-4 left-4 right-4 flex gap-3 z-10">
-            <Button onClick={() => handleNav('waze')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20">
-                <Zap className="w-4 h-4 mr-2" /> Waze
-            </Button>
-            <Button onClick={() => handleNav('google')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20">
-                <Navigation className="w-4 h-4 mr-2" /> Maps
-            </Button>
-        </div>
+        {/* 🔥 FIX: Only show Waze/Maps buttons if there is an active ride */}
+        {activeRide && (
+            <div className="absolute top-24 right-4 flex flex-col gap-3 z-10">
+                <Button onClick={() => handleNav('waze')} className="bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20">
+                    <Zap className="w-4 h-4 mr-2" /> Waze
+                </Button>
+                <Button onClick={() => handleNav('google')} className="bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20">
+                    <Navigation className="w-4 h-4 mr-2" /> Maps
+                </Button>
+            </div>
+        )}
     </div>
   );
 };
@@ -683,6 +689,60 @@ const HelpScreen = ({ openSafety, openSupport }) => {
   );
 };
 
+// --- DRIVER WAIT TIMER COMPONENT ---
+const DriverWaitTimer = ({ arrivedAt, carType }) => {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const startTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [arrivedAt]);
+
+  const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
+  const freeWaitSeconds = rules.freeWait * 60; 
+
+  if (elapsed <= freeWaitSeconds) {
+    // --- FREE TIME COUNTDOWN ---
+    const remaining = freeWaitSeconds - elapsed;
+    const mins = Math.floor(remaining / 60).toString().padStart(2, '0');
+    const secs = (remaining % 60).toString().padStart(2, '0');
+    
+    return (
+      <div className="bg-blue-500/20 border border-blue-500 p-4 rounded-xl flex items-center justify-between col-span-2">
+        <div className="flex items-center text-blue-400">
+          <Timer className="w-5 h-5 mr-2 animate-pulse" /> 
+          <span className="font-medium">Free Wait Time</span>
+        </div>
+        <div className="text-right">
+          <div className="text-blue-400 font-mono text-xl font-bold">{mins}:{secs}</div>
+          <div className="text-blue-400/70 text-[10px] uppercase font-bold tracking-wider">Remaining</div>
+        </div>
+      </div>
+    );
+  } else {
+    // --- EARNING PAID WAIT TIME ---
+    const overtime = elapsed - freeWaitSeconds;
+    const mins = Math.floor(overtime / 60).toString().padStart(2, '0');
+    const secs = (overtime % 60).toString().padStart(2, '0');
+    const liveEarnings = ((overtime / 60) * rules.perMinWait).toFixed(2);
+    
+    return (
+      <div className="bg-[#00ff88]/20 border border-[#00ff88] p-4 rounded-xl flex items-center justify-between shadow-[0_0_15px_rgba(0,255,136,0.2)] col-span-2">
+        <div className="flex items-center text-[#00ff88]">
+          <Timer className="w-5 h-5 mr-2 animate-pulse" /> 
+          <span className="font-medium">Paid Wait Time</span>
+        </div>
+        <div className="text-right">
+          <div className="text-[#00ff88] font-mono text-xl font-bold">{mins}:{secs}</div>
+          <div className="text-[#00ff88] font-bold text-sm">Earned: +₾{liveEarnings}</div>
+        </div>
+      </div>
+    );
+  }
+};
 
 // Driver Dashboard Component
 const DriverDashboard = () => {
@@ -1065,12 +1125,8 @@ const [supportOpen, setSupportOpen] = useState(false);
                   {(activeRide.status === "arrived" || activeRide.status === "in_progress") && (
                     <div className="grid grid-cols-2 gap-4">
                       {activeRide.status === "arrived" && (
-                        <div className="bg-purple-500/20 border border-purple-500 rounded-xl p-4 text-center">
-                          <Timer className="w-6 h-6 mx-auto text-purple-400 mb-1" />
-                          <p className="text-2xl font-bold text-purple-400">{waitTimer} min</p>
-                          <p className="text-xs text-purple-400/70">Wait Time</p>
-                        </div>
-                      )}
+    <DriverWaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType} />
+  )}
                       {activeRide.status === "in_progress" && (
                         <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center">
                           <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
