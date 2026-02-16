@@ -260,6 +260,8 @@ async def get_paypal_token():
         except Exception as e:
             logger.error(f"PayPal Token Error: {e}")
             return None
+        
+        
 
 
 # =========================
@@ -1497,6 +1499,33 @@ async def match_drivers_to_ride(ride_id: str):
     })
     logger.info(f"Ride {ride_id}: Matching completed, no drivers found after searching all radii")
 
+async def get_vehicle_tier_from_ai(make: str, model: str, year: int) -> str:
+    """
+    Smart local categorizer to determine the car's tier based on make, model, and year.
+    Returns: 'economy', 'comfort', or 'suv'
+    """
+    make_lower = make.lower().strip()
+    model_lower = model.lower().strip()
+
+    # 1. Check for SUV / Minivan
+    suv_keywords = [
+        "suv", "cr-v", "rav4", "highlander", "prado", "land cruiser", 
+        "x5", "x3", "q5", "q7", "touareg", "minivan", "transit", "sprinter",
+        "santa fe", "tucson", "sportage", "sorento", "macan", "cayenne",
+        "rx", "nx", "gx", "lx", "escalade", "tahoe", "suburban", "yukon"
+    ]
+    if any(keyword in model_lower for keyword in suv_keywords) or make_lower in ["land rover", "jeep"]:
+        return "suv"
+
+    # 2. Check for Comfort (Luxury brands or newer standard cars)
+    luxury_makes = ["mercedes", "bmw", "audi", "lexus", "porsche", "tesla", "volvo", "infiniti", "jaguar"]
+    
+    # If it's a luxury brand, or a standard car newer than 2018, it gets Comfort.
+    if make_lower in luxury_makes or int(year) >= 2018:
+        return "comfort"
+
+    # 3. Default fallback
+    return "economy"
 
 @app.post("/api/rides/{ride_id}/accept", tags=["Rides"])
 async def accept_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1656,7 +1685,7 @@ async def complete_ride(
     
     ride_data = ride_snap.to_dict()
     
-    # 1. Gather variables for the final calculation
+    # 1. Calculate fare purely based on distance/time (NO service fees yet)
     actual_distance = final_distance if final_distance is not None else ride_data.get("estimated_distance", 0)
     pickup_wait = ride_data.get("pickup_wait_minutes", 0)
     stop_wait = ride_data.get("stop_wait_minutes", 0)
@@ -1664,23 +1693,24 @@ async def complete_ride(
     car_type = ride_data.get("carType", "economy")
     surge_multiplier = ride_data.get("surge_multiplier", 1.0)
 
-    # 2. Calculate the base fare (the price of the ride itself)
     final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops, surge_multiplier)
     
-    # 3. Apply the 2 GEL PayPal Service Fee for Card payments
+    # 2. Extract variables & define commissionable_amount
     payment_method = ride_data.get("payment_method", "cash")
     service_fee = 2.0 if payment_method == "card" else 0.0
     
-    # base_fare_amount is the ride price (e.g., 5.00 GEL)
-    base_fare_amount = final_fare["total"] 
-    # total_with_fee is ride + 2 GEL (e.g., 7.00 GEL)
-    total_with_fee = base_fare_amount + service_fee
+    # 🔥 THIS IS THE FIX: The commissionable amount is the pure ride fare BEFORE the card fee
+    commissionable_amount = final_fare["total"] 
     
-    final_fare["base_total"] = base_fare_amount
+    # The total the rider is charged (e.g., pure fare + 2 GEL fee if card)
+    total_with_fee = commissionable_amount + service_fee
+    
+    # Update the final_fare dictionary so the database gets the correct breakdown
+    final_fare["base_total"] = commissionable_amount
     final_fare["service_fee"] = service_fee
     final_fare["total"] = total_with_fee
 
-    # 4. PayPal Verification Logic
+    # 3. PayPal Verification
     payment_status = "cash_pending"
     order_id = ride_data.get("payment_order_id")
 
@@ -1713,7 +1743,7 @@ async def complete_ride(
     elif payment_method == "cash":
         payment_status = "cash_collected"
 
-    # 5. Update Ride Record
+    # 4. Update Ride Record
     ride_ref.update({
         "status": "completed",
         "actual_distance": actual_distance,
@@ -1723,49 +1753,59 @@ async def complete_ride(
         "completed_at": firestore.SERVER_TIMESTAMP,
     })
 
-    # 6. Driver Earnings & Wallet Reconciliation
+    # 5. EXACT WALLET MATH
     driver_id = ride_data.get("driver_id")
     if driver_id:
+        # What we already took from them when they hit "Accept"
+        held_commission = ride_data.get("commission_paid", 0) or 0
         commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
         
-        # Calculate the driver's split ONLY on the ride price (base_fare_amount)
-        actual_commission = (base_fare_amount or 0) * commission_rate
-        driver_share = (base_fare_amount or 0) - actual_commission
+        # What they ACTUALLY owe us based on the final completed distance
+        actual_commission = commissionable_amount * commission_rate
+        
+        # What the driver earns on this trip
+        driver_share = commissionable_amount - actual_commission
 
         user_ref = db.collection("users").document(driver_id)
         
         updates = {
             "earnings.total_earned": firestore.Increment(driver_share),
-            "earnings.total_commission_paid": firestore.Increment(actual_commission),
+            "earnings.total_commission_paid": firestore.Increment(actual_commission - held_commission),
             "total_rides": firestore.Increment(1),
             "updated_at": firestore.SERVER_TIMESTAMP,
         }
 
-        # Wallet Adjustments
         wallet_change = 0
         if payment_method == "cash":
-            wallet_change = -base_fare_amount
+            # CASH RULE: We ONLY deduct the 23% commission. 
+            # Because we already deducted 'held_commission' at accept, we just deduct the difference now.
+            wallet_change = -(actual_commission - held_commission)
             updates["earnings.balance"] = firestore.Increment(wallet_change)
+            
         elif payment_status == "paid": 
-            wallet_change = driver_share
+            # CARD RULE: The company holds the customer's money.
+            # We owe the driver their 77% share.
+            # AND we must refund the 'held_commission' we took from them at accept.
+            wallet_change = driver_share + held_commission
             updates["earnings.balance"] = firestore.Increment(wallet_change)
 
         user_ref.update(updates)
 
-        # Log the transaction for transparency
+        # Log for driver earning reports
         db.collection("wallet_transactions").add({
             "driver_id": driver_id,
             "ride_id": ride_id,
-            "type": "cash_deduction" if payment_method == "cash" else "card_credit",
-            "amount": wallet_change,
-            "fare_base": base_fare_amount,
+            "type": "cash_commission_deduction" if payment_method == "cash" else "card_earnings_credit",
+            "net_wallet_change_at_completion": wallet_change,
+            "ride_base_fare": commissionable_amount,
             "service_fee_excluded": service_fee,
-            "commission_deducted": actual_commission,
+            "commission_charged": actual_commission,
+            "driver_share_earned": driver_share,
             "payment_method": payment_method,
             "created_at": firestore.SERVER_TIMESTAMP
         })
 
-    # 7. Update Rider Stats
+    # 6. Update Rider Stats
     rider_id = ride_data.get("userId")
     if rider_id:
         db.collection("users").document(rider_id).update({
