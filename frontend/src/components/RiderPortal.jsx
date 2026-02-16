@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
-import { LiveTrackingMap } from "@/components/maps/LiveTrackingMap"; // Import the new LiveTrackingMap component
+
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket,
   Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned,
