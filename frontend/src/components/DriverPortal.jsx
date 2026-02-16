@@ -34,6 +34,15 @@ import {
   MapPinned, CheckCircle2, XCircle, Play, Timer
 } from "lucide-react";
 
+// Pricing Rules (Needed for Wait Timer & Earning Calculations)
+const PRICING_RULES = {
+  economy: { name: 'Economy', base: 2.80, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
+  comfort: { name: 'Comfort', base: 3.38, perKm: 0.55, perMinWait: 0.45, freeWait: 2, stopFee: 0.00, icon: "🚙" },
+  suv: { name: 'SUV / XL', base: 5.18, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐" },
+  personal: { name: 'Personal', base: 5.12, perKm: 0.70, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "👤" },
+  jumpstart: { name: 'Jumpstart', base: 4.50, perKm: 0.00, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "⚡" }
+};
+
 const DRIVER_COMMISSION_RATE = 0.23;
 const PAYMENT_LINK = "https://egreve.bog.ge//Taksi";
 const LOCATION_UPDATE_INTERVAL = 2000; // 2 seconds
@@ -318,13 +327,20 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         center: { lat: 41.7151, lng: 44.8271 },
         zoom: 17,
         disableDefaultUI: true,
-        zoomControl: false,
+        zoomControl: false, // Hides the +/- buttons for that clean full-screen look
+        gestureHandling: "greedy", // 🔥 Essential: Allows 1-finger panning on mobile!
+        backgroundColor: '#ffffff',
+        
+        // 🔥 Bolt-Style Minimal Light Theme
         styles: [
-          { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-          { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-          { elementType: "labels.text.fill", stylers: [{ color: "#00ff88" }] },
-          { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a4a" }] },
-          { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#00d4ff" }] },
+          { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
+          { elementType: "labels.icon", stylers: [{ visibility: "off" }] }, // Hides store/restaurant icons to reduce clutter
+          { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+          { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
+          { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+          { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+          { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
+          { featureType: "water", elementType: "geometry", stylers: [{ color: "#e9e9e9" }] }
         ]
       });
 
@@ -333,6 +349,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       routeRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
         suppressMarkers: false,
+        // Kept your signature neon colors!
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
         preserveViewport: true
       });
