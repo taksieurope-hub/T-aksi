@@ -291,7 +291,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   }, []);
 };
 
-// 🔥 FULL SCREEN MAP COMPONENT 
+// 🔥 UPGRADED: Driver Map (Full Screen, Custom Zoom, Turn-by-Turn Navigation)
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -300,9 +300,23 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const directionsServiceRef = useRef(null);
 
   const [isFollowing, setIsFollowing] = useState(true);
+  
+  // --- TURN-BY-TURN NAVIGATION STATE ---
+  const [routeSteps, setRouteSteps] = useState([]);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
   const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
 
+  // Helper for turn-by-turn distance matching
+  const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+      const R = 6371; 
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+      return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+  };
+
+  // 1. Initialize Map
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
 
@@ -310,13 +324,13 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 },
         zoom: 17,
-        disableDefaultUI: true,
+        disableDefaultUI: true, // Hides default tiny buttons
         zoomControl: false, 
-        gestureHandling: "greedy",
+        gestureHandling: "greedy", // Allows 1-finger panning on mobile
         backgroundColor: '#ffffff',
         styles: [
           { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
-          { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+          { elementType: "labels.icon", stylers: [{ visibility: "off" }] }, 
           { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
           { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
           { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
@@ -326,6 +340,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         ]
       });
 
+      // Pause auto-follow if the driver pans the map manually
       mapInstanceRef.current.addListener("dragstart", () => setIsFollowing(false));
 
       routeRendererRef.current = new window.google.maps.DirectionsRenderer({
@@ -339,8 +354,10 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }
   }, []);
 
+  // 2. Update Driver Marker & Turn-by-Turn Logic
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
+
     const lat = getSafeCoord(driverLocation.lat);
     const lng = getSafeCoord(driverLocation.lng);
     const heading = parseFloat(driverLocation.heading) || 0;
@@ -369,11 +386,28 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     if (isFollowing) {
         mapInstanceRef.current.panTo(pos);
     }
-  }, [driverLocation, isFollowing]);
 
+    // --- TURN-BY-TURN STEP PROGRESSION ---
+    if (routeSteps.length > 0 && currentStepIndex < routeSteps.length) {
+        const currentStep = routeSteps[currentStepIndex];
+        const stepEndLat = currentStep.end_location.lat();
+        const stepEndLng = currentStep.end_location.lng();
+        
+        // Calculate how far driver is from the exact turning point
+        const distanceToTurn = getDistanceKm(lat, lng, stepEndLat, stepEndLng);
+        
+        // If driver is within 40 meters (0.04 km) of the turn, jump to the next instruction
+        if (distanceToTurn < 0.04) {
+            setCurrentStepIndex(prev => prev + 1);
+        }
+    }
+  }, [driverLocation, isFollowing, routeSteps, currentStepIndex]);
+
+  // 3. Draw Route & Extract Steps
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) {
         if (routeRendererRef.current) routeRendererRef.current.setDirections({routes: []});
+        setRouteSteps([]);
         return;
     }
 
@@ -396,71 +430,102 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         }, (result, status) => {
             if (status === 'OK' && routeRendererRef.current) {
                 routeRendererRef.current.setDirections(result);
+                
+                // Extract steps for the navigation panel
+                const steps = result.routes[0].legs[0].steps;
+                setRouteSteps(steps);
+                setCurrentStepIndex(0); // Reset to first step
             }
         });
     }
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, driverLocation?.lat]);
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]);
+
+  // --- MANUAL ZOOM CONTROLS ---
+  const handleZoomIn = () => {
+    if (mapInstanceRef.current) mapInstanceRef.current.setZoom(mapInstanceRef.current.getZoom() + 1);
+  };
+  const handleZoomOut = () => {
+    if (mapInstanceRef.current) mapInstanceRef.current.setZoom(mapInstanceRef.current.getZoom() - 1);
+  };
 
   const handleRecenter = () => {
       setIsFollowing(true);
       if (driverLocation) {
-          const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
-          mapInstanceRef.current.panTo(pos);
-          mapInstanceRef.current.setZoom(17);
+          mapInstanceRef.current.panTo({ lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) });
       }
   };
 
-  const handleNav = (app) => {
+  const handleNav = (app) => { /* Keeping your external Nav logic untouched */
     if (!activeRide) return;
-    let destLat, destLng;
-    let waypoints = "";
-
-    if (["accepted", "arrived"].includes(activeRide.status)) {
-        destLat = activeRide.pickup_lat; 
-        destLng = activeRide.pickup_lng;
-    } else {
-        destLat = activeRide.dest_lat || activeRide.destination_lat;
-        destLng = activeRide.dest_lng || activeRide.destination_lng;
-
+    let destLat, destLng; let waypoints = "";
+    if (["accepted", "arrived"].includes(activeRide.status)) { destLat = activeRide.pickup_lat; destLng = activeRide.pickup_lng; } 
+    else {
+        destLat = activeRide.dest_lat || activeRide.destination_lat; destLng = activeRide.dest_lng || activeRide.destination_lng;
         if (activeRide.stops && activeRide.stops.length > 0 && app === 'google') {
             const stopsStr = activeRide.stops.filter(s => s.lat && s.lng).map(s => `${s.lat},${s.lng}`).join('|');
-            if (stopsStr) {
-                waypoints = `&waypoints=${stopsStr}`;
-            }
+            if (stopsStr) waypoints = `&waypoints=${stopsStr}`;
         }
     }
-    
     if (!destLat || !destLng) return toast.error("No destination coordinates found");
-    let url = "";
-    if (app === 'waze') {
-        url = `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`;
-    } else {
-        url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
-    }
+    const url = app === 'waze' ? `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes` : `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
     window.open(url, '_blank');
   };
+
+  // Turn Icon Mapper
+  const getTurnIcon = (maneuver) => {
+      if (!maneuver) return <Navigation className="w-8 h-8" />;
+      if (maneuver.includes("left")) return <ArrowLeft className="w-8 h-8" />;
+      if (maneuver.includes("right")) return <ArrowLeft className="w-8 h-8 rotate-180" />; // flipped left for right
+      return <Navigation className="w-8 h-8" />; // default straight
+  };
+
+  const currentStep = routeSteps[currentStepIndex];
 
   return (
     <div className="fixed inset-0 w-full h-full z-0 pointer-events-auto">
         <div ref={mapRef} className="w-full h-full" />
 
+        {/* 🔥 TURN-BY-TURN NAVIGATION PANEL */}
+        {activeRide && currentStep && (
+            <div className="absolute top-28 left-4 right-4 z-20 bg-[#1a1a2e]/95 backdrop-blur-xl border border-[#00ff88]/50 rounded-2xl p-4 shadow-[0_10px_30px_rgba(0,0,0,0.6)] flex items-center gap-4">
+                <div className="bg-[#00ff88]/20 p-3 rounded-xl text-[#00ff88] flex-shrink-0">
+                    {getTurnIcon(currentStep.maneuver)}
+                </div>
+                <div className="flex-1 overflow-hidden">
+                    <p className="text-2xl font-bold text-white mb-1">{currentStep.distance.text}</p>
+                    {/* Cleans HTML tags from Google API (e.g. "Turn <b>left</b>") */}
+                    <p className="text-[#00ff88] font-medium text-[15px] leading-tight truncate">
+                        {currentStep.instructions.replace(/<[^>]*>?/gm, '')}
+                    </p>
+                </div>
+            </div>
+        )}
+
+        {/* Recenter Button */}
         {!isFollowing && driverLocation && (
-            <button
-                onClick={handleRecenter}
-                className="absolute top-28 left-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in border-2 border-white"
-            >
+            <button onClick={handleRecenter} className="absolute bottom-[48vh] left-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in border-2 border-white">
                 <Crosshair className="w-6 h-6 animate-pulse" />
             </button>
         )}
 
-        {/* Buttons hover over the map in top right */}
+        {/* 🔥 CUSTOM DRIVER-FRIENDLY ZOOM CONTROLS */}
+        <div className="absolute top-1/2 right-4 transform -translate-y-1/2 flex flex-col gap-2 z-10">
+            <button onClick={handleZoomIn} className="bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] w-12 h-12 rounded-xl flex items-center justify-center shadow-lg active:bg-[#00ff88]/30 transition-colors">
+                <Plus className="w-6 h-6" />
+            </button>
+            <button onClick={handleZoomOut} className="bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] w-12 h-12 rounded-xl flex items-center justify-center shadow-lg active:bg-[#00ff88]/30 transition-colors">
+                <span className="text-2xl font-bold leading-none -mt-1">-</span>
+            </button>
+        </div>
+
+        {/* External Nav Buttons */}
         {activeRide && (
-            <div className="absolute top-28 right-4 flex flex-col gap-3 z-10">
-                <Button onClick={() => handleNav('waze')} className="bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20">
-                    <Zap className="w-4 h-4 mr-2" /> Waze
+            <div className="absolute top-52 right-4 flex flex-col gap-3 z-10">
+                <Button size="icon" onClick={() => handleNav('waze')} className="bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20 w-12 h-12 rounded-full shadow-lg">
+                    <Zap className="w-5 h-5" />
                 </Button>
-                <Button onClick={() => handleNav('google')} className="bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20">
-                    <Navigation className="w-4 h-4 mr-2" /> Maps
+                <Button size="icon" onClick={() => handleNav('google')} className="bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20 w-12 h-12 rounded-full shadow-lg">
+                    <MapPinned className="w-5 h-5" />
                 </Button>
             </div>
         )}
