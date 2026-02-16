@@ -245,8 +245,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 
 
 // --- 3. LIVE MAP COMPONENT (Upgraded: Auto-Follow + Re-Center) ---
-// --- 3. LIVE MAP COMPONENT (Fixed: Defines 'target' before using it) ---
-const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, status }) => {
+
+ {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
