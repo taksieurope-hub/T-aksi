@@ -12,13 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription, // <--- Added to fix warning
-  DialogFooter 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -46,6 +46,7 @@ const PRICING_RULES = {
 const DRIVER_COMMISSION_RATE = 0.23;
 const PAYMENT_LINK = "https://egreve.bog.ge//Taksi";
 const LOCATION_UPDATE_INTERVAL = 2000; // 2 seconds
+
 // Reasons change based on the stage of the trip
 const CANCEL_REASONS = {
   accepted: [ // Before arrival
@@ -130,7 +131,7 @@ const DriverAuth = () => {
                   <Label className="text-[#00d4ff]">First Name</Label>
                   <Input
                     value={formData.name}
-                    onChange={e => setFormData({...formData, name: e.target.value})}
+                    onChange={e => setFormData({ ...formData, name: e.target.value })}
                     className="bg-black/50 border-[#00d4ff]/30 text-white"
                     required
                   />
@@ -139,7 +140,7 @@ const DriverAuth = () => {
                   <Label className="text-[#00d4ff]">Last Name</Label>
                   <Input
                     value={formData.surname}
-                    onChange={e => setFormData({...formData, surname: e.target.value})}
+                    onChange={e => setFormData({ ...formData, surname: e.target.value })}
                     className="bg-black/50 border-[#00d4ff]/30 text-white"
                     required
                   />
@@ -153,7 +154,7 @@ const DriverAuth = () => {
                 <Input
                   type="tel"
                   value={formData.cellphone}
-                  onChange={e => setFormData({...formData, cellphone: e.target.value})}
+                  onChange={e => setFormData({ ...formData, cellphone: e.target.value })}
                   className="pl-10 bg-black/50 border-[#00d4ff]/30 text-white"
                   placeholder="+995 XXX XXX XXX"
                   required
@@ -167,7 +168,7 @@ const DriverAuth = () => {
                 <Input
                   type="password"
                   value={formData.password}
-                  onChange={e => setFormData({...formData, password: e.target.value})}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
                   className="pl-10 bg-black/50 border-[#00d4ff]/30 text-white"
                   required
                 />
@@ -289,7 +290,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
           fields: ['formatted_address', 'geometry', 'name']
         });
 
-        const listener = autocomplete.addListener('place_changed', () => {
+        autocomplete.addListener('place_changed', () => {
           const place = autocomplete.getPlace();
           if (place.geometry) {
             callbackRef.current({
@@ -316,9 +317,12 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
   const [isFollowing, setIsFollowing] = useState(true);
 
-  const getSafeCoord = (val) => { const num = parseFloat(val); return !isNaN(num) && num !== 0 ? num : null; };
+  const getSafeCoord = (val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num !== 0 ? num : null;
+  };
 
-  // 1. Initialize Map
+  // Initialize map
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
 
@@ -327,14 +331,12 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         center: { lat: 41.7151, lng: 44.8271 },
         zoom: 17,
         disableDefaultUI: true,
-        zoomControl: false, // Hides the +/- buttons for that clean full-screen look
-        gestureHandling: "greedy", // 🔥 Essential: Allows 1-finger panning on mobile!
+        zoomControl: false,
+        gestureHandling: "greedy",
         backgroundColor: '#ffffff',
-        
-        // 🔥 Bolt-Style Minimal Light Theme
         styles: [
           { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
-          { elementType: "labels.icon", stylers: [{ visibility: "off" }] }, // Hides store/restaurant icons to reduce clutter
+          { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
           { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
           { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
           { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
@@ -349,7 +351,6 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       routeRendererRef.current = new window.google.maps.DirectionsRenderer({
         map: mapInstanceRef.current,
         suppressMarkers: false,
-        // Kept your signature neon colors!
         polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
         preserveViewport: true
       });
@@ -358,7 +359,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }
   }, []);
 
-  // 2. Update Driver Marker
+  // Update driver marker
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
 
@@ -393,11 +394,11 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }
 
     if (isFollowing) {
-        mapInstanceRef.current.panTo(pos);
+      mapInstanceRef.current.panTo(pos);
     }
   }, [driverLocation, isFollowing]);
 
-  // 3. Draw Route
+  // Draw route
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) return;
 
@@ -407,116 +408,312 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
     let target = null;
     if (["accepted", "arrived"].includes(activeRide.status)) {
-        target = { lat: parseFloat(activeRide.pickup_lat), lng: parseFloat(activeRide.pickup_lng) };
+      target = { lat: parseFloat(activeRide.pickup_lat), lng: parseFloat(activeRide.pickup_lng) };
     } else if (activeRide.status === "in_progress") {
-        target = { lat: parseFloat(activeRide.dest_lat || activeRide.destination_lat), lng: parseFloat(activeRide.dest_lng || activeRide.destination_lng) };
+      target = { lat: parseFloat(activeRide.dest_lat || activeRide.destination_lat), lng: parseFloat(activeRide.dest_lng || activeRide.destination_lng) };
     }
 
     if (target && target.lat) {
-        directionsServiceRef.current.route({
-            origin: { lat: dLat, lng: dLng },
-            destination: target,
-            travelMode: window.google.maps.TravelMode.DRIVING
-        }, (result, status) => {
-            if (status === 'OK' && routeRendererRef.current) {
-                routeRendererRef.current.setDirections(result);
-            }
-        });
+      directionsServiceRef.current.route({
+        origin: { lat: dLat, lng: dLng },
+        destination: target,
+        travelMode: window.google.maps.TravelMode.DRIVING
+      }, (result, status) => {
+        if (status === 'OK' && routeRendererRef.current) {
+          routeRendererRef.current.setDirections(result);
+        }
+      });
     }
   }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]);
 
   const handleRecenter = () => {
-      setIsFollowing(true);
-      if (driverLocation) {
-          const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
-          mapInstanceRef.current.panTo(pos);
-          mapInstanceRef.current.setZoom(17);
-      }
+    setIsFollowing(true);
+    if (driverLocation) {
+      const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
+      mapInstanceRef.current.panTo(pos);
+      mapInstanceRef.current.setZoom(17);
+    }
   };
 
   const handleNav = (app) => {
     if (!activeRide) return;
-    
+
     let destLat, destLng;
     let waypoints = "";
 
-    // PHASE 1: GOING TO PICKUP
     if (["accepted", "arrived"].includes(activeRide.status)) {
-        destLat = activeRide.pickup_lat; 
-        destLng = activeRide.pickup_lng;
-    } 
-    // PHASE 2: GOING TO DESTINATION (AND STOPS)
-    else {
-        destLat = activeRide.dest_lat || activeRide.destination_lat;
-        destLng = activeRide.dest_lng || activeRide.destination_lng;
+      destLat = activeRide.pickup_lat;
+      destLng = activeRide.pickup_lng;
+    } else {
+      destLat = activeRide.dest_lat || activeRide.destination_lat;
+      destLng = activeRide.dest_lng || activeRide.destination_lng;
 
-        // If using Google Maps, add the intermediate stops
-        if (activeRide.stops && activeRide.stops.length > 0 && app === 'google') {
-            const stopsStr = activeRide.stops
-                .filter(s => s.lat && s.lng) // Ensure valid coordinates
-                .map(s => `${s.lat},${s.lng}`)
-                .join('|');
-            
-            if (stopsStr) {
-                waypoints = `&waypoints=${stopsStr}`;
-            }
-        }
+      if (activeRide.stops && activeRide.stops.length > 0 && app === 'google') {
+        const stopsStr = activeRide.stops
+          .filter(s => s.lat && s.lng)
+          .map(s => `${s.lat},${s.lng}`)
+          .join('|');
+
+        if (stopsStr) waypoints = `&waypoints=${stopsStr}`;
+      }
     }
-    
+
     if (!destLat || !destLng) return toast.error("No destination coordinates found");
 
     let url = "";
     if (app === 'waze') {
-        url = `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`;
+      url = `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`;
     } else {
-        url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
+      url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
     }
-    
+
     window.open(url, '_blank');
   };
 
   return (
     <div className="relative w-full h-[450px] rounded-xl border border-[#00d4ff]/20 bg-[#1a1a2e] overflow-hidden">
-        <div ref={mapRef} className="w-full h-full" />
+      <div ref={mapRef} className="w-full h-full" />
 
-        {!isFollowing && (
-            <button
-                onClick={handleRecenter}
-                className="absolute bottom-20 right-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in border-2 border-white"
-            >
-                <Crosshair className="w-6 h-6 animate-pulse" />
-            </button>
-        )}
+      {!isFollowing && (
+        <button
+          onClick={handleRecenter}
+          className="absolute bottom-20 right-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 animate-in fade-in zoom-in border-2 border-white"
+        >
+          <Crosshair className="w-6 h-6 animate-pulse" />
+        </button>
+      )}
 
-        <div className="absolute bottom-4 left-4 right-4 flex gap-3 z-10">
-            <Button onClick={() => handleNav('waze')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20">
-                <Zap className="w-4 h-4 mr-2" /> Waze
-            </Button>
-            <Button onClick={() => handleNav('google')} className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20">
-                <Navigation className="w-4 h-4 mr-2" /> Maps
-            </Button>
-        </div>
+      <div className="absolute bottom-4 left-4 right-4 flex gap-3 z-10">
+        <Button
+          onClick={() => handleNav('waze')}
+          className="flex-1 bg-black/80 backdrop-blur-md border border-[#00d4ff]/50 text-[#00d4ff] hover:bg-[#00d4ff]/20"
+        >
+          <Zap className="w-4 h-4 mr-2" /> Waze
+        </Button>
+        <Button
+          onClick={() => handleNav('google')}
+          className="flex-1 bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] hover:bg-[#00ff88]/20"
+        >
+          <Navigation className="w-4 h-4 mr-2" /> Maps
+        </Button>
+      </div>
     </div>
   );
 };
 
-// Driver Dashboard Component
+// --- Bolt-style bottom nav ---
+const BottomNav = ({ value, onChange }) => {
+  const Item = ({ id, icon: Icon, label }) => (
+    <button
+      onClick={() => onChange(id)}
+      className={`flex flex-col items-center justify-center flex-1 py-2 ${value === id ? "text-[#00ff88]" : "text-white/60"
+        }`}
+    >
+      <Icon className="w-5 h-5 mb-1" />
+      <span className="text-[11px]">{label}</span>
+    </button>
+  );
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-t border-white/10">
+      <div className="mx-auto max-w-2xl flex">
+        <Item id="home" icon={Home} label="Home" />
+        <Item id="earn" icon={TrendingUp} label="Earn more" />
+        <Item id="rides" icon={History} label="Rides" />
+        <Item id="help" icon={MessageSquare} label="Help" />
+      </div>
+    </div>
+  );
+};
+
+const StatTile = ({ label, value, sub, tone = "green" }) => {
+  const tones = {
+    green: "border-[#00ff88]/30 bg-[#00ff88]/10 text-[#00ff88]",
+    cyan: "border-[#00d4ff]/30 bg-[#00d4ff]/10 text-[#00d4ff]",
+    gray: "border-white/10 bg-white/5 text-white",
+    red: "border-red-500/30 bg-red-500/10 text-red-400",
+  };
+  return (
+    <div className={`rounded-xl p-3 border ${tones[tone]}`}>
+      <div className="text-[11px] opacity-70">{label}</div>
+      <div className="text-lg font-bold leading-tight">{value}</div>
+      {sub ? <div className="text-[11px] opacity-70 mt-1">{sub}</div> : null}
+    </div>
+  );
+};
+
+const BoltHomeShell = ({
+  user,
+  isOnline,
+  onToggleOnline,
+  balance,
+  mapsLoaded,
+  driverLocation,
+  activeRide,
+  openMenu,
+}) => {
+  return (
+    <div className="relative">
+      {/* Map-first (Bolt feel) */}
+      <div className="h-[72vh] rounded-2xl overflow-hidden border border-white/10 bg-[#1a1a2e]">
+        {mapsLoaded ? (
+          <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-white/60">
+            Loading map…
+          </div>
+        )}
+      </div>
+
+      {/* Top overlay row */}
+      <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
+        <button
+          onClick={openMenu}
+          className="bg-black/70 border border-white/10 rounded-full px-3 py-2 text-white flex items-center gap-2"
+        >
+          <User className="w-4 h-4 text-[#00d4ff]" />
+          <span className="text-sm">{user?.name}</span>
+        </button>
+
+        <div className="bg-black/70 border border-white/10 rounded-full px-3 py-2 text-white text-sm">
+          ₾{balance.toFixed(2)}
+        </div>
+      </div>
+
+      {/* Big Go Online pill */}
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-[19vh] z-10 w-[86%] max-w-md">
+        <button
+          onClick={() => onToggleOnline(!isOnline)}
+          className={`w-full rounded-full py-4 font-bold text-lg shadow-xl border ${isOnline
+              ? "bg-[#00ff88] text-black border-white/20"
+              : "bg-black/80 text-white border-white/15"
+            }`}
+        >
+          {isOnline ? "Online" : "Go online"}
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <StatTile label="Today’s earnings" value={`₾${(user?.earnings?.today || 0).toFixed(2)}`} tone="green" />
+        <StatTile label="This week" value={`₾${(user?.earnings?.week || 0).toFixed(2)}`} tone="cyan" />
+        <StatTile label="Driver score" value={`${user?.driver_info?.score ?? 94}%`} sub="Keep it high" tone="gray" />
+        <StatTile label="Acceptance rate" value={`${user?.driver_info?.acceptance_rate ?? 85}%`} sub={isOnline ? "Active" : "Offline"} tone={isOnline ? "green" : "gray"} />
+      </div>
+
+      <div className="h-24" />
+    </div>
+  );
+};
+
+const EarnMoreScreen = ({ onRefer, onCampaigns, onScheduled }) => {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="text-white font-semibold">Earn more</div>
+        <div className="text-white/60 text-sm mt-1">Boost your weekly income with referrals, campaigns and scheduled rides.</div>
+      </div>
+
+      <button onClick={onScheduled} className="w-full rounded-2xl border border-white/10 bg-black/50 p-4 text-left">
+        <div className="flex items-center gap-3 text-white">
+          <Timer className="w-5 h-5 text-[#00ff88]" />
+          <div>
+            <div className="font-semibold">Scheduled ride requests</div>
+            <div className="text-sm text-white/60">Accept planned trips</div>
+          </div>
+        </div>
+      </button>
+
+      <button onClick={onRefer} className="w-full rounded-2xl border border-white/10 bg-black/50 p-4 text-left">
+        <div className="flex items-center gap-3 text-white">
+          <Plus className="w-5 h-5 text-[#00d4ff]" />
+          <div>
+            <div className="font-semibold">Refer a friend</div>
+            <div className="text-sm text-white/60">Invite drivers and earn rewards</div>
+          </div>
+        </div>
+      </button>
+
+      <button onClick={onCampaigns} className="w-full rounded-2xl border border-white/10 bg-black/50 p-4 text-left">
+        <div className="flex items-center gap-3 text-white">
+          <Rocket className="w-5 h-5 text-yellow-400" />
+          <div>
+            <div className="font-semibold">Campaigns</div>
+            <div className="text-sm text-white/60">Bonuses and boosts</div>
+          </div>
+        </div>
+      </button>
+
+      <div className="h-24" />
+    </div>
+  );
+};
+
+const HelpScreen = ({ openSafety, openSupport }) => {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="text-white font-semibold">Driver Help</div>
+        <div className="text-white/60 text-sm mt-1">Get help with a trip, support, and safety tools.</div>
+      </div>
+
+      <button onClick={openSupport} className="w-full rounded-2xl border border-white/10 bg-black/50 p-4 text-left">
+        <div className="flex items-center gap-3 text-white">
+          <Send className="w-5 h-5 text-[#00d4ff]" />
+          <div>
+            <div className="font-semibold">Contact support</div>
+            <div className="text-sm text-white/60">Send us a message</div>
+          </div>
+        </div>
+      </button>
+
+      <button onClick={openSafety} className="w-full rounded-2xl border border-white/10 bg-black/50 p-4 text-left">
+        <div className="flex items-center gap-3 text-white">
+          <AlertTriangle className="w-5 h-5 text-red-400" />
+          <div>
+            <div className="font-semibold">Safety toolkit</div>
+            <div className="text-sm text-white/60">Emergency call, share trip details</div>
+          </div>
+        </div>
+      </button>
+
+      <div className="h-24" />
+    </div>
+  );
+};
+
+
+// =======================
+// Driver Dashboard Component (FULL)
+// =======================
 const DriverDashboard = () => {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
+
   const [activeTab, setActiveTab] = useState("rides");
   const [loading, setLoading] = useState(false);
+
   const [isOnline, setIsOnline] = useState(user?.is_online || false);
+
   const [availableRides, setAvailableRides] = useState([]);
   const [nearbyRides, setNearbyRides] = useState([]);
   const [searchRadius, setSearchRadius] = useState(10);
+
   const [activeRide, setActiveRide] = useState(null);
   const [rideHistory, setRideHistory] = useState([]);
+
   const [driverLocation, setDriverLocation] = useState(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
+
   // Cancellation State
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedCancelReason, setSelectedCancelReason] = useState("");
+
+  // Bolt UI State
+  const [nav, setNav] = useState("home");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [safetyOpen, setSafetyOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
 
   // Ride tracking state
   const [rideStartTime, setRideStartTime] = useState(null);
@@ -541,9 +738,11 @@ const DriverDashboard = () => {
     car_photo_left: null,
     car_photo_right: null
   });
+
   const [topupAmount, setTopupAmount] = useState("");
   const [topupReference, setTopupReference] = useState("");
   const [withdrawalData, setWithdrawalData] = useState({ amount: "", bank_details: "" });
+
   const [showCardModal, setShowCardModal] = useState(false);
   const [cardDetails, setCardDetails] = useState({ number: "", expiry: "", cvv: "" });
   const [completedRide, setCompletedRide] = useState(null);
@@ -551,6 +750,34 @@ const DriverDashboard = () => {
   const balance = user?.earnings?.balance || 0;
   const registrationStatus = user?.registration_status;
   const hasVehicle = user?.driver_info?.vehicle;
+
+  // --- Bolt-style nav -> existing tabs mapping ---
+  const NAV_TO_TAB = {
+    home: "rides",
+    earn: "earnings",
+    rides: "history",
+    help: "rides", // help is its own screen
+    nearby: "nearby",
+    vehicle: "vehicle",
+    earnings: "earnings",
+    history: "history",
+  };
+
+  // Keep Tabs in sync with Bolt bottom-nav/menu
+  useEffect(() => {
+    const nextTab = NAV_TO_TAB[nav] || "rides";
+    setActiveTab(nextTab);
+
+    if (nav === "nearby") fetchNearbyRides();
+  }, [nav]);
+
+  // When an active ride appears, force to home/rides
+  useEffect(() => {
+    if (activeRide) {
+      setNav("home");
+      setActiveTab("rides");
+    }
+  }, [activeRide]);
 
   const handleCardInput = (field, value) => {
     let formatted = value;
@@ -565,14 +792,14 @@ const DriverDashboard = () => {
   const handleCardPayment = async (e) => {
     e.preventDefault();
     if (cardDetails.number.length < 16 || cardDetails.expiry.length < 5 || cardDetails.cvv.length < 3) {
-        return toast.error("Please complete card details");
+      return toast.error("Please complete card details");
     }
     setLoading(true);
     setTimeout(() => {
-        setLoading(false);
-        setShowCardModal(false);
-        toast.success("Payment Method Verified");
-        handleRequestTopup();
+      setLoading(false);
+      setShowCardModal(false);
+      toast.success("Payment Method Verified");
+      handleRequestTopup();
     }, 1500);
   };
 
@@ -589,8 +816,8 @@ const DriverDashboard = () => {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
@@ -604,111 +831,135 @@ const DriverDashboard = () => {
         await api.post(`/rides/${activeRide.id}/update-tracking`, location);
       }
       lastPositionRef.current = location;
-    } catch (error) { console.error("Failed to update location:", error); }
+    } catch (error) {
+      console.error("Failed to update location:", error);
+    }
   }, [activeRide]);
 
   useLocationTracker(isOnline, handleLocationUpdate);
 
   useEffect(() => {
     let interval;
-    // 🔥 FIXED: Recover timer state from backend if missing locally
+
     if (activeRide?.status === "arrived") {
-        if (!arrivedTime && activeRide.arrived_at) {
-            setArrivedTime(new Date(activeRide.arrived_at).getTime());
-        }
-        interval = setInterval(() => { 
-            const start = arrivedTime || Date.now();
-            setWaitTimer(Math.max(0, Math.floor((Date.now() - start) / 60000))); 
-        }, 1000);
+      if (!arrivedTime && activeRide.arrived_at) {
+        setArrivedTime(new Date(activeRide.arrived_at).getTime());
+      }
+
+      interval = setInterval(() => {
+        const start = arrivedTime || Date.now();
+        setWaitTimer(Math.max(0, Math.floor((Date.now() - start) / 60000)));
+      }, 1000);
     }
+
     return () => clearInterval(interval);
   }, [arrivedTime, activeRide]);
 
   useEffect(() => { fetchActiveRide(); fetchRideHistory(); }, []);
-  useEffect(() => { if (registrationStatus === "approved" && isOnline) { fetchAvailableRides(); const interval = setInterval(fetchAvailableRides, 5000); return () => clearInterval(interval); } }, [isOnline, registrationStatus]);
+  useEffect(() => {
+    if (registrationStatus === "approved" && isOnline) {
+      fetchAvailableRides();
+      const interval = setInterval(fetchAvailableRides, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isOnline, registrationStatus]);
 
-  const fetchAvailableRides = async () => { try { const res = await api.get(`/driver/rides/available`); setAvailableRides(res.data.rides || []); } catch (e) {} };
-  const fetchActiveRide = async () => { try { const res = await api.get(`/driver/active-ride`); if (res.data) { setActiveRide(res.data); setActiveTab("rides"); } } catch (e) {} };
-  const fetchRideHistory = async () => { try { const res = await api.get(`/driver/history`); setRideHistory(res.data.rides || []); } catch (e) {} };
-  const fetchNearbyRides = async () => { try { const res = await api.get(`/driver/rides/nearby?radius=${searchRadius}`); setNearbyRides(res.data.rides || []); } catch (e) {} };
+  const fetchAvailableRides = async () => {
+    try {
+      const res = await api.get(`/driver/rides/available`);
+      setAvailableRides(res.data.rides || []);
+    } catch (e) { }
+  };
+
+  const fetchActiveRide = async () => {
+    try {
+      const res = await api.get(`/driver/active-ride`);
+      if (res.data) {
+        setActiveRide(res.data);
+        setActiveTab("rides");
+      }
+    } catch (e) { }
+  };
+
+  const fetchRideHistory = async () => {
+    try {
+      const res = await api.get(`/driver/history`);
+      setRideHistory(res.data.rides || []);
+    } catch (e) { }
+  };
+
+  const fetchNearbyRides = async () => {
+    try {
+      const res = await api.get(`/driver/rides/nearby?radius=${searchRadius}`);
+      setNearbyRides(res.data.rides || []);
+    } catch (e) { }
+  };
 
   const handleRideAction = async (action) => {
     if (!activeRide) return;
     setLoading(true);
 
     try {
-      // 1. ARRIVED
       if (action === "arrived") {
         await api.post(`/rides/${activeRide.id}/arrived`);
         setArrivedTime(Date.now());
         toast.success("Marked as arrived");
-      } 
-      // 2. START TRIP
+      }
       else if (action === "start") {
-        await api.post(`/rides/${activeRide.id}/start`, { 
-            pickup_wait_time: parseInt(waitTimer || 0)
+        await api.post(`/rides/${activeRide.id}/start`, {
+          pickup_wait_time: parseInt(waitTimer || 0)
         });
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
         lastPositionRef.current = driverLocation;
         toast.success("Ride started");
-      } 
-      // 3. COMPLETE TRIP (🔥 THE FIX)
+      }
       else if (action === "complete") {
-        // Ensure values are numbers
         const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled);
         const finalWait = isNaN(waitTimer) ? 0 : parseInt(waitTimer);
-        
-        // 1. Construct URL with Query Params (for servers that check URL)
+
         const url = `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}`;
-        
-        // 2. Construct Body Payload (for servers that check Body)
         const payload = {
-            final_distance: finalDist,
-            total_wait_minutes: finalWait,
-            dropoff_lat: driverLocation?.lat,
-            dropoff_lng: driverLocation?.lng
+          final_distance: finalDist,
+          total_wait_minutes: finalWait,
+          dropoff_lat: driverLocation?.lat,
+          dropoff_lng: driverLocation?.lng
         };
 
-        // Send BOTH!
         const res = await api.post(url, payload);
-        
-        // Safety Check: If fare is 0, try to use estimated fare so the driver sees SOMETHING
-        const finalFare = res.data.final_fare > 0 
-            ? res.data.final_fare 
-            : (activeRide.estimated_fare || 0);
 
-        // Force the fare into the object before setting state
+        const finalFare = res.data.final_fare > 0
+          ? res.data.final_fare
+          : (activeRide.estimated_fare || 0);
+
         const completeData = { ...res.data, final_fare: finalFare };
-        
+
         setCompletedRide(completeData);
         toast.success(`Ride completed! Fare: ₾${finalFare.toFixed(2)}`);
-        
-        // Reset State
+
         setActiveRide(null);
         setDistanceTraveled(0);
         setWaitTimer(0);
         setArrivedTime(null);
         setRideStartTime(null);
-        
+
         fetchRideHistory();
         const userRes = await api.get(`/auth/me`);
         updateUser(userRes.data);
-        return; 
+        return;
       }
-      
-      // Refresh ride state if not completing
+
       if (action !== "complete") {
-          const rideRes = await api.get(`/rides/${activeRide.id}`);
-          setActiveRide(rideRes.data);
+        const rideRes = await api.get(`/rides/${activeRide.id}`);
+        setActiveRide(rideRes.data);
       }
 
     } catch (e) {
-        console.error("Action Error:", e);
-        const errorMsg = e.response?.data?.detail || "Action failed";
-        toast.error(errorMsg);
+      console.error("Action Error:", e);
+      const errorMsg = e.response?.data?.detail || "Action failed";
+      toast.error(errorMsg);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -717,15 +968,13 @@ const DriverDashboard = () => {
     setLoading(true);
 
     try {
-      // Send the cancellation request with the specific reason
       await api.post(`/rides/${activeRide.id}/cancel`, {
         reason: selectedCancelReason,
-        stage: activeRide.status // logical check for the backend algorithm
+        stage: activeRide.status
       });
 
       toast.success("Ride cancelled");
-      
-      // Reset everything
+
       setActiveRide(null);
       setDistanceTraveled(0);
       setWaitTimer(0);
@@ -733,8 +982,7 @@ const DriverDashboard = () => {
       setRideStartTime(null);
       setShowCancelModal(false);
       setSelectedCancelReason("");
-      
-      // Refresh Data
+
       fetchRideHistory();
       fetchAvailableRides();
 
@@ -747,7 +995,14 @@ const DriverDashboard = () => {
   };
 
   const handleToggleOnline = async (online) => {
-    try { await api.post(`/driver/status?is_online=${online}`); setIsOnline(online); updateUser({ ...user, is_online: online }); toast.success(online ? "Online" : "Offline"); } catch (e) { toast.error("Failed"); }
+    try {
+      await api.post(`/driver/status?is_online=${online}`);
+      setIsOnline(online);
+      updateUser({ ...user, is_online: online });
+      toast.success(online ? "Online" : "Offline");
+    } catch (e) {
+      toast.error("Failed");
+    }
   };
 
   const handleRegisterVehicle = async (e) => {
@@ -788,302 +1043,557 @@ const DriverDashboard = () => {
     }
   };
 
-  const handleAcceptRide = async (rideId, estimatedFare) => { if (balance < estimatedFare * 0.23) return toast.error("Insufficient balance"); setLoading(true); try { await api.post(`/rides/${rideId}/accept`); toast.success("Accepted!"); const rideRes = await api.get(`/rides/${rideId}`); setActiveRide(rideRes.data); setAvailableRides(p => p.filter(r => r.id !== rideId)); setDistanceTraveled(0); } catch (e) { toast.error("Failed"); } finally { setLoading(false); } };
-  const handleDeclineRide = async (rideId) => { try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(p => p.filter(r => r.id !== rideId)); toast.info("Declined"); } catch (e) {} };
-  const handleRequestToJoin = async (rideId) => { setLoading(true); try { await api.post(`/rides/${rideId}/request-join`); toast.success("Requested!"); fetchAvailableRides(); } catch (e) {} finally { setLoading(false); } };
-  const handleRequestTopup = async () => { setLoading(true); try { await api.post(`/driver/topup/request`, { amount: parseFloat(topupAmount), payment_reference: topupReference }); toast.success("Request sent"); window.open("https://bankofgeorgia.ge", "_blank"); } catch(e) {} finally { setLoading(false); } };
-  const handleWithdrawal = async () => { setLoading(true); try { await api.post(`/driver/withdraw`, { amount: parseFloat(withdrawalData.amount), bank_details: withdrawalData.bank_details }); toast.success("Requested"); } catch(e) {} finally { setLoading(false); } };
+  const handleAcceptRide = async (rideId, estimatedFare) => {
+    if (balance < estimatedFare * 0.23) return toast.error("Insufficient balance");
+    setLoading(true);
+    try {
+      await api.post(`/rides/${rideId}/accept`);
+      toast.success("Accepted!");
+      const rideRes = await api.get(`/rides/${rideId}`);
+      setActiveRide(rideRes.data);
+      setAvailableRides(p => p.filter(r => r.id !== rideId));
+      setDistanceTraveled(0);
+    } catch (e) {
+      toast.error("Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const statusColors = { pending_vehicle: "bg-yellow-500 text-black", pending_review: "bg-orange-500 text-black", approved: "bg-[#00ff88] text-black", rejected: "bg-red-500 text-white" };
-  const rideStatusColors = { searching: "bg-yellow-500 text-black", accepted: "bg-blue-500 text-white", arrived: "bg-purple-500 text-white", in_progress: "bg-[#00ff88] text-black", completed: "bg-green-600 text-white", cancelled: "bg-red-500 text-white" };
+  const handleDeclineRide = async (rideId) => {
+    try {
+      await api.post(`/rides/${rideId}/decline`);
+      setAvailableRides(p => p.filter(r => r.id !== rideId));
+      toast.info("Declined");
+    } catch (e) { }
+  };
+
+  const handleRequestToJoin = async (rideId) => {
+    setLoading(true);
+    try {
+      await api.post(`/rides/${rideId}/request-join`);
+      toast.success("Requested!");
+      fetchAvailableRides();
+    } catch (e) { }
+    finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequestTopup = async () => {
+    setLoading(true);
+    try {
+      await api.post(`/driver/topup/request`, { amount: parseFloat(topupAmount), payment_reference: topupReference });
+      toast.success("Request sent");
+      window.open("https://bankofgeorgia.ge", "_blank");
+    } catch (e) { }
+    finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWithdrawal = async () => {
+    setLoading(true);
+    try {
+      await api.post(`/driver/withdraw`, { amount: parseFloat(withdrawalData.amount), bank_details: withdrawalData.bank_details });
+      toast.success("Requested");
+    } catch (e) { }
+    finally {
+      setLoading(false);
+    }
+  };
+
+  const statusColors = {
+    pending_vehicle: "bg-yellow-500 text-black",
+    pending_review: "bg-orange-500 text-black",
+    approved: "bg-[#00ff88] text-black",
+    rejected: "bg-red-500 text-white"
+  };
+
+  const rideStatusColors = {
+    searching: "bg-yellow-500 text-black",
+    accepted: "bg-blue-500 text-white",
+    arrived: "bg-purple-500 text-white",
+    in_progress: "bg-[#00ff88] text-black",
+    completed: "bg-green-600 text-white",
+    cancelled: "bg-red-500 text-white"
+  };
 
   return (
     <div className="min-h-screen bg-black">
       <header className="bg-black/50 backdrop-blur-xl border-b border-[#00d4ff]/20 p-4 sticky top-0 z-50">
         <div className="container mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] flex items-center justify-center"><Car className="w-5 h-5 text-black" /></div>
-            <div><p className="text-[#00d4ff] font-semibold">{user?.name} {user?.surname}</p><div className="flex items-center space-x-2"><Badge className={statusColors[registrationStatus] || "bg-gray-500"}>{registrationStatus?.replace(/_/g, " ").toUpperCase()}</Badge><span className="text-[#00ff88] text-sm font-bold">₾{balance.toFixed(2)}</span></div></div>
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] flex items-center justify-center">
+              <Car className="w-5 h-5 text-black" />
+            </div>
+            <div>
+              <p className="text-[#00d4ff] font-semibold">{user?.name} {user?.surname}</p>
+              <div className="flex items-center space-x-2">
+                <Badge className={statusColors[registrationStatus] || "bg-gray-500"}>
+                  {registrationStatus?.replace(/_/g, " ").toUpperCase()}
+                </Badge>
+                <span className="text-[#00ff88] text-sm font-bold">₾{balance.toFixed(2)}</span>
+              </div>
+            </div>
           </div>
+
           <div className="flex items-center space-x-4">
-            {registrationStatus === "approved" && (<div className="flex items-center space-x-2"><span className={`text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>{isOnline ? "Online" : "Offline"}</span><Button size="sm" className={isOnline ? "bg-[#00ff88] text-black" : "bg-gray-600"} onClick={() => handleToggleOnline(!isOnline)}>{isOnline ? "ON" : "OFF"}</Button></div>)}
-            <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={() => navigate("/")}><Home className="w-5 h-5" /></Button>
-            <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={logout}><LogOut className="w-5 h-5" /></Button>
+            {registrationStatus === "approved" && (
+              <div className="flex items-center space-x-2">
+                <span className={`text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>
+                  {isOnline ? "Online" : "Offline"}
+                </span>
+                <Button
+                  size="sm"
+                  className={isOnline ? "bg-[#00ff88] text-black" : "bg-gray-600"}
+                  onClick={() => handleToggleOnline(!isOnline)}
+                >
+                  {isOnline ? "ON" : "OFF"}
+                </Button>
+              </div>
+            )}
+
+            {/* Menu open (Bolt) */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-[#00d4ff]"
+              onClick={() => setMenuOpen(true)}
+              title="Menu"
+            >
+              <User className="w-5 h-5" />
+            </Button>
+
+            <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={() => navigate("/")}>
+              <Home className="w-5 h-5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={logout}>
+              <LogOut className="w-5 h-5" />
+            </Button>
           </div>
         </div>
       </header>
 
-      {isOnline && driverLocation && (<div className="bg-[#00ff88]/10 border-b border-[#00ff88]/20 px-4 py-2"><div className="container mx-auto flex items-center text-sm text-[#00ff88]"><Crosshair className="w-4 h-4 mr-2 animate-pulse" />Location tracking active • {driverLocation.lat.toFixed(5)}, {driverLocation.lng.toFixed(5)}{driverLocation.speed && <span className="ml-2">• {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}</div></div>)}
+      {isOnline && driverLocation && (
+        <div className="bg-[#00ff88]/10 border-b border-[#00ff88]/20 px-4 py-2">
+          <div className="container mx-auto flex items-center text-sm text-[#00ff88]">
+            <Crosshair className="w-4 h-4 mr-2 animate-pulse" />
+            Location tracking active • {driverLocation.lat.toFixed(5)}, {driverLocation.lng.toFixed(5)}
+            {driverLocation.speed && <span className="ml-2">• {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
+          </div>
+        </div>
+      )}
 
-      <main className="container mx-auto p-4 max-w-2xl">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-5 bg-black/50 border border-[#00d4ff]/20 mb-6">
-            <TabsTrigger value="rides" className="text-xs sm:text-sm"><Activity className="w-4 h-4 sm:mr-2" /> Rides</TabsTrigger>
-            <TabsTrigger value="nearby" onClick={fetchNearbyRides} className="text-xs sm:text-sm"><Crosshair className="w-4 h-4 sm:mr-2" /> Nearby</TabsTrigger>
-            <TabsTrigger value="vehicle" className="text-xs sm:text-sm"><Car className="w-4 h-4 sm:mr-2" /> Vehicle</TabsTrigger>
-            <TabsTrigger value="earnings" className="text-xs sm:text-sm"><Wallet className="w-4 h-4 sm:mr-2" /> Earn</TabsTrigger>
-            <TabsTrigger value="history" className="text-xs sm:text-sm"><History className="w-4 h-4 sm:mr-2" /> History</TabsTrigger>
-          </TabsList>
+      {/* =======================
+          BOLT MAIN SHELL
+      ======================= */}
+      <main className="container mx-auto p-4 max-w-2xl pb-28">
+        {/* LEFT MENU (Bolt style) */}
+        <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+          <SheetTrigger asChild>
+            <div className="hidden" />
+          </SheetTrigger>
 
-          <TabsContent value="rides">
-            {activeRide ? (
-              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="text-[#00ff88]">Active Ride</CardTitle>
-                    <Badge className={rideStatusColors[activeRide.status]}>
-                      {activeRide.status?.replace(/_/g, " ").toUpperCase()}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4 text-white">
-
-                  {/* 🔥 Driver Map */}
-                  {mapsLoaded && (
-                    <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />
-                  )}
-
-                  <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                    <div className="space-y-3">
-                      <div className="flex items-start">
-                        <MapPin className="w-5 h-5 text-[#00ff88] mr-2 mt-0.5" />
-                        <div>
-                          <p className="text-[#00ff88]/60 text-xs">PICKUP</p>
-                          <p className="font-medium">{activeRide.pickup}</p>
-                        </div>
-                      </div>
-                      {activeRide.stops?.length > 0 && (
-                        <div className="flex items-start">
-                          <MapPinned className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" />
-                          <div>
-                            <p className="text-yellow-400/60 text-xs">STOPS</p>
-                            {activeRide.stops.map((s, i) => (
-                              <p key={i} className="text-sm">• {s.address}</p>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex items-start">
-                        <Navigation className="w-5 h-5 text-[#00d4ff] mr-2 mt-0.5" />
-                        <div>
-                          <p className="text-[#00d4ff]/60 text-xs">DESTINATION</p>
-                          <p className="font-medium">{activeRide.destination || "Open Trip"}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {(activeRide.status === "arrived" || activeRide.status === "in_progress") && (
-                    <div className="grid grid-cols-2 gap-4">
-                      {activeRide.status === "arrived" && (
-                        <div className="bg-purple-500/20 border border-purple-500 rounded-xl p-4 text-center">
-                          <Timer className="w-6 h-6 mx-auto text-purple-400 mb-1" />
-                          <p className="text-2xl font-bold text-purple-400">{waitTimer} min</p>
-                          <p className="text-xs text-purple-400/70">Wait Time</p>
-                        </div>
-                      )}
-                      {activeRide.status === "in_progress" && (
-                        <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center">
-                          <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
-                          <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(1)} km</p>
-                          <p className="text-xs text-[#00ff88]/70">Traveled</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
-                    <span className="text-[#00ff88]">Fare</span>
-                    <span className="text-2xl font-bold text-[#00ff88]">
-                      ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* 🔥 ACTION BUTTONS + CANCEL BUTTON */}
-                  <div className="flex gap-3 pt-2">
-                    <div className="flex-1">
-                      {activeRide.status === "accepted" && (
-                        <Button className="w-full bg-purple-500 text-white h-14 text-lg" onClick={() => handleRideAction("arrived")} disabled={loading}>
-                          <MapPin className="w-5 h-5 mr-2" /> I've Arrived
-                        </Button>
-                      )}
-                      {activeRide.status === "arrived" && (
-                        <Button className="w-full bg-blue-500 text-white h-14 text-lg" onClick={() => handleRideAction("start")} disabled={loading}>
-                          <Play className="w-5 h-5 mr-2" /> Start Trip
-                        </Button>
-                      )}
-                      {activeRide.status === "in_progress" && (
-                        <Button className="w-full bg-[#00ff88] text-black h-14 text-lg font-bold" onClick={() => handleRideAction("complete")} disabled={loading}>
-                          <CheckCircle2 className="w-5 h-5 mr-2" /> Complete Trip
-                        </Button>
-                      )}
-                    </div>
-                    
-                    {/* 🔴 CANCEL BUTTON */}
-                    <Button 
-                      variant="destructive" 
-                      className="h-14 w-14 bg-red-500/20 border border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition-colors"
-                      onClick={() => setShowCancelModal(true)}
-                      disabled={loading}
-                    >
-                      <XCircle className="w-6 h-6" />
-                    </Button>
-                  </div>
-
-                </CardContent>
-              </Card>
-            ) : (
-              // Empty States
-              registrationStatus !== "approved" ? (
-                <Card className="bg-black/60 border border-yellow-500/30 text-center py-12">
-                  <AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
-                  <p className="text-yellow-400 font-semibold">Account Pending</p>
-                </Card>
-              ) : !isOnline ? (
-                <Card className="bg-black/60 border border-gray-500/30 text-center py-12">
-                  <Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" />
-                  <p className="text-gray-400">Offline</p>
-                  <Button className="mt-4 bg-[#00ff88] text-black" onClick={() => handleToggleOnline(true)}>Go Online</Button>
-                </Card>
-              ) : availableRides.length === 0 ? (
-                <Card className="bg-black/60 border border-[#00d4ff]/30 text-center py-12">
-                  <Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" />
-                  <p className="text-[#00d4ff]/70">Searching for rides...</p>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {availableRides.map(ride => {
-                    const comm = (ride.estimated_fare || 0) * 0.23;
-                    const canAccept = balance >= comm;
-                    return (
-                      <Card key={ride.id} className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
-                        <CardContent className="p-4 text-white">
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="flex-1">
-                              <p className="text-[#00ff88] font-semibold">{ride.pickup}</p>
-                              <p className="text-[#00d4ff]/70 text-sm">→ {ride.destination}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button className="flex-1 bg-[#00ff88] text-black font-bold h-12" onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)} disabled={loading || !canAccept}>
-                              {canAccept ? "Accept" : "Low Balance"}
-                            </Button>
-                            <Button variant="outline" className="border-red-500 text-red-500 h-12" onClick={() => handleDeclineRide(ride.id)}>
-                              <XCircle className="w-5 h-5" />
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )
-            )}
-          </TabsContent>
-
-          <TabsContent value="nearby">
-            <div className="space-y-4">
-              <div className="flex justify-end mb-2">
-                <Button size="sm" variant="outline" onClick={fetchNearbyRides}>Refresh</Button>
+          <SheetContent side="left" className="bg-black text-white border-white/10 w-[320px]">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-11 h-11 rounded-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] flex items-center justify-center">
+                <Car className="w-5 h-5 text-black" />
               </div>
-              {nearbyRides.map(ride => (
-                <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30">
-                  <CardContent className="p-4 text-white">
-                    <p className="text-[#00ff88]">{ride.pickup}</p>
-                    <p className="text-[#00d4ff]">→ {ride.destination}</p>
-                    <Button className="w-full mt-2 bg-[#00d4ff] text-black" onClick={() => handleRequestToJoin(ride.id)}>Request to Accept</Button>
+              <div>
+                <div className="font-semibold">{user?.name} {user?.surname}</div>
+                <div className="text-sm text-white/60">
+                  {registrationStatus?.replace(/_/g, " ")}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                className="w-full text-left px-3 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10"
+                onClick={() => { setNav("nearby"); setMenuOpen(false); }}
+              >
+                <div className="flex items-center gap-3">
+                  <Crosshair className="w-5 h-5 text-[#00d4ff]" />
+                  <div>
+                    <div className="font-semibold">Nearby trips</div>
+                    <div className="text-sm text-white/60">Request to accept</div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                className="w-full text-left px-3 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10"
+                onClick={() => { setNav("vehicle"); setMenuOpen(false); }}
+              >
+                <div className="flex items-center gap-3">
+                  <Car className="w-5 h-5 text-[#00ff88]" />
+                  <div>
+                    <div className="font-semibold">Vehicle</div>
+                    <div className="text-sm text-white/60">Documents</div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                className="w-full text-left px-3 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10"
+                onClick={() => { setNav("earnings"); setMenuOpen(false); }}
+              >
+                <div className="flex items-center gap-3">
+                  <Wallet className="w-5 h-5 text-yellow-400" />
+                  <div>
+                    <div className="font-semibold">Earnings</div>
+                    <div className="text-sm text-white/60">Balance & top ups</div>
+                  </div>
+                </div>
+              </button>
+
+              <Separator className="my-4 bg-white/10" />
+
+              <button
+                className="w-full text-left px-3 py-3 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20"
+                onClick={() => { logout(); setMenuOpen(false); }}
+              >
+                <div className="flex items-center gap-3 text-red-300">
+                  <LogOut className="w-5 h-5" />
+                  <div className="font-semibold">Logout</div>
+                </div>
+              </button>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* MAIN CONTENT SWITCH */}
+        {nav === "home" ? (
+          <BoltHomeShell
+            user={user}
+            isOnline={isOnline}
+            onToggleOnline={handleToggleOnline}
+            balance={balance}
+            mapsLoaded={mapsLoaded}
+            driverLocation={driverLocation}
+            activeRide={activeRide || { status: "accepted" }}
+            openMenu={() => setMenuOpen(true)}
+          />
+        ) : nav === "earn" ? (
+          <EarnMoreScreen
+            onRefer={() => toast.info("Referral system coming soon")}
+            onCampaigns={() => toast.info("Campaigns coming soon")}
+            onScheduled={() => toast.info("Scheduled rides coming soon")}
+          />
+        ) : nav === "help" ? (
+          <HelpScreen
+            openSafety={() => setSafetyOpen(true)}
+            openSupport={() => setSupportOpen(true)}
+          />
+        ) : (
+          // Legacy screens: reuse your existing tabs, but hidden tab bar
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="hidden" />
+            <TabsContent value="rides">
+              {activeRide ? (
+                <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-[#00ff88]">Active Ride</CardTitle>
+                      <Badge className={rideStatusColors[activeRide.status]}>
+                        {activeRide.status?.replace(/_/g, " ").toUpperCase()}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-white">
+                    {mapsLoaded && (
+                      <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />
+                    )}
+
+                    <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
+                      <div className="space-y-3">
+                        <div className="flex items-start">
+                          <MapPin className="w-5 h-5 text-[#00ff88] mr-2 mt-0.5" />
+                          <div>
+                            <p className="text-[#00ff88]/60 text-xs">PICKUP</p>
+                            <p className="font-medium">{activeRide.pickup}</p>
+                          </div>
+                        </div>
+
+                        {activeRide.stops?.length > 0 && (
+                          <div className="flex items-start">
+                            <MapPinned className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" />
+                            <div>
+                              <p className="text-yellow-400/60 text-xs">STOPS</p>
+                              {activeRide.stops.map((s, i) => (
+                                <p key={i} className="text-sm">• {s.address}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-start">
+                          <Navigation className="w-5 h-5 text-[#00d4ff] mr-2 mt-0.5" />
+                          <div>
+                            <p className="text-[#00d4ff]/60 text-xs">DESTINATION</p>
+                            <p className="font-medium">{activeRide.destination || "Open Trip"}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {(activeRide.status === "arrived" || activeRide.status === "in_progress") && (
+                      <div className="grid grid-cols-2 gap-4">
+                        {activeRide.status === "arrived" && (
+                          <div className="bg-purple-500/20 border border-purple-500 rounded-xl p-4 text-center">
+                            <Timer className="w-6 h-6 mx-auto text-purple-400 mb-1" />
+                            <p className="text-2xl font-bold text-purple-400">{waitTimer} min</p>
+                            <p className="text-xs text-purple-400/70">Wait Time</p>
+                          </div>
+                        )}
+                        {activeRide.status === "in_progress" && (
+                          <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center">
+                            <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
+                            <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(1)} km</p>
+                            <p className="text-xs text-[#00ff88]/70">Traveled</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
+                      <span className="text-[#00ff88]">Fare</span>
+                      <span className="text-2xl font-bold text-[#00ff88]">
+                        ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <div className="flex-1">
+                        {activeRide.status === "accepted" && (
+                          <Button className="w-full bg-purple-500 text-white h-14 text-lg" onClick={() => handleRideAction("arrived")} disabled={loading}>
+                            <MapPin className="w-5 h-5 mr-2" /> I've Arrived
+                          </Button>
+                        )}
+                        {activeRide.status === "arrived" && (
+                          <Button className="w-full bg-blue-500 text-white h-14 text-lg" onClick={() => handleRideAction("start")} disabled={loading}>
+                            <Play className="w-5 h-5 mr-2" /> Start Trip
+                          </Button>
+                        )}
+                        {activeRide.status === "in_progress" && (
+                          <Button className="w-full bg-[#00ff88] text-black h-14 text-lg font-bold" onClick={() => handleRideAction("complete")} disabled={loading}>
+                            <CheckCircle2 className="w-5 h-5 mr-2" /> Complete Trip
+                          </Button>
+                        )}
+                      </div>
+
+                      <Button
+                        variant="destructive"
+                        className="h-14 w-14 bg-red-500/20 border border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+                        onClick={() => setShowCancelModal(true)}
+                        disabled={loading}
+                      >
+                        <XCircle className="w-6 h-6" />
+                      </Button>
+                    </div>
+
                   </CardContent>
                 </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="vehicle">
-            <Card className="bg-black/60 border border-[#00d4ff]/30">
-              <CardHeader>
-                <CardTitle className="text-[#00d4ff]">Vehicle Registration</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 text-white">
-                {hasVehicle ? (
-                  <div className="p-4 bg-black/50 rounded border border-[#00ff88]/30 text-center">
-                    <CheckCircle2 className="w-12 h-12 text-[#00ff88] mx-auto mb-2" />
-                    <p className="text-lg font-bold">Documents Under Review</p>
-                    <p className="text-xl font-mono text-[#00ff88] mt-2">{user.driver_info.vehicle.license_plate}</p>
-                  </div>
+              ) : (
+                registrationStatus !== "approved" ? (
+                  <Card className="bg-black/60 border border-yellow-500/30 text-center py-12">
+                    <AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
+                    <p className="text-yellow-400 font-semibold">Account Pending</p>
+                  </Card>
+                ) : !isOnline ? (
+                  <Card className="bg-black/60 border border-gray-500/30 text-center py-12">
+                    <Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" />
+                    <p className="text-gray-400">Offline</p>
+                    <Button className="mt-4 bg-[#00ff88] text-black" onClick={() => handleToggleOnline(true)}>Go Online</Button>
+                  </Card>
+                ) : availableRides.length === 0 ? (
+                  <Card className="bg-black/60 border border-[#00d4ff]/30 text-center py-12">
+                    <Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" />
+                    <p className="text-[#00d4ff]/70">Searching for rides...</p>
+                  </Card>
                 ) : (
-                  <form onSubmit={handleRegisterVehicle} className="space-y-6">
-                    <div className="space-y-3">
-                      <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Details</h3>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Make</Label><Input required placeholder="Make" value={vehicleData.car_make} onChange={e => setVehicleData({ ...vehicleData, car_make: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Model</Label><Input required placeholder="Model" value={vehicleData.car_model} onChange={e => setVehicleData({ ...vehicleData, car_model: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Year</Label><Input required type="number" placeholder="2015" value={vehicleData.car_year} onChange={e => setVehicleData({ ...vehicleData, car_year: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Color</Label><Input required placeholder="Silver" value={vehicleData.car_color} onChange={e => setVehicleData({ ...vehicleData, car_color: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
-                      </div>
-                      <div className="space-y-1"><Label className="text-gray-400 text-xs">License Plate</Label><Input required placeholder="AB-123-CD" value={vehicleData.license_plate} onChange={e => setVehicleData({ ...vehicleData, license_plate: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30 uppercase font-mono" /></div>
-                    </div>
+                  <div className="space-y-4">
+                    {availableRides.map(ride => {
+                      const comm = (ride.estimated_fare || 0) * 0.23;
+                      const canAccept = balance >= comm;
+                      return (
+                        <Card key={ride.id} className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
+                          <CardContent className="p-4 text-white">
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex-1">
+                                <p className="text-[#00ff88] font-semibold">{ride.pickup}</p>
+                                <p className="text-[#00d4ff]/70 text-sm">→ {ride.destination}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                className="flex-1 bg-[#00ff88] text-black font-bold h-12"
+                                onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}
+                                disabled={loading || !canAccept}
+                              >
+                                {canAccept ? "Accept" : "Low Balance"}
+                              </Button>
+                              <Button variant="outline" className="border-red-500 text-red-500 h-12" onClick={() => handleDeclineRide(ride.id)}>
+                                <XCircle className="w-5 h-5" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+            </TabsContent>
 
-                    <div className="space-y-3">
-                      <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Driver's License</h3>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, license_front: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, license_back: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Registration</h3>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, reg_front: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, reg_back: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Car Photos</h3>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_front: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_back: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Left</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_left: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Right</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_right: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                      </div>
-                    </div>
-
-                    <Button type="submit" className="w-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold h-12 mt-4" disabled={loading}>
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : "Submit Documents"}
-                    </Button>
-                  </form>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="earnings">
-            <div className="space-y-4">
-              <Card className="p-4 bg-black/60 border border-[#00ff88]">
-                <p className="text-gray-400">Balance</p>
-                <p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p>
-              </Card>
-              <Input type="number" placeholder="Amount" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="bg-black/50 text-white" />
-              <Button className="w-full bg-[#00ff88] text-black" onClick={() => setShowCardModal(true)}>Top Up</Button>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="history">
-            <ScrollArea className="h-[400px]">
-              {rideHistory.map(r => (
-                <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 mb-2 rounded">
-                  <p className="text-white">{r.pickup}</p>
-                  <p className="text-[#00ff88] font-bold">₾{r.final_fare}</p>
+            <TabsContent value="nearby">
+              <div className="space-y-4">
+                <div className="flex justify-end mb-2">
+                  <Button size="sm" variant="outline" onClick={fetchNearbyRides}>Refresh</Button>
                 </div>
-              ))}
-            </ScrollArea>
-          </TabsContent>
-        </Tabs>
+                {nearbyRides.map(ride => (
+                  <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30">
+                    <CardContent className="p-4 text-white">
+                      <p className="text-[#00ff88]">{ride.pickup}</p>
+                      <p className="text-[#00d4ff]">→ {ride.destination}</p>
+                      <Button className="w-full mt-2 bg-[#00d4ff] text-black" onClick={() => handleRequestToJoin(ride.id)}>Request to Accept</Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="vehicle">
+              <Card className="bg-black/60 border border-[#00d4ff]/30">
+                <CardHeader>
+                  <CardTitle className="text-[#00d4ff]">Vehicle Registration</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 text-white">
+                  {hasVehicle ? (
+                    <div className="p-4 bg-black/50 rounded border border-[#00ff88]/30 text-center">
+                      <CheckCircle2 className="w-12 h-12 text-[#00ff88] mx-auto mb-2" />
+                      <p className="text-lg font-bold">Documents Under Review</p>
+                      <p className="text-xl font-mono text-[#00ff88] mt-2">{user.driver_info.vehicle.license_plate}</p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleRegisterVehicle} className="space-y-6">
+                      <div className="space-y-3">
+                        <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Details</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Make</Label>
+                            <Input required placeholder="Make" value={vehicleData.car_make} onChange={e => setVehicleData({ ...vehicleData, car_make: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Model</Label>
+                            <Input required placeholder="Model" value={vehicleData.car_model} onChange={e => setVehicleData({ ...vehicleData, car_model: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Year</Label>
+                            <Input required type="number" placeholder="2015" value={vehicleData.car_year} onChange={e => setVehicleData({ ...vehicleData, car_year: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Color</Label>
+                            <Input required placeholder="Silver" value={vehicleData.car_color} onChange={e => setVehicleData({ ...vehicleData, car_color: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-gray-400 text-xs">License Plate</Label>
+                          <Input required placeholder="AB-123-CD" value={vehicleData.license_plate} onChange={e => setVehicleData({ ...vehicleData, license_plate: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30 uppercase font-mono" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Driver's License</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Front</Label>
+                            <Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, license_front: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Back</Label>
+                            <Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, license_back: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Registration</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Front</Label>
+                            <Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, reg_front: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Back</Label>
+                            <Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, reg_back: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Car Photos</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Front</Label>
+                            <Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_front: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Back</Label>
+                            <Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_back: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Left</Label>
+                            <Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_left: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-gray-400 text-xs">Right</Label>
+                            <Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_right: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <Button type="submit" className="w-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold h-12 mt-4" disabled={loading}>
+                        {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : "Submit Documents"}
+                      </Button>
+                    </form>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="earnings">
+              <div className="space-y-4">
+                <Card className="p-4 bg-black/60 border border-[#00ff88]">
+                  <p className="text-gray-400">Balance</p>
+                  <p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p>
+                </Card>
+
+                <Input type="number" placeholder="Amount" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="bg-black/50 text-white" />
+                <Button className="w-full bg-[#00ff88] text-black" onClick={() => setShowCardModal(true)}>Top Up</Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="history">
+              <ScrollArea className="h-[400px]">
+                {rideHistory.map(r => (
+                  <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 mb-2 rounded">
+                    <p className="text-white">{r.pickup}</p>
+                    <p className="text-[#00ff88] font-bold">₾{r.final_fare}</p>
+                  </div>
+                ))}
+              </ScrollArea>
+            </TabsContent>
+          </Tabs>
+        )}
       </main>
+
+      {/* Bottom Nav always visible */}
+      <BottomNav value={nav} onChange={setNav} />
 
       {/* Top Up Modal */}
       <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
@@ -1124,7 +1634,7 @@ const DriverDashboard = () => {
         </DialogContent>
       </Dialog>
 
-      {/* 🔥 Cancellation Reason Modal (Added) */}
+      {/* Cancellation Reason Modal */}
       <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
         <DialogContent className="bg-[#1a1a2e] border border-red-500/50 text-white sm:max-w-md w-[95%] rounded-xl">
           <DialogHeader>
@@ -1207,6 +1717,55 @@ const DriverDashboard = () => {
           >
             Confirm & Close
           </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Support Modal (simple stub) */}
+      <Dialog open={supportOpen} onOpenChange={setSupportOpen}>
+        <DialogContent className="bg-black border border-white/10 text-white sm:max-w-md w-[95%] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-[#00d4ff] flex items-center gap-2">
+              <Send className="w-5 h-5" /> Contact Support
+            </DialogTitle>
+            <DialogDescription className="text-white/60">
+              Send a message to support (you can wire this to your backend).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label className="text-white/60 text-xs">Message</Label>
+            <Input className="bg-white/5 border-white/10 text-white" placeholder="Describe the problem…" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="border-white/10 text-white" onClick={() => setSupportOpen(false)}>Close</Button>
+            <Button className="bg-[#00d4ff] text-black" onClick={() => { toast.success("Sent"); setSupportOpen(false); }}>Send</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Safety Modal (simple stub) */}
+      <Dialog open={safetyOpen} onOpenChange={setSafetyOpen}>
+        <DialogContent className="bg-black border border-white/10 text-white sm:max-w-md w-[95%] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-red-400 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" /> Safety Toolkit
+            </DialogTitle>
+            <DialogDescription className="text-white/60">
+              Quick safety actions (wire these to real actions on mobile).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Button className="w-full bg-red-500 text-white" onClick={() => toast.info("Calling emergency…")}>
+              Emergency Call
+            </Button>
+            <Button className="w-full bg-white/10 text-white border border-white/10" onClick={() => toast.info("Sharing trip details…")}>
+              Share trip details
+            </Button>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" className="border-white/10 text-white" onClick={() => setSafetyOpen(false)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
