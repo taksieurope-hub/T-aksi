@@ -358,17 +358,15 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
         if (apiStatus === 'OK' && directionsRendererRef.current) {
             directionsRendererRef.current.setDirections(result);
             
-            // Only fit bounds if we are in preview mode or just starting
-            if (status === 'preview' || !driverLocation) {
-                const bounds = new window.google.maps.LatLngBounds();
-                bounds.extend(origin);
-                bounds.extend(target);
-                waypoints.forEach(wp => bounds.extend(wp.location));
-                mapInstanceRef.current.fitBounds(bounds);
-                
-                // Add padding so pins aren't cut off on the edge of the map
-                mapInstanceRef.current.panBy(0, 20);
-            }
+            // 🔥 FIX: Always fit bounds to show the FULL line when the phase changes
+            const bounds = new window.google.maps.LatLngBounds();
+            bounds.extend(origin);
+            bounds.extend(target);
+            waypoints.forEach(wp => bounds.extend(wp.location));
+            mapInstanceRef.current.fitBounds(bounds);
+            
+            // Add padding so pins aren't cut off on the edge of the map
+            mapInstanceRef.current.panBy(0, 20);
         }
     });
   };
@@ -623,6 +621,67 @@ const RiderAuth = () => {
       </Card>
     </div>
   );
+};
+
+// --- LIVE WAIT TIMER COMPONENT ---
+const WaitTimer = ({ arrivedAt, carType }) => {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    // Start from backend timestamp if provided, otherwise start from the moment this component renders
+    const startTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
+    
+    // Tick every 1 second
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [arrivedAt]);
+
+  const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
+  const freeWaitSeconds = rules.freeWait * 60; 
+
+  if (elapsed <= freeWaitSeconds) {
+    // --- FREE TIME COUNTDOWN ---
+    const remaining = freeWaitSeconds - elapsed;
+    const mins = Math.floor(remaining / 60).toString().padStart(2, '0');
+    const secs = (remaining % 60).toString().padStart(2, '0');
+    
+    return (
+      <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl flex items-center justify-between">
+        <div className="flex items-center text-purple-400">
+          <Timer className="w-5 h-5 mr-2 animate-pulse" /> 
+          <span className="font-medium">Driver Waiting</span>
+        </div>
+        <div className="text-right">
+          <div className="text-purple-400 font-mono text-xl font-bold">{mins}:{secs}</div>
+          <div className="text-purple-400/70 text-xs uppercase font-bold tracking-wider">Free Time</div>
+        </div>
+      </div>
+    );
+  } else {
+    // --- CHARGEABLE WAIT TIME ---
+    const overtime = elapsed - freeWaitSeconds;
+    const mins = Math.floor(overtime / 60).toString().padStart(2, '0');
+    const secs = (overtime % 60).toString().padStart(2, '0');
+    
+    // Calculate live accumulating fee based on the exact car type pricing
+    const liveFee = ((overtime / 60) * rules.perMinWait).toFixed(2);
+    
+    return (
+      <div className="bg-red-500/20 border border-red-500 p-4 rounded-xl flex items-center justify-between shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+        <div className="flex items-center text-red-400">
+          <Timer className="w-5 h-5 mr-2 animate-pulse" /> 
+          <span className="font-medium">Paid Wait Time</span>
+        </div>
+        <div className="text-right">
+          <div className="text-red-400 font-mono text-xl font-bold">-{mins}:{secs}</div>
+          <div className="text-red-400 font-bold text-sm">+₾{liveFee}</div>
+        </div>
+      </div>
+    );
+  }
 };
 
 // Dashboard Component
@@ -1274,20 +1333,22 @@ const RiderDashboard = () => {
                   {/* 🔥 NEW IMPROVED MAP RENDER */}
                   {mapsLoaded && activeRide && (
                     <div className="h-64 w-full rounded-xl overflow-hidden mb-4 border border-[#00ff88]/20 relative">
-                      <LiveTrackingMap
-                        status={activeRide.status}
-                        driverLocation={activeRide.driver_location}
-                        pickup={{
-                          lat: parseFloat(activeRide.pickup_lat),
-                          lng: parseFloat(activeRide.pickup_lng)
-                        }}
-                        destination={
-                          activeRide.dest_lat
-                            ? { lat: parseFloat(activeRide.dest_lat), lng: parseFloat(activeRide.dest_lng) }
-                            : null
-                        }
-                        stops={activeRide.stops || []}
-                      />
+                      <LiveTrackingMap 
+    status={activeRide.status} 
+    driverLocation={activeRide.driver_location} 
+    pickup={{ lat: parseFloat(activeRide.pickup_lat || activeRide.pickupLat), lng: parseFloat(activeRide.pickup_lng || activeRide.pickupLng) }} 
+    
+    // 🔥 FIX: Covers all naming conventions so the line actually draws!
+    destination={ (activeRide.dest_lat || activeRide.destination_lat || activeRide.destinationLat) 
+      ? { 
+          lat: parseFloat(activeRide.dest_lat || activeRide.destination_lat || activeRide.destinationLat), 
+          lng: parseFloat(activeRide.dest_lng || activeRide.destination_lng || activeRide.destinationLng) 
+        } 
+      : null 
+    } 
+    
+    stops={activeRide.stops || []} 
+  />
 
                       {/* Status Overlay */}
                       <div className="absolute top-2 left-2 bg-black/80 backdrop-blur px-3 py-1 rounded-full border border-white/10 z-10">
@@ -1376,14 +1437,13 @@ const RiderDashboard = () => {
                     </div>
                   )}
 
-                  {/* Arrived Status */}
-                  {activeRide.status === "arrived" && (
-                    <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl">
-                      <div className="flex items-center text-purple-400">
-                        <Timer className="w-5 h-5 mr-2" /> Driver has arrived! First 2 minutes are free.
-                      </div>
-                    </div>
-                  )}
+                  {/* Live Arrived Timer */}
+  {activeRide.status === "arrived" && (
+    <WaitTimer 
+      arrivedAt={activeRide.arrived_at} 
+      carType={activeRide.carType || carType} 
+    />
+  )}
 
                   {/* Fare & Cancel */}
                   <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
