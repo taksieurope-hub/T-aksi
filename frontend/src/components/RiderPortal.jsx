@@ -245,8 +245,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 
 
 // --- 3. LIVE MAP COMPONENT (Upgraded: Auto-Follow + Re-Center) ---
-
- {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
@@ -404,22 +402,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       }
   };
 
-  return (
-    <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]">
-        <div ref={mapRef} style={{ height: '350px', width: '100%' }} />
-        
-        {/* Re-Center Button */}
-        {!isFollowing && driverLocation && (
-            <button 
-                onClick={handleRecenter}
-                className="absolute bottom-4 right-4 bg-black/80 text-[#00d4ff] p-3 rounded-full border border-[#00d4ff] shadow-lg z-10 hover:bg-black"
-            >
-                <Crosshair className="w-6 h-6 animate-pulse" />
-            </button>
-        )}
-    </div>
-  );
-};
 
 // LocationInput (LIGHT THEME BOXES)
 const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name }) => {
