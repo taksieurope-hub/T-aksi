@@ -600,6 +600,33 @@ const DriverDashboard = () => {
     }, 1500);
   };
 
+  // --- PANEL SWIPE STATE ---
+  const [isMinimized, setIsMinimized] = useState(false);
+  const touchStartY = useRef(null);
+
+  // Auto-expand the panel whenever the trip status changes (e.g., you arrive)
+  useEffect(() => {
+    setIsMinimized(false);
+  }, [activeRide?.status]);
+
+  // Touch logic to detect swipes
+  const handleTouchStart = (e) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (!touchStartY.current) return;
+    const touchEndY = e.changedTouches[0].clientY;
+    const deltaY = touchEndY - touchStartY.current;
+
+    if (deltaY > 40) {
+      setIsMinimized(true); // Swiped down
+    } else if (deltaY < -40) {
+      setIsMinimized(false); // Swiped up
+    }
+    touchStartY.current = null;
+  };
+
   useEffect(() => {
     if (window.google) { setMapsLoaded(true); return; }
     const script = document.createElement('script');
@@ -845,20 +872,24 @@ const DriverDashboard = () => {
         </div>
 
         {/* --- SCROLLABLE WIDGETS --- */}
-        {/* mt-[45vh] pushes the content down, leaving the top half of the screen clear for the map */}
-        <main className="container mx-auto p-4 max-w-2xl mt-[45vh] pb-12 pointer-events-auto">
+        {/* We use margin-top to push it down, but if minimized, we push it down even further! */}
+        <main className="container mx-auto p-4 max-w-2xl mt-[45vh] pb-12 pointer-events-auto flex flex-col justify-end min-h-[55vh]">
           
-          {/* Beautiful dark wrapper for your existing Tabs */}
-          <div className="bg-black/85 backdrop-blur-2xl border border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] rounded-3xl overflow-hidden p-2">
+          {/* Beautiful dark wrapper for your existing Tabs + TOUCH HANDLERS */}
+          <div 
+            className="bg-black/85 backdrop-blur-2xl border border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] rounded-3xl overflow-hidden p-2 transition-all duration-300 ease-in-out"
+            onTouchStart={activeRide ? handleTouchStart : undefined}
+            onTouchEnd={activeRide ? handleTouchEnd : undefined}
+          >
             
+            {/* 🔥 DRAG HANDLE: Only shows if there is an active ride */}
+            {activeRide && (
+              <div className="w-full flex justify-center pt-2 pb-4 cursor-pointer" onClick={() => setIsMinimized(!isMinimized)}>
+                <div className="w-12 h-1.5 bg-gray-600 rounded-full hover:bg-gray-400 transition-colors" />
+              </div>
+            )}
+
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid grid-cols-5 bg-black/50 border border-[#00d4ff]/20 mb-4 rounded-xl">
-                <TabsTrigger value="rides" className="text-xs sm:text-sm"><Activity className="w-4 h-4 sm:mr-2" /> Rides</TabsTrigger>
-                <TabsTrigger value="nearby" onClick={fetchNearbyRides} className="text-xs sm:text-sm"><Crosshair className="w-4 h-4 sm:mr-2" /> Nearby</TabsTrigger>
-                <TabsTrigger value="vehicle" className="text-xs sm:text-sm"><Car className="w-4 h-4 sm:mr-2" /> Vehicle</TabsTrigger>
-                <TabsTrigger value="earnings" className="text-xs sm:text-sm"><Wallet className="w-4 h-4 sm:mr-2" /> Earn</TabsTrigger>
-                <TabsTrigger value="history" className="text-xs sm:text-sm"><History className="w-4 h-4 sm:mr-2" /> History</TabsTrigger>
-              </TabsList>
 
               <TabsContent value="rides">
                 {activeRide ? (
