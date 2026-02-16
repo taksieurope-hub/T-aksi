@@ -1667,15 +1667,15 @@ async def complete_ride(
     # 2. Calculate the base fare (the price of the ride itself)
     final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops, surge_multiplier)
     
-    # 3. Apply the 2 GEL Service Fee for Card payments
+    # 3. Apply the 2 GEL PayPal Service Fee for Card payments
     payment_method = ride_data.get("payment_method", "cash")
     service_fee = 2.0 if payment_method == "card" else 0.0
     
-    # Store the ride price (for driver) and the grand total (for rider)
+    # base_fare_amount is the ride price (e.g., 5.00 GEL)
     base_fare_amount = final_fare["total"] 
+    # total_with_fee is ride + 2 GEL (e.g., 7.00 GEL)
     total_with_fee = base_fare_amount + service_fee
     
-    # Update the dictionary we save to the DB
     final_fare["base_total"] = base_fare_amount
     final_fare["service_fee"] = service_fee
     final_fare["total"] = total_with_fee
@@ -1686,7 +1686,6 @@ async def complete_ride(
 
     if payment_method == "card" and order_id:
         try:
-            logger.info(f"Verifying PayPal for ride {ride_id}: Order {order_id}")
             access_token = await get_paypal_token()
             if access_token:
                 async with httpx.AsyncClient(timeout=25) as client:
@@ -1724,56 +1723,49 @@ async def complete_ride(
         "completed_at": firestore.SERVER_TIMESTAMP,
     })
 
-    # 6. Driver Earnings (The 2 GEL stays with you!)
+    # 6. Driver Earnings & Wallet Reconciliation
     driver_id = ride_data.get("driver_id")
     if driver_id:
         commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
-        held_commission = ride_data.get("commission_paid", 0) or 0
         
-        # Commission is ONLY on the ride price (e.g. 10 GEL)
+        # Calculate the driver's split ONLY on the ride price (base_fare_amount)
         actual_commission = (base_fare_amount or 0) * commission_rate
-        delta_commission = actual_commission - held_commission 
+        driver_share = (base_fare_amount or 0) - actual_commission
 
-        # Driver gets their 77% of the ride price ONLY
-        driver_earnings = (base_fare_amount or 0) - actual_commission
-
-        db.collection("users").document(driver_id).update({
-            "earnings.total_earned": firestore.Increment(driver_earnings),
-            "earnings.balance": firestore.Increment(driver_earnings), # Driver's share goes to wallet
+        user_ref = db.collection("users").document(driver_id)
+        
+        updates = {
+            "earnings.total_earned": firestore.Increment(driver_share),
+            "earnings.total_commission_paid": firestore.Increment(actual_commission),
             "total_rides": firestore.Increment(1),
             "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-
-    return {"message": "Ride completed", "total": total_with_fee, "payment_status": payment_status}
-
-    # DRIVER EARNINGS / COMMISSION RECONCILIATION
-    driver_id = ride_data.get("driver_id")
-    if driver_id:
-        commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
-        held_commission = ride_data.get("commission_paid", 0) or 0
-        
-        # We use "base_total" (the 10 GEL) so you don't pay 
-        # the driver 77% of your own service fee.
-        base_fare_amount = final_fare.get("base_total", final_fare["total"])
-
-        actual_commission = (base_fare_amount or 0) * commission_rate
-        delta_commission = actual_commission - held_commission 
-
-        # Driver gets their cut of the ride price ONLY
-        driver_earnings = (base_fare_amount or 0) - actual_commission
-
-        updates = {
-            "earnings.total_earned": firestore.Increment(driver_earnings),
-            "total_rides": firestore.Increment(1),
         }
 
+        # Wallet Adjustments
+        wallet_change = 0
         if payment_method == "cash":
-            updates["earnings.balance"] = firestore.Increment(-delta_commission)
-        elif payment_status == "paid":
-            updates["earnings.balance"] = firestore.Increment(held_commission + driver_earnings)
+            wallet_change = -base_fare_amount
+            updates["earnings.balance"] = firestore.Increment(wallet_change)
+        elif payment_status == "paid": 
+            wallet_change = driver_share
+            updates["earnings.balance"] = firestore.Increment(wallet_change)
 
-        db.collection("users").document(driver_id).update(updates)
+        user_ref.update(updates)
 
+        # Log the transaction for transparency
+        db.collection("wallet_transactions").add({
+            "driver_id": driver_id,
+            "ride_id": ride_id,
+            "type": "cash_deduction" if payment_method == "cash" else "card_credit",
+            "amount": wallet_change,
+            "fare_base": base_fare_amount,
+            "service_fee_excluded": service_fee,
+            "commission_deducted": actual_commission,
+            "payment_method": payment_method,
+            "created_at": firestore.SERVER_TIMESTAMP
+        })
+
+    # 7. Update Rider Stats
     rider_id = ride_data.get("userId")
     if rider_id:
         db.collection("users").document(rider_id).update({
@@ -1783,7 +1775,7 @@ async def complete_ride(
     return {
         "message": "Ride completed",
         "payment_status": payment_status,
-        "final_fare": final_fare["total"],
+        "final_fare": total_with_fee,
         "fare_breakdown": final_fare,
     }
 
