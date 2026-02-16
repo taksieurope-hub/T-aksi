@@ -36,7 +36,31 @@ import {
 
 const DRIVER_COMMISSION_RATE = 0.23;
 const PAYMENT_LINK = "https://egreve.bog.ge//Taksi";
-const LOCATION_UPDATE_INTERVAL = 5000; // 5 seconds
+const LOCATION_UPDATE_INTERVAL = 2000; // 2 seconds
+// Reasons change based on the stage of the trip
+const CANCEL_REASONS = {
+  accepted: [ // Before arrival
+    "Heavy Traffic / Stuck",
+    "Car Trouble / Mechanical Issue",
+    "Accidentally Accepted",
+    "Cannot Locate Pickup Address",
+    "Personal Emergency"
+  ],
+  arrived: [ // Waiting for client
+    "Client Not Showing Up (Timer Expired)",
+    "Client Refused Ride",
+    "Too Much Luggage / Cargo",
+    "Unaccompanied Minor",
+    "No Mask / Safety Concern"
+  ],
+  in_progress: [ // During trip
+    "Client Requested Early End",
+    "Client Behavior / Rude",
+    "Safety Concern",
+    "Wrong Destination",
+    "Vehicle Breakdown"
+  ]
+};
 
 // Driver Auth Component
 const DriverAuth = () => {
@@ -473,6 +497,9 @@ const DriverDashboard = () => {
   const [rideHistory, setRideHistory] = useState([]);
   const [driverLocation, setDriverLocation] = useState(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
+  // Cancellation State
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [selectedCancelReason, setSelectedCancelReason] = useState("");
 
   // Ride tracking state
   const [rideStartTime, setRideStartTime] = useState(null);
@@ -668,6 +695,40 @@ const DriverDashboard = () => {
     }
   };
 
+  const handleCancelRide = async () => {
+    if (!activeRide || !selectedCancelReason) return;
+    setLoading(true);
+
+    try {
+      // Send the cancellation request with the specific reason
+      await api.post(`/rides/${activeRide.id}/cancel`, {
+        reason: selectedCancelReason,
+        stage: activeRide.status // logical check for the backend algorithm
+      });
+
+      toast.success("Ride cancelled");
+      
+      // Reset everything
+      setActiveRide(null);
+      setDistanceTraveled(0);
+      setWaitTimer(0);
+      setArrivedTime(null);
+      setRideStartTime(null);
+      setShowCancelModal(false);
+      setSelectedCancelReason("");
+      
+      // Refresh Data
+      fetchRideHistory();
+      fetchAvailableRides();
+
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to cancel ride");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleToggleOnline = async (online) => {
     try { await api.post(`/driver/status?is_online=${online}`); setIsOnline(online); updateUser({ ...user, is_online: online }); toast.success(online ? "Online" : "Offline"); } catch (e) { toast.error("Failed"); }
   };
@@ -750,47 +811,178 @@ const DriverDashboard = () => {
           <TabsContent value="rides">
             {activeRide ? (
               <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
-                <CardHeader><div className="flex justify-between items-center"><CardTitle className="text-[#00ff88]">Active Ride</CardTitle><Badge className={rideStatusColors[activeRide.status]}>{activeRide.status?.replace(/_/g, " ").toUpperCase()}</Badge></div></CardHeader>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-[#00ff88]">Active Ride</CardTitle>
+                    <Badge className={rideStatusColors[activeRide.status]}>
+                      {activeRide.status?.replace(/_/g, " ").toUpperCase()}
+                    </Badge>
+                  </div>
+                </CardHeader>
                 <CardContent className="space-y-4 text-white">
 
-                  {/* 🔥 FIXED: Driver Map with Waze/Google Button */}
+                  {/* 🔥 Driver Map */}
                   {mapsLoaded && (
                     <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />
                   )}
 
                   <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
                     <div className="space-y-3">
-                      <div className="flex items-start"><MapPin className="w-5 h-5 text-[#00ff88] mr-2 mt-0.5" /><div><p className="text-[#00ff88]/60 text-xs">PICKUP</p><p className="font-medium">{activeRide.pickup}</p></div></div>
-                      {activeRide.stops?.length > 0 && <div className="flex items-start"><MapPinned className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" /><div><p className="text-yellow-400/60 text-xs">STOPS</p>{activeRide.stops.map((s,i)=><p key={i} className="text-sm">• {s.address}</p>)}</div></div>}
-                      <div className="flex items-start"><Navigation className="w-5 h-5 text-[#00d4ff] mr-2 mt-0.5" /><div><p className="text-[#00d4ff]/60 text-xs">DESTINATION</p><p className="font-medium">{activeRide.destination || "Open Trip"}</p></div></div>
+                      <div className="flex items-start">
+                        <MapPin className="w-5 h-5 text-[#00ff88] mr-2 mt-0.5" />
+                        <div>
+                          <p className="text-[#00ff88]/60 text-xs">PICKUP</p>
+                          <p className="font-medium">{activeRide.pickup}</p>
+                        </div>
+                      </div>
+                      {activeRide.stops?.length > 0 && (
+                        <div className="flex items-start">
+                          <MapPinned className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" />
+                          <div>
+                            <p className="text-yellow-400/60 text-xs">STOPS</p>
+                            {activeRide.stops.map((s, i) => (
+                              <p key={i} className="text-sm">• {s.address}</p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-start">
+                        <Navigation className="w-5 h-5 text-[#00d4ff] mr-2 mt-0.5" />
+                        <div>
+                          <p className="text-[#00d4ff]/60 text-xs">DESTINATION</p>
+                          <p className="font-medium">{activeRide.destination || "Open Trip"}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
                   {(activeRide.status === "arrived" || activeRide.status === "in_progress") && (
                     <div className="grid grid-cols-2 gap-4">
-                      {activeRide.status === "arrived" && <div className="bg-purple-500/20 border border-purple-500 rounded-xl p-4 text-center"><Timer className="w-6 h-6 mx-auto text-purple-400 mb-1" /><p className="text-2xl font-bold text-purple-400">{waitTimer} min</p><p className="text-xs text-purple-400/70">Wait Time</p></div>}
-                      {activeRide.status === "in_progress" && <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center"><Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" /><p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(1)} km</p><p className="text-xs text-[#00ff88]/70">Traveled</p></div>}
+                      {activeRide.status === "arrived" && (
+                        <div className="bg-purple-500/20 border border-purple-500 rounded-xl p-4 text-center">
+                          <Timer className="w-6 h-6 mx-auto text-purple-400 mb-1" />
+                          <p className="text-2xl font-bold text-purple-400">{waitTimer} min</p>
+                          <p className="text-xs text-purple-400/70">Wait Time</p>
+                        </div>
+                      )}
+                      {activeRide.status === "in_progress" && (
+                        <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center">
+                          <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
+                          <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(1)} km</p>
+                          <p className="text-xs text-[#00ff88]/70">Traveled</p>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4"><span className="text-[#00ff88]">Fare</span><span className="text-2xl font-bold text-[#00ff88]">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span></div>
-
-                  <div className="grid grid-cols-1 gap-2">
-                    {activeRide.status === "accepted" && <Button className="bg-purple-500 text-white h-14 text-lg" onClick={() => handleRideAction("arrived")} disabled={loading}><MapPin className="w-5 h-5 mr-2" /> I've Arrived</Button>}
-                    {activeRide.status === "arrived" && <Button className="bg-blue-500 text-white h-14 text-lg" onClick={() => handleRideAction("start")} disabled={loading}><Play className="w-5 h-5 mr-2" /> Start Trip</Button>}
-                    {activeRide.status === "in_progress" && <Button className="bg-[#00ff88] text-black h-14 text-lg font-bold" onClick={() => handleRideAction("complete")} disabled={loading}><CheckCircle2 className="w-5 h-5 mr-2" /> Complete Trip</Button>}
+                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
+                    <span className="text-[#00ff88]">Fare</span>
+                    <span className="text-2xl font-bold text-[#00ff88]">
+                      ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
+                    </span>
                   </div>
+
+                  {/* 🔥 ACTION BUTTONS + CANCEL BUTTON */}
+                  <div className="flex gap-3 pt-2">
+                    <div className="flex-1">
+                      {activeRide.status === "accepted" && (
+                        <Button className="w-full bg-purple-500 text-white h-14 text-lg" onClick={() => handleRideAction("arrived")} disabled={loading}>
+                          <MapPin className="w-5 h-5 mr-2" /> I've Arrived
+                        </Button>
+                      )}
+                      {activeRide.status === "arrived" && (
+                        <Button className="w-full bg-blue-500 text-white h-14 text-lg" onClick={() => handleRideAction("start")} disabled={loading}>
+                          <Play className="w-5 h-5 mr-2" /> Start Trip
+                        </Button>
+                      )}
+                      {activeRide.status === "in_progress" && (
+                        <Button className="w-full bg-[#00ff88] text-black h-14 text-lg font-bold" onClick={() => handleRideAction("complete")} disabled={loading}>
+                          <CheckCircle2 className="w-5 h-5 mr-2" /> Complete Trip
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {/* 🔴 CANCEL BUTTON */}
+                    <Button 
+                      variant="destructive" 
+                      className="h-14 w-14 bg-red-500/20 border border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+                      onClick={() => setShowCancelModal(true)}
+                      disabled={loading}
+                    >
+                      <XCircle className="w-6 h-6" />
+                    </Button>
+                  </div>
+
                 </CardContent>
               </Card>
             ) : (
-                registrationStatus !== "approved" ? <Card className="bg-black/60 border border-yellow-500/30 text-center py-12"><AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" /><p className="text-yellow-400 font-semibold">Account Pending</p></Card> :
-                !isOnline ? <Card className="bg-black/60 border border-gray-500/30 text-center py-12"><Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" /><p className="text-gray-400">Offline</p><Button className="mt-4 bg-[#00ff88] text-black" onClick={() => handleToggleOnline(true)}>Go Online</Button></Card> :
-                availableRides.length === 0 ? <Card className="bg-black/60 border border-[#00d4ff]/30 text-center py-12"><Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" /><p className="text-[#00d4ff]/70">Searching for rides...</p></Card> :
-                <div className="space-y-4">{availableRides.map(ride => { const comm = (ride.estimated_fare || 0) * 0.23; const canAccept = balance >= comm; return <Card key={ride.id} className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30"><CardContent className="p-4 text-white"><div className="flex justify-between items-start mb-3"><div className="flex-1"><p className="text-[#00ff88] font-semibold">{ride.pickup}</p><p className="text-[#00d4ff]/70 text-sm">→ {ride.destination}</p></div><div className="text-right"><p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p></div></div><div className="flex gap-2"><Button className="flex-1 bg-[#00ff88] text-black font-bold h-12" onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)} disabled={loading || !canAccept}>{canAccept ? "Accept" : "Low Balance"}</Button><Button variant="outline" className="border-red-500 text-red-500 h-12" onClick={() => handleDeclineRide(ride.id)}><XCircle className="w-5 h-5" /></Button></div></CardContent></Card> })}</div>
+              // Empty States
+              registrationStatus !== "approved" ? (
+                <Card className="bg-black/60 border border-yellow-500/30 text-center py-12">
+                  <AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
+                  <p className="text-yellow-400 font-semibold">Account Pending</p>
+                </Card>
+              ) : !isOnline ? (
+                <Card className="bg-black/60 border border-gray-500/30 text-center py-12">
+                  <Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" />
+                  <p className="text-gray-400">Offline</p>
+                  <Button className="mt-4 bg-[#00ff88] text-black" onClick={() => handleToggleOnline(true)}>Go Online</Button>
+                </Card>
+              ) : availableRides.length === 0 ? (
+                <Card className="bg-black/60 border border-[#00d4ff]/30 text-center py-12">
+                  <Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" />
+                  <p className="text-[#00d4ff]/70">Searching for rides...</p>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {availableRides.map(ride => {
+                    const comm = (ride.estimated_fare || 0) * 0.23;
+                    const canAccept = balance >= comm;
+                    return (
+                      <Card key={ride.id} className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
+                        <CardContent className="p-4 text-white">
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex-1">
+                              <p className="text-[#00ff88] font-semibold">{ride.pickup}</p>
+                              <p className="text-[#00d4ff]/70 text-sm">→ {ride.destination}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button className="flex-1 bg-[#00ff88] text-black font-bold h-12" onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)} disabled={loading || !canAccept}>
+                              {canAccept ? "Accept" : "Low Balance"}
+                            </Button>
+                            <Button variant="outline" className="border-red-500 text-red-500 h-12" onClick={() => handleDeclineRide(ride.id)}>
+                              <XCircle className="w-5 h-5" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )
             )}
           </TabsContent>
 
-          <TabsContent value="nearby"><div className="space-y-4"><div className="flex justify-end mb-2"><Button size="sm" variant="outline" onClick={fetchNearbyRides}>Refresh</Button></div>{nearbyRides.map(ride => ( <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30"><CardContent className="p-4 text-white"><p className="text-[#00ff88]">{ride.pickup}</p><p className="text-[#00d4ff]">→ {ride.destination}</p><Button className="w-full mt-2 bg-[#00d4ff] text-black" onClick={()=>handleRequestToJoin(ride.id)}>Request to Accept</Button></CardContent></Card> ))}</div></TabsContent>
+          <TabsContent value="nearby">
+            <div className="space-y-4">
+              <div className="flex justify-end mb-2">
+                <Button size="sm" variant="outline" onClick={fetchNearbyRides}>Refresh</Button>
+              </div>
+              {nearbyRides.map(ride => (
+                <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30">
+                  <CardContent className="p-4 text-white">
+                    <p className="text-[#00ff88]">{ride.pickup}</p>
+                    <p className="text-[#00d4ff]">→ {ride.destination}</p>
+                    <Button className="w-full mt-2 bg-[#00d4ff] text-black" onClick={() => handleRequestToJoin(ride.id)}>Request to Accept</Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
 
           <TabsContent value="vehicle">
             <Card className="bg-black/60 border border-[#00d4ff]/30">
@@ -809,37 +1001,37 @@ const DriverDashboard = () => {
                     <div className="space-y-3">
                       <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Details</h3>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Make</Label><Input required placeholder="Make" value={vehicleData.car_make} onChange={e=>setVehicleData({...vehicleData, car_make: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Model</Label><Input required placeholder="Model" value={vehicleData.car_model} onChange={e=>setVehicleData({...vehicleData, car_model: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Year</Label><Input required type="number" placeholder="2015" value={vehicleData.car_year} onChange={e=>setVehicleData({...vehicleData, car_year: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Color</Label><Input required placeholder="Silver" value={vehicleData.car_color} onChange={e=>setVehicleData({...vehicleData, car_color: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Make</Label><Input required placeholder="Make" value={vehicleData.car_make} onChange={e => setVehicleData({ ...vehicleData, car_make: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Model</Label><Input required placeholder="Model" value={vehicleData.car_model} onChange={e => setVehicleData({ ...vehicleData, car_model: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Year</Label><Input required type="number" placeholder="2015" value={vehicleData.car_year} onChange={e => setVehicleData({ ...vehicleData, car_year: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Color</Label><Input required placeholder="Silver" value={vehicleData.car_color} onChange={e => setVehicleData({ ...vehicleData, car_color: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30" /></div>
                       </div>
-                      <div className="space-y-1"><Label className="text-gray-400 text-xs">License Plate</Label><Input required placeholder="AB-123-CD" value={vehicleData.license_plate} onChange={e=>setVehicleData({...vehicleData, license_plate: e.target.value})} className="bg-black/50 text-white border-[#00d4ff]/30 uppercase font-mono" /></div>
+                      <div className="space-y-1"><Label className="text-gray-400 text-xs">License Plate</Label><Input required placeholder="AB-123-CD" value={vehicleData.license_plate} onChange={e => setVehicleData({ ...vehicleData, license_plate: e.target.value })} className="bg-black/50 text-white border-[#00d4ff]/30 uppercase font-mono" /></div>
                     </div>
 
                     <div className="space-y-3">
                       <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Driver's License</h3>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, license_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, license_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, license_front: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, license_back: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
                       </div>
                     </div>
 
                     <div className="space-y-3">
                       <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Registration</h3>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, reg_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, reg_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, reg_front: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, reg_back: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
                       </div>
                     </div>
 
                     <div className="space-y-3">
                       <h3 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Car Photos</h3>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_front: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_back: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Left</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_left: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
-                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Right</Label><Input required type="file" accept="image/*" onChange={e=>setVehicleData({...vehicleData, car_photo_right: e.target.files[0]})} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Front</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_front: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Back</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_back: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Left</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_left: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
+                        <div className="space-y-1"><Label className="text-gray-400 text-xs">Right</Label><Input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, car_photo_right: e.target.files[0] })} className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" /></div>
                       </div>
                     </div>
 
@@ -858,7 +1050,7 @@ const DriverDashboard = () => {
                 <p className="text-gray-400">Balance</p>
                 <p className="text-3xl text-[#00ff88]">₾{balance.toFixed(2)}</p>
               </Card>
-              <Input type="number" placeholder="Amount" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} className="bg-black/50 text-white"/>
+              <Input type="number" placeholder="Amount" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="bg-black/50 text-white" />
               <Button className="w-full bg-[#00ff88] text-black" onClick={() => setShowCardModal(true)}>Top Up</Button>
             </div>
           </TabsContent>
@@ -878,76 +1070,120 @@ const DriverDashboard = () => {
 
       {/* Top Up Modal */}
       <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
-          <DialogContent 
-            className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]"
-            aria-describedby={undefined}
-          >
-            <DialogHeader>
-              <DialogTitle className="text-[#00ff88] flex items-center gap-2">
-                <CreditCard className="w-5 h-5"/> Pay with Card
-              </DialogTitle>
-              <DialogDescription className="sr-only">Enter card details to top up your driver balance.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleCardPayment} className="space-y-4 mt-2">
+        <DialogContent
+          className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]"
+          aria-describedby={undefined}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-[#00ff88] flex items-center gap-2">
+              <CreditCard className="w-5 h-5" /> Pay with Card
+            </DialogTitle>
+            <DialogDescription className="sr-only">Enter card details to top up your driver balance.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCardPayment} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label className="text-gray-400 text-xs">CARD NUMBER</Label>
+              <Input
+                value={cardDetails.number}
+                onChange={(e) => handleCardInput("number", e.target.value)}
+                placeholder="0000 0000 0000 0000"
+                className="bg-black/50 border-[#00ff88]/30 text-white"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-gray-400 text-xs">CARD NUMBER</Label>
-                <Input
-                  value={cardDetails.number}
-                  onChange={(e)=>handleCardInput("number", e.target.value)}
-                  placeholder="0000 0000 0000 0000"
-                  className="bg-black/50 border-[#00ff88]/30 text-white"
-                />
+                <Label className="text-gray-400 text-xs">EXPIRY</Label>
+                <Input value={cardDetails.expiry} onChange={(e) => handleCardInput("expiry", e.target.value)} placeholder="MM/YY" className="bg-black/50 border-[#00ff88]/30 text-white" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-gray-400 text-xs">EXPIRY</Label>
-                    <Input value={cardDetails.expiry} onChange={(e)=>handleCardInput("expiry", e.target.value)} placeholder="MM/YY" className="bg-black/50 border-[#00ff88]/30 text-white"/>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-gray-400 text-xs">CVV</Label>
-                    <Input value={cardDetails.cvv} onChange={(e)=>handleCardInput("cvv", e.target.value)} placeholder="123" type="password" className="bg-black/50 border-[#00ff88]/30 text-white"/>
-                  </div>
+              <div className="space-y-2">
+                <Label className="text-gray-400 text-xs">CVV</Label>
+                <Input value={cardDetails.cvv} onChange={(e) => handleCardInput("cvv", e.target.value)} placeholder="123" type="password" className="bg-black/50 border-[#00ff88]/30 text-white" />
               </div>
-              <Button type="submit" className="w-full bg-[#00ff88] text-black font-bold h-12" disabled={loading}>
-                {loading ? <Loader2 className="animate-spin" /> : `Pay ₾${topupAmount}`}
-              </Button>
-            </form>
-          </DialogContent>
+            </div>
+            <Button type="submit" className="w-full bg-[#00ff88] text-black font-bold h-12" disabled={loading}>
+              {loading ? <Loader2 className="animate-spin" /> : `Pay ₾${topupAmount}`}
+            </Button>
+          </form>
+        </DialogContent>
       </Dialog>
 
-      {/* Trip Complete Modal (CORRECT DRIVER TEXT) */}
+      {/* 🔥 Cancellation Reason Modal (Added) */}
+      <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
+        <DialogContent className="bg-[#1a1a2e] border border-red-500/50 text-white sm:max-w-md w-[95%] rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="text-red-500 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" /> Cancel Ride
+            </DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Please select a reason. <span className="text-red-400 font-bold block mt-1">Warning: Unjustified cancellations may affect your driver score.</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[300px] pr-4">
+            <div className="grid gap-2 py-4">
+              {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map((reason) => (
+                <div
+                  key={reason}
+                  onClick={() => setSelectedCancelReason(reason)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedCancelReason === reason
+                      ? "bg-red-500 text-white border-red-500"
+                      : "bg-black/40 border-gray-700 hover:border-red-500/50 hover:bg-red-500/10"
+                    }`}
+                >
+                  <p className="font-medium text-sm">{reason}</p>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 text-gray-400">
+              Back
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelRide}
+              disabled={!selectedCancelReason || loading}
+              className="flex-1 bg-red-600 hover:bg-red-700 font-bold"
+            >
+              Confirm Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Trip Complete Modal */}
       <Dialog open={!!completedRide} onOpenChange={() => setCompletedRide(null)}>
-        <DialogContent 
-            className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-2xl"
-            aria-describedby={undefined}
+        <DialogContent
+          className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-2xl"
+          aria-describedby={undefined}
         >
           <DialogHeader>
             <DialogTitle className="text-[#00ff88] text-2xl font-bold">Trip Complete!</DialogTitle>
             <DialogDescription className="sr-only">Summary of fare and payment collection.</DialogDescription>
           </DialogHeader>
-          
+
           <div className="py-6 space-y-3">
             <p className="text-gray-400 text-sm uppercase tracking-widest">Total Fare</p>
             <p className="text-5xl font-bold text-white">
               ₾{completedRide?.final_fare?.toFixed(2) || "0.00"}
             </p>
-            
-            {/* CORRECT LOGIC: Card = Paid, Cash = Collect */}
+
             {(completedRide?.payment_method || "").toLowerCase() === 'card' ? (
-                 <div className="bg-[#00ff88]/20 border border-[#00ff88] p-3 rounded-lg">
-                    <p className="text-[#00ff88] text-sm font-bold flex items-center justify-center gap-2">
-                        <CreditCard className="w-4 h-4" /> PAID ONLINE - DO NOT CHARGE CLIENT
-                    </p>
-                </div>
+              <div className="bg-[#00ff88]/20 border border-[#00ff88] p-3 rounded-lg">
+                <p className="text-[#00ff88] text-sm font-bold flex items-center justify-center gap-2">
+                  <CreditCard className="w-4 h-4" /> PAID ONLINE - DO NOT CHARGE CLIENT
+                </p>
+              </div>
             ) : (
-                 <div className="bg-yellow-500/20 border border-yellow-500 p-3 rounded-lg animate-pulse">
-                    <p className="text-yellow-400 text-sm font-bold flex items-center justify-center gap-2">
-                        <Banknote className="w-4 h-4" /> COLLECT CASH FROM CLIENT
-                    </p>
-                </div>
+              <div className="bg-yellow-500/20 border border-yellow-500 p-3 rounded-lg animate-pulse">
+                <p className="text-yellow-400 text-sm font-bold flex items-center justify-center gap-2">
+                  <Banknote className="w-4 h-4" /> COLLECT CASH FROM CLIENT
+                </p>
+              </div>
             )}
           </div>
-          
+
           <Button
             className="w-full bg-[#00ff88] text-black font-bold h-14 text-xl rounded-xl"
             onClick={() => setCompletedRide(null)}
