@@ -244,13 +244,15 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 };
 
 
-// --- 3. LIVE MAP COMPONENT (Upgraded: Auto-Follow + Re-Center) ---
-// --- 3. LIVE MAP COMPONENT (Fixed: Defines 'target' before using it) ---
+// --- 3. LIVE MAP COMPONENT (Fixed: Zoom, Spaceship Icon, and Stable Route Line) ---
 const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, status }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const driverMarkerRef = useRef(null);
+  
+  // 🔥 FIX: Track if we already drew the route for this phase to prevent vanishing lines
+  const routeDrawnForStatus = useRef(null);
   
   // State to track if we should lock camera on driver
   const [isFollowing, setIsFollowing] = useState(true);
@@ -266,6 +268,8 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
         center: { lat: 41.7151, lng: 44.8271 },
         zoom: 15,
         disableDefaultUI: true,
+        zoomControl: true, // 🔥 FIX: Enable zoom buttons
+        gestureHandling: "greedy", // 🔥 FIX: Allow 1-finger panning on mobile screens
         backgroundColor: '#1a1a2e',
         styles: [
           { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
@@ -283,6 +287,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
 
       // Detect manual interaction to pause "Auto-Follow"
       map.addListener("dragstart", () => setIsFollowing(false));
+      map.addListener("zoom_changed", () => setIsFollowing(false)); // Pause follow on zoom
 
       mapInstanceRef.current = map;
     }
@@ -307,10 +312,14 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
         stopover: true
       }));
 
+    // 🔥 FIX: Prevent API spam. If we already drew the line for this status, don't redraw it!
+    if (routeDrawnForStatus.current === status) return;
+
     // MODE A: Preview (Booking)
     if (status === 'preview') {
        if (pLat && pLng && destLat && destLng) {
            calculateAndDrawRoute({ lat: pLat, lng: pLng }, { lat: destLat, lng: destLng }, waypoints);
+           routeDrawnForStatus.current = status;
        }
        return; 
     }
@@ -318,19 +327,22 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     // MODE B: Live Ride (Driver Active)
     if (!dLat || !dLng) return; // Wait for driver location
 
-    // 🔥 THIS WAS MISSING - DEFINING ORIGIN & TARGET
     const origin = { lat: dLat, lng: dLng };
     let target = null;
+    let activeWaypoints = [];
 
     if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
         target = { lat: pLat, lng: pLng }; // Driver -> Pickup
+        activeWaypoints = []; // Ignore passenger's waypoints until they are in the car
     } else if (status === 'in_progress' && destLat) {
         target = { lat: destLat, lng: destLng }; // Driver -> Destination
+        activeWaypoints = waypoints;
     }
 
     // Now safe to use
     if (origin && target) { 
-        calculateAndDrawRoute(origin, target, []); // Ignore waypoints for driver->pickup leg
+        calculateAndDrawRoute(origin, target, activeWaypoints); 
+        routeDrawnForStatus.current = status;
     }
 
   }, [pickup?.lat, destination?.lat, stops.length, status, driverLocation?.lat]); 
@@ -342,8 +354,8 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
         destination: target,
         waypoints: waypoints,
         travelMode: window.google.maps.TravelMode.DRIVING
-    }, (result, status) => {
-        if (status === 'OK' && directionsRendererRef.current) {
+    }, (result, apiStatus) => {
+        if (apiStatus === 'OK' && directionsRendererRef.current) {
             directionsRendererRef.current.setDirections(result);
             
             // Only fit bounds if we are in preview mode or just starting
@@ -353,6 +365,9 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
                 bounds.extend(target);
                 waypoints.forEach(wp => bounds.extend(wp.location));
                 mapInstanceRef.current.fitBounds(bounds);
+                
+                // Add padding so pins aren't cut off on the edge of the map
+                mapInstanceRef.current.panBy(0, 20);
             }
         }
     });
@@ -367,15 +382,23 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
         lng: parseFloat(driverLocation.lng) 
     };
 
+    // 🔥 FIX: Custom Spaceship SVG Path
+    const SPACESHIP_SVG = "M 0,-18 L 12,14 L 0,8 L -12,14 Z";
+
     // Update or Create Marker
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
         position: pos,
         map: mapInstanceRef.current,
         icon: {
-          path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 6, fillColor: "#00d4ff", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2,
-          rotation: parseFloat(driverLocation.heading) || 0
+          path: SPACESHIP_SVG, // 🔥 Replaces the basic arrow
+          scale: 1.5, 
+          fillColor: "#00d4ff", 
+          fillOpacity: 1, 
+          strokeColor: "#ffffff", 
+          strokeWeight: 2,
+          rotation: parseFloat(driverLocation.heading) || 0,
+          anchor: new window.google.maps.Point(0, 0)
         },
         zIndex: 1000
       });
@@ -400,7 +423,6 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
               lat: parseFloat(driverLocation.lat),
               lng: parseFloat(driverLocation.lng)
           });
-          mapInstanceRef.current.setZoom(16);
       }
   };
 
@@ -747,7 +769,7 @@ const RiderDashboard = () => {
     } catch (err) {
       console.error("Route Error:", err);
     }
-  }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stops]);
+  }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length]);
 
   // 🔥 TRIGGER: Only run when NUMBERS change (Debounced)
   useEffect(() => {
@@ -892,9 +914,18 @@ const RiderDashboard = () => {
 
         if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
           clearInterval(interval);
+          
           if (res.data.status === "completed") {
             toast.success("Ride completed!");
             fetchRideHistory();
+            
+            // 🔥 FIX: Wait 2.5 seconds so the user can see the "Completed" badge, 
+            // then clear the ride and send them back to the booking screen.
+            setTimeout(() => {
+              setActiveRide(null);
+              setActiveTab("book");
+            }, 2500);
+            
           } else if (res.data.status === "no_drivers") {
             toast.error("No drivers available. Please try again.");
           }
