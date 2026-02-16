@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 // FIX: Import from @/config and @/api
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
@@ -1120,34 +1120,62 @@ const DriverDashboard = () => {
         </main>
       </div>
 
-      {/* --- MODALS (Unchanged) --- */}
+      {/* REAL PAYPAL TOP UP MODAL */}
       <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
         <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%] rounded-xl">
           <DialogHeader>
             <DialogTitle className="text-[#00ff88] flex items-center gap-2">
-              <CreditCard className="w-5 h-5" /> Pay with Card
+              <Wallet className="w-5 h-5" /> Top Up Wallet
             </DialogTitle>
-            <DialogDescription className="sr-only">Enter card details to top up your driver balance.</DialogDescription>
+            <DialogDescription className="text-gray-400">
+              Add ₾{topupAmount} to your virtual account to accept more rides.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCardPayment} className="space-y-4 mt-2">
-            <div className="space-y-2">
-              <Label className="text-gray-400 text-xs">CARD NUMBER</Label>
-              <Input value={cardDetails.number} onChange={(e) => handleCardInput("number", e.target.value)} placeholder="0000 0000 0000 0000" className="bg-black/50 border-[#00ff88]/30 text-white h-12" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-gray-400 text-xs">EXPIRY</Label>
-                <Input value={cardDetails.expiry} onChange={(e) => handleCardInput("expiry", e.target.value)} placeholder="MM/YY" className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-gray-400 text-xs">CVV</Label>
-                <Input value={cardDetails.cvv} onChange={(e) => handleCardInput("cvv", e.target.value)} placeholder="123" type="password" className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center" />
-              </div>
-            </div>
-            <Button type="submit" className="w-full bg-[#00ff88] text-black font-bold h-12" disabled={loading}>
-              {loading ? <Loader2 className="animate-spin" /> : `Pay ₾${topupAmount}`}
-            </Button>
-          </form>
+          
+          <div className="py-4 z-50 relative">
+            <PayPalButtons
+              fundingSource="card"
+              style={{ layout: "vertical", shape: "rect" }}
+              createOrder={(data, actions) => {
+                // Convert GEL to USD for PayPal
+                const usdAmount = (parseFloat(topupAmount) * 0.37).toFixed(2);
+                return actions.order.create({
+                  purchase_units: [{
+                    amount: { value: usdAmount, currency_code: "USD" }
+                  }],
+                  application_context: { shipping_preference: "NO_SHIPPING" }
+                });
+              }}
+              onApprove={async (data, actions) => {
+                try {
+                  setLoading(true);
+                  await actions.order.capture(); // Capture the money
+                  
+                  // Ping our new backend route to verify and add funds
+                  await api.post(`/driver/wallet/topup/paypal`, {
+                    order_id: data.orderID,
+                    amount: parseFloat(topupAmount)
+                  });
+
+                  toast.success(`Successfully added ₾${topupAmount} to your wallet!`);
+                  setShowCardModal(false);
+                  setTopupAmount("");
+                  
+                  // Refresh the driver's info so the balance updates instantly on screen
+                  const userRes = await api.get(`/auth/me`);
+                  updateUser(userRes.data);
+                } catch (error) {
+                  toast.error("Top-up failed. Please contact support.");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            />
+          </div>
+          
+          <Button variant="ghost" onClick={() => setShowCardModal(false)} className="w-full text-gray-400">
+            Cancel
+          </Button>
         </DialogContent>
       </Dialog>
 

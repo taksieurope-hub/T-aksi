@@ -859,6 +859,50 @@ async def get_current_user(user_id: str = Depends(get_current_user_id)):
 
 import uuid # Needed to generate unique IDs for each car in the garage
 
+class PayPalTopUpRequest(BaseModel):
+    order_id: str
+    amount: float
+
+@app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
+async def driver_topup_paypal(req: PayPalTopUpRequest, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+        
+    # 1. Verify with PayPal that they actually paid
+    access_token = await get_paypal_token()
+    if not access_token:
+        raise HTTPException(500, "PayPal auth failed")
+        
+    async with httpx.AsyncClient(timeout=25) as client:
+        resp = await client.get(
+            f"{PAYPAL_API_BASE}/v2/checkout/orders/{req.order_id}",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        if resp.status_code != 200:
+            raise HTTPException(400, "Invalid PayPal order")
+            
+        data = resp.json()
+        if data.get("status") not in ("COMPLETED", "APPROVED"):
+            raise HTTPException(400, "Payment not completed")
+            
+    # 2. Payment is legit! Instantly increase their virtual wallet balance.
+    db = get_db()
+    db.collection("users").document(user_id).update({
+        "earnings.balance": firestore.Increment(req.amount),
+        "earnings.total_topped_up": firestore.Increment(req.amount)
+    })
+    
+    # 3. Log the transaction for your records
+    db.collection("wallet_transactions").add({
+        "driver_id": user_id,
+        "type": "driver_paypal_topup",
+        "amount": req.amount,
+        "order_id": req.order_id,
+        "created_at": firestore.SERVER_TIMESTAMP
+    })
+    
+    return {"message": f"Successfully added {req.amount} GEL to wallet"}
+
 @app.post("/api/driver/vehicle", tags=["Driver"])
 async def register_vehicle(
     car_make: str = Form(...),
