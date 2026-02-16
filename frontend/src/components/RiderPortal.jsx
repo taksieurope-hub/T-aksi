@@ -426,7 +426,8 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
 
   return (
     <div className="relative w-full rounded-xl overflow-hidden border border-[#00ff88]/20 mb-4 bg-[#1a1a2e]">
-        <div ref={mapRef} style={{ height: '350px', width: '100%' }} />
+        {/* 🔥 FIX: Changed height to 50vh (half screen height) so it's massive and immersive */}
+        <div ref={mapRef} style={{ height: '50vh', minHeight: '450px', width: '100%' }} />
         
         {/* Re-Center Button */}
         {!isFollowing && driverLocation && (
@@ -1331,9 +1332,10 @@ const RiderDashboard = () => {
                 <CardContent className="space-y-4 text-white">
 
                   {/* 🔥 NEW IMPROVED MAP RENDER */}
+                  {/* 🔥 NEW IMPROVED MAP RENDER */}
                   {mapsLoaded && activeRide && (
-                    <div className="h-64 w-full rounded-xl overflow-hidden mb-4 border border-[#00ff88]/20 relative">
-                      <LiveTrackingMap 
+                    <div className="w-full rounded-xl overflow-hidden mb-4 border border-[#00ff88]/20 relative">
+                      <LiveTrackingMap
     status={activeRide.status} 
     driverLocation={activeRide.driver_location} 
     pickup={{ lat: parseFloat(activeRide.pickup_lat || activeRide.pickupLat), lng: parseFloat(activeRide.pickup_lng || activeRide.pickupLng) }} 
