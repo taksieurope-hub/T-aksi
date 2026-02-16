@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
-
+import { LiveTrackingMap } from "@/components/maps/LiveTrackingMap"; // Import the new LiveTrackingMap component
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket,
   Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned,
@@ -1240,79 +1240,212 @@ const RiderDashboard = () => {
                 </CardHeader>
                 <CardContent className="space-y-4 text-white">
 
-                  {/* 🔥 SAFE ACTIVE MAP RENDER */}
-                  {mapsLoaded && activeRide && !isNaN(parseFloat(activeRide.pickup_lat)) && (
-                    <LiveTrackingMap
+                  {/* 🔥 NEW IMPROVED MAP RENDER */}
+                  {mapsLoaded && activeRide && (
+                    <div className="h-64 w-full rounded-xl overflow-hidden mb-4 border border-[#00ff88]/20 relative">
+                      <LiveTrackingMap
+                        status={activeRide.status}
+                        driverLocation={activeRide.driver_location}
                         pickup={{
-                            lat: parseFloat(activeRide.pickup_lat),
-                            lng: parseFloat(activeRide.pickup_lng)
+                          lat: parseFloat(activeRide.pickup_lat),
+                          lng: parseFloat(activeRide.pickup_lng)
                         }}
                         destination={
-                            activeRide.dest_lat && !isNaN(parseFloat(activeRide.dest_lat))
+                          activeRide.dest_lat
                             ? { lat: parseFloat(activeRide.dest_lat), lng: parseFloat(activeRide.dest_lng) }
                             : null
                         }
-                        driverLocation={activeRide.driver_location}
-                        status={activeRide.status}
-                    />
-                  )}
+                        stops={activeRide.stops || []}
+                      />
 
-                  <div className="space-y-3">
-                    <div><p className="text-[#00ff88]/60 text-sm">Pickup</p><p>{activeRide.pickup}</p></div>
-                    {activeRide.stops?.length > 0 && <div><p className="text-yellow-400/60 text-sm">Stops ({activeRide.stops.length})</p>{activeRide.stops.map((stop, i) => <p key={i} className="text-sm text-yellow-400">• {stop.address}</p>)}</div>}
-                    <div><p className="text-[#00d4ff]/60 text-sm">Destination</p><p>{activeRide.destination || "Open Trip"}</p></div>
-                  </div>
-
-                  {activeRide.status === "searching" && (
-                    <div className="bg-yellow-500/20 border border-yellow-500 p-4 rounded-xl space-y-2">
-                      <div className="flex items-center"><Loader2 className="w-5 h-5 animate-spin mr-3 text-yellow-400" /><span className="text-yellow-400 font-medium">{activeRide.matching_status || "Searching for drivers..."}</span></div>
-                      {activeRide.drivers_notified_count > 0 && <p className="text-yellow-400/70 text-sm pl-8">{activeRide.drivers_notified_count} drivers notified</p>}
-                    </div>
-                  )}
-
-                  {activeRide.status === "no_drivers" && (
-                    <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
-                      <div className="flex items-center text-gray-300"><Target className="w-5 h-5 mr-2" /><span className="font-medium">No drivers available</span></div>
-                      <div className="flex gap-2"><Button className="flex-1 bg-[#00ff88] text-black font-bold" onClick={handleRetryRide}><Rocket className="w-4 h-4 mr-2" /> Retry Search</Button><Button variant="outline" className="border-gray-500 text-gray-300" onClick={() => { setActiveRide(null); setActiveTab("book"); }}>New Ride</Button></div>
-                    </div>
-                  )}
-
-                  {activeRide.driver_info && (
-                    <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                      <p className="text-[#00ff88] font-semibold mb-2">Your Driver</p>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-7 h-7 text-black" /></div>
-                        <div><p className="font-medium text-lg">{activeRide.driver_info.name}</p><p className="text-sm text-gray-400">{activeRide.driver_info.car_make} {activeRide.driver_info.car_model}</p><p className="text-[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p></div>
+                      {/* Status Overlay */}
+                      <div className="absolute top-2 left-2 bg-black/80 backdrop-blur px-3 py-1 rounded-full border border-white/10 z-10">
+                        <p className="text-xs text-white font-bold uppercase animate-pulse">
+                          {activeRide.status === 'in_progress' ? '● Live Trip' : '● Driver Arriving'}
+                        </p>
                       </div>
                     </div>
                   )}
 
-                  {activeRide.status === "arrived" && <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl"><div className="flex items-center text-purple-400"><Timer className="w-5 h-5 mr-2" /> Driver has arrived! First 2 minutes are free.</div></div>}
-                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4"><span className="text-[#00ff88]">Estimated Fare</span><span className="text-2xl font-bold text-[#00ff88]">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span></div>
-                  {["searching", "accepted"].includes(activeRide.status) && <Button variant="destructive" className="w-full" onClick={handleCancelRide}>Cancel Ride</Button>}
+                  {/* Trip Details */}
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-[#00ff88]/60 text-sm">Pickup</p>
+                      <p>{activeRide.pickup}</p>
+                    </div>
+                    {activeRide.stops?.length > 0 && (
+                      <div>
+                        <p className="text-yellow-400/60 text-sm">Stops ({activeRide.stops.length})</p>
+                        {activeRide.stops.map((stop, i) => (
+                          <p key={i} className="text-sm text-yellow-400">• {stop.address}</p>
+                        ))}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-[#00d4ff]/60 text-sm">Destination</p>
+                      <p>{activeRide.destination || "Open Trip"}</p>
+                    </div>
+                  </div>
+
+                  {/* Searching Status */}
+                  {activeRide.status === "searching" && (
+                    <div className="bg-yellow-500/20 border border-yellow-500 p-4 rounded-xl space-y-2">
+                      <div className="flex items-center">
+                        <Loader2 className="w-5 h-5 animate-spin mr-3 text-yellow-400" />
+                        <span className="text-yellow-400 font-medium">
+                          {activeRide.matching_status || "Searching for drivers..."}
+                        </span>
+                      </div>
+                      {activeRide.drivers_notified_count > 0 && (
+                        <p className="text-yellow-400/70 text-sm pl-8">
+                          {activeRide.drivers_notified_count} drivers notified
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* No Drivers Status */}
+                  {activeRide.status === "no_drivers" && (
+                    <div className="bg-gray-500/20 border border-gray-500 p-4 rounded-xl space-y-3">
+                      <div className="flex items-center text-gray-300">
+                        <Target className="w-5 h-5 mr-2" />
+                        <span className="font-medium">No drivers available</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button className="flex-1 bg-[#00ff88] text-black font-bold" onClick={handleRetryRide}>
+                          <Rocket className="w-4 h-4 mr-2" /> Retry Search
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="border-gray-500 text-gray-300"
+                          onClick={() => { setActiveRide(null); setActiveTab("book"); }}
+                        >
+                          New Ride
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Driver Info */}
+                  {activeRide.driver_info && (
+                    <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
+                      <p className="text-[#00ff88] font-semibold mb-2">Your Driver</p>
+                      <div className="flex items-center space-x-3">
+                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
+                          <User className="w-7 h-7 text-black" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-lg">{activeRide.driver_info.name}</p>
+                          <p className="text-sm text-gray-400">
+                            {activeRide.driver_info.car_make} {activeRide.driver_info.car_model}
+                          </p>
+                          <p className="text-[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Arrived Status */}
+                  {activeRide.status === "arrived" && (
+                    <div className="bg-purple-500/20 border border-purple-500 p-4 rounded-xl">
+                      <div className="flex items-center text-purple-400">
+                        <Timer className="w-5 h-5 mr-2" /> Driver has arrived! First 2 minutes are free.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fare & Cancel */}
+                  <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
+                    <span className="text-[#00ff88]">Estimated Fare</span>
+                    <span className="text-2xl font-bold text-[#00ff88]">
+                      ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
+                    </span>
+                  </div>
+                  
+                  {["searching", "accepted"].includes(activeRide.status) && (
+                    <Button variant="destructive" className="w-full" onClick={handleCancelRide}>
+                      Cancel Ride
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
-              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12"><Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" /><p className="text-[#00ff88]/60 text-lg">No active ride</p><Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>Book a Ride</Button></Card>
+              <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-center py-12">
+                <Navigation className="w-20 h-20 mx-auto text-[#00ff88]/30 mb-4" />
+                <p className="text-[#00ff88]/60 text-lg">No active ride</p>
+                <Button className="mt-6 bg-[#00ff88] text-black font-bold" onClick={() => setActiveTab("book")}>
+                  Book a Ride
+                </Button>
+              </Card>
             )}
           </TabsContent>
 
           {/* History Tab */}
           <TabsContent value="history">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
-              <CardHeader><CardTitle className="text-[#00ff88]">Ride History</CardTitle></CardHeader>
-              <CardContent><ScrollArea className="h-[400px]"><div className="space-y-3">{rideHistory.map(ride => (<div key={ride.id} className="bg-black/50 border border-[#00ff88]/10 rounded-xl p-4 space-y-2"><div className="flex justify-between"><Badge className={statusColors[ride.status]}>{ride.status?.replace(/_/g, ' ').toUpperCase()}</Badge><span className="text-gray-400 text-sm">{ride.created_at ? new Date(ride.created_at).toLocaleDateString() : "N/A"}</span></div><div><p className="text-sm text-[#00ff88]/60">From: {ride.pickup}</p><p className="text-sm text-[#00d4ff]/60">To: {ride.destination || "Open"}</p></div><div className="flex justify-between"><span className="text-gray-400 capitalize">{ride.carType}</span><span className="text-[#00ff88] font-bold">₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}</span></div></div>))}</div></ScrollArea></CardContent>
+              <CardHeader>
+                <CardTitle className="text-[#00ff88]">Ride History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[400px]">
+                  <div className="space-y-3">
+                    {rideHistory.map((ride) => (
+                      <div key={ride.id} className="bg-black/50 border border-[#00ff88]/10 rounded-xl p-4 space-y-2">
+                        <div className="flex justify-between">
+                          <Badge className={statusColors[ride.status]}>
+                            {ride.status?.replace(/_/g, ' ').toUpperCase()}
+                          </Badge>
+                          <span className="text-gray-400 text-sm">
+                            {ride.created_at ? new Date(ride.created_at).toLocaleDateString() : "N/A"}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm text-[#00ff88]/60">From: {ride.pickup}</p>
+                          <p className="text-sm text-[#00d4ff]/60">To: {ride.destination || "Open"}</p>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400 capitalize">{ride.carType}</span>
+                          <span className="text-[#00ff88] font-bold">
+                            ₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
             </Card>
           </TabsContent>
 
           {/* Profile Tab */}
           <TabsContent value="profile">
             <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/20 text-white">
-              <CardHeader><CardTitle className="text-[#00ff88]">Profile</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle className="text-[#00ff88]">Profile</CardTitle>
+              </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex items-center space-x-4"><div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center"><User className="w-10 h-10 text-black" /></div><div><h3 className="text-2xl font-bold">{user?.name} {user?.surname}</h3><p className="text-[#00d4ff]">{user?.cellphone}</p></div></div>
+                <div className="flex items-center space-x-4">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
+                    <User className="w-10 h-10 text-black" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold">{user?.name} {user?.surname}</h3>
+                    <p className="text-[#00d4ff]">{user?.cellphone}</p>
+                  </div>
+                </div>
                 <Separator className="bg-[#00ff88]/20" />
-                <div className="grid grid-cols-2 gap-4"><div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center"><Car className="w-8 h-8 mx-auto text-[#00d4ff] mb-2" /><p className="text-2xl font-bold">{user?.total_rides || 0}</p><p className="text-[#00ff88]/60 text-sm">Total Rides</p></div><div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center"><Star className="w-8 h-8 mx-auto text-yellow-400 mb-2" /><p className="text-2xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p><p className="text-[#00ff88]/60 text-sm">Rating</p></div></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center">
+                    <Car className="w-8 h-8 mx-auto text-[#00d4ff] mb-2" />
+                    <p className="text-2xl font-bold">{user?.total_rides || 0}</p>
+                    <p className="text-[#00ff88]/60 text-sm">Total Rides</p>
+                  </div>
+                  <div className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4 text-center">
+                    <Star className="w-8 h-8 mx-auto text-yellow-400 mb-2" />
+                    <p className="text-2xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p>
+                    <p className="text-[#00ff88]/60 text-sm">Rating</p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1336,9 +1469,9 @@ const RiderPortal = () => {
 
   return (
     <PayPalScriptProvider options={{
-    "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
-    currency: "USD"
-}}>
+      "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
+      currency: "USD"
+    }}>
       <Routes>
         <Route path="/" element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<RiderDashboard />} />

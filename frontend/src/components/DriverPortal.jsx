@@ -591,46 +591,80 @@ const DriverDashboard = () => {
   const handleRideAction = async (action) => {
     if (!activeRide) return;
     setLoading(true);
+
     try {
+      // 1. ARRIVED
       if (action === "arrived") {
         await api.post(`/rides/${activeRide.id}/arrived`);
-        setArrivedTime(Date.now()); toast.success("Marked as arrived");
-      } else if (action === "start") {
-        await api.post(`/rides/${activeRide.id}/start`);
-        setRideStartTime(Date.now()); setDistanceTraveled(0); lastPositionRef.current = driverLocation; toast.success("Ride started");
-      } else if (action === "complete") {
-        // 🔥 FIXED: Prevent "NaN" crash by defaulting to 0
-        const safeDistance = isNaN(distanceTraveled) ? 0 : distanceTraveled.toFixed(2);
-        const safeWait = isNaN(waitTimer) ? 0 : waitTimer;
+        setArrivedTime(Date.now());
+        toast.success("Marked as arrived");
+      } 
+      // 2. START TRIP
+      else if (action === "start") {
+        await api.post(`/rides/${activeRide.id}/start`, { 
+            pickup_wait_time: parseInt(waitTimer || 0)
+        });
+        setRideStartTime(Date.now());
+        setDistanceTraveled(0);
+        lastPositionRef.current = driverLocation;
+        toast.success("Ride started");
+      } 
+      // 3. COMPLETE TRIP (🔥 THE FIX)
+      else if (action === "complete") {
+        // Ensure values are numbers
+        const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled);
+        const finalWait = isNaN(waitTimer) ? 0 : parseInt(waitTimer);
         
-        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${safeDistance}&total_wait_minutes=${safeWait}`);
+        // 1. Construct URL with Query Params (for servers that check URL)
+        const url = `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}`;
         
-        setCompletedRide(res.data); 
-        toast.success(`Ride completed! Fare: ₾${res.data.final_fare.toFixed(2)}`);
+        // 2. Construct Body Payload (for servers that check Body)
+        const payload = {
+            final_distance: finalDist,
+            total_wait_minutes: finalWait,
+            dropoff_lat: driverLocation?.lat,
+            dropoff_lng: driverLocation?.lng
+        };
+
+        // Send BOTH!
+        const res = await api.post(url, payload);
         
-        // Reset State Immediately
-        setActiveRide(null); 
-        setDistanceTraveled(0); 
-        setWaitTimer(0); 
-        setArrivedTime(null); 
+        // Safety Check: If fare is 0, try to use estimated fare so the driver sees SOMETHING
+        const finalFare = res.data.final_fare > 0 
+            ? res.data.final_fare 
+            : (activeRide.estimated_fare || 0);
+
+        // Force the fare into the object before setting state
+        const completeData = { ...res.data, final_fare: finalFare };
+        
+        setCompletedRide(completeData);
+        toast.success(`Ride completed! Fare: ₾${finalFare.toFixed(2)}`);
+        
+        // Reset State
+        setActiveRide(null);
+        setDistanceTraveled(0);
+        setWaitTimer(0);
+        setArrivedTime(null);
         setRideStartTime(null);
         
         fetchRideHistory();
-        const userRes = await api.get(`/auth/me`); 
+        const userRes = await api.get(`/auth/me`);
         updateUser(userRes.data);
-        return;
+        return; 
       }
       
+      // Refresh ride state if not completing
       if (action !== "complete") {
-          const rideRes = await api.get(`/rides/${activeRide.id}`); 
+          const rideRes = await api.get(`/rides/${activeRide.id}`);
           setActiveRide(rideRes.data);
       }
-    } catch (e) { 
-        console.error(e);
+
+    } catch (e) {
+        console.error("Action Error:", e);
         const errorMsg = e.response?.data?.detail || "Action failed";
-        toast.error(errorMsg); 
-    } finally { 
-        setLoading(false); 
+        toast.error(errorMsg);
+    } finally {
+        setLoading(false);
     }
   };
 
