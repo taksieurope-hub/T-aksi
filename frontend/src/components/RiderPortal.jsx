@@ -6,7 +6,6 @@ import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
-import RatingModal from "@/components/RatingModal";
 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -1577,19 +1576,6 @@ const RiderDashboard = () => {
         onRateDriver={() => {
           setShowRatingModal(true);
           setCompletedRideData(null);
-        }}
-      />
-
-      {/* Rating Modal */}
-      <RatingModal
-        isOpen={showRatingModal}
-        onClose={() => setShowRatingModal(false)}
-        rideId={completedRideData?.id}
-        ratingType="driver"
-        driverName={completedRideData?.driver_name}
-        onRatingComplete={() => {
-          setShowRatingModal(false);
-          toast.success(t('rating_submitted') || "Thanks for your feedback!");
         }}
       />
     </div>
