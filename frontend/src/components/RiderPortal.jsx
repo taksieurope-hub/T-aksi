@@ -6,7 +6,6 @@ import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
-import { RiderTripCompletionModal } from "@/components/TripCompletionModal";
 import RatingModal from "@/components/RatingModal";
 
 import { toast } from "sonner";
