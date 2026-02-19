@@ -6,6 +6,7 @@ import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
+import { DriverTripCompletionModal } from "@/components/TripCompletionModal";
 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -1279,6 +1280,17 @@ const DriverDashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Trip Completion Modal - Shows after completing a ride */}
+      <DriverTripCompletionModal
+        isOpen={!!completedRide}
+        onClose={() => setCompletedRide(null)}
+        fareAmount={completedRide?.final_fare}
+        paymentMethod={completedRide?.payment_method}
+        riderName={completedRide?.rider_name}
+        onConfirm={() => setCompletedRide(null)}
+      />
+
     </div>
   );
 }; // <--- THIS BRACKET WAS MISSING!
