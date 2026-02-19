@@ -1,0 +1,70 @@
+/* =========================================================
+   Global layout + scroll (mobile-safe)
+   ========================================================= */
+
+/* Ensure the app can scroll and doesn't get "locked" by overlays */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  background: #000;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* smooth iOS scroll */
+}
+
+/* Let #root grow and not clamp height */
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate; /* keeps stacking contexts more predictable */
+}
+
+/* Main app wrapper */
+.App {
+  flex: 1;
+  min-height: 100vh;
+  position: relative;
+  background: linear-gradient(180deg, #000000 0%, #0a0a0a 50%, #050510 100%);
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+/* Nebula background stays behind while scrolling */
+.nebula {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 70%, rgba(0, 255, 136, 0.03) 0%, transparent 40%),
+    radial-gradient(ellipse at 70% 30%, rgba(0, 212, 255, 0.03) 0%, transparent 40%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* =========================================================
+   Google Maps + Places fixes (Dialog/Sheet compatible)
+   ========================================================= */
+
+/* Make Google map canvas fill containers */
+.gm-style,
+.gm-style > div,
+div[aria-label="Map"] {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* 🔥 IMPORTANT: Places dropdown must sit above shadcn Dialog/Sheet overlays */
+.pac-container {
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+}
+
+/* Optional: readable autocomplete text on dark UI */
+.pac-item,
+.pac-item-query {
+  color: #111 !important;
+}

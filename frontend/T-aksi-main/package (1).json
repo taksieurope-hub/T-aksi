@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "@capacitor/android": "^8.0.1",
+    "@capacitor/core": "^8.0.1",
+    "@capacitor/ios": "^8.0.1",
+    "@react-google-maps/api": "^2.20.8",
+    "axios": "^1.13.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.1"
+  }
+}

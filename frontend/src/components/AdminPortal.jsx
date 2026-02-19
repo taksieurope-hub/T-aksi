@@ -4,6 +4,12 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 // FIX: Import from @/config and @/api
 import { useAuth } from "@/config";
 import api from "@/api";
+import { useLanguage } from "@/i18n/LanguageContext";
+import LanguageSelector from "@/i18n/LanguageSelector";
+
+// Import Admin Support Panel
+import AdminSupportPanel from "@/components/AdminSupportPanel";
+import AdminCampaignsPanel from "@/components/AdminCampaignsPanel";
 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,7 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import {
   Shield, Users, Car, Home, LogOut, Lock, ArrowLeft, Loader2,
   CheckCircle2, XCircle, TrendingUp,
-  UserCheck, Banknote, BarChart3, PlusCircle, CreditCard
+  UserCheck, Banknote, BarChart3, PlusCircle, CreditCard, MessageSquare
 } from "lucide-react";
 
 const ADMIN_PASSWORD = "D'Ahl-Enterprise9409145169086";
@@ -298,7 +304,7 @@ const AdminDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto p-4 max-w-6xl">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-5 bg-black/50 border border-purple-500/20 mb-6">
+          <TabsList className="grid grid-cols-7 bg-black/50 border border-purple-500/20 mb-6">
             <TabsTrigger value="overview" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
               <BarChart3 className="w-4 h-4 mr-2" /> Overview
             </TabsTrigger>
@@ -319,6 +325,12 @@ const AdminDashboard = () => {
               {pendingWithdrawals.length > 0 && (
                 <Badge className="ml-2 bg-[#00ff88] text-black">{pendingWithdrawals.length}</Badge>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="campaigns" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
+              <PlusCircle className="w-4 h-4 mr-2" /> Campaigns
+            </TabsTrigger>
+            <TabsTrigger value="support" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
+              <MessageSquare className="w-4 h-4 mr-2" /> Support
             </TabsTrigger>
           </TabsList>
 
@@ -719,6 +731,16 @@ const AdminDashboard = () => {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Campaigns Tab */}
+          <TabsContent value="campaigns">
+            <AdminCampaignsPanel />
+          </TabsContent>
+
+          {/* Support Tab */}
+          <TabsContent value="support">
+            <AdminSupportPanel />
           </TabsContent>
         </Tabs>
       </main>
