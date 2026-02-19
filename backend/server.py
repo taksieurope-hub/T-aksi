@@ -2332,6 +2332,1092 @@ async def reject_withdrawal(id: str):
 
 
 # =========================
+# AI FEATURES - TRANSLATION, SUPPORT, CHAT
+# =========================
+
+from ai_features import (
+    translate_text, process_support_message, translate_chat_message,
+    generate_referral_code, generate_share_link, calculate_referral_bonus,
+    TranslateRequest, SupportMessage, RatingRequest, FavoriteLocation,
+    ScheduledRideRequest, SOSRequest, ShareTripRequest, ReferralCodeRequest, TipRequest,
+    RATING_TAGS, now_iso as ai_now_iso
+)
+
+# --- Translation API ---
+@app.post("/api/translate", tags=["AI"])
+async def translate_endpoint(req: TranslateRequest):
+    """Translate text between languages"""
+    translated = await translate_text(req.text, req.source_lang, req.target_lang)
+    return {"original": req.text, "translated": translated, "target_lang": req.target_lang}
+
+# --- Chat with Auto-Translation ---
+@app.post("/api/rides/{ride_id}/chat/translate", tags=["Chat"])
+async def send_translated_chat(
+    ride_id: str, 
+    chat: ChatMessage, 
+    target_lang: str = "auto",
+    user_id: str = Depends(get_current_user_id)
+):
+    """Send chat message with auto-translation"""
+    db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    ride = ride_ref.get()
+    if not ride.exists:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    ride_data = ride.to_dict()
+    
+    # Determine sender role and recipient language
+    sender_role = "rider" if user_id == ride_data.get("rider_id") else "driver"
+    
+    # Get language preferences (default to English)
+    rider_lang = ride_data.get("rider_lang", "en")
+    driver_lang = ride_data.get("driver_lang", "en")
+    
+    sender_lang = rider_lang if sender_role == "rider" else driver_lang
+    recipient_lang = driver_lang if sender_role == "rider" else rider_lang
+    
+    # Translate if languages differ
+    translation_result = await translate_chat_message(chat.message, sender_lang, recipient_lang)
+    
+    # Store message with translation
+    message_data = {
+        "ride_id": ride_id,
+        "sender_id": user_id,
+        "sender_role": sender_role,
+        "message": chat.message,
+        "translated_message": translation_result.get("translated", chat.message),
+        "was_translated": translation_result.get("was_translated", False),
+        "from_lang": sender_lang,
+        "to_lang": recipient_lang,
+        "timestamp": firestore.SERVER_TIMESTAMP,
+        "read": False
+    }
+    
+    db.collection("ride_chats").add(message_data)
+    
+    return {
+        "status": "sent",
+        "original": chat.message,
+        "translated": translation_result.get("translated"),
+        "was_translated": translation_result.get("was_translated", False)
+    }
+
+# --- AI Support Bot ---
+@app.post("/api/support/message", tags=["Support"])
+async def send_support_message(msg: SupportMessage, user_id: str = Depends(get_current_user_id)):
+    """Send message to AI support bot"""
+    db = get_db()
+    
+    # Get user context
+    user_doc = db.collection("users").document(user_id).get()
+    user_context = {}
+    if user_doc.exists:
+        user_data = user_doc.to_dict()
+        user_context = {
+            "name": user_data.get("name", "Unknown"),
+            "phone": user_data.get("cellphone", ""),
+            "ride_count": user_data.get("total_rides", 0)
+        }
+    
+    # Process through AI
+    ai_result = await process_support_message(msg.message, user_context)
+    
+    # Create support ticket
+    ticket_data = {
+        "user_id": user_id,
+        "user_name": user_context.get("name", "Unknown"),
+        "user_phone": user_context.get("phone", ""),
+        "message": msg.message,
+        "ai_response": ai_result["ai_response"],
+        "status": "escalated" if ai_result["needs_escalation"] else "ai_handled",
+        "priority": ai_result["priority"],
+        "category": ai_result["category"],
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+        "admin_notes": None
+    }
+    
+    ticket_ref = db.collection("support_tickets").add(ticket_data)
+    
+    return {
+        "ticket_id": ticket_ref[1].id,
+        "response": ai_result["ai_response"],
+        "status": ticket_data["status"],
+        "escalated": ai_result["needs_escalation"]
+    }
+
+@app.get("/api/support/history", tags=["Support"])
+async def get_support_history(user_id: str = Depends(get_current_user_id)):
+    """Get user's support ticket history"""
+    db = get_db()
+    tickets = db.collection("support_tickets").where("user_id", "==", user_id).order_by("created_at", direction=firestore.Query.DESCENDING).limit(20).stream()
+    
+    result = []
+    for ticket in tickets:
+        data = ticket.to_dict()
+        data["id"] = ticket.id
+        result.append(serialize_firestore_data(data))
+    
+    return {"tickets": result}
+
+# --- Admin Support Management ---
+@app.get("/api/admin/support/tickets", tags=["Admin"])
+async def get_support_tickets(status: str = None, priority: str = None):
+    """Get support tickets for admin"""
+    db = get_db()
+    query = db.collection("support_tickets")
+    
+    if status:
+        query = query.where("status", "==", status)
+    if priority:
+        query = query.where("priority", "==", priority)
+    
+    tickets = query.order_by("created_at", direction=firestore.Query.DESCENDING).limit(50).stream()
+    
+    result = []
+    for ticket in tickets:
+        data = ticket.to_dict()
+        data["id"] = ticket.id
+        result.append(serialize_firestore_data(data))
+    
+    return {"tickets": result}
+
+@app.get("/api/admin/support/tickets/escalated", tags=["Admin"])
+async def get_escalated_tickets():
+    """Get escalated support tickets that need admin attention"""
+    db = get_db()
+    # Simplified query to avoid composite index requirement
+    tickets = db.collection("support_tickets").where("status", "==", "escalated").limit(50).stream()
+    
+    result = []
+    for ticket in tickets:
+        data = ticket.to_dict()
+        data["id"] = ticket.id
+        result.append(serialize_firestore_data(data))
+    
+    # Sort in Python instead
+    result.sort(key=lambda x: (x.get("priority", "medium"), x.get("created_at", "")), reverse=False)
+    
+    return {"tickets": result, "count": len(result)}
+
+@app.post("/api/admin/support/tickets/{ticket_id}/respond", tags=["Admin"])
+async def admin_respond_ticket(ticket_id: str, response: str, resolve: bool = False):
+    """Admin responds to support ticket"""
+    db = get_db()
+    update_data = {
+        "admin_response": response,
+        "admin_notes": response,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+        "status": "resolved" if resolve else "in_progress"
+    }
+    db.collection("support_tickets").document(ticket_id).update(update_data)
+    return {"status": "updated", "resolved": resolve}
+
+@app.post("/api/admin/support/tickets/{ticket_id}/resolve", tags=["Admin"])
+async def resolve_ticket(ticket_id: str, notes: str = ""):
+    """Mark support ticket as resolved"""
+    db = get_db()
+    db.collection("support_tickets").document(ticket_id).update({
+        "status": "resolved",
+        "admin_notes": notes,
+        "resolved_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    })
+    return {"status": "resolved"}
+
+
+# =========================
+# RATING SYSTEM
+# =========================
+
+@app.get("/api/rating/tags", tags=["Rating"])
+async def get_rating_tags():
+    """Get available rating tags"""
+    return RATING_TAGS
+
+@app.post("/api/rides/{ride_id}/rate/driver", tags=["Rating"])
+async def rate_driver_enhanced(ride_id: str, rating: RatingRequest, user_id: str = Depends(get_current_user_id)):
+    """Enhanced driver rating with tags"""
+    db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    ride = ride_ref.get()
+    
+    if not ride.exists:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    ride_data = ride.to_dict()
+    if ride_data.get("rider_id") != user_id:
+        raise HTTPException(status_code=403, detail="Only rider can rate driver")
+    
+    driver_id = ride_data.get("driver_id")
+    if not driver_id:
+        raise HTTPException(status_code=400, detail="No driver assigned")
+    
+    # Store rating
+    rating_data = {
+        "ride_id": ride_id,
+        "driver_id": driver_id,
+        "rider_id": user_id,
+        "rating": rating.rating,
+        "comment": rating.comment,
+        "tags": rating.tags or [],
+        "created_at": firestore.SERVER_TIMESTAMP
+    }
+    db.collection("driver_ratings").add(rating_data)
+    
+    # Update driver's average rating
+    driver_ref = db.collection("users").document(driver_id)
+    driver = driver_ref.get().to_dict()
+    current_rating = driver.get("rating", 5.0)
+    total_ratings = driver.get("total_ratings", 0)
+    
+    new_total = total_ratings + 1
+    new_rating = ((current_rating * total_ratings) + rating.rating) / new_total
+    
+    driver_ref.update({
+        "rating": round(new_rating, 2),
+        "total_ratings": new_total
+    })
+    
+    # Update ride
+    ride_ref.update({"driver_rating": rating.rating, "driver_rating_comment": rating.comment})
+    
+    return {"status": "rated", "new_driver_rating": round(new_rating, 2)}
+
+@app.post("/api/rides/{ride_id}/rate/rider", tags=["Rating"])
+async def rate_rider_enhanced(ride_id: str, rating: RatingRequest, user_id: str = Depends(get_current_user_id)):
+    """Enhanced rider rating by driver"""
+    db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    ride = ride_ref.get()
+    
+    if not ride.exists:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    ride_data = ride.to_dict()
+    if ride_data.get("driver_id") != user_id:
+        raise HTTPException(status_code=403, detail="Only driver can rate rider")
+    
+    rider_id = ride_data.get("rider_id")
+    
+    # Store rating
+    rating_data = {
+        "ride_id": ride_id,
+        "rider_id": rider_id,
+        "driver_id": user_id,
+        "rating": rating.rating,
+        "comment": rating.comment,
+        "tags": rating.tags or [],
+        "created_at": firestore.SERVER_TIMESTAMP
+    }
+    db.collection("rider_ratings").add(rating_data)
+    
+    # Update rider's average rating
+    rider_ref = db.collection("users").document(rider_id)
+    rider = rider_ref.get().to_dict()
+    current_rating = rider.get("rider_rating", 5.0)
+    total_ratings = rider.get("total_rider_ratings", 0)
+    
+    new_total = total_ratings + 1
+    new_rating = ((current_rating * total_ratings) + rating.rating) / new_total
+    
+    rider_ref.update({
+        "rider_rating": round(new_rating, 2),
+        "total_rider_ratings": new_total
+    })
+    
+    ride_ref.update({"rider_rating": rating.rating})
+    
+    return {"status": "rated", "new_rider_rating": round(new_rating, 2)}
+
+
+# =========================
+# FAVORITE LOCATIONS
+# =========================
+
+@app.get("/api/user/favorites", tags=["User"])
+async def get_favorite_locations(user_id: str = Depends(get_current_user_id)):
+    """Get user's favorite locations"""
+    db = get_db()
+    favorites = db.collection("users").document(user_id).collection("favorites").stream()
+    
+    result = []
+    for fav in favorites:
+        data = fav.to_dict()
+        data["id"] = fav.id
+        result.append(data)
+    
+    return {"favorites": result}
+
+@app.post("/api/user/favorites", tags=["User"])
+async def add_favorite_location(fav: FavoriteLocation, user_id: str = Depends(get_current_user_id)):
+    """Add a favorite location"""
+    db = get_db()
+    fav_data = {
+        "name": fav.name,
+        "address": fav.address,
+        "lat": fav.lat,
+        "lng": fav.lng,
+        "icon": fav.icon,
+        "created_at": firestore.SERVER_TIMESTAMP
+    }
+    ref = db.collection("users").document(user_id).collection("favorites").add(fav_data)
+    return {"status": "added", "id": ref[1].id}
+
+@app.delete("/api/user/favorites/{fav_id}", tags=["User"])
+async def delete_favorite_location(fav_id: str, user_id: str = Depends(get_current_user_id)):
+    """Delete a favorite location"""
+    db = get_db()
+    db.collection("users").document(user_id).collection("favorites").document(fav_id).delete()
+    return {"status": "deleted"}
+
+
+# =========================
+# SCHEDULED RIDES
+# =========================
+
+@app.post("/api/rides/schedule", tags=["Rides"])
+async def schedule_ride(ride: ScheduledRideRequest, user_id: str = Depends(get_current_user_id)):
+    """Schedule a ride for later"""
+    db = get_db()
+    
+    ride_data = {
+        "rider_id": user_id,
+        "pickup_address": ride.pickup_address,
+        "pickup_lat": ride.pickup_lat,
+        "pickup_lng": ride.pickup_lng,
+        "destination_address": ride.destination_address,
+        "destination_lat": ride.destination_lat,
+        "destination_lng": ride.destination_lng,
+        "scheduled_time": ride.scheduled_time,
+        "car_type": ride.car_type,
+        "payment_method": ride.payment_method,
+        "stops": ride.stops,
+        "status": "scheduled",
+        "created_at": firestore.SERVER_TIMESTAMP
+    }
+    
+    ref = db.collection("scheduled_rides").add(ride_data)
+    return {"status": "scheduled", "ride_id": ref[1].id, "scheduled_time": ride.scheduled_time}
+
+@app.get("/api/rides/scheduled", tags=["Rides"])
+async def get_scheduled_rides(user_id: str = Depends(get_current_user_id)):
+    """Get user's scheduled rides"""
+    db = get_db()
+    rides = db.collection("scheduled_rides").where("rider_id", "==", user_id).where("status", "==", "scheduled").stream()
+    
+    result = []
+    for ride in rides:
+        data = ride.to_dict()
+        data["id"] = ride.id
+        result.append(serialize_firestore_data(data))
+    
+    return {"scheduled_rides": result}
+
+@app.delete("/api/rides/scheduled/{ride_id}", tags=["Rides"])
+async def cancel_scheduled_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    """Cancel a scheduled ride"""
+    db = get_db()
+    ride_ref = db.collection("scheduled_rides").document(ride_id)
+    ride = ride_ref.get()
+    
+    if not ride.exists:
+        raise HTTPException(status_code=404, detail="Scheduled ride not found")
+    
+    if ride.to_dict().get("rider_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not your ride")
+    
+    ride_ref.update({"status": "cancelled", "cancelled_at": firestore.SERVER_TIMESTAMP})
+    return {"status": "cancelled"}
+
+
+# =========================
+# SOS & SAFETY
+# =========================
+
+@app.post("/api/sos", tags=["Safety"])
+async def trigger_sos(sos: SOSRequest, user_id: str = Depends(get_current_user_id)):
+    """Trigger emergency SOS"""
+    db = get_db()
+    
+    # Get user info - handle case where user might not exist
+    user_doc = db.collection("users").document(user_id).get()
+    user = user_doc.to_dict() if user_doc.exists else {}
+    
+    sos_data = {
+        "user_id": user_id,
+        "user_name": user.get("name", "Unknown") if user else "Unknown",
+        "user_phone": user.get("cellphone", "") if user else "",
+        "ride_id": sos.ride_id,
+        "lat": sos.lat,
+        "lng": sos.lng,
+        "message": sos.message,
+        "status": "active",
+        "created_at": firestore.SERVER_TIMESTAMP
+    }
+    
+    ref = db.collection("sos_alerts").add(sos_data)
+    
+    # Create urgent support ticket (sync, not await)
+    db.collection("support_tickets").add({
+        "user_id": user_id,
+        "user_name": user.get("name", "Unknown") if user else "Unknown",
+        "user_phone": user.get("cellphone", "") if user else "",
+        "message": f"SOS ALERT: {sos.message}. Location: {sos.lat}, {sos.lng}",
+        "ai_response": "EMERGENCY - SOS triggered by user",
+        "status": "escalated",
+        "priority": "urgent",
+        "category": "safety",
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    })
+    
+    return {
+        "status": "sos_triggered",
+        "alert_id": ref[1].id,
+        "message": "Emergency services have been notified. Help is on the way."
+    }
+
+@app.get("/api/admin/sos/active", tags=["Admin"])
+async def get_active_sos():
+    """Get active SOS alerts for admin"""
+    db = get_db()
+    # Simplified query to avoid composite index requirement
+    alerts = db.collection("sos_alerts").where("status", "==", "active").limit(50).stream()
+    
+    result = []
+    for alert in alerts:
+        data = alert.to_dict()
+        data["id"] = alert.id
+        result.append(serialize_firestore_data(data))
+    
+    # Sort by created_at descending in Python
+    result.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    
+    return {"alerts": result, "count": len(result)}
+
+@app.post("/api/admin/sos/{alert_id}/resolve", tags=["Admin"])
+async def resolve_sos(alert_id: str, notes: str = ""):
+    """Resolve SOS alert"""
+    db = get_db()
+    db.collection("sos_alerts").document(alert_id).update({
+        "status": "resolved",
+        "resolved_at": firestore.SERVER_TIMESTAMP,
+        "resolution_notes": notes
+    })
+    return {"status": "resolved"}
+
+
+# =========================
+# SHARE TRIP
+# =========================
+
+@app.post("/api/rides/{ride_id}/share", tags=["Rides"])
+async def share_trip(ride_id: str, share: ShareTripRequest, user_id: str = Depends(get_current_user_id)):
+    """Generate shareable trip link"""
+    db = get_db()
+    ride = db.collection("rides").document(ride_id).get()
+    
+    if not ride.exists:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    share_link = generate_share_link(ride_id)
+    
+    # Store share record
+    db.collection("trip_shares").add({
+        "ride_id": ride_id,
+        "shared_by": user_id,
+        "recipient_phone": share.recipient_phone,
+        "recipient_email": share.recipient_email,
+        "share_link": share_link,
+        "created_at": firestore.SERVER_TIMESTAMP
+    })
+    
+    return {
+        "share_link": share_link,
+        "message": "Share this link with friends/family to let them track your trip"
+    }
+
+@app.get("/api/track/{ride_id}", tags=["Public"])
+async def get_public_ride_tracking(ride_id: str):
+    """Public endpoint for tracking shared rides"""
+    db = get_db()
+    ride = db.collection("rides").document(ride_id).get()
+    
+    if not ride.exists:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    ride_data = ride.to_dict()
+    
+    # Return limited info for privacy
+    return {
+        "status": ride_data.get("status"),
+        "driver_location": ride_data.get("driver_location"),
+        "destination_address": ride_data.get("destination_address"),
+        "eta_minutes": ride_data.get("eta_minutes"),
+        "car_type": ride_data.get("car_type")
+    }
+
+
+# =========================
+# REFERRAL SYSTEM
+# =========================
+
+@app.get("/api/user/referral", tags=["User"])
+async def get_referral_code(user_id: str = Depends(get_current_user_id)):
+    """Get or generate user's referral code"""
+    db = get_db()
+    user_ref = db.collection("users").document(user_id)
+    user = user_ref.get().to_dict()
+    
+    referral_code = user.get("referral_code")
+    if not referral_code:
+        referral_code = generate_referral_code(user_id)
+        user_ref.update({"referral_code": referral_code})
+    
+    return {
+        "referral_code": referral_code,
+        "referral_link": f"https://taksi.ge/ref/{referral_code}",
+        "bonus_earned": user.get("referral_bonus_earned", 0),
+        "referrals_count": user.get("referrals_count", 0)
+    }
+
+@app.post("/api/user/referral/apply", tags=["User"])
+async def apply_referral_code(req: ReferralCodeRequest, user_id: str = Depends(get_current_user_id)):
+    """Apply a referral code"""
+    db = get_db()
+    
+    # Check if user already used a referral code
+    user_ref = db.collection("users").document(user_id)
+    user = user_ref.get().to_dict()
+    
+    if user.get("referred_by"):
+        raise HTTPException(status_code=400, detail="You have already used a referral code")
+    
+    # Find referrer
+    referrers = db.collection("users").where("referral_code", "==", req.code).limit(1).stream()
+    referrer = None
+    for r in referrers:
+        referrer = r
+        break
+    
+    if not referrer:
+        raise HTTPException(status_code=404, detail="Invalid referral code")
+    
+    referrer_id = referrer.id
+    if referrer_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot use your own referral code")
+    
+    # Apply bonuses
+    bonus = calculate_referral_bonus(True)
+    
+    # Update new user
+    user_ref.update({
+        "referred_by": referrer_id,
+        "referral_bonus": bonus["referee_bonus"],
+        "wallet_balance": firestore.Increment(bonus["referee_bonus"])
+    })
+    
+    # Update referrer
+    db.collection("users").document(referrer_id).update({
+        "referrals_count": firestore.Increment(1),
+        "referral_bonus_earned": firestore.Increment(bonus["referrer_bonus"]),
+        "wallet_balance": firestore.Increment(bonus["referrer_bonus"])
+    })
+    
+    return {
+        "status": "applied",
+        "bonus_received": bonus["referee_bonus"],
+        "message": f"You received ₾{bonus['referee_bonus']} bonus!"
+    }
+
+
+# =========================
+# DRIVER TIPS
+# =========================
+
+@app.post("/api/rides/{ride_id}/tip", tags=["Rides"])
+async def add_tip(ride_id: str, tip: TipRequest, user_id: str = Depends(get_current_user_id)):
+    """Add tip for driver after ride"""
+    db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    ride = ride_ref.get()
+    
+    if not ride.exists:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    ride_data = ride.to_dict()
+    if ride_data.get("rider_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not your ride")
+    
+    if ride_data.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Can only tip completed rides")
+    
+    driver_id = ride_data.get("driver_id")
+    if not driver_id:
+        raise HTTPException(status_code=400, detail="No driver to tip")
+    
+    # Update ride with tip
+    ride_ref.update({
+        "tip_amount": tip.amount,
+        "tip_added_at": firestore.SERVER_TIMESTAMP
+    })
+    
+    # Add to driver's earnings
+    db.collection("users").document(driver_id).update({
+        "earnings.balance": firestore.Increment(tip.amount),
+        "earnings.total_tips": firestore.Increment(tip.amount)
+    })
+    
+    return {"status": "tip_added", "amount": tip.amount}
+
+
+# =========================
+# TRIP RECEIPTS
+# =========================
+
+@app.get("/api/rides/{ride_id}/receipt", tags=["Rides"])
+async def get_trip_receipt(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    """Get detailed trip receipt"""
+    db = get_db()
+    ride = db.collection("rides").document(ride_id).get()
+    
+    if not ride.exists:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    ride_data = ride.to_dict()
+    
+    # Check authorization
+    if ride_data.get("rider_id") != user_id and ride_data.get("driver_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    receipt = {
+        "ride_id": ride_id,
+        "date": serialize_firestore_data(ride_data).get("created_at"),
+        "pickup": ride_data.get("pickup_address"),
+        "destination": ride_data.get("destination_address"),
+        "stops": ride_data.get("stops", []),
+        "distance_km": ride_data.get("actual_distance_km", ride_data.get("estimated_distance")),
+        "duration_min": ride_data.get("actual_duration_min"),
+        "car_type": ride_data.get("car_type"),
+        "payment_method": ride_data.get("payment_method"),
+        "fare_breakdown": {
+            "base_fare": ride_data.get("fare_breakdown", {}).get("base_fare", 0),
+            "distance_fare": ride_data.get("fare_breakdown", {}).get("distance_fare", 0),
+            "time_fare": ride_data.get("fare_breakdown", {}).get("time_fare", 0),
+            "wait_fare": ride_data.get("fare_breakdown", {}).get("wait_fare", 0),
+            "stop_fees": ride_data.get("fare_breakdown", {}).get("stop_fees", 0),
+            "surge_fee": ride_data.get("fare_breakdown", {}).get("surge_fee", 0),
+            "card_fee": ride_data.get("fare_breakdown", {}).get("card_fee", 0),
+        },
+        "subtotal": ride_data.get("estimated_fare", 0),
+        "tip": ride_data.get("tip_amount", 0),
+        "total": ride_data.get("final_fare", ride_data.get("estimated_fare", 0)),
+        "driver_name": ride_data.get("driver_name"),
+        "driver_rating": ride_data.get("driver_rating"),
+        "vehicle": ride_data.get("vehicle_info", {})
+    }
+    
+    return receipt
+
+
+# =========================
+# USER LANGUAGE PREFERENCE
+# =========================
+
+@app.post("/api/user/language", tags=["User"])
+async def set_language_preference(lang: str, user_id: str = Depends(get_current_user_id)):
+    """Set user's preferred language"""
+    db = get_db()
+    db.collection("users").document(user_id).update({"preferred_language": lang})
+    return {"status": "updated", "language": lang}
+
+@app.get("/api/user/language", tags=["User"])
+async def get_language_preference(user_id: str = Depends(get_current_user_id)):
+    """Get user's preferred language"""
+    db = get_db()
+    user = db.collection("users").document(user_id).get().to_dict()
+    return {"language": user.get("preferred_language", "en")}
+
+
+# =========================
+# DRIVER CAMPAIGNS
+# =========================
+
+from driver_campaigns import (
+    CreateCampaignRequest, UpdateCampaignRequest, CampaignType, CampaignStatus,
+    CAMPAIGN_TEMPLATES, calculate_campaign_progress, get_campaign_emoji
+)
+
+@app.get("/api/admin/campaigns/templates", tags=["Campaigns"])
+async def get_campaign_templates():
+    """Get available campaign templates for quick creation"""
+    return {"templates": CAMPAIGN_TEMPLATES}
+
+@app.post("/api/admin/campaigns", tags=["Campaigns"])
+async def create_campaign(campaign: CreateCampaignRequest):
+    """Create a new driver incentive campaign"""
+    db = get_db()
+    
+    campaign_data = {
+        "title": campaign.title,
+        "description": campaign.description,
+        "campaign_type": campaign.campaign_type,
+        "target_value": campaign.target_value,
+        "bonus_amount": campaign.bonus_amount,
+        "start_date": campaign.start_date,
+        "end_date": campaign.end_date,
+        "min_rating": campaign.min_rating,
+        "area_coords": campaign.area_coords,
+        "peak_hours": campaign.peak_hours,
+        "max_participants": campaign.max_participants,
+        "is_recurring": campaign.is_recurring,
+        "icon": campaign.icon,
+        "color": campaign.color,
+        "status": "active",
+        "participants_count": 0,
+        "completions_count": 0,
+        "total_bonus_paid": 0,
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    }
+    
+    ref = db.collection("campaigns").add(campaign_data)
+    
+    return {
+        "status": "created",
+        "campaign_id": ref[1].id,
+        "message": f"Campaign '{campaign.title}' created successfully"
+    }
+
+@app.post("/api/admin/campaigns/from-template/{template_id}", tags=["Campaigns"])
+async def create_campaign_from_template(template_id: str, start_date: str, end_date: str):
+    """Create a campaign from a pre-defined template"""
+    if template_id not in CAMPAIGN_TEMPLATES:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    template = CAMPAIGN_TEMPLATES[template_id]
+    db = get_db()
+    
+    campaign_data = {
+        **template,
+        "start_date": start_date,
+        "end_date": end_date,
+        "status": "active",
+        "participants_count": 0,
+        "completions_count": 0,
+        "total_bonus_paid": 0,
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    }
+    
+    ref = db.collection("campaigns").add(campaign_data)
+    
+    return {
+        "status": "created",
+        "campaign_id": ref[1].id,
+        "message": f"Campaign '{template['title']}' created from template"
+    }
+
+@app.get("/api/admin/campaigns", tags=["Campaigns"])
+async def get_all_campaigns(status: str = None):
+    """Get all campaigns for admin"""
+    db = get_db()
+    
+    if status:
+        campaigns = db.collection("campaigns").where("status", "==", status).stream()
+    else:
+        campaigns = db.collection("campaigns").stream()
+    
+    result = []
+    for campaign in campaigns:
+        data = campaign.to_dict()
+        data["id"] = campaign.id
+        data["emoji"] = get_campaign_emoji(data.get("icon", "gift"))
+        result.append(serialize_firestore_data(data))
+    
+    # Sort by created_at descending
+    result.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    
+    return {"campaigns": result}
+
+@app.get("/api/admin/campaigns/{campaign_id}", tags=["Campaigns"])
+async def get_campaign_details(campaign_id: str):
+    """Get detailed campaign info including participants"""
+    db = get_db()
+    
+    campaign = db.collection("campaigns").document(campaign_id).get()
+    if not campaign.exists:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    campaign_data = campaign.to_dict()
+    campaign_data["id"] = campaign_id
+    campaign_data["emoji"] = get_campaign_emoji(campaign_data.get("icon", "gift"))
+    
+    # Get participants
+    participants = db.collection("campaign_progress").where("campaign_id", "==", campaign_id).stream()
+    
+    participant_list = []
+    for p in participants:
+        p_data = p.to_dict()
+        # Get driver info
+        driver = db.collection("users").document(p_data.get("driver_id", "")).get()
+        if driver.exists:
+            driver_data = driver.to_dict()
+            p_data["driver_name"] = driver_data.get("name", "Unknown")
+            p_data["driver_phone"] = driver_data.get("cellphone", "")
+        participant_list.append(serialize_firestore_data(p_data))
+    
+    campaign_data["participants"] = participant_list
+    
+    return serialize_firestore_data(campaign_data)
+
+@app.put("/api/admin/campaigns/{campaign_id}", tags=["Campaigns"])
+async def update_campaign(campaign_id: str, update: UpdateCampaignRequest):
+    """Update campaign details"""
+    db = get_db()
+    
+    update_data = {"updated_at": firestore.SERVER_TIMESTAMP}
+    if update.title:
+        update_data["title"] = update.title
+    if update.description:
+        update_data["description"] = update.description
+    if update.bonus_amount:
+        update_data["bonus_amount"] = update.bonus_amount
+    if update.end_date:
+        update_data["end_date"] = update.end_date
+    if update.status:
+        update_data["status"] = update.status
+    
+    db.collection("campaigns").document(campaign_id).update(update_data)
+    
+    return {"status": "updated"}
+
+@app.delete("/api/admin/campaigns/{campaign_id}", tags=["Campaigns"])
+async def delete_campaign(campaign_id: str):
+    """Delete/cancel a campaign"""
+    db = get_db()
+    db.collection("campaigns").document(campaign_id).update({
+        "status": "cancelled",
+        "updated_at": firestore.SERVER_TIMESTAMP
+    })
+    return {"status": "cancelled"}
+
+# --- Driver-facing campaign endpoints ---
+
+@app.get("/api/driver/campaigns", tags=["Campaigns"])
+async def get_active_campaigns_for_driver(user_id: str = Depends(get_current_user_id)):
+    """Get active campaigns available for driver"""
+    db = get_db()
+    
+    # Get driver info for eligibility check
+    driver = db.collection("users").document(user_id).get()
+    driver_data = driver.to_dict() if driver.exists else {}
+    driver_rating = driver_data.get("rating", 5.0)
+    
+    # Get active campaigns
+    campaigns = db.collection("campaigns").where("status", "==", "active").stream()
+    
+    result = []
+    for campaign in campaigns:
+        c_data = campaign.to_dict()
+        c_data["id"] = campaign.id
+        
+        # Check eligibility
+        min_rating = c_data.get("min_rating")
+        if min_rating and driver_rating < min_rating:
+            c_data["eligible"] = False
+            c_data["eligibility_reason"] = f"Requires {min_rating}+ rating"
+        else:
+            c_data["eligible"] = True
+        
+        # Get driver's progress
+        progress_query = db.collection("campaign_progress").where("campaign_id", "==", campaign.id).where("driver_id", "==", user_id).limit(1).stream()
+        
+        progress_data = None
+        for p in progress_query:
+            progress_data = p.to_dict()
+            break
+        
+        if progress_data:
+            c_data["joined"] = True
+            c_data["progress"] = {
+                "current": progress_data.get("current_progress", 0),
+                "target": c_data.get("target_value", 0),
+                "percentage": round((progress_data.get("current_progress", 0) / c_data.get("target_value", 1)) * 100, 1),
+                "completed": progress_data.get("completed", False)
+            }
+        else:
+            c_data["joined"] = False
+            c_data["progress"] = {
+                "current": 0,
+                "target": c_data.get("target_value", 0),
+                "percentage": 0,
+                "completed": False
+            }
+        
+        c_data["emoji"] = get_campaign_emoji(c_data.get("icon", "gift"))
+        result.append(serialize_firestore_data(c_data))
+    
+    return {"campaigns": result}
+
+@app.post("/api/driver/campaigns/{campaign_id}/join", tags=["Campaigns"])
+async def join_campaign(campaign_id: str, user_id: str = Depends(get_current_user_id)):
+    """Driver joins a campaign"""
+    db = get_db()
+    
+    # Check if campaign exists and is active
+    campaign = db.collection("campaigns").document(campaign_id).get()
+    if not campaign.exists:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    c_data = campaign.to_dict()
+    if c_data.get("status") != "active":
+        raise HTTPException(status_code=400, detail="Campaign is not active")
+    
+    # Check max participants
+    if c_data.get("max_participants"):
+        if c_data.get("participants_count", 0) >= c_data.get("max_participants"):
+            raise HTTPException(status_code=400, detail="Campaign is full")
+    
+    # Check eligibility (rating)
+    driver = db.collection("users").document(user_id).get()
+    if driver.exists and c_data.get("min_rating"):
+        driver_rating = driver.to_dict().get("rating", 5.0)
+        if driver_rating < c_data.get("min_rating"):
+            raise HTTPException(status_code=400, detail=f"Requires {c_data.get('min_rating')}+ rating")
+    
+    # Check if already joined
+    existing = db.collection("campaign_progress").where("campaign_id", "==", campaign_id).where("driver_id", "==", user_id).limit(1).stream()
+    for _ in existing:
+        raise HTTPException(status_code=400, detail="Already joined this campaign")
+    
+    # Create progress entry
+    db.collection("campaign_progress").add({
+        "campaign_id": campaign_id,
+        "driver_id": user_id,
+        "current_progress": 0,
+        "completed": False,
+        "bonus_paid": False,
+        "joined_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    })
+    
+    # Update participant count
+    db.collection("campaigns").document(campaign_id).update({
+        "participants_count": firestore.Increment(1)
+    })
+    
+    return {"status": "joined", "message": f"You've joined '{c_data.get('title')}'!"}
+
+@app.get("/api/driver/campaigns/my-progress", tags=["Campaigns"])
+async def get_my_campaign_progress(user_id: str = Depends(get_current_user_id)):
+    """Get driver's progress in all joined campaigns"""
+    db = get_db()
+    
+    progress_docs = db.collection("campaign_progress").where("driver_id", "==", user_id).stream()
+    
+    result = []
+    for p in progress_docs:
+        p_data = p.to_dict()
+        
+        # Get campaign details
+        campaign = db.collection("campaigns").document(p_data.get("campaign_id")).get()
+        if campaign.exists:
+            c_data = campaign.to_dict()
+            c_data["id"] = campaign.id
+            c_data["progress"] = {
+                "current": p_data.get("current_progress", 0),
+                "target": c_data.get("target_value", 0),
+                "percentage": round((p_data.get("current_progress", 0) / c_data.get("target_value", 1)) * 100, 1),
+                "completed": p_data.get("completed", False),
+                "bonus_paid": p_data.get("bonus_paid", False)
+            }
+            c_data["emoji"] = get_campaign_emoji(c_data.get("icon", "gift"))
+            result.append(serialize_firestore_data(c_data))
+    
+    return {"campaigns": result}
+
+# --- Internal: Update campaign progress (called after ride completion) ---
+async def update_driver_campaign_progress(driver_id: str, ride_data: dict):
+    """Update driver's progress in active campaigns after ride completion"""
+    db = get_db()
+    
+    # Get driver's active campaign participations
+    participations = db.collection("campaign_progress").where("driver_id", "==", driver_id).where("completed", "==", False).stream()
+    
+    for p in participations:
+        p_data = p.to_dict()
+        campaign_id = p_data.get("campaign_id")
+        
+        # Get campaign details
+        campaign = db.collection("campaigns").document(campaign_id).get()
+        if not campaign.exists:
+            continue
+        
+        c_data = campaign.to_dict()
+        if c_data.get("status") != "active":
+            continue
+        
+        campaign_type = c_data.get("campaign_type")
+        increment = 0
+        
+        # Calculate increment based on campaign type
+        if campaign_type == "rides_count":
+            increment = 1
+        
+        elif campaign_type == "earnings_target":
+            increment = ride_data.get("driver_earnings", 0)
+        
+        elif campaign_type == "peak_hours":
+            # Check if ride was during peak hours
+            peak_hours = c_data.get("peak_hours", [])
+            ride_hour = datetime.now().hour
+            if ride_hour in peak_hours:
+                increment = 1
+        
+        elif campaign_type == "rating_bonus":
+            # Only count if driver maintains minimum rating
+            min_rating = c_data.get("min_rating", 4.5)
+            driver = db.collection("users").document(driver_id).get()
+            if driver.exists and driver.to_dict().get("rating", 0) >= min_rating:
+                increment = 1
+        
+        if increment > 0:
+            new_progress = p_data.get("current_progress", 0) + increment
+            target = c_data.get("target_value", 0)
+            completed = new_progress >= target
+            
+            update_data = {
+                "current_progress": new_progress,
+                "updated_at": firestore.SERVER_TIMESTAMP
+            }
+            
+            if completed and not p_data.get("completed"):
+                update_data["completed"] = True
+                update_data["completed_at"] = firestore.SERVER_TIMESTAMP
+                
+                # Pay bonus
+                bonus_amount = c_data.get("bonus_amount", 0)
+                db.collection("users").document(driver_id).update({
+                    "earnings.balance": firestore.Increment(bonus_amount),
+                    "earnings.campaign_bonuses": firestore.Increment(bonus_amount)
+                })
+                
+                update_data["bonus_paid"] = True
+                update_data["bonus_paid_at"] = firestore.SERVER_TIMESTAMP
+                
+                # Update campaign stats
+                db.collection("campaigns").document(campaign_id).update({
+                    "completions_count": firestore.Increment(1),
+                    "total_bonus_paid": firestore.Increment(bonus_amount)
+                })
+            
+            db.collection("campaign_progress").document(p.id).update(update_data)
+
+
+# =========================
 # HEALTH
 # =========================
 

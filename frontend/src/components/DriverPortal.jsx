@@ -885,7 +885,7 @@ const DriverDashboard = () => {
           
           <div 
             // 🔥 FIX 3: translate-y pushes the box down by 100% of its height, minus 3rem (the handle)
-            className={`pointer-events-auto w-full max-w-2xl bg-black/85 backdrop-blur-2xl border border-white/10 shadow-[0_-15px_40px_rgba(0,0,0,0.8)] rounded-3xl flex flex-col overflow-hidden transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+            className={`pointer-events-auto w-full max-w-2xl bg-black/85 backdrop-blur-2xl border border-white/10 shadow-[0_-15px_40px_rgba(0,0,0,0.8)] rounded-3xl flex flex-col overflow-hidden transition-transform duration-500 ease-out
               isMinimized && activeRide ? "translate-y-[calc(100%-3rem)]" : "translate-y-0"
             }`}
             style={{ maxHeight: "70vh" }}
