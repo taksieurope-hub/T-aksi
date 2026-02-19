@@ -1279,17 +1279,6 @@ const DriverDashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Trip Completion Modal - Shows after completing a ride */}
-      <DriverTripCompletionModal
-        isOpen={!!completedRide}
-        onClose={() => setCompletedRide(null)}
-        fareAmount={completedRide?.final_fare}
-        paymentMethod={completedRide?.payment_method}
-        riderName={completedRide?.rider_name}
-        onConfirm={() => setCompletedRide(null)}
-      />
-
     </div>
   );
 }; // <--- THIS BRACKET WAS MISSING!
