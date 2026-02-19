@@ -10,8 +10,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Emergent Integrations for Gemini
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+import google.generativeai as genai
+
+# Configure the official Gemini SDK
+genai.configure(api_key=os.environ.get("EMERGENT_LLM_KEY"))
 
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 
@@ -86,21 +88,19 @@ class TipRequest(BaseModel):
 # ============ AI TRANSLATION SERVICE ============
 
 async def translate_text(text: str, source_lang: str, target_lang: str) -> str:
-    """Translate text using Gemini 3 Flash"""
+    """Translate text using official Gemini SDK"""
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_KEY,
-            session_id=f"translate_{datetime.now().timestamp()}",
-            system_message="""You are a professional translator. Translate the given text accurately while preserving tone and meaning. 
-            Only respond with the translation, nothing else. Do not add explanations or notes."""
-        ).with_model("gemini", "gemini-3-flash-preview")
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            system_instruction="You are a professional translator. Translate the given text accurately while preserving tone and meaning. Only respond with the translation, nothing else. Do not add explanations or notes."
+        )
         
         prompt = f"Translate from {source_lang} to {target_lang}: {text}"
         if source_lang == "auto":
             prompt = f"Detect the language and translate to {target_lang}: {text}"
         
-        response = await chat.send_message(UserMessage(text=prompt))
-        return response.strip()
+        response = model.generate_content(prompt)
+        return response.text.strip()
     except Exception as e:
         print(f"Translation error: {e}")
         return text  # Return original if translation fails
@@ -148,26 +148,26 @@ async def process_support_message(message: str, user_context: dict = None) -> di
         if user_context:
             context_info = f"\nUser info: {user_context.get('name', 'Unknown')}, Phone: {user_context.get('phone', 'N/A')}, Total rides: {user_context.get('ride_count', 0)}"
         
-        chat = LlmChat(
-            api_key=EMERGENT_KEY,
-            session_id=f"support_{datetime.now().timestamp()}",
-            system_message=SUPPORT_SYSTEM_PROMPT + context_info
-        ).with_model("gemini", "gemini-3-flash-preview")
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            system_instruction=SUPPORT_SYSTEM_PROMPT + context_info
+        )
         
-        response = await chat.send_message(UserMessage(text=message))
+        response = model.generate_content(message)
+        ai_text = response.text.strip()
         
         # Check if AI flagged for escalation
-        needs_escalation = response.strip().upper().startswith("ESCALATE:")
+        needs_escalation = ai_text.upper().startswith("ESCALATE:")
         priority = "medium"
         
         if needs_escalation:
-            if "URGENT" in response.upper()[:50]:
+            if "URGENT" in ai_text.upper()[:50]:
                 priority = "urgent"
-            elif "HIGH" in response.upper()[:50]:
+            elif "HIGH" in ai_text.upper()[:50]:
                 priority = "high"
         
         return {
-            "ai_response": response,
+            "ai_response": ai_text,
             "needs_escalation": needs_escalation,
             "priority": priority,
             "category": categorize_message(message)
