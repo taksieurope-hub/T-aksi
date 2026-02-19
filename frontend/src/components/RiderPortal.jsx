@@ -19,6 +19,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
+import RatingModal from "./RatingModal";
+
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket,
   Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned,
@@ -1565,19 +1567,6 @@ const RiderDashboard = () => {
           </TabsContent>
         </Tabs>
       </main>
-
-      {/* Trip Completion Modal */}
-      <RiderTripCompletionModal
-        isOpen={!!completedRideData}
-        onClose={() => setCompletedRideData(null)}
-        fareAmount={completedRideData?.final_fare}
-        paymentMethod={completedRideData?.payment_method}
-        driverName={completedRideData?.driver_name}
-        onRateDriver={() => {
-          setShowRatingModal(true);
-          setCompletedRideData(null);
-        }}
-      />
     </div>
   );
 };
