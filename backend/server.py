@@ -2599,7 +2599,7 @@ async def rate_rider_enhanced(ride_id: str, rating: RatingRequest, user_id: str 
     if ride_data.get("driver_id") != user_id:
         raise HTTPException(status_code=403, detail="Only driver can rate rider")
     
-    rider_id = ride_data.get("rider_id")
+    rider_id = ride_data.get("userId")
     
     # Store rating
     rating_data = {

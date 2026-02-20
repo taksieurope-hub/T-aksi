@@ -11,7 +11,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Emergent Integrations for Gemini
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+# backend/ai_features.py
+
+try:
+    # Try to load the logic you want
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    HAS_AI = True
+except ImportError:
+    # If it's missing (like on Render), don't crash!
+    print("⚠️ AI Library missing. Using fallback logic.")
+    HAS_AI = False
+
+# Now, keep all your functions below, but add a simple 'if' check:
+async def translate_text(text, source_lang, target_lang):
+    if not HAS_AI:
+        return text  # Just return original text if AI is offline
+    
+    # ... your original logic continues here ...
 
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 
