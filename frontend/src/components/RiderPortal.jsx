@@ -1566,21 +1566,21 @@ const RiderDashboard = () => {
         </Tabs>
       </main>
 
-      {/* Trip Completion Modal */}
-      <RiderTripCompletionModal
+      {/* Trip Completion Modal - NOW FIXED */}
+      <LocalRiderModal
         isOpen={!!completedRideData}
         onClose={() => setCompletedRideData(null)}
-        fareAmount={completedRideData?.final_fare}
-        paymentMethod={completedRideData?.payment_method}
-        driverName={completedRideData?.driver_name}
-        onRateDriver={() => {
-          setShowRatingModal(true);
-          setCompletedRideData(null);
+        tripDetails={{
+          cost: completedRideData?.final_fare,
+          paymentMethod: completedRideData?.payment_method,
+          driverName: completedRideData?.driver_name
         }}
       />
     </div>
   );
 };
+
+
 
 // Main Router
 const RiderPortal = () => {
