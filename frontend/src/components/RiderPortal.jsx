@@ -685,24 +685,6 @@ const WaitTimer = ({ arrivedAt, carType }) => {
   }
 };
 
-const LocalRiderModal = ({ isOpen, tripDetails }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-5">
-      <div className="bg-white p-8 rounded-xl max-w-sm w-full text-center shadow-2xl">
-        <h2 className="text-2xl font-bold mb-2 text-black">You've Arrived! 🏁</h2>
-        <p className="text-gray-600 mb-6">Hope you had a great trip.</p>
-        <div className="bg-gray-100 p-4 rounded-lg mb-6 text-left">
-          <p className="my-1 text-gray-800"><strong>Total Fare:</strong> ₾{tripDetails?.cost || '0.00'}</p>
-        </div>
-        <div className="w-full p-3 bg-black text-white rounded-lg font-bold text-center">
-          Completing trip...
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // Dashboard Component
 const RiderDashboard = () => {
   const { user, logout } = useAuth();
@@ -1561,20 +1543,10 @@ const RiderDashboard = () => {
             </Card>
           </TabsContent>
         </Tabs>
-        
-        {/* Trip Completion Modal */}
-        <LocalRiderModal 
-          isOpen={activeRide?.status === "completed"} 
-          tripDetails={{
-            cost: activeRide?.final_fare?.toFixed(2) || activeRide?.estimated_fare?.toFixed(2)
-          }}
-        />
       </main>
     </div>
   );
 };
-
-
 
 // Main Router
 const RiderPortal = () => {
