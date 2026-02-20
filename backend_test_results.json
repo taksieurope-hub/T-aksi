@@ -1,0 +1,21 @@
+{
+  "tests_run": 7,
+  "tests_passed": 6,
+  "success_rate": 0.8571428571428571,
+  "critical_tests_passed": true,
+  "overall_success": true,
+  "test_results": [
+    {
+      "test": "Fare Estimation",
+      "endpoint": "rides/estimate?car_type=economy&distance=5",
+      "method": "GET",
+      "expected_status": 200,
+      "actual_status": 404,
+      "success": false,
+      "timestamp": "2026-02-19T09:14:17.654164",
+      "error_data": {
+        "detail": "Ride not found"
+      }
+    }
+  ]
+}

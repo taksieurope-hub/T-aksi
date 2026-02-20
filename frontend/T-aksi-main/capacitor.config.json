@@ -1,6 +1,0 @@
-{
-  "appId": "com.taksi.driver",
-  "appName": "T-Aksi Driver",
-  "webDir": "frontend/dist",
-  "bundledWebRuntime": false
-}

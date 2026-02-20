@@ -1,0 +1,208 @@
+{
+  "brand_identity": {
+    "name": "T'aksi",
+    "tone": "Premium, Futuristic, Efficient, Secure",
+    "theme": "Cyber-Noir Luxury",
+    "core_values": [
+      "Speed without Chaos",
+      "Luxury in Motion",
+      "Technology that Disappears"
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Clash Display, sans-serif",
+      "body": "Manrope, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "display": "text-6xl md:text-8xl font-semibold tracking-tighter leading-none",
+      "h1": "text-4xl md:text-6xl font-medium tracking-tight",
+      "h2": "text-3xl md:text-4xl font-medium tracking-tight",
+      "h3": "text-2xl md:text-3xl font-medium",
+      "body_lg": "text-lg md:text-xl font-normal leading-relaxed text-zinc-300",
+      "body_base": "text-base font-normal leading-relaxed text-zinc-400",
+      "caption": "text-sm font-medium tracking-wide uppercase text-zinc-500",
+      "label": "text-xs font-bold tracking-widest uppercase text-zinc-600"
+    },
+    "installation": {
+      "instructions": "Add @fontsource/clash-display and @fontsource/manrope to package.json",
+      "import": "import '@fontsource/clash-display'; import '@fontsource/manrope';"
+    }
+  },
+  "colors": {
+    "palette": {
+      "background": {
+        "DEFAULT": "#020202",
+        "secondary": "#09090b",
+        "tertiary": "#121214",
+        "glass": "rgba(2, 2, 2, 0.7)"
+      },
+      "foreground": {
+        "DEFAULT": "#ffffff",
+        "muted": "#a1a1aa",
+        "dim": "#52525b"
+      },
+      "primary": {
+        "DEFAULT": "#00d4ff",
+        "glow": "rgba(0, 212, 255, 0.4)",
+        "dim": "#0090b0"
+      },
+      "secondary": {
+        "DEFAULT": "#00ff88",
+        "glow": "rgba(0, 255, 136, 0.4)",
+        "dim": "#00b05e"
+      },
+      "accent": {
+        "purple": "#7c3aed",
+        "error": "#ff3333",
+        "warning": "#fbbf24"
+      },
+      "border": {
+        "DEFAULT": "#27272a",
+        "active": "#3f3f46",
+        "glow": "rgba(255, 255, 255, 0.1)"
+      }
+    },
+    "gradients": {
+      "primary": "linear-gradient(135deg, #00d4ff 0%, #0090b0 100%)",
+      "secondary": "linear-gradient(135deg, #00ff88 0%, #00b05e 100%)",
+      "dark_glass": "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": {
+      "base": "backdrop-blur-xl bg-black/60 border border-white/5",
+      "heavy": "backdrop-blur-2xl bg-black/80 border border-white/10 shadow-2xl",
+      "hover": "hover:bg-white/5 transition-colors duration-300"
+    },
+    "borders": {
+      "subtle": "border border-zinc-800",
+      "glow": "border border-cyan-500/30 shadow-[0_0_15px_rgba(0,212,255,0.1)]",
+      "active": "border-l-4 border-l-cyan-400"
+    },
+    "shadows": {
+      "neon_cyan": "0 0 20px rgba(0, 212, 255, 0.15)",
+      "neon_green": "0 0 20px rgba(0, 255, 136, 0.15)",
+      "card": "0 10px 40px -10px rgba(0,0,0,0.5)"
+    },
+    "radius": {
+      "button": "rounded-full",
+      "card": "rounded-2xl",
+      "input": "rounded-xl"
+    }
+  },
+  "layout_strategies": {
+    "landing_page": {
+      "type": "Asymmetric Scroll",
+      "structure": [
+        "Hero: Full screen video/image with bottom-left text alignment.",
+        "Features: Bento Grid (Grid Mode A) with glass cards.",
+        "Driver CTA: Split screen (Image Right, Text Left) with parallax.",
+        "Footer: Minimal, massive typography."
+      ]
+    },
+    "rider_dashboard": {
+      "type": "Map-First Overlay",
+      "structure": [
+        "Map: Full screen z-0.",
+        "Nav: Floating bottom sheet (Glassmorphism).",
+        "Search: Top floating bar with pill shape.",
+        "Ride Status: Bottom sliding panel."
+      ]
+    },
+    "driver_dashboard": {
+      "type": "HUD (Heads Up Display)",
+      "structure": [
+        "Header: High contrast metrics (Earnings, Status).",
+        "Map: Central focus with high-contrast route lines.",
+        "Requests: Large, easy-tap overlay cards."
+      ]
+    },
+    "admin_dashboard": {
+      "type": "Density Grid",
+      "structure": [
+        "Sidebar: Slim, iconic.",
+        "Grid: 12-column bento grid for stats.",
+        "Tables: Striped, dense, with sticky headers."
+      ]
+    }
+  },
+  "components": {
+    "Button": {
+      "path": "@/components/ui/button",
+      "variants": {
+        "primary": "bg-primary text-black font-bold hover:shadow-[0_0_20px_rgba(0,212,255,0.4)] transition-all",
+        "secondary": "bg-secondary text-black font-bold hover:shadow-[0_0_20px_rgba(0,255,136,0.4)] transition-all",
+        "outline": "border border-zinc-700 hover:bg-zinc-800 text-white",
+        "ghost": "hover:bg-zinc-800/50 text-zinc-300 hover:text-white"
+      }
+    },
+    "Input": {
+      "path": "@/components/ui/input",
+      "style": "h-14 bg-zinc-900/50 border-zinc-800 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 rounded-xl text-lg placeholder:text-zinc-600 transition-all"
+    },
+    "Card": {
+      "path": "@/components/ui/card",
+      "style": "bg-zinc-950/40 backdrop-blur-md border-zinc-800/50 shadow-xl"
+    },
+    "Map": {
+      "library": "@react-google-maps/api or leaflet",
+      "style_json": "Use a dark mode JSON style. Reduce labels. High contrast roads. Cyan water. Grey land."
+    }
+  },
+  "assets": {
+    "images": [
+      {
+        "category": "Hero Background",
+        "url": "https://images.pexels.com/photos/13331881/pexels-photo-13331881.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Sleek black luxury sedan at night"
+      },
+      {
+        "category": "Driver Feature",
+        "url": "https://images.pexels.com/photos/8863268/pexels-photo-8863268.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Dynamic driving shot"
+      }
+    ],
+    "icons": {
+      "library": "lucide-react",
+      "style": "Stroke width 1.5px (thinner/elegant). Size 20px or 24px."
+    }
+  },
+  "motion": {
+    "page_transition": {
+      "initial": { "opacity": 0, "y": 20 },
+      "animate": { "opacity": 1, "y": 0 },
+      "exit": { "opacity": 0, "y": -20 },
+      "transition": { "duration": 0.4, "ease": "circOut" }
+    },
+    "micro_interactions": {
+      "hover_lift": "hover:-translate-y-1 transition-transform duration-300",
+      "tap_shrink": "active:scale-95 transition-transform duration-100"
+    }
+  },
+  "accessibility": {
+    "rules": [
+      "Text contrast must be AA compliant (4.5:1).",
+      "Focus rings must be visible (Cyan glow).",
+      "Touch targets must be at least 44x44px."
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Install 'framer-motion', 'clsx', 'tailwind-merge' immediately.",
+    "Use the provided hex codes for all custom colors in tailwind.config.js.",
+    "Do NOT use default shadcn styles. Override them with the 'glass' and 'neon' styles defined here.",
+    "For the Map, ensure it consumes the full height of the container (h-full w-full absolute inset-0).",
+    "Implement the 'Asymmetric Scroll' layout for the landing page using framer-motion variants.",
+    "Ensure all interactive elements have data-testid attributes.",
+    "Use 'sonner' for notifications.",
+    "Create a 'Layout' component that handles the Navbar/Sidebar logic based on the user role (Rider/Driver/Admin)."
+  ],
+  "universal_guidelines": [
+    "Avoid generic centered layouts.",
+    "Use deep, rich blacks (#020202), not flat #000000.",
+    "Interactive elements must have hover/active states.",
+    "Use generous padding (p-6, p-8) inside cards.",
+    "Don't clutter the map. Only show essential pins."
+  ]
+}
