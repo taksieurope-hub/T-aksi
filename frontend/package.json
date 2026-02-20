@@ -19,7 +19,8 @@
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.5.2",
     "next-themes": "^0.3.0",
-    "sonner": "^1.5.0"
+    "sonner": "^1.5.0",
+    "@paypal/react-paypal-js": "^8.5.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
