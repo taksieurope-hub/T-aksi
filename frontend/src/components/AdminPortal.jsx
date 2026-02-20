@@ -7,9 +7,6 @@ import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
 
-// Import Admin Support Panel
-import AdminSupportPanel from "@/components/AdminSupportPanel";
-import AdminCampaignsPanel from "@/components/AdminCampaignsPanel";
 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";

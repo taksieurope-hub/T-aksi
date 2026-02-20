@@ -125,6 +125,37 @@ const DriverAuth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ name: "", surname: "", cellphone: "", password: "" });
+  const [balance, setBalance] = useState(150.50); // Mapped to driver's actual DB balance later
+const [withdrawAmount, setWithdrawAmount] = useState("");
+const [withdrawStatus, setWithdrawStatus] = useState(null);
+
+const handleWithdrawRequest = async (e) => {
+  e.preventDefault();
+  const amount = parseFloat(withdrawAmount);
+
+  if (isNaN(amount) || amount <= 0 || amount > balance) {
+    setWithdrawStatus({ type: 'error', message: 'Invalid amount or insufficient funds.' });
+    return;
+  }
+
+  setWithdrawStatus({ type: 'loading', message: 'Sending to Admin...' });
+
+  try {
+    // 1. Send the actual request to your Python backend!
+    const res = await api.post('/api/withdrawals/request', {
+      driver_id: user.id, // Assuming you have the logged-in user's ID
+      amount: amount
+    });
+
+    // 2. Update UI on success
+    setBalance(prev => prev - amount); 
+    setWithdrawStatus({ type: 'success', message: 'Sent to Admin for approval!' });
+    setWithdrawAmount("");
+
+  } catch (error) {
+    setWithdrawStatus({ type: 'error', message: 'Failed to send request.' });
+  }
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -25,9 +25,73 @@ from pydantic import BaseModel, Field, ConfigDict
 from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+
+
 import bcrypt
 import jwt
 import httpx
+
+
+# Add this to your FastAPI backend
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from datetime import datetime
+
+router = APIRouter()
+
+class WithdrawalRequest(BaseModel):
+    driver_id: str
+    amount: float
+
+# Make sure your db client is initialized somewhere above this, usually like:
+# db = firestore.client()
+
+@router.post("/api/withdrawals/request")
+async def request_withdrawal(req: WithdrawalRequest):
+    try:
+        # 1. Connect to your database
+        db = firestore.client()
+        
+        # 2. Look up the driver (Assuming your drivers are in a 'users' or 'drivers' collection)
+        # Change 'users' to 'drivers' if you keep them in a separate collection!
+        driver_ref = db.collection("users").document(req.driver_id)
+        driver_doc = driver_ref.get()
+        
+        if not driver_doc.exists:
+            raise HTTPException(status_code=404, detail="Driver not found")
+            
+        driver_data = driver_doc.to_dict()
+        current_balance = float(driver_data.get("wallet_balance", 0.0))
+        
+        # 3. Check if they actually have the funds
+        if current_balance < req.amount:
+            raise HTTPException(status_code=400, detail="Insufficient funds")
+            
+        # 4. Deduct the funds from their virtual balance
+        new_balance = current_balance - req.amount
+        driver_ref.update({"wallet_balance": new_balance})
+        
+        # 5. Create the pending ticket for the Admin
+        new_request_ref = db.collection("withdrawal_requests").document()
+        new_request_ref.set({
+            "id": new_request_ref.id,
+            "driver_id": req.driver_id,
+            "driver_name": driver_data.get("name", "Unknown Driver"),
+            "driver_phone": driver_data.get("cellphone", ""),
+            "amount": req.amount,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc)
+        })
+
+        return {
+            "status": "success", 
+            "message": "Withdrawal pending admin approval",
+            "new_balance": new_balance
+        }
+        
+    except Exception as e:
+        print(f"Withdrawal Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # =========================
 # ENV + INITIALIZATION
