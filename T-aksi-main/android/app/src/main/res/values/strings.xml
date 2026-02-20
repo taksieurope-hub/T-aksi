@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">T\'aksi</string>
+    <string name="title_activity_main">T\'aksi</string>
+    <string name="package_name">com.taksi.app</string>
+    <string name="custom_url_scheme">com.taksi.app</string>
+</resources>

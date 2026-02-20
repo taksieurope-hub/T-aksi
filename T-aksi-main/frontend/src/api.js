@@ -1,0 +1,44 @@
+﻿// frontend/src/api.js
+import axios from "axios";
+import { API } from "./config.jsx";
+
+// Make sure API never ends with a slash
+const BASE = (API || "").replace(/\/+$/, "");
+
+const api = axios.create({
+  baseURL: BASE,
+  timeout: 20000,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Attach token automatically
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Auto-logout on 401
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status;
+    if (status === 401) {
+      // token invalid/expired
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      // Optional: Force reload to login
+      // window.location.href = "/";
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
