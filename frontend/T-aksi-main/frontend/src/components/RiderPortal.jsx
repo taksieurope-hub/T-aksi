@@ -1548,6 +1548,27 @@ const RiderDashboard = () => {
   );
 };
 
+const LocalRiderModal = ({ isOpen, onClose, tripDetails }) => {
+  if (!isOpen) return null;
+  return (
+    <div style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px'}}>
+      <div style={{background: 'white', padding: '30px', borderRadius: '12px', maxWidth: '400px', width: '100%', textAlign: 'center', boxShadow: '0 10px 25px rgba(0,0,0,0.2)'}}>
+        <h2 style={{color: '#000', marginBottom: '10px', fontSize: '24px', fontWeight: 'bold'}}>You've Arrived! 🏁</h2>
+        <p style={{color: '#4b5563', marginBottom: '20px'}}>Hope you had a great trip. Please remember to take all your belongings.</p>
+        
+        <div style={{background: '#f3f4f6', padding: '15px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left'}}>
+          <p style={{margin: '5px 0'}}><strong>Total Fare:</strong> ₾{tripDetails?.cost || '12.50'}</p>
+          <p style={{margin: '5px 0'}}><strong>Payment Method:</strong> Cash</p>
+        </div>
+        
+        <button onClick={onClose} style={{width: '100%', padding: '12px', background: 'black', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px'}}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // Main Router
 const RiderPortal = () => {
   const { user } = useAuth();
