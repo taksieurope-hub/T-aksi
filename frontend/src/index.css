@@ -47,7 +47,13 @@ body {
   color: #ffffff;
   min-height: 100vh;
   min-height: 100dvh;
-  overscroll-behavior: none;
+  overflow-y: auto; 
+  overflow-x: hidden; 
+}
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Typography */
