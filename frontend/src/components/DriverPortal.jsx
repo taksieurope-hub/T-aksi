@@ -4,6 +4,9 @@ import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 // FIX: Import from @/config and @/api
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
+import { useLanguage } from "@/i18n/LanguageContext";
+import LanguageSelector from "@/i18n/LanguageSelector";
+import { DriverTripCompletionModal } from "@/components/TripCompletionModal";
 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -119,6 +122,7 @@ const DriverWaitTimer = ({ arrivedAt, carType }) => {
 const DriverAuth = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ name: "", surname: "", cellphone: "", password: "" });
@@ -131,13 +135,13 @@ const DriverAuth = () => {
       const res = await api.post(endpoint, formData);
       if (res.data && res.data.token && res.data.user) {
         login(res.data.token, res.data.user);
-        toast.success(isLogin ? "Welcome back, Pilot!" : "Account created!");
+        toast.success(isLogin ? t('welcome_back') : t('success'));
         navigate("/driver/dashboard");
       } else {
         throw new Error("Invalid response");
       }
     } catch (error) {
-      const msg = error.response?.data?.detail || error.message || "Authentication failed";
+      const msg = error.response?.data?.detail || error.message || t('error');
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -145,17 +149,20 @@ const DriverAuth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-black">
-      <Card className="w-full max-w-md bg-black/70 backdrop-blur-xl border border-[#00d4ff]/30">
-        <CardHeader className="text-center">
-          <Button variant="ghost" className="absolute left-4 top-4 text-[#00d4ff] hover:text-white" onClick={() => navigate("/")}>
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <Card className="w-full max-w-md glass-heavy" data-testid="driver-auth-card">
+        <CardHeader className="text-center relative">
+          <div className="absolute right-4 top-4">
+            <LanguageSelector variant="ghost" />
+          </div>
+          <Button variant="ghost" className="absolute left-4 top-4 text-primary hover:text-white" onClick={() => navigate("/")} data-testid="driver-back-btn">
+            <ArrowLeft className="w-4 h-4 mr-2" /> {t('back')}
           </Button>
-          <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] flex items-center justify-center mx-auto mb-4">
+          <div className="w-20 h-20 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-4 mt-8">
             <Car className="w-10 h-10 text-black" />
           </div>
-          <CardTitle className="text-2xl text-[#00d4ff]">
-            {isLogin ? "Pilot Login" : "Become a Pilot"}
+          <CardTitle className="text-2xl text-primary font-heading">
+            {isLogin ? t('pilot_login') : t('become_pilot_title')}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -163,38 +170,38 @@ const DriverAuth = () => {
             {!isLogin && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-[#00d4ff]">First Name</Label>
-                  <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="bg-black/50 border-[#00d4ff]/30 text-white" required />
+                  <Label className="text-primary">{t('first_name')}</Label>
+                  <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="bg-background-secondary border-border text-white" required data-testid="driver-name-input" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[#00d4ff]">Last Name</Label>
-                  <Input value={formData.surname} onChange={e => setFormData({...formData, surname: e.target.value})} className="bg-black/50 border-[#00d4ff]/30 text-white" required />
+                  <Label className="text-primary">{t('last_name')}</Label>
+                  <Input value={formData.surname} onChange={e => setFormData({...formData, surname: e.target.value})} className="bg-background-secondary border-border text-white" required data-testid="driver-surname-input" />
                 </div>
               </div>
             )}
             <div className="space-y-2">
-              <Label className="text-[#00d4ff]">Phone Number</Label>
+              <Label className="text-primary">{t('phone_number')}</Label>
               <div className="relative">
-                <Phone className="absolute left-3 top-3 h-4 w-4 text-[#00d4ff]/50" />
-                <Input type="tel" value={formData.cellphone} onChange={e => setFormData({...formData, cellphone: e.target.value})} className="pl-10 bg-black/50 border-[#00d4ff]/30 text-white" placeholder="+995 XXX XXX XXX" required />
+                <Phone className="absolute left-3 top-3 h-4 w-4 text-primary/50" />
+                <Input type="tel" value={formData.cellphone} onChange={e => setFormData({...formData, cellphone: e.target.value})} className="pl-10 bg-background-secondary border-border text-white" placeholder="+995 XXX XXX XXX" required data-testid="driver-phone-input" />
               </div>
             </div>
             <div className="space-y-2">
-              <Label className="text-[#00d4ff]">Password</Label>
+              <Label className="text-primary">{t('password')}</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-[#00d4ff]/50" />
-                <Input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="pl-10 bg-black/50 border-[#00d4ff]/30 text-white" required />
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-primary/50" />
+                <Input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="pl-10 bg-background-secondary border-border text-white" required data-testid="driver-password-input" />
               </div>
             </div>
-            <Button type="submit" className="w-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold" disabled={loading}>
+            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-secondary text-black font-bold hover:shadow-neon-cyan transition-all" disabled={loading} data-testid="driver-auth-submit">
               {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              {isLogin ? "Sign In" : "Register as Driver"}
+              {isLogin ? t('sign_in') : t('register_driver')}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="justify-center">
-          <Button variant="link" className="text-[#00ff88]" onClick={() => setIsLogin(!isLogin)}>
-            {isLogin ? "Need an account? Register" : "Have an account? Sign In"}
+          <Button variant="link" className="text-secondary" onClick={() => setIsLogin(!isLogin)} data-testid="driver-auth-toggle">
+            {isLogin ? t('need_account') : t('have_account')}
           </Button>
         </CardFooter>
       </Card>
@@ -537,6 +544,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 const DriverDashboard = () => {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("rides");
   const [loading, setLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(user?.is_online || false);
@@ -1273,45 +1281,15 @@ const DriverDashboard = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!completedRide} onOpenChange={() => setCompletedRide(null)}>
-        <DialogContent
-          className="bg-black border border-[#00ff88] text-center p-6 sm:max-w-sm rounded-3xl"
-          aria-describedby={undefined}
-        >
-          <DialogHeader>
-            <DialogTitle className="text-[#00ff88] text-2xl font-bold">Trip Complete!</DialogTitle>
-            <DialogDescription className="sr-only">Summary of fare and payment collection.</DialogDescription>
-          </DialogHeader>
-
-          <div className="py-6 space-y-3">
-            <p className="text-gray-400 text-sm uppercase tracking-widest">Total Fare</p>
-            <p className="text-5xl font-bold text-white">
-              ₾{completedRide?.final_fare?.toFixed(2) || "0.00"}
-            </p>
-
-            {(completedRide?.payment_method || "").toLowerCase() === 'card' ? (
-              <div className="bg-[#00ff88]/20 border border-[#00ff88] p-3 rounded-xl mt-4">
-                <p className="text-[#00ff88] text-sm font-bold flex items-center justify-center gap-2">
-                  <CreditCard className="w-4 h-4" /> PAID ONLINE - DO NOT CHARGE
-                </p>
-              </div>
-            ) : (
-              <div className="bg-yellow-500/20 border border-yellow-500 p-3 rounded-xl mt-4 animate-pulse">
-                <p className="text-yellow-400 text-sm font-bold flex items-center justify-center gap-2">
-                  <Banknote className="w-4 h-4" /> COLLECT CASH
-                </p>
-              </div>
-            )}
-          </div>
-
-          <Button
-            className="w-full bg-[#00ff88] text-black font-bold h-14 text-xl rounded-xl"
-            onClick={() => setCompletedRide(null)}
-          >
-            Confirm & Close
-          </Button>
-        </DialogContent>
-      </Dialog>
+      {/* Trip Completion Modal - Shows after completing a ride */}
+      <DriverTripCompletionModal
+        isOpen={!!completedRide}
+        onClose={() => setCompletedRide(null)}
+        fareAmount={completedRide?.final_fare}
+        paymentMethod={completedRide?.payment_method}
+        riderName={completedRide?.rider_name}
+        onConfirm={() => setCompletedRide(null)}
+      />
 
     </div>
   );

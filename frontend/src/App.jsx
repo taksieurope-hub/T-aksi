@@ -12,7 +12,10 @@ import { LanguageProvider } from "@/i18n/LanguageContext";
 import LandingPage from "@/components/LandingPage";
 import RiderPortal from "@/components/RiderPortal";
 import DriverPortal from "@/components/DriverPortal";
-import AdminPortal from "@/components/AdminPortal"; // 👈 1. IMPORT THIS
+import AdminPortal from "@/components/AdminPortal";
+
+// Global Components
+import SupportChatWidget from "@/components/SupportChatWidget";
 
 /**
  * Axios interceptor (Global)
@@ -79,7 +82,9 @@ function App() {
                 {/* Public Landing Page */}
                 <Route path="/" element={<LandingPage />} />
 
-                {/* 👈 2. ADD THIS ROUTE */}
+                {/* Public trip tracking */}
+                <Route path="/track/:rideId" element={<LandingPage />} />
+
                 <Route path="/admin/*" element={<AdminPortal />} />
                 
                 <Route path="/rider/*" element={<RiderPortal />} />
@@ -88,6 +93,9 @@ function App() {
                 {/* Fallback - Redirect unknown routes to Landing Page */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              
+              {/* Global Support Chat Widget */}
+              <SupportChatWidget />
             </BrowserRouter>
           </div>
 

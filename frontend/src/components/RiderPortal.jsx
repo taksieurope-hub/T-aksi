@@ -4,6 +4,10 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 // 🔥 FIX: Import from @/config and @/api
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
+import { useLanguage } from "@/i18n/LanguageContext";
+import LanguageSelector from "@/i18n/LanguageSelector";
+import { RiderTripCompletionModal } from "@/components/TripCompletionModal";
+import RatingModal from "@/components/RatingModal";
 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -491,6 +495,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
 const RiderAuth = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -507,13 +512,13 @@ const RiderAuth = () => {
 
       if (res.data && res.data.token && res.data.user) {
         login(res.data.token, res.data.user);
-        toast.success(isLogin ? "Welcome back!" : "Account created!");
+        toast.success(isLogin ? t('welcome_back') : t('success'));
         navigate("/rider/dashboard");
       } else {
         throw new Error("Invalid response");
       }
     } catch (error) {
-      const msg = error.response?.data?.detail || error.message || "Authentication failed";
+      const msg = error.response?.data?.detail || error.message || t('error');
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -521,24 +526,28 @@ const RiderAuth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-black">
-      <Card className="w-full max-w-md bg-black/70 backdrop-blur-xl border border-[#00ff88]/30">
-        <CardHeader className="text-center">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <Card className="w-full max-w-md glass-heavy">
+        <CardHeader className="text-center relative">
+          <div className="absolute right-4 top-4">
+            <LanguageSelector variant="ghost" />
+          </div>
           <Button
             variant="ghost"
-            className="absolute left-4 top-4 text-[#00ff88] hover:text-white"
+            className="absolute left-4 top-4 text-secondary hover:text-white"
             onClick={() => navigate("/")}
+            data-testid="back-button"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back
+            <ArrowLeft className="w-4 h-4 mr-2" /> {t('back')}
           </Button>
-          <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center mx-auto mb-4">
+          <div className="w-20 h-20 rounded-full bg-gradient-to-r from-secondary to-primary flex items-center justify-center mx-auto mb-4 mt-8">
             <Rocket className="w-10 h-10 text-black" />
           </div>
-          <CardTitle className="text-2xl text-[#00ff88]">
-            {isLogin ? "Welcome Back" : "Join T'aksi"}
+          <CardTitle className="text-2xl text-secondary font-heading">
+            {isLogin ? t('welcome_back') : t('join_taksi')}
           </CardTitle>
-          <CardDescription className="text-[#00d4ff]/70">
-            {isLogin ? "Sign in to book rides" : "Create your account"}
+          <CardDescription className="text-primary/70">
+            {isLogin ? t('sign_in_book') : t('create_account')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -546,77 +555,82 @@ const RiderAuth = () => {
             {!isLogin && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="rider-name" className="text-[#00ff88]">First Name</Label>
+                  <Label htmlFor="rider-name" className="text-secondary">{t('first_name')}</Label>
                   <Input
                     id="rider-name"
                     name="name"
                     value={formData.name}
                     onChange={e => setFormData({...formData, name: e.target.value})}
-                    className="bg-black/50 border-[#00ff88]/30 text-white"
+                    className="bg-background-secondary border-border text-white"
                     required
                     autoComplete="given-name"
+                    data-testid="rider-name-input"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rider-surname" className="text-[#00ff88]">Last Name</Label>
+                  <Label htmlFor="rider-surname" className="text-secondary">{t('last_name')}</Label>
                   <Input
                     id="rider-surname"
                     name="surname"
                     value={formData.surname}
                     onChange={e => setFormData({...formData, surname: e.target.value})}
-                    className="bg-black/50 border-[#00ff88]/30 text-white"
+                    className="bg-background-secondary border-border text-white"
                     required
                     autoComplete="family-name"
+                    data-testid="rider-surname-input"
                   />
                 </div>
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="rider-phone" className="text-[#00ff88]">Phone Number</Label>
+              <Label htmlFor="rider-phone" className="text-secondary">{t('phone_number')}</Label>
               <div className="relative">
-                <Phone className="absolute left-3 top-3 h-4 w-4 text-[#00ff88]/50" />
+                <Phone className="absolute left-3 top-3 h-4 w-4 text-secondary/50" />
                 <Input
                   id="rider-phone"
                   name="cellphone"
                   type="tel"
                   value={formData.cellphone}
                   onChange={e => setFormData({...formData, cellphone: e.target.value})}
-                  className="pl-10 bg-black/50 border-[#00ff88]/30 text-white"
+                  className="pl-10 bg-background-secondary border-border text-white"
                   placeholder="+995 XXX XXX XXX"
                   required
                   autoComplete="tel"
+                  data-testid="rider-phone-input"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rider-password" className="text-[#00ff88]">Password</Label>
+              <Label htmlFor="rider-password" className="text-secondary">{t('password')}</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-[#00ff88]/50" />
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-secondary/50" />
                 <Input
                   id="rider-password"
                   name="password"
                   type="password"
                   value={formData.password}
                   onChange={e => setFormData({...formData, password: e.target.value})}
-                  className="pl-10 bg-black/50 border-[#00ff88]/30 text-white"
+                  className="pl-10 bg-background-secondary border-border text-white"
                   required
                   autoComplete="current-password"
+                  data-testid="rider-password-input"
                 />
               </div>
             </div>
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold"
+              className="w-full bg-gradient-to-r from-secondary to-primary text-black font-bold hover:shadow-neon-green transition-all"
               disabled={loading}
+              data-testid="rider-auth-submit"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              {isLogin ? "Sign In" : "Create Account"}
+              {isLogin ? t('sign_in') : t('sign_up')}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="justify-center">
-          <Button variant="link" className="text-[#00d4ff]" onClick={() => setIsLogin(!isLogin)}>
-            {isLogin ? "Need an account? Register" : "Have an account? Sign In"}
+          <Button variant="link" className="text-primary" onClick={() => setIsLogin(!isLogin)} data-testid="auth-toggle">
+            {isLogin ? t('need_account') : t('have_account')}
           </Button>
         </CardFooter>
       </Card>
@@ -689,6 +703,7 @@ const WaitTimer = ({ arrivedAt, carType }) => {
 const RiderDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("book");
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -701,6 +716,8 @@ const RiderDashboard = () => {
   // --- CARD PAYMENT STATE ---
   const [showCardModal, setShowCardModal] = useState(false);
   const [cardDetails, setCardDetails] = useState({ number: "", expiry: "", cvv: "" });
+  const [completedRideData, setCompletedRideData] = useState(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
 
   // Handle formatted input
   const handleCardInput = (field, value) => {
@@ -976,15 +993,21 @@ const RiderDashboard = () => {
           clearInterval(interval);
           
           if (res.data.status === "completed") {
-            toast.success("Ride completed!");
+            // Store the completed ride data to show in modal
+            setCompletedRideData({
+              id: res.data.id,
+              final_fare: res.data.final_fare || res.data.estimated_fare,
+              payment_method: res.data.payment_method,
+              driver_name: res.data.driver_info?.name || res.data.driver_name
+            });
+            
             fetchRideHistory();
             
-            // 🔥 FIX: Wait 2.5 seconds so the user can see the "Completed" badge, 
-            // then clear the ride and send them back to the booking screen.
+            // Clear active ride after short delay
             setTimeout(() => {
               setActiveRide(null);
               setActiveTab("book");
-            }, 2500);
+            }, 500);
             
           } else if (res.data.status === "no_drivers") {
             toast.error("No drivers available. Please try again.");
@@ -1159,10 +1182,10 @@ const RiderDashboard = () => {
 
           {/* Book Tab */}
           <TabsContent value="book">
-            <Card className="bg-black/60 backdrop-blur-xl border border-[#00ff88]/30">
+            <Card className="glass-heavy border-secondary/30">
               <CardHeader>
-                <CardTitle className="text-[#00ff88] flex items-center">
-                  <Rocket className="w-5 h-5 mr-2" /> Book Your Ride
+                <CardTitle className="text-secondary flex items-center font-heading">
+                  <Rocket className="w-5 h-5 mr-2" /> {t('book_ride')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1172,7 +1195,7 @@ const RiderDashboard = () => {
                   <LiveTrackingMap
                     pickup={pickup}
                     destination={destination}
-                    stops={stops}  // <--- 🔥 THIS LINE WAS MISSING, THAT'S WHY STOPS DIDN'T SHOW
+                    stops={stops}
                     status="preview"
                     driverLocation={null} 
                   />
@@ -1180,78 +1203,78 @@ const RiderDashboard = () => {
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="pickup-input" className="text-[#00ff88]">Pickup Location</Label>
-                    <Button variant="ghost" size="sm" className="text-[#00d4ff] h-6" onClick={getCurrentLocation} disabled={locationLoading}>
-                      {locationLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Crosshair className="w-3 h-3 mr-1" />} Use My Location
+                    <Label htmlFor="pickup-input" className="text-secondary">{t('pickup_location')}</Label>
+                    <Button variant="ghost" size="sm" className="text-primary h-6" onClick={getCurrentLocation} disabled={locationLoading}>
+                      {locationLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Crosshair className="w-3 h-3 mr-1" />} {t('use_my_location')}
                     </Button>
                   </div>
-                  <LocationInput id="pickup-input" name="pickup" value={pickup} onChange={setPickup} placeholder="Where to pick you up?" icon={MapPin} iconColor="text-[#00ff88]" />
+                  <LocationInput id="pickup-input" name="pickup" value={pickup} onChange={setPickup} placeholder={t('where_pickup')} icon={MapPin} iconColor="text-secondary" />
                 </div>
                 {stops.map((stop, index) => (
                   <div key={index} className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor={`stop-${index}`} className="text-yellow-400">Stop {index + 1}</Label>
+                      <Label htmlFor={`stop-${index}`} className="text-yellow-400">{t('stops')} {index + 1}</Label>
                       <Button variant="ghost" size="sm" className="text-red-400 h-6" onClick={() => removeStop(index)}><X className="w-3 h-3" /></Button>
                     </div>
-                    <LocationInput id={`stop-${index}`} name={`stop_${index}`} value={stop} onChange={(data) => updateStop(index, data)} placeholder={`Stop ${index + 1} address`} icon={MapPin} iconColor="text-yellow-400" />
+                    <LocationInput id={`stop-${index}`} name={`stop_${index}`} value={stop} onChange={(data) => updateStop(index, data)} placeholder={t('stop_address')} icon={MapPin} iconColor="text-yellow-400" />
                   </div>
                 ))}
-                {stops.length < 3 && <Button variant="outline" className="w-full border-dashed border-yellow-400/30 text-yellow-400" onClick={addStop}><Plus className="w-4 h-4 mr-2" /> Add Stop (Free - wait time charged)</Button>}
+                {stops.length < 3 && <Button variant="outline" className="w-full border-dashed border-yellow-400/30 text-yellow-400" onClick={addStop}><Plus className="w-4 h-4 mr-2" /> {t('add_stop_free')}</Button>}
                 <div className="space-y-2">
-                  <Label htmlFor="destination-input" className="text-[#00d4ff]">Destination</Label>
-                  <LocationInput id="destination-input" name="destination" value={destination} onChange={setDestination} placeholder="Where to go?" icon={Navigation} iconColor="text-[#00d4ff]" />
+                  <Label htmlFor="destination-input" className="text-primary">{t('destination')}</Label>
+                  <LocationInput id="destination-input" name="destination" value={destination} onChange={setDestination} placeholder={t('where_going')} icon={Navigation} iconColor="text-primary" />
                 </div>
                 {surgeInfo?.is_surge && (
                   <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500 rounded-xl p-4">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center"><TrendingUp className="w-5 h-5 text-orange-400 mr-2" /><div><p className="text-orange-400 font-bold">Surge Pricing Active</p><p className="text-orange-300/70 text-sm">{surgeInfo.surge_reason}</p></div></div>
+                      <div className="flex items-center"><TrendingUp className="w-5 h-5 text-orange-400 mr-2" /><div><p className="text-orange-400 font-bold">{t('surge_active')}</p><p className="text-orange-300/70 text-sm">{surgeInfo.surge_reason}</p></div></div>
                       <Badge className="bg-orange-500 text-black text-lg px-3 py-1">x{surgeInfo.multiplier}</Badge>
                     </div>
                   </div>
                 )}
                 {routeInfo && (
-                  <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-4">
-                    <div className="flex justify-between items-center mb-2 text-[#00ff88]">
-                      <span className="flex items-center"><RouteIcon className="w-4 h-4 mr-1" /> Route</span>
-                      <span className="font-bold">{routeInfo.distance} km • ~{routeInfo.duration} min</span>
+                  <div className="bg-secondary/10 border border-secondary/30 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-2 text-secondary">
+                      <span className="flex items-center"><RouteIcon className="w-4 h-4 mr-1" /> {t('route')}</span>
+                      <span className="font-bold">{routeInfo.distance} {t('km')} • ~{routeInfo.duration} {t('min')}</span>
                     </div>
                     {fareEstimate && (
                         <div className="flex flex-col">
-                            <div className="flex justify-between text-lg text-[#00ff88] font-bold">
-                                <span>Estimated Total</span>
+                            <div className="flex justify-between text-lg text-secondary font-bold">
+                                <span>{t('estimated_total')}</span>
                                 <span>₾{fareEstimate.total.toFixed(2)}</span>
                             </div>
                             {paymentMethod === 'card' && (
-                                <p className="text-xs text-[#00d4ff] text-right mt-1">+₾2.00 Card Service Fee included</p>
+                                <p className="text-xs text-primary text-right mt-1">{t('card_fee_included')}</p>
                             )}
                         </div>
                     )}
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label className="text-[#00ff88]">Vehicle Class</Label>
+                  <Label className="text-secondary">{t('vehicle_class')}</Label>
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                     {carTypes.map((type) => {
-                      // 🔥 UPDATED: Pass paymentMethod to update card logic dynamically
                       const typeFare = routeInfo ? calculateFare(type.value, routeInfo.distance, 0, 0, stops.length, surgeInfo?.multiplier || 1.0, paymentMethod).total : type.base * (surgeInfo?.multiplier || 1.0);
-                      return <button key={type.value} onClick={() => setCarType(type.value)} className={`p-3 rounded-xl border-2 transition-all ${carType === type.value ? "border-[#00ff88] bg-[#00ff88]/20" : "border-[#00ff88]/20 bg-black/30"}`}><div className="text-2xl mb-1">{type.icon}</div><div className="text-white font-medium text-xs">{type.label}</div><div className="text-[#00ff88] text-sm">₾{typeFare.toFixed(2)}</div></button>;
+                      return <button key={type.value} onClick={() => setCarType(type.value)} className={`p-3 rounded-xl border-2 transition-all ${carType === type.value ? "border-secondary bg-secondary/20 shadow-neon-green" : "border-secondary/20 bg-background-secondary"}`}><div className="text-2xl mb-1">{type.icon}</div><div className="text-white font-medium text-xs">{type.label}</div><div className="text-secondary text-sm">₾{typeFare.toFixed(2)}</div></button>;
                     })}
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[#00ff88]">Payment</Label>
+                  <Label className="text-secondary">{t('payment')}</Label>
                   <div className="flex gap-2">
-                    <Button variant={paymentMethod === "cash" ? "default" : "outline"} onClick={() => setPaymentMethod("cash")} className={paymentMethod === "cash" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}>💵 Cash</Button>
-                    <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")} className={paymentMethod === "card" ? "bg-[#00ff88] text-black" : "border-[#00ff88]/30 text-white"}>💳 Card</Button>
+                    <Button variant={paymentMethod === "cash" ? "default" : "outline"} onClick={() => setPaymentMethod("cash")} className={paymentMethod === "cash" ? "bg-secondary text-black" : "border-secondary/30 text-white"}>{t('cash')}</Button>
+                    <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")} className={paymentMethod === "card" ? "bg-secondary text-black" : "border-secondary/30 text-white"}>{t('card')}</Button>
                   </div>
                 </div>
                 <Button
-    className="w-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold h-14 text-lg"
+    className="w-full bg-gradient-to-r from-secondary to-primary text-black font-bold h-14 text-lg hover:shadow-neon-green transition-all"
     onClick={handleBookRide}
     disabled={loading}
+    data-testid="request-ride-btn"
 >
     {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />}
-    Request Ride
+    {t('request_ride')}
 </Button>
               </CardContent>
             </Card>
@@ -1544,6 +1567,32 @@ const RiderDashboard = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Trip Completion Modal */}
+      <RiderTripCompletionModal
+        isOpen={!!completedRideData}
+        onClose={() => setCompletedRideData(null)}
+        fareAmount={completedRideData?.final_fare}
+        paymentMethod={completedRideData?.payment_method}
+        driverName={completedRideData?.driver_name}
+        onRateDriver={() => {
+          setShowRatingModal(true);
+          setCompletedRideData(null);
+        }}
+      />
+
+      {/* Rating Modal */}
+      <RatingModal
+        isOpen={showRatingModal}
+        onClose={() => setShowRatingModal(false)}
+        rideId={completedRideData?.id}
+        ratingType="driver"
+        driverName={completedRideData?.driver_name}
+        onRatingComplete={() => {
+          setShowRatingModal(false);
+          toast.success(t('rating_submitted') || "Thanks for your feedback!");
+        }}
+      />
     </div>
   );
 };

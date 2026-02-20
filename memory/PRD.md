@@ -1,141 +1,267 @@
 # T'aksi Galactic - Product Requirements Document
 
 ## Overview
-T'aksi is a ride-sharing platform in Georgia with three portals: Rider, Driver, and Admin. Features real-time GPS tracking, map-based location selection, multi-stop rides, surge pricing, and dynamic fare calculation.
+T'aksi Galactic is a premium ride-sharing application for the Georgian market, designed to compete with and exceed Bolt's user experience.
+
+## Original Problem Statement
+User had existing T'aksi codebase and wanted to:
+1. Build iOS application support
+2. Implement UI/UX enhancements with premium design
+3. Fix i18n to work across entire app (not just landing page)
+4. Add in-app chat between riders/drivers with auto-translate
+5. Add AI chatbot for support with escalation to admin
+6. Add all missing features to compete with Bolt/Uber
 
 ## Tech Stack
-- **Frontend:** React 19, TailwindCSS, ShadCN UI, Google Maps API
-- **Backend:** FastAPI (Python) with Firebase Admin SDK
-- **Database:** Firebase Firestore
-- **Authentication:** JWT with bcrypt
-- **Maps:** Google Maps Places & Directions API
+- **Frontend**: React + Vite + Tailwind CSS + Framer Motion
+- **Backend**: FastAPI + Python
+- **Database**: Firebase Firestore
+- **AI**: Gemini 3 Flash (via emergentintegrations)
+- **Mobile**: Capacitor (iOS & Android)
+- **Maps**: Google Maps API
+- **Payments**: PayPal integration
 
-## Features Implemented (Jan 25, 2026)
+## User Personas
+1. **Riders**: Georgian citizens seeking premium ride-hailing experience
+2. **Drivers (Pilots)**: Individuals looking for flexible income opportunities
+3. **Admins**: Platform operators managing users, approvals, support, and withdrawals
 
-### 1. Authentication ✅
-- Rider/Driver registration & login
-- JWT token-based auth
-- Phone number as unique identifier
+## Core Features
 
-### 2. Location & Maps ✅
-- **Map Picker:** Click on map to select location
-- **Address Autocomplete:** Google Places autocomplete on all location inputs
-- **Current Location:** "Use My Location" button with GPS
-- **Route Calculation:** Automatic distance & time via Google Directions API
-- **Live Map:** Real-time driver position during active ride
+### Rider Portal
+- Book rides with pickup, destination, and up to 3 stops
+- Real-time driver tracking
+- Multiple vehicle classes (Economy, Comfort, Premium, XL, Luxury)
+- Surge pricing visibility
+- Cash and card payment options
+- Ride history
+- **NEW**: Favorite locations (Home, Work, etc.)
+- **NEW**: Scheduled rides (book for later)
+- **NEW**: Share trip with friends/family
+- **NEW**: Rate driver with tags and tips
+- **NEW**: SOS emergency button
+- **NEW**: AI support chat
 
-### 3. Multi-Stop Rides ✅
-- Add up to 3 stops per trip
-- Each stop adds fee (₾1-2 depending on car type)
-- Stop wait time is fully billable
+### Driver Portal  
+- Go online/offline status
+- Accept/reject ride requests
+- Turn-by-turn navigation
+- Earnings wallet with top-up and withdrawal
+- Vehicle registration and document upload
+- Cancellation with reason tracking
+- **NEW**: Rate riders with tags
+- **NEW**: In-app chat with auto-translate
+- **NEW**: Trip receipts
+- **NEW**: SOS emergency button
 
-### 4. Real-Time Driver Tracking ✅
-- GPS position updated every 5 seconds when online
-- Heading and speed tracked
-- Live map shows driver position during ride
-- Distance automatically calculated during trip
+### Admin Portal
+- Overview dashboard with stats
+- Driver approval workflow
+- Withdrawal request management
+- User management
+- **NEW**: Support ticket management with AI escalation
+- **NEW**: Active SOS alert monitoring and resolution
+- **NEW**: Escalated ticket queue
 
-### 5. Dynamic Fare Calculation ✅
-```
-Base fare + Distance fee + Wait fees + Stop fees × Surge Multiplier
+### AI Features (Gemini 3 Flash)
+- **Auto-translate chat**: Real-time translation between rider and driver
+- **Support chatbot**: Handles FAQ, trip issues, payment questions
+- **Smart escalation**: AI identifies urgent issues and escalates to admin
 
-economy:  ₾2.00 + ₾0.50/km + ₾0.40/min (after 2 free) + ₾1.00/stop
-comfort:  ₾2.50 + ₾0.55/km + ₾0.45/min (after 2 free) + ₾1.50/stop
-suv:      ₾3.90 + ₾0.80/km + ₾0.50/min (after 2 free) + ₾2.00/stop
-personal: ₾4.00 + ₾0.70/km + ₾0.50/min (after 3 free) + ₾1.50/stop
-jumpstart: ₾4.50 flat
+---
 
-Long distance (>7km): +₾0.15-0.25/km extra
-Very long (>30km): +₾5-8 per 15km block
-```
+## What's Been Implemented
 
-### 6. Surge Pricing ✅ (NEW)
-- **Schedule:** Wednesday, Friday, Saturday nights
-- **Wednesday:** 18:00 - 02:00 (Georgia Time)
-- **Friday & Saturday:** 18:00 - 04:00 (Georgia Time)
-- **Multipliers:** x1.2, x1.5, x1.8, x2.0
-- **Dynamic Commission:**
-  - x1.0: 23.0%
-  - x1.2: 23.2%
-  - x1.5: 23.5%
-  - x1.8: 23.8%
-  - x2.0: 24.0%
+### Session 1 - Feb 19, 2026
 
-### 7. Driver Flow ✅
-1. Go online → GPS tracking starts
-2. See available rides with distance to pickup
-3. Accept ride → Commission deducted (23-24% based on surge)
-4. Navigate to pickup (map shows route)
-5. Mark "Arrived" → wait timer starts
-6. Start trip → distance tracking begins
-7. Complete → final fare calculated
+#### iOS App Capability
+- [x] Configured Capacitor for iOS and Android builds
+- [x] Added native plugins: Geolocation, Push Notifications, Splash Screen, Status Bar
+- [x] Created iOS build script at `/app/frontend/scripts/build-ios.sh`
+- [x] Updated `capacitor.config.json` with proper iOS/Android settings
 
-### 8. Bolt-Style Matching ✅ (ENHANCED)
-**Radius Expansion Algorithm:**
-- Stage 1: 3km radius, notify 5 closest drivers, wait 30s
-- Stage 2: 5km radius, notify 5 more drivers, wait 25s
-- Stage 3: 8km radius, notify 8 more drivers, wait 20s
-- Stage 4: 12km radius, notify 10 more drivers, wait 15s
-- Stage 5: 20km radius, notify 15 more drivers, wait 15s
-- Stage 6: 30km radius, notify 20 more drivers, wait 15s
+#### UI/UX Enhancements (Cyber-Noir Luxury Theme)
+- [x] Updated Tailwind config with premium design tokens
+- [x] Implemented glassmorphism card effects
+- [x] Applied Clash Display font for headings, Manrope for body
+- [x] Neon glow effects (cyan #00d4ff, green #00ff88)
+- [x] Dark background with premium depth layering
+- [x] Mobile-first responsive design
 
-**Driver Selection Criteria:**
-- Must be online and approved
-- Must have sufficient balance for commission
-- Must not have declined the ride
-- Sorted by distance (closest first)
+#### i18n Fix (Full Translation Support)
+- [x] Extended translations for all portals (Rider, Driver, Admin)
+- [x] Added language selector to auth pages
+- [x] 8 languages supported: Georgian, English, Russian, Hindi, Chinese, Dutch, French, German
 
-**Driver Discovery Features:**
-- **Available Rides:** Only shows rides where driver was specifically notified
-- **Nearby Rides Tab:** Discover all rides within custom radius (5-30km)
-- **Request to Join:** Request to accept rides not directly notified about
-- **Retry Matching:** Riders can retry search when no drivers available
+### Session 2 - Feb 19, 2026
 
-### 9. Admin Features ✅
-- Dashboard with live stats
-- Add/deduct balance for any user
-- Approve/reject driver registrations
-- Approve/reject top-up requests
-- Approve/reject withdrawals
+#### In-App Chat with Auto-Translate
+- [x] Backend translation endpoint `/api/translate`
+- [x] Chat translation endpoint `/api/rides/{ride_id}/chat/translate`
+- [x] Gemini 3 Flash integration via emergentintegrations
 
-## API Endpoints
+#### AI Support Chatbot
+- [x] Support message endpoint `/api/support/message`
+- [x] Smart categorization (FAQ, trip, payment, safety, etc.)
+- [x] Automatic escalation for urgent issues
+- [x] Support history endpoint `/api/support/history`
+- [x] SupportChatWidget component (floating button)
 
-### New Endpoints (Jan 25, 2026)
-- `GET /api/surge/status?lat=X&lng=Y` - Get current surge status
-- `GET /api/driver/rides/nearby?radius=X` - Discover nearby rides (Bolt-style)
-- `POST /api/rides/{id}/request-join` - Request to accept a ride not notified about
-- `POST /api/rides/{id}/retry` - Retry driver matching for no_drivers rides
-- `GET /api/rides/estimate?car_type=X&distance=Y&stops=Z&lat=A&lng=B` - Fare estimate with surge
+#### Admin Support Panel
+- [x] AdminSupportPanel component with ticket management
+- [x] SOS alert monitoring
+- [x] Ticket filtering (escalated, in_progress, resolved, ai_handled)
+- [x] Admin response and resolution workflow
+- [x] Added Support tab to Admin portal
 
-### Existing Endpoints
-- `POST /api/driver/location` - Update driver GPS
-- `POST /api/rides/{id}/update-tracking` - Update ride with driver position
-- `POST /api/rides/{id}/stop-reached` - Mark stop completed
-- `POST /api/rides/{id}/complete?final_distance=X&total_wait_minutes=Y` - Complete ride
+#### Driver Campaigns System
+- [x] Campaign CRUD endpoints (create, read, update, delete)
+- [x] 6 Pre-built campaign templates:
+  - Weekend Warrior (20 rides = ₾30 bonus)
+  - Rush Hour Hero (10 peak rides = ₾25)
+  - 5-Star Excellence (50 rated rides = ₾40)
+  - 7-Day Streak (daily rides = ₾50)
+  - Earnings Milestone (₾500 = ₾35 bonus)
+  - Welcome Bonus (first 25 rides = ₾75)
+- [x] Campaign types: rides_count, earnings_target, peak_hours, rating_bonus, streak, new_driver
+- [x] Admin campaigns panel with:
+  - Create custom campaigns
+  - Quick templates
+  - Campaign filtering (active/paused/completed/cancelled)
+  - Participant tracking
+  - Pause/resume campaigns
+- [x] Driver campaign participation endpoints
+- [x] Automatic progress tracking after ride completion
+- [x] Auto-bonus payout when target reached
 
-## Test Results (Jan 25, 2026)
-- Backend: 100% pass rate (27/27 tests)
-- Frontend: 100% pass rate
+#### Rating System
+- [x] Rating tags (positive and negative)
+- [x] Driver rating endpoint with tags
+- [x] Rider rating endpoint with tags
+- [x] RatingModal component with star rating, tags, and tips
+- [x] Average rating calculation and storage
 
-## Credentials
-- **Admin Password:** `D'Ahl-Enterprise9409145169086`
-- **Payment Link:** `https://egreve.bog.ge//Taksi`
-- **Google Maps API Key:** `AIzaSyAAenq7Dyy1R8tS49JxKf70Nxtf5es4QJ4`
+#### SOS Emergency
+- [x] SOS trigger endpoint `/api/sos`
+- [x] Active SOS alerts endpoint `/api/admin/sos/active`
+- [x] SOS resolution endpoint
+- [x] SOSButton component with countdown confirmation
 
-## Firebase Indexes Needed
-Create these composite indexes in Firebase Console:
-1. rides: userId ASC, created_at DESC
-2. rides: driver_id ASC, created_at DESC
-3. rides: driver_id ASC, status ASC
+#### Share Trip
+- [x] Share trip endpoint `/api/rides/{ride_id}/share`
+- [x] Public tracking endpoint `/api/track/{ride_id}`
+- [x] ShareTripModal component with WhatsApp, SMS, Email sharing
 
-## Upcoming Tasks (P1)
-- Push notifications for new rides
-- In-app chat between rider/driver
-- Rating system after ride
-- Driver document upload verification
+#### Favorite Locations
+- [x] CRUD endpoints for favorites
+- [x] FavoriteLocations component with icons
+- [x] Geocoding integration
 
-## Backlog (P2)
-- WebSocket for real-time updates
-- Promo codes
-- Corporate accounts
-- Refine surge pricing zones
+#### Scheduled Rides
+- [x] Schedule ride endpoint
+- [x] Get scheduled rides endpoint
+- [x] Cancel scheduled ride endpoint
+
+#### Referral System
+- [x] Get/generate referral code endpoint
+- [x] Apply referral code endpoint
+- [x] Bonus calculation (₾5 referrer, ₾3 referee)
+
+#### Driver Tips
+- [x] Add tip endpoint
+- [x] Tip integration in RatingModal
+
+#### Trip Receipts
+- [x] Detailed receipt endpoint with fare breakdown
+
+---
+
+## Backlog (Prioritized)
+
+### P0 - Critical (For Launch)
+- [ ] Push notifications implementation (FCM integration)
+- [ ] SMS verification for phone numbers
+- [ ] Real payment processing (Stripe/PayPal live)
+
+### P1 - High Priority
+- [ ] In-app voice messages
+- [ ] Driver incentives/bonuses
+- [ ] Promo codes and discount system
+- [ ] Driver document verification workflow
+
+### P2 - Medium Priority
+- [ ] Dark/light theme toggle
+- [ ] Multi-currency support
+- [ ] Trip splitting (share fare with friends)
+- [ ] Corporate accounts
+
+### P3 - Nice to Have
+- [ ] Accessibility improvements (WCAG 2.1)
+- [ ] Performance optimization (code splitting)
+- [ ] Offline mode for drivers
+- [ ] Advanced analytics dashboard
+
+---
+
+## API Endpoints Added
+
+### AI & Chat
+- `POST /api/translate` - Translate text
+- `POST /api/rides/{ride_id}/chat/translate` - Send translated chat
+
+### Support
+- `POST /api/support/message` - Send support message (AI responds)
+- `GET /api/support/history` - Get support ticket history
+- `GET /api/admin/support/tickets` - Get tickets (filterable)
+- `GET /api/admin/support/tickets/escalated` - Get escalated tickets
+- `POST /api/admin/support/tickets/{id}/respond` - Admin response
+- `POST /api/admin/support/tickets/{id}/resolve` - Resolve ticket
+
+### Rating
+- `GET /api/rating/tags` - Get available tags
+- `POST /api/rides/{id}/rate/driver` - Rate driver with tags
+- `POST /api/rides/{id}/rate/rider` - Rate rider with tags
+
+### Safety
+- `POST /api/sos` - Trigger SOS
+- `GET /api/admin/sos/active` - Get active SOS alerts
+- `POST /api/admin/sos/{id}/resolve` - Resolve SOS
+
+### Sharing
+- `POST /api/rides/{id}/share` - Generate share link
+- `GET /api/track/{id}` - Public ride tracking
+
+### Favorites
+- `GET /api/user/favorites` - Get saved places
+- `POST /api/user/favorites` - Add saved place
+- `DELETE /api/user/favorites/{id}` - Remove saved place
+
+### Scheduled Rides
+- `POST /api/rides/schedule` - Schedule ride
+- `GET /api/rides/scheduled` - Get scheduled rides
+- `DELETE /api/rides/scheduled/{id}` - Cancel scheduled ride
+
+### Referrals
+- `GET /api/user/referral` - Get referral code
+- `POST /api/user/referral/apply` - Apply referral code
+
+### Tips & Receipts
+- `POST /api/rides/{id}/tip` - Add tip
+- `GET /api/rides/{id}/receipt` - Get trip receipt
+
+---
+
+## Next Steps
+1. **iOS Deployment**: Run build script on Mac, configure signing, submit to App Store
+2. **Android Build**: `npx cap sync android && npx cap open android`
+3. **Push Notifications**: Integrate Firebase Cloud Messaging
+4. **Production Deployment**: Set up production Firebase project and payment credentials
+
+---
+
+## Technical Notes
+- Backend runs on port 8001, frontend on 3000
+- Firebase service account at `/app/backend/firebase-service-account.json`
+- All API routes prefixed with `/api/`
+- Hot reload enabled for both frontend and backend
+- Emergent LLM key used for AI features
