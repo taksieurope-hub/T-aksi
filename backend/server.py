@@ -1363,6 +1363,7 @@ async def request_ride(ride_data: RideRequest, background_tasks: BackgroundTasks
     new_ride = {
         "id": ride_ref.id,
         "userId": user_id or ride_data.user_id,
+        "rider_id": user_id or ride_data.user_id,  # 🔥 FIX: Saves both ID styles so Tipping works
         "carType": ride_data.car_type,
         "pickup": ride_data.pickup,
         "pickup_lat": ride_data.pickup_lat,
@@ -1373,12 +1374,13 @@ async def request_ride(ride_data: RideRequest, background_tasks: BackgroundTasks
         "stops": stops_data,
         "num_stops": num_stops,
         "payment_method": payment_method,
+        "paymentMethod": payment_method,  # 🔥 FIX: Feeds the exact camelCase to the Driver App
         "payment_order_id": ride_data.payment_order_id,
         "estimated_distance": ride_data.estimated_distance,
         "estimated_duration": ride_data.estimated_duration,
-        "estimated_fare": fare["total"], # Now correctly includes the 2 GEL
+        "estimated_fare": fare["total"], 
         "fare_breakdown": fare,
-        "service_fee": service_fee,      # Explicitly save the fee for records
+        "service_fee": service_fee,
         "surge_multiplier": surge_multiplier,
         "surge_info": surge_info,
         "commission_rate": commission_rate,
@@ -2403,33 +2405,120 @@ async def send_translated_chat(
         "was_translated": translation_result.get("was_translated", False)
     }
 
-# --- AI Support Bot ---
+# =========================
+# AI FEATURES - TRANSLATION, SUPPORT, CHAT
+# =========================
+
+from ai_features import (
+    translate_text, process_support_message, translate_chat_message,
+    generate_referral_code, generate_share_link, calculate_referral_bonus,
+    TranslateRequest, RatingRequest, FavoriteLocation,
+    ScheduledRideRequest, SOSRequest, ShareTripRequest, ReferralCodeRequest, TipRequest,
+    RATING_TAGS, now_iso as ai_now_iso
+)
+
+# Create a local model that allows ticket_id for ongoing chats
+class TicketReplyRequest(BaseModel):
+    message: str
+    ticket_id: Optional[str] = None
+
+# --- Translation API ---
+@app.post("/api/translate", tags=["AI"])
+async def translate_endpoint(req: TranslateRequest):
+    """Translate text between languages"""
+    translated = await translate_text(req.text, req.source_lang, req.target_lang)
+    return {"original": req.text, "translated": translated, "target_lang": req.target_lang}
+
+# --- Chat with Auto-Translation ---
+@app.post("/api/rides/{ride_id}/chat/translate", tags=["Chat"])
+async def send_translated_chat(
+    ride_id: str, 
+    chat: ChatMessage, 
+    target_lang: str = "auto",
+    user_id: str = Depends(get_current_user_id)
+):
+    """Send chat message with auto-translation"""
+    db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    ride = ride_ref.get()
+    if not ride.exists:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    ride_data = ride.to_dict()
+    sender_role = "rider" if user_id == ride_data.get("rider_id") else "driver"
+    rider_lang = ride_data.get("rider_lang", "en")
+    driver_lang = ride_data.get("driver_lang", "en")
+    
+    sender_lang = rider_lang if sender_role == "rider" else driver_lang
+    recipient_lang = driver_lang if sender_role == "rider" else rider_lang
+    
+    translation_result = await translate_chat_message(chat.message, sender_lang, recipient_lang)
+    
+    message_data = {
+        "ride_id": ride_id,
+        "sender_id": user_id,
+        "sender_role": sender_role,
+        "message": chat.message,
+        "translated_message": translation_result.get("translated", chat.message),
+        "was_translated": translation_result.get("was_translated", False),
+        "from_lang": sender_lang,
+        "to_lang": recipient_lang,
+        "timestamp": firestore.SERVER_TIMESTAMP,
+        "read": False
+    }
+    db.collection("ride_chats").add(message_data)
+    
+    return {
+        "status": "sent",
+        "original": chat.message,
+        "translated": translation_result.get("translated"),
+        "was_translated": translation_result.get("was_translated", False)
+    }
+
+# --- AI Support Bot (UPGRADED FOR THREADED CHAT) ---
 @app.post("/api/support/message", tags=["Support"])
-async def send_support_message(msg: SupportMessage, user_id: str = Depends(get_current_user_id)):
-    """Send message to AI support bot"""
+async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(get_current_user_id)):
+    """Send message to AI support bot or reply to existing ticket"""
     db = get_db()
     
-    # Get user context
+    # 1. IF THIS IS A REPLY TO AN EXISTING TICKET
+    if msg.ticket_id:
+        ticket_ref = db.collection("support_tickets").document(msg.ticket_id)
+        if not ticket_ref.get().exists:
+            raise HTTPException(404, "Ticket not found")
+            
+        new_msg = {"role": "user", "content": msg.message, "timestamp": now_iso()}
+        ticket_ref.update({
+            "chat_history": firestore.ArrayUnion([new_msg]),
+            "status": "escalated", # Wake the admin back up
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        return {"ticket_id": msg.ticket_id, "response": "", "status": "escalated"}
+
+    # 2. IF THIS IS A BRAND NEW TICKET
     user_doc = db.collection("users").document(user_id).get()
     user_context = {}
     if user_doc.exists:
         user_data = user_doc.to_dict()
-        user_context = {
-            "name": user_data.get("name", "Unknown"),
-            "phone": user_data.get("cellphone", ""),
-            "ride_count": user_data.get("total_rides", 0)
-        }
+        user_context = {"name": user_data.get("name", "Unknown"), "phone": user_data.get("cellphone", ""), "ride_count": user_data.get("total_rides", 0)}
     
     # Process through AI
     ai_result = await process_support_message(msg.message, user_context)
     
-    # Create support ticket
+    # Build Threaded History
+    chat_history = [
+        {"role": "user", "content": msg.message, "timestamp": now_iso()},
+        {"role": "assistant", "content": ai_result["ai_response"], "escalated": ai_result["needs_escalation"], "timestamp": now_iso()}
+    ]
+    
     ticket_data = {
         "user_id": user_id,
         "user_name": user_context.get("name", "Unknown"),
         "user_phone": user_context.get("phone", ""),
-        "message": msg.message,
+        "message": msg.message, # Kept for backward compatibility with admin panel
         "ai_response": ai_result["ai_response"],
+        "admin_response": None,
+        "chat_history": chat_history, # The new array for React
         "status": "escalated" if ai_result["needs_escalation"] else "ai_handled",
         "priority": ai_result["priority"],
         "category": ai_result["category"],
@@ -2439,13 +2528,34 @@ async def send_support_message(msg: SupportMessage, user_id: str = Depends(get_c
     }
     
     ticket_ref = db.collection("support_tickets").add(ticket_data)
-    
     return {
         "ticket_id": ticket_ref[1].id,
         "response": ai_result["ai_response"],
         "status": ticket_data["status"],
         "escalated": ai_result["needs_escalation"]
     }
+
+# --- THE MISSING ROUTE REACT WAS LOOKING FOR ---
+@app.get("/api/support/tickets/{ticket_id}", tags=["Support"])
+async def get_support_ticket(ticket_id: str, user_id: str = Depends(get_current_user_id)):
+    """Fetch live chat history for a specific ticket"""
+    db = get_db()
+    doc = db.collection("support_tickets").document(ticket_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Ticket not found")
+        
+    data = doc.to_dict()
+    messages = data.get("chat_history", [])
+    
+    # Fallback for old tickets that don't have an array yet
+    if not messages:
+        messages.append({"role": "user", "content": data.get("message", "")})
+        if data.get("ai_response"):
+            messages.append({"role": "assistant", "content": data.get("ai_response"), "escalated": data.get("status") == "escalated"})
+        if data.get("admin_response"):
+            messages.append({"role": "admin", "content": data.get("admin_response")})
+
+    return {"status": data.get("status"), "messages": messages}
 
 @app.get("/api/support/history", tags=["Support"])
 async def get_support_history(user_id: str = Depends(get_current_user_id)):
@@ -2464,50 +2574,33 @@ async def get_support_history(user_id: str = Depends(get_current_user_id)):
 # --- Admin Support Management ---
 @app.get("/api/admin/support/tickets", tags=["Admin"])
 async def get_support_tickets(status: str = None, priority: str = None):
-    """Get support tickets for admin"""
     db = get_db()
     query = db.collection("support_tickets")
-    
-    if status:
-        query = query.where("status", "==", status)
-    if priority:
-        query = query.where("priority", "==", priority)
+    if status: query = query.where("status", "==", status)
+    if priority: query = query.where("priority", "==", priority)
     
     tickets = query.order_by("created_at", direction=firestore.Query.DESCENDING).limit(50).stream()
-    
-    result = []
-    for ticket in tickets:
-        data = ticket.to_dict()
-        data["id"] = ticket.id
-        result.append(serialize_firestore_data(data))
-    
-    return {"tickets": result}
+    return {"tickets": [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in tickets]}
 
 @app.get("/api/admin/support/tickets/escalated", tags=["Admin"])
 async def get_escalated_tickets():
-    """Get escalated support tickets that need admin attention"""
     db = get_db()
-    # Simplified query to avoid composite index requirement
     tickets = db.collection("support_tickets").where("status", "==", "escalated").limit(50).stream()
-    
-    result = []
-    for ticket in tickets:
-        data = ticket.to_dict()
-        data["id"] = ticket.id
-        result.append(serialize_firestore_data(data))
-    
-    # Sort in Python instead
+    result = [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in tickets]
     result.sort(key=lambda x: (x.get("priority", "medium"), x.get("created_at", "")), reverse=False)
-    
     return {"tickets": result, "count": len(result)}
 
 @app.post("/api/admin/support/tickets/{ticket_id}/respond", tags=["Admin"])
 async def admin_respond_ticket(ticket_id: str, response: str, resolve: bool = False):
-    """Admin responds to support ticket"""
+    """Admin responds to support ticket and updates chat thread"""
     db = get_db()
+    
+    new_admin_msg = {"role": "admin", "content": response, "timestamp": now_iso()}
+    
     update_data = {
-        "admin_response": response,
+        "admin_response": response, # Kept so your admin dashboard UI doesn't break
         "admin_notes": response,
+        "chat_history": firestore.ArrayUnion([new_admin_msg]), # Appends to React chat
         "updated_at": firestore.SERVER_TIMESTAMP,
         "status": "resolved" if resolve else "in_progress"
     }
@@ -2516,15 +2609,14 @@ async def admin_respond_ticket(ticket_id: str, response: str, resolve: bool = Fa
 
 @app.post("/api/admin/support/tickets/{ticket_id}/resolve", tags=["Admin"])
 async def resolve_ticket(ticket_id: str, notes: str = ""):
-    """Mark support ticket as resolved"""
     db = get_db()
     db.collection("support_tickets").document(ticket_id).update({
-        "status": "resolved",
+        "status": "closed", # Changed to closed to lock the React chat widget
         "admin_notes": notes,
         "resolved_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP
     })
-    return {"status": "resolved"}
+    return {"status": "closed"}
 
 
 # =========================
@@ -2948,13 +3040,17 @@ async def add_tip(ride_id: str, tip: TipRequest, user_id: str = Depends(get_curr
         raise HTTPException(status_code=404, detail="Ride not found")
     
     ride_data = ride.to_dict()
-    if ride_data.get("rider_id") != user_id:
+    
+    # 🔥 FIX: Check all 3 ways the ID might be saved in the database
+    actual_rider_id = ride_data.get("rider_id") or ride_data.get("userId") or ride_data.get("user_id")
+    
+    if actual_rider_id != user_id:
         raise HTTPException(status_code=403, detail="Not your ride")
     
     if ride_data.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Can only tip completed rides")
     
-    driver_id = ride_data.get("driver_id")
+    driver_id = ride_data.get("driver_id") or ride_data.get("driverId")
     if not driver_id:
         raise HTTPException(status_code=400, detail="No driver to tip")
     
@@ -2988,20 +3084,24 @@ async def get_trip_receipt(ride_id: str, user_id: str = Depends(get_current_user
     
     ride_data = ride.to_dict()
     
-    # Check authorization
-    if ride_data.get("rider_id") != user_id and ride_data.get("driver_id") != user_id:
+    # 🔥 FIX: Use the smart ID checkers for receipts too
+    actual_rider_id = ride_data.get("rider_id") or ride_data.get("userId") or ride_data.get("user_id")
+    actual_driver_id = ride_data.get("driver_id") or ride_data.get("driverId")
+    
+    # Check authorization using the smart IDs
+    if actual_rider_id != user_id and actual_driver_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
     receipt = {
         "ride_id": ride_id,
         "date": serialize_firestore_data(ride_data).get("created_at"),
-        "pickup": ride_data.get("pickup_address"),
-        "destination": ride_data.get("destination_address"),
+        "pickup": ride_data.get("pickup_address") or ride_data.get("pickup"),
+        "destination": ride_data.get("destination_address") or ride_data.get("destination"),
         "stops": ride_data.get("stops", []),
         "distance_km": ride_data.get("actual_distance_km", ride_data.get("estimated_distance")),
         "duration_min": ride_data.get("actual_duration_min"),
-        "car_type": ride_data.get("car_type"),
-        "payment_method": ride_data.get("payment_method"),
+        "car_type": ride_data.get("car_type") or ride_data.get("carType"),
+        "payment_method": ride_data.get("payment_method") or ride_data.get("paymentMethod"),
         "fare_breakdown": {
             "base_fare": ride_data.get("fare_breakdown", {}).get("base_fare", 0),
             "distance_fare": ride_data.get("fare_breakdown", {}).get("distance_fare", 0),
@@ -3014,9 +3114,9 @@ async def get_trip_receipt(ride_id: str, user_id: str = Depends(get_current_user
         "subtotal": ride_data.get("estimated_fare", 0),
         "tip": ride_data.get("tip_amount", 0),
         "total": ride_data.get("final_fare", ride_data.get("estimated_fare", 0)),
-        "driver_name": ride_data.get("driver_name"),
-        "driver_rating": ride_data.get("driver_rating"),
-        "vehicle": ride_data.get("vehicle_info", {})
+        "driver_name": ride_data.get("driver_info", {}).get("name", "Unknown Driver"),
+        "driver_rating": ride_data.get("driver_rating", 5.0),
+        "vehicle": ride_data.get("driver_info", {})
     }
     
     return receipt
