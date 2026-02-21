@@ -193,6 +193,8 @@ const handleManualTopUp = async (e) => {
     setSelectedUserForTopUp(null);
     setTopUpAmount("");
     setTopUpReason("");
+
+    fetchDashboardData();
     
     // Optional: Call your fetch functions to refresh the tables
     // fetchRiders(); 
@@ -285,7 +287,7 @@ const handleManualTopUp = async (e) => {
 
     // 🔥 Crucial: Refresh the riders list so the table updates instantly!
     // (Replace 'fetchRiders' with whatever function you use to load the table)
-    fetchRiders(); 
+    fetchDashboardData();
 
   } catch (error) {
     console.error("Top-up Error:", error);
@@ -566,6 +568,7 @@ const handleManualTopUp = async (e) => {
                               <DialogHeader>
                                 <DialogTitle className="text-[#00d4ff]">Add Balance to Driver</DialogTitle>
                               </DialogHeader>
+                              <DialogDescription className="hidden">Admin modal to adjust user wallet balances.</DialogDescription>
                               {selectedUser && (
                                 <div className="space-y-4">
                                   <div className="bg-black/50 p-4 rounded-xl border border-[#00d4ff]/20">

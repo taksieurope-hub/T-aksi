@@ -80,7 +80,6 @@ const SupportChatWidget = () => {
     setLoading(true);
 
     try {
-      // Send message to backend, attaching ticket_id if we already have one
       const payload = { 
         message: userMessage.content,
         ticket_id: activeTicketId 
@@ -88,29 +87,27 @@ const SupportChatWidget = () => {
       
       const res = await api.post("/support/message", payload);
       
-      // Save the ticket ID so the polling engine knows what to listen for
       const currentTicketId = res.data.ticket_id || activeTicketId;
       if (!activeTicketId && currentTicketId) {
         setActiveTicketId(currentTicketId);
       }
 
-      // 🤖 🔥 YOUR CUSTOM AI OVERRIDE
-      const assistantMessage = {
-        role: "assistant",
-        content: "We appreciate you contacting us, I have forwarded your ticket to our support team and someone will get back to you promptly.",
-        timestamp: new Date().toISOString(),
-        escalated: true,
-        ticketId: currentTicketId
-      };
+      // 🔥 THE FIX: ONLY inject this message if the chat just started!
+      // If it's an ongoing chat with an admin, we stay silent and let the polling handle it.
+      if (!activeTicketId) {
+        const assistantMessage = {
+          role: "assistant",
+          content: "We appreciate you contacting us, I have forwarded your ticket to our support team and someone will get back to you promptly.",
+          timestamp: new Date().toISOString(),
+          escalated: true,
+          ticketId: currentTicketId
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      }
 
-      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: t('support_error') || "Sorry, I'm having trouble connecting. Please try again.",
-        timestamp: new Date().toISOString(),
-        isError: true
-      }]);
+      console.error("Support error:", error);
+      toast.error("Failed to send message. Please try again.");
     } finally {
       setLoading(false);
     }

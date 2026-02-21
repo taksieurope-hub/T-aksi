@@ -1751,51 +1751,58 @@ async def complete_ride(
     
     ride_data = ride_snap.to_dict()
     
-    # 1. Calculate fare purely based on distance/time (NO service fees yet)
-    actual_distance = final_distance if final_distance is not None else ride_data.get("estimated_distance", 0)
+    # 1. CALCULATE FARE (UPFRONT PRICING ENFORCED)
+    billing_distance = ride_data.get("estimated_distance", 0)
+    recorded_actual_distance = final_distance if final_distance is not None else billing_distance
     pickup_wait = ride_data.get("pickup_wait_minutes", 0)
     stop_wait = ride_data.get("stop_wait_minutes", 0)
     num_stops = ride_data.get("num_stops", 0)
-    car_type = ride_data.get("carType", "economy")
+    car_type = ride_data.get("carType") or ride_data.get("car_type") or "economy"
     surge_multiplier = ride_data.get("surge_multiplier", 1.0)
 
-    final_fare = calculate_fare(car_type, actual_distance, pickup_wait, stop_wait, num_stops, surge_multiplier)
+    final_fare = calculate_fare(car_type, billing_distance, pickup_wait, stop_wait, num_stops, surge_multiplier)
     
-    # 2. Extract variables & define commissionable_amount
-    payment_method = ride_data.get("payment_method", "cash")
-    service_fee = 2.0 if payment_method == "card" else 0.0
-    
-    # 🔥 THIS IS THE FIX: The commissionable amount is the pure ride fare BEFORE the card fee
+    raw_payment = ride_data.get("payment_method") or ride_data.get("paymentMethod") or "cash"
+    safe_payment_method = str(raw_payment).lower()
+
+    service_fee = 2.0 if safe_payment_method == "card" else 0.0
     commissionable_amount = final_fare["total"] 
-    
-    # The total the rider is charged (e.g., pure fare + 2 GEL fee if card)
     total_with_fee = commissionable_amount + service_fee
     
-    # Update the final_fare dictionary so the database gets the correct breakdown
     final_fare["base_total"] = commissionable_amount
     final_fare["service_fee"] = service_fee
     final_fare["total"] = total_with_fee
 
-    # 3. PayPal Verification
+    # 🔥 2. AUTO-DEDUCT VIRTUAL WALLET
+    rider_id = ride_data.get("userId") or ride_data.get("rider_id")
+    rider_ref = db.collection("users").document(rider_id) if rider_id else None
+    
+    wallet_balance = 0.0
+    if rider_ref:
+        rider_doc = rider_ref.get()
+        if rider_doc.exists:
+            wallet_balance = rider_doc.to_dict().get("wallet_balance", 0.0)
+
+    # Calculate how much wallet we can use, and how much cash is left to collect
+    wallet_used = min(wallet_balance, total_with_fee) if wallet_balance > 0 else 0.0
+    remaining_fare = total_with_fee - wallet_used
+
+    # 3. Payment Verification
     payment_status = "cash_pending"
     order_id = ride_data.get("payment_order_id")
 
-    if payment_method == "card" and order_id:
+    if safe_payment_method == "card" and order_id:
         try:
             access_token = await get_paypal_token()
             if access_token:
                 async with httpx.AsyncClient(timeout=25) as client:
                     capture_response = await client.get(
                         f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}",
-                        headers={
-                            "Content-Type": "application/json",
-                            "Authorization": f"Bearer {access_token}",
-                        },
+                        headers={"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"},
                     )
                     if capture_response.status_code == 200:
                         data = capture_response.json()
-                        status = data.get("status")
-                        if status in ("COMPLETED", "APPROVED"):
+                        if data.get("status") in ("COMPLETED", "APPROVED"):
                             payment_status = "paid"
                         else:
                             payment_status = "failed"
@@ -1806,30 +1813,39 @@ async def complete_ride(
         except Exception as e:
             logger.error(f"Payment Exception: {e}")
             payment_status = "error"
-    elif payment_method == "cash":
-        payment_status = "cash_collected"
+    elif safe_payment_method == "cash":
+        payment_status = "cash_collected" if remaining_fare > 0 else "paid_via_wallet"
+
+    cash_to_collect = remaining_fare if safe_payment_method == "cash" else 0
 
     # 4. Update Ride Record
-    ride_ref.update({
+    ride_updates = {
         "status": "completed",
-        "actual_distance": actual_distance,
+        "actual_distance": recorded_actual_distance,
+        "billed_distance": billing_distance,
         "final_fare": total_with_fee,
+        "wallet_used": wallet_used,               # Record how much wallet was applied
+        "cash_to_collect": cash_to_collect,       # Exact cash left to ask for
         "final_fare_breakdown": final_fare,
         "payment_status": payment_status,
+        "payment_method": safe_payment_method,
+        "paymentMethod": safe_payment_method, 
         "completed_at": firestore.SERVER_TIMESTAMP,
-    })
+    }
+    ride_ref.update(ride_updates)
 
-    # 5. EXACT WALLET MATH
-    driver_id = ride_data.get("driver_id")
+    # 🔥 Deduct the used wallet balance from the rider's profile
+    if wallet_used > 0 and rider_ref:
+        rider_ref.update({
+            "wallet_balance": firestore.Increment(-wallet_used)
+        })
+
+    # 5. EXACT WALLET MATH FOR DRIVER
+    driver_id = ride_data.get("driver_id") or ride_data.get("driverId")
     if driver_id:
-        # What we already took from them when they hit "Accept"
         held_commission = ride_data.get("commission_paid", 0) or 0
         commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
-        
-        # What they ACTUALLY owe us based on the final completed distance
         actual_commission = commissionable_amount * commission_rate
-        
-        # What the driver earns on this trip
         driver_share = commissionable_amount - actual_commission
 
         user_ref = db.collection("users").document(driver_id)
@@ -1842,46 +1858,45 @@ async def complete_ride(
         }
 
         wallet_change = 0
-        if payment_method == "cash":
-            # CASH RULE: We ONLY deduct the 23% commission. 
-            # Because we already deducted 'held_commission' at accept, we just deduct the difference now.
-            wallet_change = -(actual_commission - held_commission)
+        if safe_payment_method == "cash":
+            # 🔥 SPLIT PAYMENT MAGIC: The company owes the driver the "Wallet" portion 
+            # so they get their full digital payout, minus the cash they physically held.
+            wallet_change = driver_share - cash_to_collect + held_commission
             updates["earnings.balance"] = firestore.Increment(wallet_change)
             
         elif payment_status == "paid": 
-            # CARD RULE: The company holds the customer's money.
-            # We owe the driver their 77% share.
-            # AND we must refund the 'held_commission' we took from them at accept.
             wallet_change = driver_share + held_commission
             updates["earnings.balance"] = firestore.Increment(wallet_change)
 
         user_ref.update(updates)
 
-        # Log for driver earning reports
         db.collection("wallet_transactions").add({
             "driver_id": driver_id,
             "ride_id": ride_id,
-            "type": "cash_commission_deduction" if payment_method == "cash" else "card_earnings_credit",
+            "type": "cash_commission_deduction" if safe_payment_method == "cash" else "card_earnings_credit",
             "net_wallet_change_at_completion": wallet_change,
             "ride_base_fare": commissionable_amount,
+            "wallet_used_by_rider": wallet_used,
+            "cash_collected_by_driver": cash_to_collect,
             "service_fee_excluded": service_fee,
             "commission_charged": actual_commission,
             "driver_share_earned": driver_share,
-            "payment_method": payment_method,
+            "payment_method": safe_payment_method,
             "created_at": firestore.SERVER_TIMESTAMP
         })
 
     # 6. Update Rider Stats
-    rider_id = ride_data.get("userId")
-    if rider_id:
-        db.collection("users").document(rider_id).update({
-            "total_rides": firestore.Increment(1)
-        })
+    if rider_id and rider_ref:
+        rider_ref.update({"total_rides": firestore.Increment(1)})
 
     return {
         "message": "Ride completed",
         "payment_status": payment_status,
+        "payment_method": safe_payment_method,
+        "paymentMethod": safe_payment_method,
         "final_fare": total_with_fee,
+        "wallet_used": wallet_used,
+        "cash_to_collect": cash_to_collect,
         "fare_breakdown": final_fare,
     }
 
@@ -2522,7 +2537,7 @@ async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(g
     """Send message to AI support bot or reply to existing ticket"""
     db = get_db()
     
-    # 1. IF THIS IS A REPLY TO AN EXISTING TICKET
+    # 1. IF THIS IS A REPLY TO AN EXISTING TICKET (Admin & Rider conversing)
     if msg.ticket_id:
         ticket_ref = db.collection("support_tickets").document(msg.ticket_id)
         if not ticket_ref.get().exists:
@@ -2536,33 +2551,32 @@ async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(g
         })
         return {"ticket_id": msg.ticket_id, "response": "", "status": "escalated"}
 
-    # 2. IF THIS IS A BRAND NEW TICKET
+    # 2. IF THIS IS A BRAND NEW TICKET (First message)
     user_doc = db.collection("users").document(user_id).get()
     user_context = {}
     if user_doc.exists:
         user_data = user_doc.to_dict()
         user_context = {"name": user_data.get("name", "Unknown"), "phone": user_data.get("cellphone", ""), "ride_count": user_data.get("total_rides", 0)}
     
-    # Process through AI
-    ai_result = await process_support_message(msg.message, user_context)
+    # 🔥 THE FIX: Bypass the failing AI and lock your exact text into the database permanently
+    guaranteed_response = "We appreciate you contacting us, I have forwarded your ticket to our support team and someone will get back to you promptly."
     
-    # Build Threaded History
     chat_history = [
         {"role": "user", "content": msg.message, "timestamp": now_iso()},
-        {"role": "assistant", "content": ai_result["ai_response"], "escalated": ai_result["needs_escalation"], "timestamp": now_iso()}
+        {"role": "assistant", "content": guaranteed_response, "escalated": True, "timestamp": now_iso()}
     ]
     
     ticket_data = {
         "user_id": user_id,
         "user_name": user_context.get("name", "Unknown"),
         "user_phone": user_context.get("phone", ""),
-        "message": msg.message, # Kept for backward compatibility with admin panel
-        "ai_response": ai_result["ai_response"],
+        "message": msg.message, 
+        "ai_response": guaranteed_response,
         "admin_response": None,
-        "chat_history": chat_history, # The new array for React
-        "status": "escalated" if ai_result["needs_escalation"] else "ai_handled",
-        "priority": ai_result["priority"],
-        "category": ai_result["category"],
+        "chat_history": chat_history, 
+        "status": "escalated", # Escalates it to the Admin dashboard immediately
+        "priority": "normal",
+        "category": "general",
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP,
         "admin_notes": None
@@ -2571,9 +2585,9 @@ async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(g
     ticket_ref = db.collection("support_tickets").add(ticket_data)
     return {
         "ticket_id": ticket_ref[1].id,
-        "response": ai_result["ai_response"],
-        "status": ticket_data["status"],
-        "escalated": ai_result["needs_escalation"]
+        "response": guaranteed_response,
+        "status": "escalated",
+        "escalated": True
     }
 
 # --- THE MISSING ROUTE REACT WAS LOOKING FOR ---
@@ -3125,24 +3139,28 @@ async def get_trip_receipt(ride_id: str, user_id: str = Depends(get_current_user
     
     ride_data = ride.to_dict()
     
-    # 🔥 FIX: Use the smart ID checkers for receipts too
     actual_rider_id = ride_data.get("rider_id") or ride_data.get("userId") or ride_data.get("user_id")
     actual_driver_id = ride_data.get("driver_id") or ride_data.get("driverId")
     
-    # Check authorization using the smart IDs
     if actual_rider_id != user_id and actual_driver_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
+    raw_payment = ride_data.get("payment_method") or ride_data.get("paymentMethod") or "cash"
+    safe_payment_method = str(raw_payment).lower()
+
     receipt = {
         "ride_id": ride_id,
         "date": serialize_firestore_data(ride_data).get("created_at"),
         "pickup": ride_data.get("pickup_address") or ride_data.get("pickup"),
         "destination": ride_data.get("destination_address") or ride_data.get("destination"),
         "stops": ride_data.get("stops", []),
-        "distance_km": ride_data.get("actual_distance_km", ride_data.get("estimated_distance")),
+        "distance_km": ride_data.get("billed_distance", ride_data.get("estimated_distance")),
         "duration_min": ride_data.get("actual_duration_min"),
         "car_type": ride_data.get("car_type") or ride_data.get("carType"),
-        "payment_method": ride_data.get("payment_method") or ride_data.get("paymentMethod"),
+        
+        "payment_method": safe_payment_method,
+        "paymentMethod": safe_payment_method,
+        
         "fare_breakdown": {
             "base_fare": ride_data.get("fare_breakdown", {}).get("base_fare", 0),
             "distance_fare": ride_data.get("fare_breakdown", {}).get("distance_fare", 0),
@@ -3155,6 +3173,11 @@ async def get_trip_receipt(ride_id: str, user_id: str = Depends(get_current_user
         "subtotal": ride_data.get("estimated_fare", 0),
         "tip": ride_data.get("tip_amount", 0),
         "total": ride_data.get("final_fare", ride_data.get("estimated_fare", 0)),
+        
+        # 🔥 Show the Split Payment details on the receipt
+        "wallet_used": ride_data.get("wallet_used", 0),
+        "cash_collected": ride_data.get("cash_to_collect", 0),
+        
         "driver_name": ride_data.get("driver_info", {}).get("name", "Unknown Driver"),
         "driver_rating": ride_data.get("driver_rating", 5.0),
         "vehicle": ride_data.get("driver_info", {})
