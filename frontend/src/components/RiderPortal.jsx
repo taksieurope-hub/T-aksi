@@ -885,13 +885,22 @@ const RiderDashboard = () => {
 
   const fetchActiveRide = async () => {
     try {
-      const res = await api.get(`/rider/active-ride`);
-      if (res.data) {
-        setActiveRide(res.data);
-        if (activeTab === "book" && activeTab !== "active") setActiveTab("active");
+      // 🔥 THE FIX: If we already have a ride, target-lock onto its specific ID!
+      if (activeRide && activeRide.id) {
+        const res = await api.get(`/rides/${activeRide.id}`);
+        if (res.data) {
+          setActiveRide(res.data);
+        }
+      } else {
+        // If we don't have a ride yet, ask the backend if we left one running
+        const res = await api.get("/rider/active-ride");
+        if (res.data) {
+          setActiveRide(res.data);
+        }
       }
     } catch (error) {
-      if (error.response?.status !== 404) console.error("Error fetching active ride:", error);
+      // If the backend returns 404/Empty, don't crash, just wait.
+      console.error("Error fetching active ride:", error);
     }
   };
 
