@@ -2,8 +2,7 @@
 import { auth } from './lib/firebase'; 
 
 const api = axios.create({
-  // Clean, proper string formatting
-  baseURL: import.meta.env.VITE_API_URL || 'https://t-aksi.onrender.com/api',
+  baseURL: 'https://t-aksi.onrender.com/api'
 });
 
 api.interceptors.request.use(async (config) => {
