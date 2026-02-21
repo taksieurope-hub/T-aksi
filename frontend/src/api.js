@@ -12,7 +12,12 @@ api.interceptors.request.use(async (config) => {
     
     if (user) {
       const token = await user.getIdToken();
+      // 👇 ADD THIS LINE to see if the token exists
+      console.log("✅ TOKEN FOUND AND ATTACHED"); 
       config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      // 👇 ADD THIS LINE to see if it's missing
+      console.log("❌ NO USER LOGGED IN - SENDING EMPTY REQUEST"); 
     }
   } catch (error) {
     console.error("Firebase token error:", error);
