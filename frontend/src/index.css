@@ -226,3 +226,13 @@ input:focus, textarea:focus, select:focus {
   background: rgba(0, 212, 255, 0.3);
   color: #ffffff;
 }
+
+/* Override Browser Autofill white backgrounds */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active{
+    -webkit-box-shadow: 0 0 0 30px #020202 inset !important;
+    -webkit-text-fill-color: white !important;
+    transition: background-color 5000s ease-in-out 0s;
+}
