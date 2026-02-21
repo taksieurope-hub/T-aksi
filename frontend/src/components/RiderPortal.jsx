@@ -848,15 +848,25 @@ const RiderDashboard = () => {
   }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length]);
 
   // 🔥 TRIGGER: Only run when NUMBERS change (Debounced)
-  useEffect(() => {
-    if (mapsLoaded && pickup.lat && destination.lat) {
-      const timer = setTimeout(() => {
-        calculateRoute();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [mapsLoaded, pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length, calculateRoute]);
+useEffect(() => {
+  if (mapsLoaded && pickup.lat && destination.lat) {
+    const timer = setTimeout(() => {
+      calculateRoute();
+    }, 500);
+    return () => clearTimeout(timer);
+  }
+  // 🔥 CRITICAL: Add stops.length here so adding a stop triggers a re-draw
+}, [mapsLoaded, pickup.lat, destination.lat, stops.length]); 
 
+// 2. Ensure the Fare estimate watches the stops
+useEffect(() => {
+  if (routeInfo) {
+    const surge = surgeInfo?.multiplier || 1.0;
+    // 🔥 Ensure stops.length is passed into the calculation
+    const fare = calculateFare(carType, routeInfo.distance, 0, 0, stops.length, surge, paymentMethod);
+    setFareEstimate(fare);
+  }
+}, [routeInfo, carType, stops.length, surgeInfo, paymentMethod]);
   // 🔥 FIX: Added 'paymentMethod' to dependency array so price updates instantly
   useEffect(() => {
     if (routeInfo) {

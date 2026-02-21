@@ -837,7 +837,19 @@ const DriverDashboard = () => {
 
   const statusColors = { pending_vehicle: "bg-yellow-500 text-black", pending_review: "bg-orange-500 text-black", approved: "bg-[#00ff88] text-black", rejected: "bg-red-500 text-white" };
   const rideStatusColors = { searching: "bg-yellow-500 text-black", accepted: "bg-blue-500 text-white", arrived: "bg-purple-500 text-white", in_progress: "bg-[#00ff88] text-black", completed: "bg-green-600 text-white", cancelled: "bg-red-500 text-white" };
+const [isWaitingAtStop, setIsWaitingAtStop] = useState(false);
 
+const toggleStopWait = async () => {
+  try {
+    const newStatus = !isWaitingAtStop;
+    // We tell the backend to start/stop the stop-clock
+    await api.post(`/rides/${activeRide.id}/toggle-stop-wait`, { isWaiting: newStatus });
+    setIsWaitingAtStop(newStatus);
+    toast.success(newStatus ? "Stop wait timer started" : "Stop wait timer paused");
+  } catch (error) {
+    toast.error("Failed to update wait status");
+  }
+};
   return (
     // 🔥 FIX 1: Use 100dvh and overflow-hidden to lock it to the exact phone screen size
     <div className="relative h-[100dvh] w-full bg-black/40 font-sans overflow-hidden">

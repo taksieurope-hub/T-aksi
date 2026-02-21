@@ -639,6 +639,31 @@ def calculate_fare(
 # AUTH ROUTES
 # =========================
 
+@app.post("/api/rides/{ride_id}/toggle-stop-wait", tags=["Rides"])
+async def toggle_stop_wait(ride_id: str, is_waiting: bool, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    
+    if is_waiting:
+        # Record the exact moment the driver started waiting at the stop
+        update_data = {"stop_wait_start": firestore.SERVER_TIMESTAMP}
+    else:
+        # Calculate the elapsed time and add it to the total billable stop_wait_minutes
+        ride_snap = ride_ref.get()
+        ride_data = ride_snap.to_dict()
+        start_time = ride_data.get("stop_wait_start")
+        
+        if start_time:
+            wait_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
+            wait_minutes = round(wait_seconds / 60, 2)
+            update_data = {
+                "stop_wait_minutes": firestore.Increment(wait_minutes),
+                "stop_wait_start": None # Reset the start time
+            }
+            
+    ride_ref.update(update_data)
+    return {"status": "updated", "is_waiting": is_waiting}
+
 @app.post("/api/auth/register/rider", tags=["Auth"])
 async def register_rider(data: UserRegister):
     db = get_db()
