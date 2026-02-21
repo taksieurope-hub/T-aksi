@@ -325,8 +325,6 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
        return; 
     }
 
-    const notifiedAccepted = useRef(false);
-
     // MODE B: Live Ride (Driver Active)
     if (!dLat || !dLng) return; // Wait for driver location
 
@@ -1015,7 +1013,7 @@ const RiderDashboard = () => {
   // Only show the toast IF we haven't shown it yet
   if (!notifiedAccepted.current) {
     toast.success(`Driver ${res.data.driver_info.name} is coming!`);
-    notifiedAccepted.current = true; // Lock it so it never fires again for this ride
+    notifiedAccepted.current = true;
   }
 }
       } catch (error) {
@@ -1642,6 +1640,7 @@ const RiderDashboard = () => {
 const RiderPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
+  const notifiedAccepted = useRef(false);
 
   if (!user || user.user_type !== "rider") {
     if (location.pathname === "/rider" || location.pathname === "/rider/") {
