@@ -133,6 +133,10 @@ const AdminDashboard = () => {
   const [pendingDrivers, setPendingDrivers] = useState([]);
   const [pendingWithdrawals, setPendingWithdrawals] = useState([]);
   const [pendingTopups, setPendingTopups] = useState([]);
+  const [selectedUserForTopUp, setSelectedUserForTopUp] = useState(null);
+const [topUpAmount, setTopUpAmount] = useState("");
+const [topUpReason, setTopUpReason] = useState("");
+const [isToppingUp, setIsToppingUp] = useState(false);
   
   // Selected user for details
   const [selectedUser, setSelectedUser] = useState(null);
@@ -168,6 +172,37 @@ const AdminDashboard = () => {
       setLoading(false);
     }
   };
+
+const handleManualTopUp = async (e) => {
+  e.preventDefault();
+  if (!topUpAmount || isNaN(topUpAmount) || Number(topUpAmount) <= 0) {
+    return toast.error("Please enter a valid amount.");
+  }
+
+  setIsToppingUp(true);
+  try {
+    // Calls the existing backend route
+    await api.post(`/admin/add-balance/${selectedUserForTopUp.id}`, {
+      amount: parseFloat(topUpAmount),
+      reason: topUpReason || "Admin manual adjustment/refund"
+    });
+    
+    toast.success(`Successfully added ₾${topUpAmount} to ${selectedUserForTopUp.name}'s wallet`);
+    
+    // Reset and close
+    setSelectedUserForTopUp(null);
+    setTopUpAmount("");
+    setTopUpReason("");
+    
+    // Optional: Call your fetch functions to refresh the tables
+    // fetchRiders(); 
+    // fetchDrivers();
+  } catch (error) {
+    toast.error(error.response?.data?.detail || "Failed to add funds");
+  } finally {
+    setIsToppingUp(false);
+  }
+};
 
   const handleApproveDriver = async (driverId) => {
     try {
@@ -230,26 +265,33 @@ const AdminDashboard = () => {
   };
 
   const handleAddBalance = async () => {
-    if (!selectedUser || !fundAmount) {
-      toast.error("Please enter an amount");
-      return;
-    }
+  if (!selectedUser) return;
+  if (!fundAmount || isNaN(fundAmount) || Number(fundAmount) <= 0) {
+    return toast.error("Please enter a valid amount.");
+  }
 
-    try {
-      await api.post(`/admin/users/${selectedUser.id}/add-balance`, {
-        amount: parseFloat(fundAmount),
-        reason: fundReason || "Admin adjustment"
-      });
-      
-      toast.success(`₾${fundAmount} added to ${selectedUser.name}'s account`);
-      setFundAmount("");
-      setFundReason("");
-      setSelectedUser(null);
-      fetchDashboardData();
-    } catch (error) {
-      toast.error("Failed to add balance");
-    }
-  };
+  try {
+    // Send the money to the backend route we verified in your server.py
+    await api.post(`/admin/add-balance/${selectedUser.id}`, {
+      amount: parseFloat(fundAmount),
+      reason: fundReason || "Admin manual refund/adjustment"
+    });
+
+    toast.success(`Successfully added ₾${fundAmount} to ${selectedUser.name}`);
+
+    // Clear the form
+    setFundAmount("");
+    setFundReason("");
+
+    // 🔥 Crucial: Refresh the riders list so the table updates instantly!
+    // (Replace 'fetchRiders' with whatever function you use to load the table)
+    fetchRiders(); 
+
+  } catch (error) {
+    console.error("Top-up Error:", error);
+    toast.error(error.response?.data?.detail || "Failed to add balance.");
+  }
+};
 
   const fetchUserDetails = async (userId, userType) => {
     try {
