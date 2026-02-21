@@ -20,13 +20,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import RideCommunication from "./RideCommunication";
-import {
-  Car, MapPin, History, Home, LogOut, User, Navigation, Rocket,
-  Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned,
-  Loader2, CreditCard, CheckCircle2, Phone, Lock, ArrowLeft, Wallet,
-  Route as RouteIcon, Edit, Activity, Clock, Star
-} from "lucide-react";
+import { Car, MapPin, History, Home, LogOut, User, Navigation, Rocket } from "lucide-react";
+// ... the rest of your imports
 
 // Pricing Rules (Updated to your specific base prices)
 const PRICING_RULES = {
