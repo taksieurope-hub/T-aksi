@@ -6,7 +6,7 @@ import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
 import { DriverTripCompletionModal } from "@/components/TripCompletionModal";
-import { auth } from "./lib/firebase";
+import { auth } from "../lib/firebase";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";

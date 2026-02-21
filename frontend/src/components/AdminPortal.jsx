@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { auth } from "./lib/firebase";
+import { auth } from "../lib/firebase";
 import { useAuth } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
