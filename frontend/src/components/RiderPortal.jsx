@@ -21,7 +21,8 @@ import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
 import { 
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft, 
-  Lock, Phone, MessageSquare, Star, Clock, Shield, AlertTriangle, Loader2, Search, X
+  Lock, Phone, MessageSquare, Star, Clock, Shield, AlertTriangle, Loader2, 
+  Search, X, Crosshair, MapPinned, CheckCircle2, Zap, Activity
 } from "lucide-react";
 
 // Pricing Rules (Updated to your specific base prices)
