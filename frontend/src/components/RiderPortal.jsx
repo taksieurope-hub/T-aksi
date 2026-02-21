@@ -699,6 +699,7 @@ const WaitTimer = ({ arrivedAt, carType }) => {
 
 // Dashboard Component
 const RiderDashboard = () => {
+  const notifiedArrived = useRef(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -995,6 +996,24 @@ const RiderDashboard = () => {
       try {
         const res = await api.get(`/rides/${rideId}`);
         setActiveRide(res.data);
+
+        // Inside your ride status polling logic:
+if (res.data.status === "arrived") {
+  if (!notifiedArrived.current) {
+    // 🔔 TRIGGER THE NOTIFICATION
+    toast.success("YOUR DRIVER HAS ARRIVED!", {
+      description: "Please meet your driver at the pickup location. The free wait timer has started.",
+      duration: 10000, // Keep it visible for 10 seconds
+      icon: "🚗",
+    });
+    
+    // Play a subtle sound if you want to get fancy later
+    notifiedArrived.current = True; 
+  }
+} else if (res.data.status === "searching") {
+  // Reset the flag if they book a new ride later
+  notifiedArrived.current = false;
+}
 
         if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
           clearInterval(interval);

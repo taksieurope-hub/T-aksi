@@ -984,12 +984,12 @@ const DriverDashboard = () => {
                         {/*  comunication button */}
   <div className="mt-3">
     <RideCommunication 
-      rideId={activeRide.id}
-      otherPartyPhone={activeRide.rider_phone || activeRide.cellphone}
-      otherPartyName={activeRide.rider_name || "Passenger"}
-      currentUserId={user?.id}
-      isDriver={true} 
-    />
+  rideId={activeRide.id}
+  otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone} // Ensure this path is right
+  otherPartyName={activeRide.rider_name || "Rider"}
+  currentUserId={user?.id}
+  isDriver={true} // 🔥 This tells the component to show the Call button for the driver
+/>
   </div>
 
                         <div className="flex gap-3 pt-2">

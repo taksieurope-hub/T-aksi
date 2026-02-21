@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Phone, MessageCircle, X, Send, Loader2 } from "lucide-react";
+import { Phone, MessageSquare, X, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -15,15 +15,14 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
   const themeColor = isDriver ? "border-[#00d4ff] text-[#00d4ff]" : "border-[#00ff88] text-[#00ff88]";
   const themeBg = isDriver ? "bg-[#00d4ff]" : "bg-[#00ff88]";
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
+  // 1. Better Scroll Logic: Only snaps to bottom when a new message actually arrives
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isOpen]);
+    if (messages.length > 0 && isOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages.length, isOpen]);
 
-  // Polling Engine for Active Chat
+  // 2. Polling Engine
   useEffect(() => {
     if (!isOpen || !rideId) return;
 
@@ -38,8 +37,8 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
       }
     };
 
-    fetchMessages(); // Initial fetch
-    const interval = setInterval(fetchMessages, 3000); // Poll every 3 seconds
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
   }, [isOpen, rideId]);
 
@@ -53,13 +52,7 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
 
     try {
       await api.post(`/rides/${rideId}/chat`, { message: messageText });
-      // Optimistic UI update
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        sender_id: currentUserId,
-        message: messageText,
-        timestamp: new Date().toISOString()
-      }]);
+      // Logic for Polling will pick up the real message
     } catch (error) {
       console.error("Failed to send message:", error);
     } finally {
@@ -69,14 +62,14 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
 
   return (
     <div className="flex gap-2 mt-4">
-      {/* 📞 Call Button */}
-      {otherPartyPhone && (
-        <a href={`tel:${otherPartyPhone}`} className="flex-1">
-          <Button variant="outline" className={`w-full ${themeColor} hover:${themeBg} hover:text-black transition-colors`}>
-            <Phone className="w-4 h-4 mr-2" /> Call
-          </Button>
-        </a>
-      )}
+      {/* 📞 Call Button (Always visible to both) */}
+      <Button 
+        variant="outline" 
+        className={`flex-1 ${themeColor} hover:${themeBg} hover:text-black transition-colors`}
+        onClick={() => window.location.href = `tel:${otherPartyPhone}`}
+      >
+        <Phone className="w-4 h-4 mr-2" /> Call
+      </Button>
 
       {/* 💬 Chat Button */}
       <Button 
@@ -84,45 +77,49 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
         className={`flex-1 ${themeColor} hover:${themeBg} hover:text-black transition-colors`}
         onClick={() => setIsOpen(true)}
       >
-        <MessageCircle className="w-4 h-4 mr-2" /> Chat
+        <MessageSquare className="w-4 h-4 mr-2" /> Chat
       </Button>
 
       {/* 🗨️ Chat Popup Window */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4 bg-black/60 backdrop-blur-sm">
-          <Card className={`w-full max-w-md h-[500px] flex flex-col bg-black border ${themeColor} shadow-2xl animate-in slide-in-from-bottom-10`}>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <Card className={`w-full max-w-md h-[85vh] flex flex-col bg-black border ${themeColor} shadow-[0_0_50px_rgba(0,0,0,1)] animate-in zoom-in-95 duration-200`}>
             
             {/* Header */}
-            <div className={`p-4 border-b ${themeColor.replace('text', 'border')}/30 flex justify-between items-center`}>
+            <div className="p-4 border-b border-white/10 flex justify-between items-center bg-black">
               <div>
-                <h3 className={`font-bold ${themeColor.split(' ')[1]}`}>
-                  Contact {otherPartyName || (isDriver ? "Rider" : "Driver")}
+                <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Live Chat</p>
+                <h3 className={`font-bold text-lg ${isDriver ? 'text-[#00d4ff]' : 'text-[#00ff88]'}`}>
+                  {otherPartyName || (isDriver ? "Rider" : "Driver")}
                 </h3>
               </div>
               <Button variant="ghost" size="icon" className="text-gray-400 hover:text-white" onClick={() => setIsOpen(false)}>
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </Button>
             </div>
 
-            {/* Message Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-black/50">
+            {/* Message Area (Whose is Whose) */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/40">
               {messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-                  Send a message to coordinate pickup.
+                <div className="h-full flex items-center justify-center text-gray-500 text-sm italic">
+                  No messages yet. Send a message to coordinate.
                 </div>
               ) : (
-                messages.map((msg) => {
-                  const isMe = msg.sender_id === currentUserId;
+                messages.map((msg, i) => {
+                  const isMe = String(msg.sender_id) === String(currentUserId);
                   return (
-                    <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[80%] rounded-2xl px-4 py-2 ${
+                    <div key={i} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[85%] rounded-2xl px-4 py-2 ${
                         isMe 
-                          ? `${themeBg} text-black rounded-br-sm` 
-                          : "bg-gray-800 text-white border border-gray-700 rounded-bl-sm"
+                          ? `${themeBg} text-black rounded-tr-none shadow-lg` 
+                          : "bg-gray-800 text-white border border-gray-700 rounded-tl-none"
                       }`}>
-                        <p className="text-sm">{msg.message}</p>
-                        <p className={`text-[10px] mt-1 ${isMe ? "text-black/60" : "text-gray-400"}`}>
-                          {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        <p className="text-[9px] font-bold uppercase opacity-50 mb-1">
+                          {isMe ? 'You' : (isDriver ? 'Rider' : 'Driver')}
+                        </p>
+                        <p className="text-sm leading-relaxed">{msg.message}</p>
+                        <p className={`text-[8px] mt-1 text-right opacity-40`}>
+                          {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
                         </p>
                       </div>
                     </div>
@@ -133,15 +130,15 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
             </div>
 
             {/* Input Area */}
-            <form onSubmit={handleSend} className={`p-3 border-t ${themeColor.replace('text', 'border')}/30 bg-black flex gap-2`}>
+            <form onSubmit={handleSend} className="p-4 border-t border-white/10 bg-black flex gap-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Type a message..."
-                className={`flex-1 bg-gray-900 border-gray-800 text-white focus-visible:ring-1 focus-visible:ring-${themeColor.split('-')[1].replace(']', '')}`}
+                className="flex-1 bg-gray-900 border-gray-800 text-white h-12 rounded-xl focus-visible:ring-[#00ff88]"
               />
-              <Button type="submit" disabled={!input.trim() || loading} className={`${themeBg} text-black hover:opacity-80`}>
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              <Button type="submit" disabled={!input.trim() || loading} className={`${themeBg} text-black w-12 h-12 rounded-xl hover:opacity-80`}>
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
               </Button>
             </form>
           </Card>

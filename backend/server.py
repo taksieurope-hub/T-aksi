@@ -53,10 +53,11 @@ PAYPAL_API_BASE = os.environ.get(
     "https://api-m.sandbox.paypal.com" if PAYPAL_MODE == "sandbox" else "https://api-m.paypal.com"
 )
 
-# CORS
-CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*")
-ALLOW_ORIGINS = ["*"] if (CORS_ORIGINS or "*").strip() == "*" else [
-    o.strip() for o in CORS_ORIGINS.split(",") if o.strip()
+# CORS - EXPLICIT TRUST
+ALLOW_ORIGINS = [
+    "https://t-aksi-frontend.onrender.com", 
+    "http://localhost:5173",
+    "http://localhost:3000"
 ]
 
 # Firebase
@@ -2388,82 +2389,7 @@ async def reject_withdrawal(id: str):
     })
     return {"message": "Withdrawal rejected"}
 
-
-# =========================
 # AI FEATURES - TRANSLATION, SUPPORT, CHAT
-# =========================
-
-from ai_features import (
-    translate_text, process_support_message, translate_chat_message,
-    generate_referral_code, generate_share_link, calculate_referral_bonus,
-    TranslateRequest, SupportMessage, RatingRequest, FavoriteLocation,
-    ScheduledRideRequest, SOSRequest, ShareTripRequest, ReferralCodeRequest, TipRequest,
-    RATING_TAGS, now_iso as ai_now_iso
-)
-
-# --- Translation API ---
-@app.post("/api/translate", tags=["AI"])
-async def translate_endpoint(req: TranslateRequest):
-    """Translate text between languages"""
-    translated = await translate_text(req.text, req.source_lang, req.target_lang)
-    return {"original": req.text, "translated": translated, "target_lang": req.target_lang}
-
-# --- Chat with Auto-Translation ---
-@app.post("/api/rides/{ride_id}/chat/translate", tags=["Chat"])
-async def send_translated_chat(
-    ride_id: str, 
-    chat: ChatMessage, 
-    target_lang: str = "auto",
-    user_id: str = Depends(get_current_user_id)
-):
-    """Send chat message with auto-translation"""
-    db = get_db()
-    ride_ref = db.collection("rides").document(ride_id)
-    ride = ride_ref.get()
-    if not ride.exists:
-        raise HTTPException(status_code=404, detail="Ride not found")
-    
-    ride_data = ride.to_dict()
-    
-    # Determine sender role and recipient language
-    sender_role = "rider" if user_id == ride_data.get("rider_id") else "driver"
-    
-    # Get language preferences (default to English)
-    rider_lang = ride_data.get("rider_lang", "en")
-    driver_lang = ride_data.get("driver_lang", "en")
-    
-    sender_lang = rider_lang if sender_role == "rider" else driver_lang
-    recipient_lang = driver_lang if sender_role == "rider" else rider_lang
-    
-    # Translate if languages differ
-    translation_result = await translate_chat_message(chat.message, sender_lang, recipient_lang)
-    
-    # Store message with translation
-    message_data = {
-        "ride_id": ride_id,
-        "sender_id": user_id,
-        "sender_role": sender_role,
-        "message": chat.message,
-        "translated_message": translation_result.get("translated", chat.message),
-        "was_translated": translation_result.get("was_translated", False),
-        "from_lang": sender_lang,
-        "to_lang": recipient_lang,
-        "timestamp": firestore.SERVER_TIMESTAMP,
-        "read": False
-    }
-    
-    db.collection("ride_chats").add(message_data)
-    
-    return {
-        "status": "sent",
-        "original": chat.message,
-        "translated": translation_result.get("translated"),
-        "was_translated": translation_result.get("was_translated", False)
-    }
-
-# =========================
-# AI FEATURES - TRANSLATION, SUPPORT, CHAT
-# =========================
 
 from ai_features import (
     translate_text, process_support_message, translate_chat_message,
@@ -2626,16 +2552,27 @@ async def get_support_history(user_id: str = Depends(get_current_user_id)):
     
     return {"tickets": result}
 
-# --- Admin Support Management ---
 @app.get("/api/admin/support/tickets", tags=["Admin"])
 async def get_support_tickets(status: str = None, priority: str = None):
     db = get_db()
+    # We remove the order_by from the query to prevent the Index Crash
     query = db.collection("support_tickets")
     if status: query = query.where("status", "==", status)
     if priority: query = query.where("priority", "==", priority)
     
-    tickets = query.order_by("created_at", direction=firestore.Query.DESCENDING).limit(50).stream()
-    return {"tickets": [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in tickets]}
+    # We fetch the data first...
+    tickets_stream = query.limit(100).stream()
+    
+    results = []
+    for t in tickets_stream:
+        data = t.to_dict()
+        data["id"] = t.id
+        results.append(serialize_firestore_data(data))
+    
+    # ...and then we sort it in Python memory to avoid needing a Google Index!
+    results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    
+    return {"tickets": results}
 
 @app.get("/api/admin/support/tickets/escalated", tags=["Admin"])
 async def get_escalated_tickets():
