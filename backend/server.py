@@ -1537,13 +1537,33 @@ async def match_drivers_to_ride(ride_id: str):
         if idx + 1 >= len(radius_progression):
             break
 
-    db.collection("rides").document(ride_id).update({
+    # 🔥 AUTO-REFUND LOGIC (For "No Drivers Found")
+    ride_ref = db.collection("rides").document(ride_id)
+    fresh_ride_data = ride_ref.get().to_dict()
+    
+    update_data = {
         "status": "no_drivers",
         "matching_status": "No drivers available in your area",
         "matching_completed_at": firestore.SERVER_TIMESTAMP,
         "total_drivers_searched": len(total_notified),
-    })
-    logger.info(f"Ride {ride_id}: Matching completed, no drivers found after searching all radii")
+    }
+
+    payment_method = fresh_ride_data.get("payment_method") or fresh_ride_data.get("paymentMethod")
+    if payment_method == "card" and not fresh_ride_data.get("refunded"):
+        fare_to_refund = fresh_ride_data.get("estimated_fare", 0)
+        actual_rider_id = fresh_ride_data.get("rider_id") or fresh_ride_data.get("userId") or fresh_ride_data.get("user_id")
+        
+        if actual_rider_id and fare_to_refund > 0:
+            # Dump the stolen money back into their wallet
+            db.collection("users").document(actual_rider_id).update({
+                "wallet_balance": firestore.Increment(fare_to_refund)
+            })
+            update_data["refunded"] = True
+            update_data["refund_amount"] = fare_to_refund
+            logger.info(f"Refunded ₾{fare_to_refund} to wallet for unfulfilled ride {ride_id}")
+
+    ride_ref.update(update_data)
+    logger.info(f"Ride {ride_id}: Matching completed, no drivers found. Refund processed if card.")
 
 async def get_vehicle_tier_from_ai(make: str, model: str, year: int) -> str:
     """
@@ -1934,14 +1954,35 @@ async def rate_driver(ride_id: str, rating_data: RateDriverRequest, user_id: str
 @app.post("/api/rides/{ride_id}/cancel", tags=["Rides"])
 async def cancel_ride(ride_id: str, reason: str = "User cancelled", user_id: str = Depends(get_current_user_id)):
     db = get_db()
-    db.collection("rides").document(ride_id).update({
+    ride_ref = db.collection("rides").document(ride_id)
+    ride_data = ride_ref.get().to_dict()
+    
+    update_data = {
         "status": "cancelled",
         "cancellation_reason": reason,
         "cancelled_by": user_id,
         "cancelled_at": firestore.SERVER_TIMESTAMP,
-    })
-    return {"message": "Ride cancelled"}
+    }
+    
+    # 🔥 AUTO-REFUND LOGIC (For user cancellations)
+    payment_method = ride_data.get("payment_method") or ride_data.get("paymentMethod")
+    if payment_method == "card" and not ride_data.get("refunded"):
+        # Only refund if the ride hasn't been completed yet
+        if ride_data.get("status") in ["searching", "accepted", "arrived", "no_drivers"]:
+            fare_to_refund = ride_data.get("estimated_fare", 0)
+            actual_rider_id = ride_data.get("rider_id") or ride_data.get("userId") or ride_data.get("user_id")
+            
+            if actual_rider_id and fare_to_refund > 0:
+                # Add money back to their in-app wallet instantly
+                db.collection("users").document(actual_rider_id).update({
+                    "wallet_balance": firestore.Increment(fare_to_refund)
+                })
+                update_data["refunded"] = True
+                update_data["refund_amount"] = fare_to_refund
+                logger.info(f"Refunded ₾{fare_to_refund} to wallet for cancelled ride {ride_id}")
 
+    ride_ref.update(update_data)
+    return {"message": "Ride cancelled. Card payments have been refunded to your wallet."}
 
 @app.get("/api/rides/{ride_id}", tags=["Rides"])
 async def get_ride(ride_id: str):
