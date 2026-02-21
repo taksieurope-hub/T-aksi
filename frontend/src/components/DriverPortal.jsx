@@ -981,6 +981,17 @@ const DriverDashboard = () => {
                           </span>
                         </div>
 
+                        {/*  comunication button */}
+  <div className="mt-3">
+    <RideCommunication 
+      rideId={activeRide.id}
+      otherPartyPhone={activeRide.rider_phone || activeRide.cellphone}
+      otherPartyName={activeRide.rider_name || "Passenger"}
+      currentUserId={user?.id}
+      isDriver={true} 
+    />
+  </div>
+
                         <div className="flex gap-3 pt-2">
                           <div className="flex-1">
                             {activeRide.status === "accepted" && (
@@ -1292,16 +1303,6 @@ const DriverDashboard = () => {
     </div>
   );
 }; 
-
-{activeRide && (
-  <RideCommunication 
-    rideId={activeRide.id}
-    otherPartyPhone={activeRide.rider_phone || activeRide.cellphone} // Adjust based on how you saved rider info
-    otherPartyName={activeRide.rider_name || "Passenger"}
-    currentUserId={user.id}
-    isDriver={true} 
-  />
-)}
 
 // Main Router
 const DriverPortal = () => {
