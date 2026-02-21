@@ -446,7 +446,7 @@ const handleManualTopUp = async (e) => {
                                   <PlusCircle className="w-4 h-4 mr-1" /> Add Balance
                                 </Button>
                               </DialogTrigger>
-                              <DialogContent className="bg-black border border-[#00ff88]/30">
+                              <DialogContent aria-describedby={undefined} className="bg-black border border-[#00ff88]/30">
                                 <DialogHeader>
                                   <DialogTitle className="text-[#00ff88]">Add Balance to Rider</DialogTitle>
                                 </DialogHeader>
@@ -563,7 +563,7 @@ const handleManualTopUp = async (e) => {
                                 <PlusCircle className="w-4 h-4 mr-1" /> Add Balance
                               </Button>
                             </DialogTrigger>
-                            <DialogContent className="bg-black border border-[#00d4ff]/30">
+                            <DialogContent aria-describedby={undefined} className="bg-black border border-[#00d4ff]/30">
                               <DialogHeader>
                                <DialogTitle className ="text-[#00d4ff]">Add Balance to Driver</DialogTitle>
                               </DialogHeader>
