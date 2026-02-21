@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import RideCommunication from "./RideCommunication";
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket,
   Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned,
@@ -1010,17 +1011,6 @@ const RiderDashboard = () => {
             });
             
             fetchRideHistory();
-
-            {/* Assuming your activeRide state holds the driver's info */}
-{activeRide?.status !== "searching" && activeRide?.driver_info && (
-  <RideCommunication 
-    rideId={activeRide.id}
-    otherPartyPhone={activeRide.driver_info.cellphone}
-    otherPartyName={activeRide.driver_info.name}
-    currentUserId={user.id}
-    isDriver={false}
-  />
-)}
             
             // Clear active ride after short delay
             setTimeout(() => {
@@ -1505,17 +1495,23 @@ const RiderDashboard = () => {
     <div className="mt-4 pt-4 border-t border-gray-800">
       <p className="text-gray-400 text-xs mb-2 flex items-center"><User className="w-3 h-3 mr-1"/> Verified License Document</p>
       <div className="relative w-full h-32 bg-gray-900 rounded-lg overflow-hidden border border-gray-700 select-none pointer-events-none">
-        {/* The actual photo */}
         <img 
           src={activeRide.driver_info.license_photo || "/api/placeholder/400/200"} 
           alt="License" 
           className="w-full h-full object-cover opacity-50 blur-[2px]" 
         />
-        {/* Top left unblurred area (usually the face on an ID) */}
         <div className="absolute top-2 left-2 w-16 h-20 border border-[#00ff88]/30 rounded"></div>
         
-        {/* chat call buttons for in app communication */}
-      <div className="mt-2">
+        <div className="absolute bottom-0 left-0 right-0 h-[70%] backdrop-blur-2xl bg-black/80 flex flex-col items-center justify-center">
+          <div className="flex items-center text-red-500 font-bold mb-1">
+            <Lock className="w-4 h-4 mr-2" /> PII REDACTED
+          </div>
+          <span className="text-gray-400 text-[10px] font-mono tracking-widest text-center px-4">
+            SENSITIVE INFORMATION BLOCKED FOR DRIVER PRIVACY.<br/>IDENTITY VERIFIED BY ADMIN.
+          </span>
+        </div>
+      </div>
+      <div className="mt-4">
         <RideCommunication 
           rideId={activeRide.id}
           otherPartyPhone={activeRide.driver_info.cellphone}
@@ -1524,21 +1520,10 @@ const RiderDashboard = () => {
           isDriver={false} 
         />
       </div>
-        
-        {/* Heavy Blur Overlay to censor PII (Address, DOB, License Number) */}
-        <div className="absolute bottom-0 left-0 right-0 h-[70%] backdrop-blur-2xl bg-black/80 flex flex-col items-center justify-center">
-          <div className="flex items-center text-red-500 font-bold mb-1">
-            <Lock className="w-4 h-4 mr-2" /> PII REDACTED
-          </div>
-          <span className="text-gray-400 text-[10px] font-mono tracking-widest text-center px-4">
-            SENSITIVE INFORMATION BLOCKED FOR DRIVER PRIVACY.<br/>IDENTITY VERIFIED BY T'AKSI ADMIN.
-          </span>
-        </div>
-      </div>
+
     </div>
   </div>
 )}
-
                   {/* Live Arrived Timer */}
   {activeRide.status === "arrived" && (
     <WaitTimer 
