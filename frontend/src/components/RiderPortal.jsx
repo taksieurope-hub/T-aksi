@@ -1341,28 +1341,33 @@ const RiderDashboard = () => {
           </DialogContent>
         </Dialog>
 
-          <PayPalButtons
-  fundingSource="card"
-  style={{ layout: "vertical", shape: "rect" }}
-  createOrder={(data, actions) => {
-    return actions.order.create({
-      purchase_units: [{
-        amount: {
-          value: (fareEstimate.total * 0.37).toFixed(2),
-          currency_code: "USD"
-        }
-      }],
-      application_context: {
-        shipping_preference: "NO_SHIPPING" // 🔥 This deletes the address/zip code fields
-      }
-    });
-  }}
-  onApprove={async (data, actions) => {
-    await actions.order.capture();
-    toast.success("Payment successful!");
-    await processRideRequest();
-  }}
-/>
+          {/* 👇 Add this opening line to check if Card is selected 👇 */}
+{paymentMethod === "card" && (
+  <div className="mt-4 w-full animate-in fade-in slide-in-from-top-4">
+    <PayPalButtons
+      fundingSource="card"
+      style={{ layout: "vertical", shape: "rect" }}
+      createOrder={(data, actions) => {
+        return actions.order.create({
+          purchase_units: [{
+            amount: {
+              value: (fareEstimate.total * 0.37).toFixed(2),
+              currency_code: "USD"
+            }
+          }],
+          application_context: {
+            shipping_preference: "NO_SHIPPING" // 🔥 This deletes the address/zip code fields
+          }
+        });
+      }}
+      onApprove={async (data, actions) => {
+        await actions.order.capture();
+        toast.success("Payment successful!");
+        await processRideRequest();
+      }}
+    />
+  </div>
+)}
 
           {/* Active Tab */}
           <TabsContent value="active">
