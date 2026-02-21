@@ -227,12 +227,22 @@ input:focus, textarea:focus, select:focus {
   color: #ffffff;
 }
 
-/* Override Browser Autofill white backgrounds */
+/* BRUTE FORCE INPUT OVERRIDE */
+input, 
+input[type="text"], 
+input[type="password"], 
+input[type="tel"] {
+  background-color: #09090b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border: 1px solid rgba(0, 212, 255, 0.3) !important;
+}
+
 input:-webkit-autofill,
 input:-webkit-autofill:hover, 
 input:-webkit-autofill:focus, 
-input:-webkit-autofill:active{
-    -webkit-box-shadow: 0 0 0 30px #020202 inset !important;
-    -webkit-text-fill-color: white !important;
-    transition: background-color 5000s ease-in-out 0s;
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #09090b inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
