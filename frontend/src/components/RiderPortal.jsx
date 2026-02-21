@@ -16,11 +16,13 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
-import { Car, MapPin, History, Home, LogOut, User, Navigation, Rocket } from "lucide-react";
-// ... the rest of your imports
+import { 
+  Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft, 
+  Lock, Phone, MessageSquare, Star, Clock, Shield, AlertTriangle 
+} from "lucide-react";
 
 // Pricing Rules (Updated to your specific base prices)
 const PRICING_RULES = {
