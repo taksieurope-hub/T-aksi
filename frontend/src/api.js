@@ -3,7 +3,7 @@ import { auth } from './lib/firebase'; // Make sure this path points to your new
 
 const api = axios.create({
   // Ensure this points to your Render backend URL, not localhost
-  baseURL: import.meta.env.VITE_API_URL || 'https://t-aksi.onrender.com'
+  baseURL: import.meta.env.VITE_API_URL || 'https://t-aksi.onrender.com/api'
 });
 
 api.interceptors.request.use(async (config) => {
