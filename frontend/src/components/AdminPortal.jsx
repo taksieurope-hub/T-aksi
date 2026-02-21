@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   Shield, Users, Car, Home, LogOut, Lock, ArrowLeft, Loader2,
   CheckCircle2, XCircle, TrendingUp,
@@ -566,9 +565,8 @@ const handleManualTopUp = async (e) => {
                             </DialogTrigger>
                             <DialogContent className="bg-black border border-[#00d4ff]/30">
                               <DialogHeader>
-                                <DialogTitle className="text-[#00d4ff]">Add Balance to Driver</DialogTitle>
+                               <DialogTitle className ="text-[#00d4ff]">Add Balance to Driver</DialogTitle>
                               </DialogHeader>
-                              <DialogDescription className="hidden">Admin modal to adjust user wallet balances.</DialogDescription>
                               {selectedUser && (
                                 <div className="space-y-4">
                                   <div className="bg-black/50 p-4 rounded-xl border border-[#00d4ff]/20">
