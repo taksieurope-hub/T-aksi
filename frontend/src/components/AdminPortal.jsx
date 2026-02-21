@@ -1,16 +1,12 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-
-// FIX: Import from @/config and @/api
+import { auth } from "./lib/firebase";
 import { useAuth } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
-
-// Import Admin Support Panel
 import AdminSupportPanel from "@/components/AdminSupportPanel";
 import AdminCampaignsPanel from "@/components/AdminCampaignsPanel";
-
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
