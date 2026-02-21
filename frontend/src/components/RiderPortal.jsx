@@ -18,6 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import RideCommunication from "./RideCommunication";
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket,
   Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned,
@@ -1008,6 +1009,17 @@ const RiderDashboard = () => {
             });
             
             fetchRideHistory();
+
+            {/* Assuming your activeRide state holds the driver's info */}
+{activeRide?.status !== "searching" && activeRide?.driver_info && (
+  <RideCommunication 
+    rideId={activeRide.id}
+    otherPartyPhone={activeRide.driver_info.cellphone}
+    otherPartyName={activeRide.driver_info.name}
+    currentUserId={user.id}
+    isDriver={false}
+  />
+)}
             
             // Clear active ride after short delay
             setTimeout(() => {
@@ -1495,6 +1507,17 @@ const RiderDashboard = () => {
         />
         {/* Top left unblurred area (usually the face on an ID) */}
         <div className="absolute top-2 left-2 w-16 h-20 border border-[#00ff88]/30 rounded"></div>
+        
+        {/* chat call buttons for in app communication */}
+      <div className="mt-2">
+        <RideCommunication 
+          rideId={activeRide.id}
+          otherPartyPhone={activeRide.driver_info.cellphone}
+          otherPartyName={activeRide.driver_info.name}
+          currentUserId={user?.id}
+          isDriver={false} 
+        />
+      </div>
         
         {/* Heavy Blur Overlay to censor PII (Address, DOB, License Number) */}
         <div className="absolute bottom-0 left-0 right-0 h-[70%] backdrop-blur-2xl bg-black/80 flex flex-col items-center justify-center">

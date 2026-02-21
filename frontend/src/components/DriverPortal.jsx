@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import RideCommunication from "./RideCommunication";
 import { 
   Dialog, 
   DialogContent, 
@@ -1290,7 +1291,17 @@ const DriverDashboard = () => {
 
     </div>
   );
-}; // <--- THIS BRACKET WAS MISSING!
+}; 
+
+{activeRide && (
+  <RideCommunication 
+    rideId={activeRide.id}
+    otherPartyPhone={activeRide.rider_phone || activeRide.cellphone} // Adjust based on how you saved rider info
+    otherPartyName={activeRide.rider_name || "Passenger"}
+    currentUserId={user.id}
+    isDriver={true} 
+  />
+)}
 
 // Main Router
 const DriverPortal = () => {
