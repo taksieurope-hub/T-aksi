@@ -325,6 +325,8 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
        return; 
     }
 
+    const notifiedAccepted = useRef(false);
+
     // MODE B: Live Ride (Driver Active)
     if (!dLat || !dLng) return; // Wait for driver location
 
@@ -1010,8 +1012,12 @@ const RiderDashboard = () => {
             toast.error("No drivers available. Please try again.");
           }
         } else if (res.data.status === "accepted" && res.data.driver_info) {
-          toast.success(`Driver ${res.data.driver_info.name} is coming!`);
-        }
+  // Only show the toast IF we haven't shown it yet
+  if (!notifiedAccepted.current) {
+    toast.success(`Driver ${res.data.driver_info.name} is coming!`);
+    notifiedAccepted.current = true; // Lock it so it never fires again for this ride
+  }
+}
       } catch (error) {
         clearInterval(interval);
       }
@@ -1440,24 +1446,62 @@ const RiderDashboard = () => {
                     </div>
                   )}
 
-                  {/* Driver Info */}
-                  {activeRide.driver_info && (
-                    <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                      <p className="text-[#00ff88] font-semibold mb-2">Your Driver</p>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
-                          <User className="w-7 h-7 text-black" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-lg">{activeRide.driver_info.name}</p>
-                          <p className="text-sm text-gray-400">
-                            {activeRide.driver_info.car_make} {activeRide.driver_info.car_model}
-                          </p>
-                          <p className="text-[#00ff88] font-mono">{activeRide.driver_info.license_plate}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  {/* Driver Info & Secure ID View */}
+{activeRide.driver_info && (
+  <div className="bg-black/60 rounded-xl p-5 border border-[#00ff88]/30 shadow-[0_0_20px_rgba(0,255,136,0.1)] space-y-4">
+    <div className="flex justify-between items-center border-b border-gray-800 pb-3">
+      <p className="text-[#00ff88] font-bold uppercase tracking-widest text-xs">Driver Assigned</p>
+      <Badge className="bg-blue-500/20 text-blue-400 border border-blue-500/50"><Lock className="w-3 h-3 mr-1"/> Background Checked</Badge>
+    </div>
+    
+    <div className="flex items-center space-x-4">
+      <div className="w-16 h-16 rounded-full bg-gradient-to-r from-[#00ff88] to-[#00d4ff] flex items-center justify-center overflow-hidden border-2 border-[#00ff88]">
+        {activeRide.driver_info.profile_pic ? (
+          <img src={activeRide.driver_info.profile_pic} alt="Driver" className="w-full h-full object-cover" />
+        ) : (
+          <User className="w-8 h-8 text-black" />
+        )}
+      </div>
+      <div className="flex-1">
+        <p className="font-bold text-2xl text-white">{activeRide.driver_info.name}</p>
+        <div className="flex items-center text-sm text-gray-300 mt-1">
+          <Car className="w-4 h-4 mr-1 text-[#00d4ff]" />
+          {/* Added car color here */}
+          <span>{activeRide.driver_info.car_color || "Dark"} {activeRide.driver_info.car_make} {activeRide.driver_info.car_model}</span>
+        </div>
+        <div className="inline-block mt-2 px-3 py-1 bg-[#00ff88]/10 border border-[#00ff88]/50 rounded-md">
+          {/* Prominent License Plate */}
+          <p className="text-[#00ff88] font-mono font-bold tracking-widest text-xl uppercase">{activeRide.driver_info.license_plate}</p>
+        </div>
+      </div>
+    </div>
+
+    {/* Redacted Driver's License Section */}
+    <div className="mt-4 pt-4 border-t border-gray-800">
+      <p className="text-gray-400 text-xs mb-2 flex items-center"><User className="w-3 h-3 mr-1"/> Verified License Document</p>
+      <div className="relative w-full h-32 bg-gray-900 rounded-lg overflow-hidden border border-gray-700 select-none pointer-events-none">
+        {/* The actual photo */}
+        <img 
+          src={activeRide.driver_info.license_photo || "/api/placeholder/400/200"} 
+          alt="License" 
+          className="w-full h-full object-cover opacity-50 blur-[2px]" 
+        />
+        {/* Top left unblurred area (usually the face on an ID) */}
+        <div className="absolute top-2 left-2 w-16 h-20 border border-[#00ff88]/30 rounded"></div>
+        
+        {/* Heavy Blur Overlay to censor PII (Address, DOB, License Number) */}
+        <div className="absolute bottom-0 left-0 right-0 h-[70%] backdrop-blur-2xl bg-black/80 flex flex-col items-center justify-center">
+          <div className="flex items-center text-red-500 font-bold mb-1">
+            <Lock className="w-4 h-4 mr-2" /> PII REDACTED
+          </div>
+          <span className="text-gray-400 text-[10px] font-mono tracking-widest text-center px-4">
+            SENSITIVE INFORMATION BLOCKED FOR DRIVER PRIVACY.<br/>IDENTITY VERIFIED BY T'AKSI ADMIN.
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
                   {/* Live Arrived Timer */}
   {activeRide.status === "arrived" && (
