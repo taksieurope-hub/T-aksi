@@ -19,6 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket,
   Plus, X, Target, Timer, Crosshair, Zap, TrendingUp, MapPinned,
