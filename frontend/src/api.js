@@ -1,6 +1,7 @@
 ﻿// frontend/src/api.js
 import axios from "axios";
 import { API } from "./config.jsx";
+import { auth } from "./lib/firebase";
 
 // Make sure API never ends with a slash
 const BASE = (API || "").replace(/\/+$/, "");
@@ -14,9 +15,8 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  const user = auth.currentUser;
-  if (user) {
-    const token = await user.getIdToken();
+  if (auth && auth.currentUser) {
+    const token = await auth.currentUser.getIdToken();
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
