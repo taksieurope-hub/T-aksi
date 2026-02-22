@@ -734,6 +734,7 @@ const WaitTimer = ({ arrivedAt, carType }) => {
 // Dashboard Component
 const RiderDashboard = () => {
   const notifiedArrived = useRef(false);
+  const notifiedAccepted = useRef(false); // 🔥 ADDED: This prevents the crash!
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -1741,7 +1742,6 @@ if (res.data.status === "arrived") {
 const RiderPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
-  const notifiedAccepted = useRef(false);
 
   if (!user || user.user_type !== "rider") {
     if (location.pathname === "/rider" || location.pathname === "/rider/") {

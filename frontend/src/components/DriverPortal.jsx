@@ -1288,33 +1288,36 @@ const DriverDashboard = () => {
       </Dialog>
 
       <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
-        <DialogContent className="bg-[#1a1a2e] border border-red-500/50 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]">
-          <DialogHeader>
-            <DialogTitle className="text-red-500 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5" /> Cancel Ride
-            </DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Please select a reason. <span className="text-red-400 font-bold block mt-1">Warning: Unjustified cancellations may affect your score.</span>
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="max-h-[300px] pr-4">
-            <div className="grid gap-2 py-4">
-              {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map((reason) => (
-                <div
-                  key={reason} onClick={() => setSelectedCancelReason(reason)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedCancelReason === reason ? "bg-red-500 text-white border-red-500" : "bg-black/40 border-gray-700 hover:border-red-500/50 hover:bg-red-500/10"}`}
-                >
-                  <p className="font-medium text-sm">{reason}</p>
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-          <div className="flex gap-2 mt-2">
-            <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 text-gray-400 border border-gray-700 h-12">Back</Button>
-            <Button variant="destructive" onClick={handleCancelRide} disabled={!selectedCancelReason || loading} className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-12">Confirm Cancel</Button>
+  <DialogContent 
+    aria-describedby="cancel-dialog-description" 
+    className="bg-[#1a1a2e] border border-red-500/50 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]"
+  >
+    <DialogHeader>
+      <DialogTitle className="text-red-500 flex items-center gap-2">
+        <AlertTriangle className="w-5 h-5" /> Cancel Ride
+      </DialogTitle>
+      <DialogDescription id="cancel-dialog-description" className="text-gray-400">
+        Please select a reason. <span className="text-red-400 font-bold block mt-1">Warning: Unjustified cancellations may affect your score.</span>
+      </DialogDescription>
+    </DialogHeader>
+    <ScrollArea className="max-h-[300px] pr-4">
+      <div className="grid gap-2 py-4">
+        {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map((reason) => (
+          <div
+            key={reason} onClick={() => setSelectedCancelReason(reason)}
+            className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedCancelReason === reason ? "bg-red-500 text-white border-red-500" : "bg-black/40 border-gray-700 hover:border-red-500/50 hover:bg-red-500/10"}`}
+          >
+            <p className="font-medium text-sm">{reason}</p>
           </div>
-        </DialogContent>
-      </Dialog>
+        ))}
+      </div>
+    </ScrollArea>
+    <div className="flex gap-2 mt-2">
+      <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 text-gray-400 border border-gray-700 h-12">Back</Button>
+      <Button variant="destructive" onClick={handleCancelRide} disabled={!selectedCancelReason || loading} className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-12">Confirm Cancel</Button>
+    </div>
+  </DialogContent>
+</Dialog>
 
       <DriverTripCompletionModal
         isOpen={!!completedRide}
