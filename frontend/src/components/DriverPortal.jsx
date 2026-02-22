@@ -707,17 +707,29 @@ const DriverDashboard = () => {
         lastPositionRef.current = driverLocation;
         toast.success("Ride started");
       } 
-      
+
      else if (action === "complete") {
-        // ...
-        const res = await api.post(url, payload);
+        const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled);
+        const finalWait = isNaN(waitTimer) ? 0 : parseInt(waitTimer);
+        const dLat = driverLocation?.lat || "";
+        const dLng = driverLocation?.lng || "";
         
-        const finalFare = res.data.final_fare > 0 ? res.data.final_fare : (activeRide.estimated_fare || 0);
+        // 🔥 FIX 1: Explicitly define the endpoint with all variables in the URL string so FastAPI accepts it
+        const completeEndpoint = `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${dLat}&dropoff_lng=${dLng}`;
+
+        // 🔥 FIX 2: Send the POST request to the endpoint we just defined
+        const res = await api.post(completeEndpoint);
         
-        // 🔥 Make sure the driver knows exactly how much CASH to ask for!
+        const finalFare = res.data.final_fare > 0 
+            ? res.data.final_fare 
+            : (activeRide.estimated_fare || 0);
+            
+        // Make sure the driver knows exactly how much CASH to ask for!
         const cashToCollect = res.data.cash_to_collect || 0;
+
+        const completeData = { ...res.data, final_fare: finalFare };
         
-        setCompletedRide({ ...res.data, final_fare: finalFare });
+        setCompletedRide(completeData);
         
         if (cashToCollect > 0) {
             toast.success(`Trip Done! Collect exactly ₾${cashToCollect.toFixed(2)} in CASH.`, { duration: 8000 });
@@ -730,6 +742,7 @@ const DriverDashboard = () => {
         setWaitTimer(0);
         setArrivedTime(null);
         setRideStartTime(null);
+        setIsWaitingAtStop(false); // Reset stop wait toggle
         
         fetchRideHistory();
         const userRes = await api.get(`/auth/me`);
@@ -837,11 +850,12 @@ const DriverDashboard = () => {
   const toggleStopWait = async () => {
     try {
       const newStatus = !isWaitingAtStop;
-      // We tell the backend to start/stop the stop-clock
-      await api.post(`/rides/${activeRide.id}/toggle-stop-wait`, { isWaiting: newStatus });
+      // 🔥 FIX: Send is_waiting as a URL parameter, NOT a JSON body
+      await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=${newStatus}`);
       setIsWaitingAtStop(newStatus);
       toast.success(newStatus ? "Stop wait timer started" : "Stop wait timer paused");
     } catch (error) {
+      console.error(error);
       toast.error("Failed to update wait status");
     }
   };
