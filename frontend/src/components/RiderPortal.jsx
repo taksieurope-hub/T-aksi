@@ -345,40 +345,43 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
         stopover: true
       }));
 
-    // 🔥 FIX: Prevent API spam. If we already drew the line for this status, don't redraw it!
-    if (routeDrawnForStatus.current === status) return;
+    // 🔥 FIX: Create a unique "Signature" for the current route
+    const currentSignature = `${pLat},${pLng}|${destLat},${destLng}|${waypoints.map(w=>w.location.lat).join(',')}|${status}`;
+
+    // If the exact same route is already drawn, don't spam the API. But if a stop is added, this signature changes and it redraws!
+    if (routeDrawnForStatus.current === currentSignature) return;
 
     // MODE A: Preview (Booking)
     if (status === 'preview') {
        if (pLat && pLng && destLat && destLng) {
            calculateAndDrawRoute({ lat: pLat, lng: pLng }, { lat: destLat, lng: destLng }, waypoints);
-           routeDrawnForStatus.current = status;
+           routeDrawnForStatus.current = currentSignature; // Save the new signature
        }
        return; 
     }
 
     // MODE B: Live Ride (Driver Active)
-    if (!dLat || !dLng) return; // Wait for driver location
+    if (!dLat || !dLng) return;
 
     const origin = { lat: dLat, lng: dLng };
     let target = null;
     let activeWaypoints = [];
 
     if (['accepted', 'searching', 'arrived'].includes(status) && pLat) {
-        target = { lat: pLat, lng: pLng }; // Driver -> Pickup
-        activeWaypoints = []; // Ignore passenger's waypoints until they are in the car
+        target = { lat: pLat, lng: pLng }; 
+        activeWaypoints = []; 
     } else if (status === 'in_progress' && destLat) {
-        target = { lat: destLat, lng: destLng }; // Driver -> Destination
+        target = { lat: destLat, lng: destLng }; 
         activeWaypoints = waypoints;
     }
 
-    // Now safe to use
     if (origin && target) { 
         calculateAndDrawRoute(origin, target, activeWaypoints); 
-        routeDrawnForStatus.current = status;
+        routeDrawnForStatus.current = currentSignature;
     }
 
-  }, [pickup?.lat, destination?.lat, stops.length, status, driverLocation?.lat]); 
+  // 🔥 FIX: Added JSON.stringify(stops) so the map knows when a stop's coordinates change!
+  }, [pickup?.lat, destination?.lat, JSON.stringify(stops), status, driverLocation?.lat]);
 
   const calculateAndDrawRoute = (origin, target, waypoints = []) => {
     const directionsService = new window.google.maps.DirectionsService();
@@ -878,34 +881,29 @@ const RiderDashboard = () => {
     }
   }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length]);
 
-  // 🔥 TRIGGER: Only run when NUMBERS change (Debounced)
-useEffect(() => {
-  if (mapsLoaded && pickup.lat && destination.lat) {
-    const timer = setTimeout(() => {
-      calculateRoute();
-    }, 500);
-    return () => clearTimeout(timer);
-  }
-  // 🔥 CRITICAL: Add stops.length here so adding a stop triggers a re-draw
-}, [mapsLoaded, pickup.lat, destination.lat, stops.length]); 
+  // 🔥 FIX: Create a string out of the stops so React knows when coordinates change, not just the array length
+  const stopsSignature = stops.map(s => `${s.lat},${s.lng}`).join('|');
+  const validStopsCount = stops.filter(s => s.lat && s.lng).length;
 
-// 2. Ensure the Fare estimate watches the stops
-useEffect(() => {
-  if (routeInfo) {
-    const surge = surgeInfo?.multiplier || 1.0;
-    // 🔥 Ensure stops.length is passed into the calculation
-    const fare = calculateFare(carType, routeInfo.distance, 0, 0, stops.length, surge, paymentMethod);
-    setFareEstimate(fare);
-  }
-}, [routeInfo, carType, stops.length, surgeInfo, paymentMethod]);
-  // 🔥 FIX: Added 'paymentMethod' to dependency array so price updates instantly
+  // 🔥 TRIGGER: Only run when NUMBERS or STOPS change (Debounced)
+  useEffect(() => {
+    if (mapsLoaded && pickup.lat && destination.lat) {
+      const timer = setTimeout(() => {
+        calculateRoute();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [mapsLoaded, pickup.lat, pickup.lng, destination.lat, destination.lng, stopsSignature, calculateRoute]);
+
+  // 🔥 TRIGGER: Update Price when distance, vehicle, or valid stops change
   useEffect(() => {
     if (routeInfo) {
       const surge = surgeInfo?.multiplier || 1.0;
-      const fare = calculateFare(carType, routeInfo.distance, 0, 0, stops.length, surge, paymentMethod);
+      // Pass validStopsCount instead of stops.length so empty fields don't charge money
+      const fare = calculateFare(carType, routeInfo.distance, 0, 0, validStopsCount, surge, paymentMethod);
       setFareEstimate(fare);
     }
-  }, [routeInfo, carType, stops.length, surgeInfo, paymentMethod]);
+  }, [routeInfo, carType, stopsSignature, surgeInfo, paymentMethod]);
 
   // 🔥 POLL FOR ACTIVE RIDE
   useEffect(() => {
@@ -1333,20 +1331,42 @@ if (res.data.status === "arrived") {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-secondary">{t('payment')}</Label>
-                  <div className="flex gap-2">
-                    <Button variant={paymentMethod === "cash" ? "default" : "outline"} onClick={() => setPaymentMethod("cash")} className={paymentMethod === "cash" ? "bg-secondary text-black" : "border-secondary/30 text-white"}>{t('cash')}</Button>
-                    <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")} className={paymentMethod === "card" ? "bg-secondary text-black" : "border-secondary/30 text-white"}>{t('card')}</Button>
+                  {/* Changed to flex-wrap so the 3 buttons don't squash on small phones */}
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant={paymentMethod === "cash" ? "default" : "outline"} onClick={() => setPaymentMethod("cash")} className={paymentMethod === "cash" ? "bg-secondary text-black" : "border-secondary/30 text-white"}>
+                      {t('cash')}
+                    </Button>
+                    <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")} className={paymentMethod === "card" ? "bg-secondary text-black" : "border-secondary/30 text-white"}>
+                      {t('card')}
+                    </Button>
+                    
+                    {/* 🔥 THE NEW WALLET BUTTON */}
+                    <Button 
+                      variant={paymentMethod === "wallet" ? "default" : "outline"} 
+                      onClick={() => {
+                        if ((user?.wallet_balance || 0) <= 0) {
+                          toast.error("Your wallet is empty.");
+                          return;
+                        }
+                        setPaymentMethod("wallet");
+                      }} 
+                      className={paymentMethod === "wallet" ? "bg-secondary text-black font-bold shadow-neon-green" : "border-secondary/30 text-secondary hover:bg-secondary/10"}
+                    >
+                      <Wallet className="w-4 h-4 mr-2" />
+                      Wallet (₾{user?.wallet_balance?.toFixed(2) || "0.00"})
+                    </Button>
                   </div>
                 </div>
+
                 <Button
-    className="w-full bg-gradient-to-r from-secondary to-primary text-black font-bold h-14 text-lg hover:shadow-neon-green transition-all"
-    onClick={handleBookRide}
-    disabled={loading}
-    data-testid="request-ride-btn"
->
-    {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />}
-    {t('request_ride')}
-</Button>
+                  className="w-full bg-gradient-to-r from-secondary to-primary text-black font-bold h-14 text-lg hover:shadow-neon-green transition-all mt-2"
+                  onClick={handleBookRide}
+                  disabled={loading}
+                  data-testid="request-ride-btn"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />}
+                  {t('request_ride')}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
