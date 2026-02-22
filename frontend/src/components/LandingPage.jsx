@@ -1,23 +1,55 @@
-﻿import { useState } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Car, Users, Shield, Rocket, Zap, Globe } from "lucide-react";
+import { Car, Users, Shield, Rocket, Zap, Globe, DownloadCloud } from "lucide-react";
 import { useLanguage } from "@/i18n/LanguageContext"; 
 import LanguageSelector from "@/i18n/LanguageSelector";
 
-// âŒ NO IMPORT HERE. The file is in public, so we don't import it.
+// ❌ NO IMPORT HERE. The file is in public, so we don't import it.
 
 const LandingPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
+  // --- 🔥 PWA INSTALL STATE ---
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+  useEffect(() => {
+    // Listen for the browser's native install prompt
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault(); 
+      setDeferredPrompt(e); 
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    
+    // Show the native install prompt
+    deferredPrompt.prompt();
+    
+    // Wait for the user to respond
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      console.log('User accepted the install prompt');
+      setDeferredPrompt(null); // Hide the button once installed
+    }
+  };
+  // -----------------------------
+
   const vehicleTypes = [
-    { name: t('vehicle_economy'), icon: "ðŸš—", price: "â‚¾2.00", desc: t('vehicle_economy_desc') },
-    { name: t('vehicle_comfort'), icon: "ðŸš™", price: "â‚¾2.50", desc: t('vehicle_comfort_desc') },
-    { name: t('vehicle_xl'), icon: "ðŸš", price: "â‚¾3.90", desc: t('vehicle_xl_desc') },
-    { name: t('vehicle_personal'), icon: "ðŸ‘¤", price: "â‚¾4.00", desc: t('vehicle_personal_desc') },
-    { name: t('vehicle_jumpstart'), icon: "âš¡", price: "â‚¾4.50", desc: t('vehicle_jumpstart_desc') },
+    { name: t('vehicle_economy'), icon: "🚗", price: "₾2.00", desc: t('vehicle_economy_desc') },
+    { name: t('vehicle_comfort'), icon: "🚙", price: "₾2.50", desc: t('vehicle_comfort_desc') },
+    { name: t('vehicle_xl'), icon: "🚐", price: "₾3.90", desc: t('vehicle_xl_desc') },
+    { name: t('vehicle_personal'), icon: "👤", price: "₾4.00", desc: t('vehicle_personal_desc') },
+    { name: t('vehicle_jumpstart'), icon: "⚡", price: "₾4.50", desc: t('vehicle_jumpstart_desc') },
   ];
 
   const stats = [
@@ -35,12 +67,12 @@ const LandingPage = () => {
         <header className="relative z-10 flex items-center justify-between p-6 max-w-7xl mx-auto">
           <div className="flex items-center space-x-3">
             <div className="w-14 h-14 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
-              {/* âœ… CORRECT TAG FOR PUBLIC FOLDER */}
+              {/* ✅ CORRECT TAG FOR PUBLIC FOLDER */}
               <img 
-  src="/logo.png" 
-  alt="T'aksi Logo" 
-  className="w-full h-full object-cover" 
-/>
+                src="/logo.png" 
+                alt="T'aksi Logo" 
+                className="w-full h-full object-cover" 
+              />
             </div>
             <div className="flex flex-col">
               <span className="text-2xl font-black tracking-tight leading-none">{t('app_name')}</span>
@@ -63,11 +95,25 @@ const LandingPage = () => {
               <span className="text-white">{t('hero_subtitle')}</span>
             </h1>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-10">{t('hero_desc')}</p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            
+            {/* 🔥 BUTTONS CONTAINER (Added flex-wrap for better mobile scaling) */}
+            <div className="flex flex-col sm:flex-row flex-wrap gap-4 justify-center">
+              
+              {/* 🔥 NEW DOWNLOAD APP BUTTON */}
+              {deferredPrompt && (
+                <Button 
+                  size="lg" 
+                  className="bg-[#00d4ff] text-black hover:bg-[#00d4ff]/80 font-bold text-lg px-8 py-6 shadow-[0_0_15px_rgba(0,212,255,0.4)]" 
+                  onClick={handleInstallApp}
+                >
+                  <DownloadCloud className="w-5 h-5 mr-2" /> {t('download_app') || "Download App"}
+                </Button>
+              )}
+
               <Button size="lg" className="bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-lg px-8 py-6" onClick={() => navigate("/rider")}>
                 <Users className="w-5 h-5 mr-2" /> {t('book_ride')}
               </Button>
-              <Button size="lg" variant="outline" className="border-[#00d4ff] text-[#00d4ff] font-bold text-lg px-8 py-6" onClick={() => navigate("/driver")}>
+              <Button size="lg" variant="outline" className="border-[#00d4ff] text-[#00d4ff] hover:bg-[#00d4ff]/10 font-bold text-lg px-8 py-6" onClick={() => navigate("/driver")}>
                 <Car className="w-5 h-5 mr-2" /> {t('become_pilot')}
               </Button>
             </div>
@@ -83,7 +129,7 @@ const LandingPage = () => {
             <h2 className="text-3xl font-bold text-center mb-10">{t('choose_spacecraft')}</h2>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {vehicleTypes.map((type) => (
-                <Card key={type.name} className="bg-black/40 border border-white/10 hover:border-[#00ff88]/50 text-center p-4">
+                <Card key={type.name} className="bg-black/40 border border-white/10 hover:border-[#00ff88]/50 text-center p-4 transition-colors">
                   <div className="text-4xl mb-2">{type.icon}</div>
                   <div className="font-bold text-white">{type.name}</div>
                   <div className="text-[#00ff88] font-bold">{type.price}</div>
