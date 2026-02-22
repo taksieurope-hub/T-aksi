@@ -435,15 +435,24 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         }, (result, status) => {
             if (status === 'OK' && routeRendererRef.current) {
                 routeRendererRef.current.setDirections(result);
+                routeRendererRef.current.setMap(mapInstanceRef.current); // 🔥 Ensure it's attached to the map instance
                 
                 // Extract steps for the navigation panel
                 const steps = result.routes[0].legs[0].steps;
                 setRouteSteps(steps);
                 setCurrentStepIndex(0); // Reset to first step
+            } else {
+                console.error(`Directions request failed due to ${status}`);
             }
         });
     }
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat]);
+  }, [
+      driverLocation?.lat, 
+      driverLocation?.lng, 
+      activeRide?.status, 
+      activeRide?.pickup_lat, 
+      activeRide?.dest_lat
+  ]); // 🔥 FIX: Added driverLocation to the dependency array
 
   // --- MANUAL ZOOM CONTROLS ---
   const handleZoomIn = () => {
