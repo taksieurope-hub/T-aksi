@@ -23,7 +23,7 @@ import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft, 
   Lock, Phone, MessageSquare, Star, Clock, Shield, AlertTriangle, Loader2, 
   Search, X, Crosshair, MapPinned, CheckCircle2, Zap, Activity,
-  Plus, TrendingUp, Timer, CreditCard, Target, Route as RouteIcon
+  Plus, TrendingUp, Timer, CreditCard, Target, Route as RouteIcon, Wallet
 } from "lucide-react";
 
 // Pricing Rules (Updated to your specific base prices)
