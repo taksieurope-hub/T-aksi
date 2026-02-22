@@ -206,24 +206,21 @@ def normalize_phone(phone: str) -> str:
 
 
 def get_current_user_id(
-    user_id_q: Optional[str] = Query(None, alias="user_id"),
-    userId_q: Optional[str] = Query(None, alias="userId"),
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
     authorization: Optional[str] = Header(None)
 ):
-    if user_id_q:
-        return user_id_q
-    if userId_q:
-        return userId_q
-    if x_user_id:
-        return x_user_id
-    if authorization:
-        token = authorization.replace("Bearer ", "")
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+        
+    token = authorization.replace("Bearer ", "")
+    
+    try:
         decoded = decode_token(token)
-        if decoded:
+        if decoded and "user_id" in decoded:
             return decoded.get("user_id")
-        # fallback: if someone is passing raw user id
-        return token
+    except Exception:
+        # If the token is expired or invalid, fail securely
+        return None
+        
     return None
 
 
