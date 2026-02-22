@@ -155,10 +155,11 @@ export const RiderTripCompletionModal = ({
   onRateDriver 
 }) => {
   const { t } = useLanguage();
-  
+  const isCash = String(paymentMethod || "").toLowerCase().trim() === "cash";
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
+    // ... rest of your code
       <DialogContent aria-describedby="rider-trip-desc" className="sm:max-w-md border-0 p-0 overflow-hidden">
         
         {/* 🔥 ADDED HIDDEN HEADER TO SILENCE RADIX WARNINGS */}
