@@ -1764,8 +1764,10 @@ async def stop_reached(ride_id: str, stop_index: int, wait_minutes: int = 0, use
 @app.post("/api/rides/{ride_id}/complete", tags=["Rides"])
 async def complete_ride(
     ride_id: str,
-    final_distance: Optional[float] = None,
-    total_wait_minutes: Optional[int] = None,
+    final_distance: Optional[float] = 0.0,
+    total_wait_minutes: Optional[int] = 0,
+    dropoff_lat: Optional[float] = None,
+    dropoff_lng: Optional[float] = None,
     user_id: str = Depends(get_current_user_id),
 ):
     db = get_db()
@@ -1777,9 +1779,9 @@ async def complete_ride(
     
     ride_data = ride_snap.to_dict()
     
-    # 1. CALCULATE FARE (UPFRONT PRICING ENFORCED)
+    # 1. FARE CALCULATION
     billing_distance = ride_data.get("estimated_distance", 0)
-    recorded_actual_distance = final_distance if final_distance is not None else billing_distance
+    recorded_actual_distance = final_distance if final_distance else billing_distance
     pickup_wait = ride_data.get("pickup_wait_minutes", 0)
     stop_wait = ride_data.get("stop_wait_minutes", 0)
     num_stops = ride_data.get("num_stops", 0)
@@ -1799,7 +1801,7 @@ async def complete_ride(
     final_fare["service_fee"] = service_fee
     final_fare["total"] = total_with_fee
 
-    # 🔥 2. AUTO-DEDUCT VIRTUAL WALLET
+    # 🔥 2. THE WALLET DEDUCTION & SPLIT PAYMENT MATH
     rider_id = ride_data.get("userId") or ride_data.get("rider_id")
     rider_ref = db.collection("users").document(rider_id) if rider_id else None
     
@@ -1807,119 +1809,88 @@ async def complete_ride(
     if rider_ref:
         rider_doc = rider_ref.get()
         if rider_doc.exists:
-            wallet_balance = rider_doc.to_dict().get("wallet_balance", 0.0)
+            wallet_balance = float(rider_doc.to_dict().get("wallet_balance", 0.0))
 
-    # Calculate how much wallet we can use, and how much cash is left to collect
-    wallet_used = min(wallet_balance, total_with_fee) if wallet_balance > 0 else 0.0
-    remaining_fare = total_with_fee - wallet_used
+    wallet_used = 0.0
+    cash_to_collect = 0.0
+    payment_status = "pending"
 
-    # 3. Payment Verification
-    payment_status = "cash_pending"
-    order_id = ride_data.get("payment_order_id")
+    # Evaluate how much cash vs wallet is needed
+    if safe_payment_method == "wallet":
+        # Drain as much wallet as possible to cover the trip
+        wallet_used = min(wallet_balance, total_with_fee)
+        cash_to_collect = total_with_fee - wallet_used
+        payment_status = "paid_fully_via_wallet" if cash_to_collect == 0 else "split_cash_required"
+        
+        # 🔥 Actually deduct the money from the Rider
+        if wallet_used > 0 and rider_ref:
+            rider_ref.update({
+                "wallet_balance": firestore.Increment(-float(wallet_used))
+            })
+            logger.info(f"Deducted ₾{wallet_used} from Rider {rider_id}")
 
-    if safe_payment_method == "card" and order_id:
-        try:
-            access_token = await get_paypal_token()
-            if access_token:
-                async with httpx.AsyncClient(timeout=25) as client:
-                    capture_response = await client.get(
-                        f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}",
-                        headers={"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"},
-                    )
-                    if capture_response.status_code == 200:
-                        data = capture_response.json()
-                        if data.get("status") in ("COMPLETED", "APPROVED"):
-                            payment_status = "paid"
-                        else:
-                            payment_status = "failed"
-                    else:
-                        payment_status = "failed"
-            else:
-                payment_status = "auth_error"
-        except Exception as e:
-            logger.error(f"Payment Exception: {e}")
-            payment_status = "error"
     elif safe_payment_method == "cash":
-        payment_status = "cash_collected" if remaining_fare > 0 else "paid_via_wallet"
+        cash_to_collect = total_with_fee
+        payment_status = "cash_collected"
+        
+    elif safe_payment_method == "card":
+        cash_to_collect = 0.0
+        payment_status = "paid_via_card"
 
-    cash_to_collect = remaining_fare if safe_payment_method == "cash" else 0
-
-    # 4. Update Ride Record
+    # 3. UPDATE THE RIDE RECORD
     ride_updates = {
         "status": "completed",
         "actual_distance": recorded_actual_distance,
         "billed_distance": billing_distance,
         "final_fare": total_with_fee,
-        "wallet_used": wallet_used,               # Record how much wallet was applied
-        "cash_to_collect": cash_to_collect,       # Exact cash left to ask for
+        "wallet_used": float(wallet_used),
+        "cash_to_collect": float(cash_to_collect), # Very important for the driver UI
         "final_fare_breakdown": final_fare,
         "payment_status": payment_status,
-        "payment_method": safe_payment_method,
-        "paymentMethod": safe_payment_method, 
         "completed_at": firestore.SERVER_TIMESTAMP,
     }
     ride_ref.update(ride_updates)
 
-    # 🔥 Deduct the used wallet balance from the rider's profile
-    if wallet_used > 0 and rider_ref:
-        rider_ref.update({
-            "wallet_balance": firestore.Increment(-wallet_used)
-        })
-
-    # 5. EXACT WALLET MATH FOR DRIVER
+    # 🔥 4. DRIVER EARNINGS ALGORITHM
     driver_id = ride_data.get("driver_id") or ride_data.get("driverId")
     if driver_id:
         held_commission = ride_data.get("commission_paid", 0) or 0
-        commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
+        commission_rate = ride_data.get("commission_rate", 0.23)
+        
         actual_commission = commissionable_amount * commission_rate
         driver_share = commissionable_amount - actual_commission
 
-        user_ref = db.collection("users").document(driver_id)
-        
-        updates = {
-            "earnings.total_earned": firestore.Increment(driver_share),
-            "earnings.total_commission_paid": firestore.Increment(actual_commission - held_commission),
+        # 🧠 The Universal Driver Wallet Formula
+        # Wallet Change = What they earned MINUS What they physically took in cash
+        # (Plus refunding any commission that was "held" at acceptance).
+        wallet_change = driver_share - cash_to_collect + held_commission
+
+        driver_ref = db.collection("users").document(driver_id)
+        driver_ref.update({
+            "earnings.balance": firestore.Increment(float(wallet_change)),
+            "earnings.total_earned": firestore.Increment(float(driver_share)),
             "total_rides": firestore.Increment(1),
             "updated_at": firestore.SERVER_TIMESTAMP,
-        }
-
-        wallet_change = 0
-        if safe_payment_method == "cash":
-            # 🔥 SPLIT PAYMENT MAGIC: The company owes the driver the "Wallet" portion 
-            # so they get their full digital payout, minus the cash they physically held.
-            wallet_change = driver_share - cash_to_collect + held_commission
-            updates["earnings.balance"] = firestore.Increment(wallet_change)
-            
-        elif payment_status == "paid": 
-            wallet_change = driver_share + held_commission
-            updates["earnings.balance"] = firestore.Increment(wallet_change)
-
-        user_ref.update(updates)
+        })
 
         db.collection("wallet_transactions").add({
             "driver_id": driver_id,
             "ride_id": ride_id,
-            "type": "cash_commission_deduction" if safe_payment_method == "cash" else "card_earnings_credit",
-            "net_wallet_change_at_completion": wallet_change,
-            "ride_base_fare": commissionable_amount,
-            "wallet_used_by_rider": wallet_used,
-            "cash_collected_by_driver": cash_to_collect,
-            "service_fee_excluded": service_fee,
-            "commission_charged": actual_commission,
-            "driver_share_earned": driver_share,
-            "payment_method": safe_payment_method,
+            "type": "trip_completion",
+            "net_wallet_change": float(wallet_change),
+            "driver_share_earned": float(driver_share),
+            "cash_collected_by_driver": float(cash_to_collect),
+            "wallet_used_by_rider": float(wallet_used),
             "created_at": firestore.SERVER_TIMESTAMP
         })
 
-    # 6. Update Rider Stats
+    # 5. Update Rider Stats
     if rider_id and rider_ref:
         rider_ref.update({"total_rides": firestore.Increment(1)})
 
     return {
         "message": "Ride completed",
         "payment_status": payment_status,
-        "payment_method": safe_payment_method,
-        "paymentMethod": safe_payment_method,
         "final_fare": total_with_fee,
         "wallet_used": wallet_used,
         "cash_to_collect": cash_to_collect,

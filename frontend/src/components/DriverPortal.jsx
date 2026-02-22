@@ -707,28 +707,23 @@ const DriverDashboard = () => {
         lastPositionRef.current = driverLocation;
         toast.success("Ride started");
       } 
-      else if (action === "complete") {
-        const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled);
-        const finalWait = isNaN(waitTimer) ? 0 : parseInt(waitTimer);
-        
-        const url = `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}`;
-        const payload = {
-            final_distance: finalDist,
-            total_wait_minutes: finalWait,
-            dropoff_lat: driverLocation?.lat,
-            dropoff_lng: driverLocation?.lng
-        };
-
+      
+     else if (action === "complete") {
+        // ...
         const res = await api.post(url, payload);
         
-        const finalFare = res.data.final_fare > 0 
-            ? res.data.final_fare 
-            : (activeRide.estimated_fare || 0);
-
-        const completeData = { ...res.data, final_fare: finalFare };
+        const finalFare = res.data.final_fare > 0 ? res.data.final_fare : (activeRide.estimated_fare || 0);
         
-        setCompletedRide(completeData);
-        toast.success(`Ride completed! Fare: ₾${finalFare.toFixed(2)}`);
+        // 🔥 Make sure the driver knows exactly how much CASH to ask for!
+        const cashToCollect = res.data.cash_to_collect || 0;
+        
+        setCompletedRide({ ...res.data, final_fare: finalFare });
+        
+        if (cashToCollect > 0) {
+            toast.success(`Trip Done! Collect exactly ₾${cashToCollect.toFixed(2)} in CASH.`, { duration: 8000 });
+        } else {
+            toast.success(`Trip Done! Paid fully via Wallet/Card. Do not collect cash.`);
+        }
         
         setActiveRide(null);
         setDistanceTraveled(0);
