@@ -2,47 +2,56 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Car, Users, Shield, Rocket, Zap, Globe, DownloadCloud } from "lucide-react";
+import { Car, Users, Shield, Zap, Globe, Share2, DownloadCloud } from "lucide-react";
 import { useLanguage } from "@/i18n/LanguageContext"; 
 import LanguageSelector from "@/i18n/LanguageSelector";
-
-// ❌ NO IMPORT HERE. The file is in public, so we don't import it.
 
 const LandingPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
-  // --- 🔥 PWA INSTALL STATE ---
+  // --- 🔥 PWA INSTALL & SHARE STATE ---
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
   useEffect(() => {
-    // Listen for the browser's native install prompt
+    // Listens for the browser asking if the user wants to install the app
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault(); 
       setDeferredPrompt(e); 
     };
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
   const handleInstallApp = async () => {
     if (!deferredPrompt) return;
-    
-    // Show the native install prompt
     deferredPrompt.prompt();
-    
-    // Wait for the user to respond
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
-      setDeferredPrompt(null); // Hide the button once installed
+      setDeferredPrompt(null);
     }
   };
-  // -----------------------------
+
+  const handleShareApp = async () => {
+    const appUrl = window.location.origin; // Automatically grabs your live website link
+    const shareData = {
+      title: 'Taksi - Ride Sharing App',
+      text: 'Hey! I use Taksi for my rides. Download it here and let\'s get moving!',
+      url: appUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData); // Opens native mobile share menu
+      } else {
+        await navigator.clipboard.writeText(appUrl); // Fallback for computers
+        alert("App link copied to clipboard!"); 
+      }
+    } catch (err) {
+      console.log('Share canceled', err);
+    }
+  };
+  // -----------------------------------
 
   const vehicleTypes = [
     { name: t('vehicle_economy'), icon: "🚗", price: "₾2.00", desc: t('vehicle_economy_desc') },
@@ -50,13 +59,6 @@ const LandingPage = () => {
     { name: t('vehicle_xl'), icon: "🚐", price: "₾3.90", desc: t('vehicle_xl_desc') },
     { name: t('vehicle_personal'), icon: "👤", price: "₾4.00", desc: t('vehicle_personal_desc') },
     { name: t('vehicle_jumpstart'), icon: "⚡", price: "₾4.50", desc: t('vehicle_jumpstart_desc') },
-  ];
-
-  const stats = [
-    { value: "10K+", label: t('stat_rides') },
-    { value: "500+", label: t('stat_pilots') },
-    { value: "4.9", label: t('stat_rating') },
-    { value: "2min", label: t('stat_wait') },
   ];
 
   return (
@@ -67,12 +69,7 @@ const LandingPage = () => {
         <header className="relative z-10 flex items-center justify-between p-6 max-w-7xl mx-auto">
           <div className="flex items-center space-x-3">
             <div className="w-14 h-14 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
-              {/* ✅ CORRECT TAG FOR PUBLIC FOLDER */}
-              <img 
-                src="/logo.png" 
-                alt="T'aksi Logo" 
-                className="w-full h-full object-cover" 
-              />
+              <img src="/logo.png" alt="T'aksi Logo" className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col">
               <span className="text-2xl font-black tracking-tight leading-none">{t('app_name')}</span>
@@ -96,17 +93,27 @@ const LandingPage = () => {
             </h1>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-10">{t('hero_desc')}</p>
             
-            {/* 🔥 BUTTONS CONTAINER (Added flex-wrap for better mobile scaling) */}
-            <div className="flex flex-col sm:flex-row flex-wrap gap-4 justify-center">
+            {/* 🔥 BUTTONS CONTAINER */}
+            <div className="flex flex-col sm:flex-row flex-wrap gap-4 justify-center items-center">
               
-              {/* 🔥 NEW DOWNLOAD APP BUTTON */}
+              {/* 🟢 SHARE BUTTON (Will show immediately) */}
+              <Button 
+                size="lg" 
+                variant="outline" 
+                className="border-white text-white hover:bg-white/10 font-bold text-lg px-8 py-6" 
+                onClick={handleShareApp}
+              >
+                <Share2 className="w-5 h-5 mr-2" /> Share App
+              </Button>
+
+              {/* 🔵 DOWNLOAD APP BUTTON (Invisible until PWA is set up) */}
               {deferredPrompt && (
                 <Button 
                   size="lg" 
                   className="bg-[#00d4ff] text-black hover:bg-[#00d4ff]/80 font-bold text-lg px-8 py-6 shadow-[0_0_15px_rgba(0,212,255,0.4)]" 
                   onClick={handleInstallApp}
                 >
-                  <DownloadCloud className="w-5 h-5 mr-2" /> {t('download_app') || "Download App"}
+                  <DownloadCloud className="w-5 h-5 mr-2" /> Download App
                 </Button>
               )}
 
@@ -116,6 +123,7 @@ const LandingPage = () => {
               <Button size="lg" variant="outline" className="border-[#00d4ff] text-[#00d4ff] hover:bg-[#00d4ff]/10 font-bold text-lg px-8 py-6" onClick={() => navigate("/driver")}>
                 <Car className="w-5 h-5 mr-2" /> {t('become_pilot')}
               </Button>
+
             </div>
           </div>
 
