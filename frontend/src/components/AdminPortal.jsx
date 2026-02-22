@@ -450,6 +450,10 @@ const handleManualTopUp = async (e) => {
                               <DialogContent aria-describedby={undefined} className="bg-black border border-[#00ff88]/30">
                                 <DialogHeader>
                                   <DialogTitle className="text-[#00ff88]">Add Balance to Rider</DialogTitle>
+                                  {/* 🔥 ADD THIS LINE to silence the warning */}
+                                  <DialogDescription className="sr-only">
+                                    Specify the amount and reason to add balance to this rider.
+                                  </DialogDescription>
                                 </DialogHeader>
                                 {selectedUser && (
                                   <div className="space-y-4">
@@ -567,6 +571,10 @@ const handleManualTopUp = async (e) => {
                             <DialogContent aria-describedby={undefined} className="bg-black border border-[#00d4ff]/30">
                               <DialogHeader>
                                <DialogTitle className ="text-[#00d4ff]">Add Balance to Driver</DialogTitle>
+                               {/* 🔥 ADD THIS LINE to silence the warning */}
+                               <DialogDescription className="sr-only">
+                                  Specify the amount and reason to add balance to this driver.
+                               </DialogDescription>
                               </DialogHeader>
                               {selectedUser && (
                                 <div className="space-y-4">
