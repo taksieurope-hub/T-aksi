@@ -79,7 +79,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// Google Maps Autocomplete (LIGHT THEME DROPDOWN)
+// 🔥 UPGRADED: Google Maps Autocomplete (Mobile & Touch Optimized)
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   const callbackRef = useRef(onPlaceSelect);
   useEffect(() => { callbackRef.current = onPlaceSelect; }, [onPlaceSelect]);
@@ -87,24 +87,50 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
-      .pac-container { z-index: 10500 !important; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; font-family: inherit; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-      .pac-item { color: #374151; border-top: 1px solid #f3f4f6; padding: 10px; cursor: pointer; }
-      .pac-item:hover { background-color: #f3f4f6; }
-      .pac-item-query { color: #000000; font-weight: bold; }
+      /* 🔥 MOBILE FIXES FOR AUTOCOMPLETE DROPDOWN */
+      .pac-container { 
+        z-index: 999999 !important; /* Forces it above all mobile UI and keyboards */
+        background-color: #ffffff !important; 
+        border: 1px solid #e5e7eb !important; 
+        border-radius: 0 0 12px 12px !important; 
+        font-family: inherit !important; 
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2) !important; 
+        position: absolute !important;
+        padding-bottom: 8px !important;
+      }
+      .pac-item { 
+        color: #374151 !important; 
+        border-top: 1px solid #f3f4f6 !important; 
+        padding: 12px 16px !important; /* Larger touch targets for mobile */
+        cursor: pointer !important; 
+        font-size: 14px !important;
+      }
+      .pac-item:hover, .pac-item:active { 
+        background-color: #f3f4f6 !important; 
+      }
+      .pac-item-query { 
+        color: #000000 !important; 
+        font-weight: 800 !important; 
+        font-size: 15px !important;
+      }
+      /* Hide the Google logo to save space on small screens */
+      .pac-logo:after { display: none !important; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
   }, []);
 
-  // Initialize Autocomplete (With Safety Timer)
+  // Initialize Autocomplete
   useEffect(() => {
     const timer = setInterval(() => {
       if (inputRef.current && window.google && window.google.maps && window.google.maps.places) {
         clearInterval(timer);
+        
         const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-          componentRestrictions: { country: 'ge' },
+          componentRestrictions: { country: 'ge' }, // Locks to Georgia
           fields: ['formatted_address', 'geometry', 'name']
         });
+
         autocomplete.addListener('place_changed', () => {
           const place = autocomplete.getPlace();
           if (place.geometry) {
@@ -113,6 +139,11 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect) => {
               lat: place.geometry.location.lat(),
               lng: place.geometry.location.lng()
             });
+            
+            // 🔥 MOBILE FIX: Instantly drop the virtual keyboard when an address is tapped
+            if (inputRef.current) {
+              inputRef.current.blur(); 
+            }
           }
         });
       }

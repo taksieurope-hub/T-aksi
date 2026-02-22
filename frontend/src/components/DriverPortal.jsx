@@ -32,7 +32,7 @@ import {
   Plus, X, Zap, TrendingUp, MessageSquare,
   Target, Crosshair, Send,
   Banknote, CreditCard, ExternalLink, AlertTriangle, Activity,
-  MapPinned, CheckCircle2, XCircle, Play, Timer
+  MapPinned, CheckCircle2, XCircle, Play, Timer, PauseCircle
 } from "lucide-react";
 
 // Pricing Rules (Needed for Wait Timer & Earning Calculations)
@@ -460,7 +460,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       }
   };
 
-  const handleNav = (app) => { /* Keeping your external Nav logic untouched */
+  const handleNav = (app) => { 
     if (!activeRide) return;
     let destLat, destLng; let waypoints = "";
     if (["accepted", "arrived"].includes(activeRide.status)) { destLat = activeRide.pickup_lat; destLng = activeRide.pickup_lng; } 
@@ -837,174 +837,210 @@ const DriverDashboard = () => {
 
   const statusColors = { pending_vehicle: "bg-yellow-500 text-black", pending_review: "bg-orange-500 text-black", approved: "bg-[#00ff88] text-black", rejected: "bg-red-500 text-white" };
   const rideStatusColors = { searching: "bg-yellow-500 text-black", accepted: "bg-blue-500 text-white", arrived: "bg-purple-500 text-white", in_progress: "bg-[#00ff88] text-black", completed: "bg-green-600 text-white", cancelled: "bg-red-500 text-white" };
-const [isWaitingAtStop, setIsWaitingAtStop] = useState(false);
+  const [isWaitingAtStop, setIsWaitingAtStop] = useState(false);
 
-const toggleStopWait = async () => {
-  try {
-    const newStatus = !isWaitingAtStop;
-    // We tell the backend to start/stop the stop-clock
-    await api.post(`/rides/${activeRide.id}/toggle-stop-wait`, { isWaiting: newStatus });
-    setIsWaitingAtStop(newStatus);
-    toast.success(newStatus ? "Stop wait timer started" : "Stop wait timer paused");
-  } catch (error) {
-    toast.error("Failed to update wait status");
-  }
-};
+  const toggleStopWait = async () => {
+    try {
+      const newStatus = !isWaitingAtStop;
+      // We tell the backend to start/stop the stop-clock
+      await api.post(`/rides/${activeRide.id}/toggle-stop-wait`, { isWaiting: newStatus });
+      setIsWaitingAtStop(newStatus);
+      toast.success(newStatus ? "Stop wait timer started" : "Stop wait timer paused");
+    } catch (error) {
+      toast.error("Failed to update wait status");
+    }
+  };
+
   return (
-    // 🔥 FIX 1: Use 100dvh and overflow-hidden to lock it to the exact phone screen size
-    <div className="relative h-[100dvh] w-full bg-black/40 font-sans overflow-hidden">
+    // 🔥 THE MASTER LAYOUT FIX: fixed inset-0 completely locks it to the exact screen bounds
+    <div className="fixed inset-0 w-full h-full bg-black font-sans text-white overflow-hidden flex flex-col">
       
-      {/* 1. MAP BACKGROUND */}
-      {mapsLoaded && (
-        <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />
-      )}
+      {/* 1. MAP BACKGROUND (Behind everything) */}
+      <div className="absolute inset-0 z-0 pointer-events-auto">
+        {mapsLoaded && <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />}
+      </div>
 
-      {/* 2. FOREGROUND OVERLAY */}
-      <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
-        
-        {/* --- HEADER --- */}
-        <div className="pointer-events-auto">
-          <header className="bg-black/80 backdrop-blur-xl border-b border-[#00d4ff]/20 p-4">
-            <div className="container mx-auto flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] flex items-center justify-center"><Car className="w-5 h-5 text-black" /></div>
-                <div><p className="text-[#00d4ff] font-semibold">{user?.name} {user?.surname}</p><div className="flex items-center space-x-2"><Badge className={statusColors[registrationStatus] || "bg-gray-500"}>{registrationStatus?.replace(/_/g, " ").toUpperCase()}</Badge><span className="text-[#00ff88] text-sm font-bold">₾{balance.toFixed(2)}</span></div></div>
+      {/* 2. PINNED HEADER (Always visible at the top) */}
+      <div className="absolute top-0 left-0 right-0 z-50 pointer-events-auto shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+        <header className="bg-black/90 backdrop-blur-xl border-b border-[#00d4ff]/30 p-3 sm:p-4">
+          <div className="container mx-auto flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] flex items-center justify-center">
+                <Car className="w-5 h-5 text-black" />
               </div>
-              <div className="flex items-center space-x-4">
-                {registrationStatus === "approved" && (<div className="flex items-center space-x-2"><span className={`text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>{isOnline ? "Online" : "Offline"}</span><Button size="sm" className={isOnline ? "bg-[#00ff88] text-black" : "bg-gray-600"} onClick={() => handleToggleOnline(!isOnline)}>{isOnline ? "ON" : "OFF"}</Button></div>)}
-                <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={() => navigate("/")}><Home className="w-5 h-5" /></Button>
-                <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={logout}><LogOut className="w-5 h-5" /></Button>
+              <div>
+                <p className="text-[#00d4ff] font-semibold">{user?.name} {user?.surname}</p>
+                <div className="flex items-center space-x-2">
+                  <Badge className={statusColors[registrationStatus] || "bg-gray-500"}>
+                    {registrationStatus?.replace(/_/g, " ").toUpperCase()}
+                  </Badge>
+                  <span className="text-[#00ff88] text-sm font-bold">₾{balance.toFixed(2)}</span>
+                </div>
               </div>
             </div>
-          </header>
+            
+            {/* Action Buttons */}
+            <div className="flex items-center space-x-2 sm:space-x-4">
+              {registrationStatus === "approved" && (
+                <div className="flex items-center space-x-2">
+                  <span className={`text-xs sm:text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>
+                    {isOnline ? "Online" : "Offline"}
+                  </span>
+                  <Button size="sm" className={isOnline ? "bg-[#00ff88] text-black" : "bg-gray-600"} onClick={() => handleToggleOnline(!isOnline)}>
+                    {isOnline ? "ON" : "OFF"}
+                  </Button>
+                </div>
+              )}
+              <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={() => navigate("/")}>
+                <Home className="w-5 h-5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="text-red-400" onClick={logout}>
+                <LogOut className="w-5 h-5" />
+              </Button>
+            </div>
+          </div>
+        </header>
 
-          {isOnline && driverLocation && (
-            <div className="bg-black/80 backdrop-blur-md border-b border-[#00ff88]/20 px-4 py-2 shadow-sm">
-              <div className="container mx-auto flex items-center text-xs text-[#00ff88]">
-                <Crosshair className="w-3 h-3 mr-2 animate-pulse" />
-                Location tracking active • {driverLocation.lat.toFixed(5)}, {driverLocation.lng.toFixed(5)}
-                {driverLocation.speed && <span className="ml-2">• {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
-              </div>
+        {isOnline && driverLocation && (
+          <div className="bg-black/80 backdrop-blur-md border-b border-[#00ff88]/20 px-4 py-2 shadow-sm">
+            <div className="container mx-auto flex items-center text-xs text-[#00ff88]">
+              <Crosshair className="w-3 h-3 mr-2 animate-pulse" />
+              Tracking active • {driverLocation.lat.toFixed(5)}, {driverLocation.lng.toFixed(5)}
+              {driverLocation.speed && <span className="ml-2">• {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. PINNED BOTTOM SHEET (Always visible at the bottom) */}
+      <div className="absolute bottom-0 left-0 right-0 z-40 w-full flex justify-center pointer-events-none p-2 pb-4 sm:p-4 sm:pb-6">
+        
+        <div 
+          className={`pointer-events-auto w-full max-w-2xl bg-black/90 backdrop-blur-2xl border border-white/10 shadow-[0_-15px_40px_rgba(0,0,0,0.8)] rounded-3xl flex flex-col overflow-hidden transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+            isMinimized && activeRide ? "translate-y-[calc(100%-3rem)]" : "translate-y-0"
+          }`}
+          style={{ maxHeight: "75vh" }}
+        >
+          
+          {/* Drag Handle */}
+          {activeRide && (
+            <div 
+              className="w-full flex justify-center items-center h-12 shrink-0 cursor-pointer bg-white/5 active:bg-white/10 transition-colors" 
+              onClick={() => setIsMinimized(!isMinimized)}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
+              <div className="w-16 h-1.5 bg-gray-500 rounded-full" />
             </div>
           )}
-        </div>
 
-        {/* --- SCROLLABLE WIDGETS (TRUE BOTTOM SHEET) --- */}
-        {/* 🔥 FIX 2: Absolute positioned to the bottom so it can slide down off the screen */}
-        <div className="absolute bottom-0 left-0 right-0 w-full flex justify-center pointer-events-none p-2 sm:p-4 z-20 pb-4">
-          
-          <div 
-            // 🔥 FIX 3: translate-y pushes the box down by 100% of its height, minus 3rem (the handle)
-            className={`pointer-events-auto w-full max-w-2xl bg-black/85 backdrop-blur-2xl border border-white/10 shadow-[0_-15px_40px_rgba(0,0,0,0.8)] rounded-3xl flex flex-col overflow-hidden transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-              isMinimized && activeRide ? "translate-y-[calc(100%-3rem)]" : "translate-y-0"
-            }`}
-            style={{ maxHeight: "70vh" }}
-          >
-            
-            {/* 🔥 DRAG HANDLE: The "top little piece". Touch events are restricted to ONLY this area now! */}
-            {activeRide && (
-              <div 
-                className="w-full flex justify-center items-center h-12 shrink-0 cursor-pointer bg-white/5 active:bg-white/10 transition-colors" 
-                onClick={() => setIsMinimized(!isMinimized)}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-              >
-                <div className="w-16 h-1.5 bg-gray-500 rounded-full" />
-              </div>
-            )}
+          {/* Tab Content */}
+          <div className="overflow-y-auto p-3 pb-4 scrollbar-hide flex-1">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              
+              {!activeRide && (
+                <TabsList className="grid grid-cols-5 bg-black/50 border border-[#00d4ff]/20 mb-4 rounded-xl">
+                  <TabsTrigger value="rides" className="text-xs sm:text-sm"><Activity className="w-4 h-4 sm:mr-2" /> Rides</TabsTrigger>
+                  <TabsTrigger value="nearby" onClick={fetchNearbyRides} className="text-xs sm:text-sm"><Crosshair className="w-4 h-4 sm:mr-2" /> Nearby</TabsTrigger>
+                  <TabsTrigger value="vehicle" className="text-xs sm:text-sm"><Car className="w-4 h-4 sm:mr-2" /> Vehicle</TabsTrigger>
+                  <TabsTrigger value="earnings" className="text-xs sm:text-sm"><Wallet className="w-4 h-4 sm:mr-2" /> Earn</TabsTrigger>
+                  <TabsTrigger value="history" className="text-xs sm:text-sm"><History className="w-4 h-4 sm:mr-2" /> History</TabsTrigger>
+                </TabsList>
+              )}
 
-            {/* Content Area */}
-            <div className="overflow-y-auto p-2 pb-4 scrollbar-hide">
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
-                
-                {/* Only show TabsList if NOT on a trip */}
-                {!activeRide && (
-                  <TabsList className="grid grid-cols-5 bg-black/50 border border-[#00d4ff]/20 mb-4 rounded-xl">
-                    <TabsTrigger value="rides" className="text-xs sm:text-sm"><Activity className="w-4 h-4 sm:mr-2" /> Rides</TabsTrigger>
-                    <TabsTrigger value="nearby" onClick={fetchNearbyRides} className="text-xs sm:text-sm"><Crosshair className="w-4 h-4 sm:mr-2" /> Nearby</TabsTrigger>
-                    <TabsTrigger value="vehicle" className="text-xs sm:text-sm"><Car className="w-4 h-4 sm:mr-2" /> Vehicle</TabsTrigger>
-                    <TabsTrigger value="earnings" className="text-xs sm:text-sm"><Wallet className="w-4 h-4 sm:mr-2" /> Earn</TabsTrigger>
-                    <TabsTrigger value="history" className="text-xs sm:text-sm"><History className="w-4 h-4 sm:mr-2" /> History</TabsTrigger>
-                  </TabsList>
-                )}
+              <TabsContent value="rides" className="m-0">
+                {activeRide ? (
+                  <Card className="bg-transparent border-none shadow-none">
+                    <CardHeader className="px-2 pt-0 pb-3">
+                      <div className="flex justify-between items-center">
+                        <CardTitle className="text-[#00ff88]">Active Ride</CardTitle>
+                        <Badge className={rideStatusColors[activeRide.status]}>
+                          {activeRide.status?.replace(/_/g, " ").toUpperCase()}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4 text-white px-2 pb-2">
 
-                <TabsContent value="rides" className="m-0">
-                  {activeRide ? (
-                    <Card className="bg-transparent border-none shadow-none">
-                      <CardHeader className="px-2 pt-0 pb-3">
-                        <div className="flex justify-between items-center">
-                          <CardTitle className="text-[#00ff88]">Active Ride</CardTitle>
-                          <Badge className={rideStatusColors[activeRide.status]}>
-                            {activeRide.status?.replace(/_/g, " ").toUpperCase()}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4 text-white px-2 pb-2">
-
-                        <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
-                          <div className="space-y-3">
+                      <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20">
+                        <div className="space-y-3">
+                          <div className="flex items-start">
+                            <MapPin className="w-5 h-5 text-[#00ff88] mr-2 mt-0.5" />
+                            <div>
+                              <p className="text-[#00ff88]/60 text-xs">PICKUP</p>
+                              <p className="font-medium">{activeRide.pickup}</p>
+                            </div>
+                          </div>
+                          {activeRide.stops?.length > 0 && (
                             <div className="flex items-start">
-                              <MapPin className="w-5 h-5 text-[#00ff88] mr-2 mt-0.5" />
+                              <MapPinned className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" />
                               <div>
-                                <p className="text-[#00ff88]/60 text-xs">PICKUP</p>
-                                <p className="font-medium">{activeRide.pickup}</p>
+                                <p className="text-yellow-400/60 text-xs">STOPS</p>
+                                {activeRide.stops.map((s, i) => (
+                                  <p key={i} className="text-sm">• {s.address}</p>
+                                ))}
                               </div>
                             </div>
-                            {activeRide.stops?.length > 0 && (
-                              <div className="flex items-start">
-                                <MapPinned className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" />
-                                <div>
-                                  <p className="text-yellow-400/60 text-xs">STOPS</p>
-                                  {activeRide.stops.map((s, i) => (
-                                    <p key={i} className="text-sm">• {s.address}</p>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            <div className="flex items-start">
-                              <Navigation className="w-5 h-5 text-[#00d4ff] mr-2 mt-0.5" />
-                              <div>
-                                <p className="text-[#00d4ff]/60 text-xs">DESTINATION</p>
-                                <p className="font-medium">{activeRide.destination || "Open Trip"}</p>
-                              </div>
+                          )}
+                          <div className="flex items-start">
+                            <Navigation className="w-5 h-5 text-[#00d4ff] mr-2 mt-0.5" />
+                            <div>
+                              <p className="text-[#00d4ff]/60 text-xs">DESTINATION</p>
+                              <p className="font-medium">{activeRide.destination || "Open Trip"}</p>
                             </div>
                           </div>
                         </div>
+                      </div>
 
-                        {(activeRide.status === "arrived" || activeRide.status === "in_progress") && (
-                          <div className="grid grid-cols-2 gap-4">
-                            {activeRide.status === "arrived" && (
-                              <DriverWaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType} />
+                      {(activeRide.status === "arrived" || activeRide.status === "in_progress") && (
+                        <div className="grid grid-cols-2 gap-4">
+                          {activeRide.status === "arrived" && (
+                            <DriverWaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType} />
+                          )}
+                          {activeRide.status === "in_progress" && (
+                            <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center col-span-2">
+                              <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
+                              <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(1)} km</p>
+                              <p className="text-xs text-[#00ff88]/70">Traveled</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
+                        <span className="text-[#00ff88]">Fare</span>
+                        <span className="text-2xl font-bold text-[#00ff88]">
+                          ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="mt-3">
+                        <RideCommunication 
+                          rideId={activeRide.id}
+                          otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone}
+                          otherPartyName={activeRide.rider_name || "Rider"}
+                          currentUserId={user?.id}
+                          isDriver={true} 
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-3 pt-2">
+                        
+                        {/* Stop Wait Button */}
+                        {activeRide.status === "in_progress" && activeRide.stops?.length > 0 && (
+                          <Button 
+                            onClick={toggleStopWait}
+                            variant={isWaitingAtStop ? "destructive" : "outline"}
+                            className="w-full h-12 font-bold bg-black border-white/20 text-white"
+                          >
+                            {isWaitingAtStop ? (
+                              <><Timer className="mr-2 animate-spin" /> Finish Waiting at Stop</>
+                            ) : (
+                              <><PauseCircle className="mr-2 text-yellow-400" /> Start Stop Wait</>
                             )}
-                            {activeRide.status === "in_progress" && (
-                              <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center col-span-2">
-                                <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
-                                <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(1)} km</p>
-                                <p className="text-xs text-[#00ff88]/70">Traveled</p>
-                              </div>
-                            )}
-                          </div>
+                          </Button>
                         )}
 
-                        <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
-                          <span className="text-[#00ff88]">Fare</span>
-                          <span className="text-2xl font-bold text-[#00ff88]">
-                            ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
-                          </span>
-                        </div>
-
-                        {/*  comunication button */}
-  <div className="mt-3">
-    <RideCommunication 
-  rideId={activeRide.id}
-  otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone} // Ensure this path is right
-  otherPartyName={activeRide.rider_name || "Rider"}
-  currentUserId={user?.id}
-  isDriver={true} // 🔥 This tells the component to show the Call button for the driver
-/>
-  </div>
-
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex gap-3">
                           <div className="flex-1">
                             {activeRide.status === "accepted" && (
                               <Button className="w-full bg-purple-500 text-white h-14 text-lg font-bold" onClick={() => handleRideAction("arrived")} disabled={loading}>
@@ -1023,7 +1059,7 @@ const toggleStopWait = async () => {
                             )}
                           </div>
                           
-                          {/* 🔴 CANCEL BUTTON */}
+                          {/* Cancel Button */}
                           <Button 
                             variant="destructive" 
                             className="h-14 w-14 bg-red-500/20 border border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition-colors"
@@ -1034,62 +1070,63 @@ const toggleStopWait = async () => {
                           </Button>
                         </div>
 
-                      </CardContent>
+                      </div>
+
+                    </CardContent>
+                  </Card>
+                ) : (
+                  registrationStatus !== "approved" ? (
+                    <Card className="bg-transparent border border-yellow-500/30 text-center py-12">
+                      <AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
+                      <p className="text-yellow-400 font-semibold">Account Pending Review</p>
+                    </Card>
+                  ) : !isOnline ? (
+                    <Card className="bg-transparent border border-gray-500/30 text-center py-12">
+                      <Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" />
+                      <p className="text-gray-400">Offline</p>
+                      <Button className="mt-4 bg-[#00ff88] text-black font-bold h-12 px-8" onClick={() => handleToggleOnline(true)}>Go Online</Button>
+                    </Card>
+                  ) : availableRides.length === 0 ? (
+                    <Card className="bg-transparent border border-[#00d4ff]/30 text-center py-12">
+                      <Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" />
+                      <p className="text-[#00d4ff]/70">Searching for rides...</p>
                     </Card>
                   ) : (
-                    // Empty States
-                    registrationStatus !== "approved" ? (
-                      <Card className="bg-transparent border border-yellow-500/30 text-center py-12">
-                        <AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
-                        <p className="text-yellow-400 font-semibold">Account Pending Review</p>
-                      </Card>
-                    ) : !isOnline ? (
-                      <Card className="bg-transparent border border-gray-500/30 text-center py-12">
-                        <Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" />
-                        <p className="text-gray-400">Offline</p>
-                        <Button className="mt-4 bg-[#00ff88] text-black font-bold" onClick={() => handleToggleOnline(true)}>Go Online</Button>
-                      </Card>
-                    ) : availableRides.length === 0 ? (
-                      <Card className="bg-transparent border border-[#00d4ff]/30 text-center py-12">
-                        <Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" />
-                        <p className="text-[#00d4ff]/70">Searching for rides...</p>
-                      </Card>
-                    ) : (
-                      <div className="space-y-4">
-                        {availableRides.map(ride => {
-                          const comm = (ride.estimated_fare || 0) * 0.23;
-                          const canAccept = balance >= comm;
-                          return (
-                            <Card key={ride.id} className="bg-black/60 border border-[#00ff88]/30">
-                              <CardContent className="p-4 text-white">
-                                <div className="flex justify-between items-start mb-3">
-                                  <div className="flex-1">
-                                    <p className="text-[#00ff88] font-semibold">{ride.pickup}</p>
-                                    <p className="text-[#00d4ff]/70 text-sm">→ {ride.destination}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
-                                  </div>
+                    <div className="space-y-4">
+                      {availableRides.map(ride => {
+                        const comm = (ride.estimated_fare || 0) * 0.23;
+                        const canAccept = balance >= comm;
+                        return (
+                          <Card key={ride.id} className="bg-black/60 border border-[#00ff88]/30">
+                            <CardContent className="p-4 text-white">
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="flex-1 pr-2">
+                                  <p className="text-[#00ff88] font-semibold text-sm sm:text-base truncate">{ride.pickup}</p>
+                                  <p className="text-[#00d4ff]/70 text-xs sm:text-sm truncate">→ {ride.destination}</p>
                                 </div>
-                                <div className="flex gap-2">
-                                  <Button className="flex-1 bg-[#00ff88] text-black font-bold h-12" onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)} disabled={loading || !canAccept}>
-                                    {canAccept ? "Accept" : "Low Balance"}
-                                  </Button>
-                                  <Button variant="outline" className="border-red-500 text-red-500 h-12" onClick={() => handleDeclineRide(ride.id)}>
-                                    <XCircle className="w-5 h-5" />
-                                  </Button>
+                                <div className="text-right shrink-0">
+                                  <p className="text-xl sm:text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
                                 </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
-                    )
-                  )}
-                </TabsContent>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button className="flex-1 bg-[#00ff88] text-black font-bold h-12" onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)} disabled={loading || !canAccept}>
+                                  {canAccept ? "Accept" : "Low Balance"}
+                                </Button>
+                                <Button variant="outline" className="border-red-500 text-red-500 h-12 w-12" onClick={() => handleDeclineRide(ride.id)}>
+                                  <XCircle className="w-5 h-5" />
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+              </TabsContent>
 
-                <TabsContent value="nearby">
-                  <div className="space-y-4">
+              <TabsContent value="nearby">
+                 <div className="space-y-4">
                     <div className="flex justify-end mb-2">
                       <Button size="sm" variant="outline" onClick={fetchNearbyRides} className="text-white border-white/20 hover:bg-white/10">Refresh</Button>
                     </div>
@@ -1103,9 +1140,9 @@ const toggleStopWait = async () => {
                       </Card>
                     ))}
                   </div>
-                </TabsContent>
+              </TabsContent>
 
-                <TabsContent value="vehicle">
+              <TabsContent value="vehicle">
                   <Card className="bg-transparent border-none shadow-none">
                     <CardHeader className="px-0 pt-0">
                       <CardTitle className="text-[#00d4ff]">Vehicle Registration</CardTitle>
@@ -1163,146 +1200,104 @@ const toggleStopWait = async () => {
                       )}
                     </CardContent>
                   </Card>
-                </TabsContent>
+              </TabsContent>
 
-                <TabsContent value="earnings">
-                  <div className="space-y-4">
-                    <Card className="p-6 bg-black/60 border border-[#00ff88] text-center">
-                      <p className="text-gray-400">Balance</p>
-                      <p className="text-4xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
-                    </Card>
-                    <Input type="number" placeholder="Amount" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="bg-black/50 text-white border-[#00d4ff]/30 h-12" />
-                    <Button className="w-full bg-[#00ff88] text-black h-12 font-bold" onClick={() => setShowCardModal(true)}>Top Up</Button>
-                  </div>
-                </TabsContent>
+              <TabsContent value="earnings">
+                <div className="space-y-4">
+                  <Card className="p-6 bg-black/60 border border-[#00ff88] text-center">
+                    <p className="text-gray-400">Balance</p>
+                    <p className="text-4xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
+                  </Card>
+                  <Input type="number" placeholder="Amount" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="bg-black/50 text-white border-[#00d4ff]/30 h-12" />
+                  <Button className="w-full bg-[#00ff88] text-black h-12 font-bold" onClick={() => setShowCardModal(true)}>Top Up</Button>
+                </div>
+              </TabsContent>
 
-                <TabsContent value="history">
-                  <ScrollArea className="h-[400px]">
-                    <div className="space-y-2 pr-4">
-                      {rideHistory.length === 0 ? <p className="text-gray-400 text-center py-6">No rides yet.</p> : null}
-                      {rideHistory.map(r => (
-                        <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 rounded-xl">
-                          <div className="flex justify-between items-start mb-1">
-                            <p className="text-white text-sm truncate pr-2">{r.pickup}</p>
-                            <p className="text-[#00ff88] font-bold">₾{r.final_fare}</p>
-                          </div>
-                          <p className="text-gray-500 text-xs">{new Date(r.created_at).toLocaleDateString()}</p>
+              <TabsContent value="history">
+                <ScrollArea className="h-[400px]">
+                  <div className="space-y-2 pr-4">
+                    {rideHistory.length === 0 ? <p className="text-gray-400 text-center py-6">No rides yet.</p> : null}
+                    {rideHistory.map(r => (
+                      <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 rounded-xl">
+                        <div className="flex justify-between items-start mb-1">
+                          <p className="text-white text-sm truncate pr-2">{r.pickup}</p>
+                          <p className="text-[#00ff88] font-bold">₾{r.final_fare}</p>
                         </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
+                        <p className="text-gray-500 text-xs">{new Date(r.created_at).toLocaleDateString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
 
-              </Tabs>
-            </div>
+            </Tabs>
           </div>
         </div>
       </div>
 
-      {/* REAL PAYPAL TOP UP MODAL */}
+      {/* --- MODALS OVERLAYING THE ENTIRE SCREEN --- */}
       <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
-        <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%] rounded-xl">
+        <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]">
           <DialogHeader>
             <DialogTitle className="text-[#00ff88] flex items-center gap-2">
               <Wallet className="w-5 h-5" /> Top Up Wallet
             </DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Add ₾{topupAmount} to your virtual account to accept more rides.
-            </DialogDescription>
           </DialogHeader>
-          
-          <div className="py-4 z-50 relative">
+          <div className="py-4 relative z-50">
             <PayPalButtons
               fundingSource="card"
               style={{ layout: "vertical", shape: "rect" }}
               createOrder={(data, actions) => {
-                // Convert GEL to USD for PayPal
                 const usdAmount = (parseFloat(topupAmount) * 0.37).toFixed(2);
                 return actions.order.create({
-                  purchase_units: [{
-                    amount: { value: usdAmount, currency_code: "USD" }
-                  }],
+                  purchase_units: [{ amount: { value: usdAmount, currency_code: "USD" } }],
                   application_context: { shipping_preference: "NO_SHIPPING" }
                 });
               }}
               onApprove={async (data, actions) => {
                 try {
                   setLoading(true);
-                  await actions.order.capture(); // Capture the money
-                  
-                  // Ping our new backend route to verify and add funds
-                  await api.post(`/driver/wallet/topup/paypal`, {
-                    order_id: data.orderID,
-                    amount: parseFloat(topupAmount)
-                  });
-
-                  toast.success(`Successfully added ₾${topupAmount} to your wallet!`);
-                  setShowCardModal(false);
-                  setTopupAmount("");
-                  
-                  // Refresh the driver's info so the balance updates instantly on screen
-                  const userRes = await api.get(`/auth/me`);
-                  updateUser(userRes.data);
-                } catch (error) {
-                  toast.error("Top-up failed. Please contact support.");
-                } finally {
-                  setLoading(false);
-                }
+                  await actions.order.capture(); 
+                  await api.post(`/driver/wallet/topup/paypal`, { order_id: data.orderID, amount: parseFloat(topupAmount) });
+                  toast.success(`Successfully added ₾${topupAmount}!`);
+                  setShowCardModal(false); setTopupAmount("");
+                  const userRes = await api.get(`/auth/me`); updateUser(userRes.data);
+                } catch (error) { toast.error("Top-up failed."); } finally { setLoading(false); }
               }}
             />
           </div>
-          
-          <Button variant="ghost" onClick={() => setShowCardModal(false)} className="w-full text-gray-400">
-            Cancel
-          </Button>
         </DialogContent>
       </Dialog>
 
       <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
-        <DialogContent className="bg-[#1a1a2e] border border-red-500/50 text-white sm:max-w-md w-[95%] rounded-xl">
+        <DialogContent className="bg-[#1a1a2e] border border-red-500/50 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]">
           <DialogHeader>
             <DialogTitle className="text-red-500 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5" /> Cancel Ride
             </DialogTitle>
             <DialogDescription className="text-gray-400">
-              Please select a reason. <span className="text-red-400 font-bold block mt-1">Warning: Unjustified cancellations may affect your driver score.</span>
+              Please select a reason. <span className="text-red-400 font-bold block mt-1">Warning: Unjustified cancellations may affect your score.</span>
             </DialogDescription>
           </DialogHeader>
-
           <ScrollArea className="max-h-[300px] pr-4">
             <div className="grid gap-2 py-4">
               {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map((reason) => (
                 <div
-                  key={reason}
-                  onClick={() => setSelectedCancelReason(reason)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedCancelReason === reason
-                      ? "bg-red-500 text-white border-red-500"
-                      : "bg-black/40 border-gray-700 hover:border-red-500/50 hover:bg-red-500/10"
-                    }`}
+                  key={reason} onClick={() => setSelectedCancelReason(reason)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedCancelReason === reason ? "bg-red-500 text-white border-red-500" : "bg-black/40 border-gray-700 hover:border-red-500/50 hover:bg-red-500/10"}`}
                 >
                   <p className="font-medium text-sm">{reason}</p>
                 </div>
               ))}
             </div>
           </ScrollArea>
-
           <div className="flex gap-2 mt-2">
-            <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 text-gray-400 border border-gray-700 h-12">
-              Back
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleCancelRide}
-              disabled={!selectedCancelReason || loading}
-              className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-12"
-            >
-              Confirm Cancel
-            </Button>
+            <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 text-gray-400 border border-gray-700 h-12">Back</Button>
+            <Button variant="destructive" onClick={handleCancelRide} disabled={!selectedCancelReason || loading} className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-12">Confirm Cancel</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Trip Completion Modal - Shows after completing a ride */}
       <DriverTripCompletionModal
         isOpen={!!completedRide}
         onClose={() => setCompletedRide(null)}
@@ -1329,10 +1324,7 @@ const DriverPortal = () => {
   }
 
   return (
-    <PayPalScriptProvider options={{
-      "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
-      currency: "USD"
-    }}>
+    <PayPalScriptProvider options={{ "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID, currency: "USD" }}>
       <Routes>
         <Route path="/" element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DriverDashboard />} />
