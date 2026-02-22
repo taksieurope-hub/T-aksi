@@ -835,7 +835,7 @@ const RiderDashboard = () => {
     }
   }, [pickup.lat, pickup.lng]);
 
- // 🔥 FIXED: Route Calculator (Prevents Infinite Loop Crash)
+ // 🔥 FIXED: Route Calculator (Prevents Infinite Loop Crash & Catches Stop Address Changes)
   const calculateRoute = useCallback(() => {
     if (!window.google || !pickup.lat || !destination.lat) return;
 
@@ -867,7 +867,6 @@ const RiderDashboard = () => {
           const newDur = Math.round(t / 60);
 
           // 🔥 CRITICAL FIX: Loop Stopper
-          // Only update state if the values are ACTUALLY different.
           setRouteInfo(prev => {
             if (prev && prev.distance === newDist && prev.duration === newDur) return prev;
             return { distance: newDist, duration: newDur };
@@ -879,13 +878,14 @@ const RiderDashboard = () => {
     } catch (err) {
       console.error("Route Error:", err);
     }
-  }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stops.length]);
+  // 👇 THIS IS THE LINE THAT WAS WRONG. It must be JSON.stringify(stops) 👇
+  }, [pickup.lat, pickup.lng, destination.lat, destination.lng, JSON.stringify(stops)]);
 
-  // 🔥 FIX: Create a string out of the stops so React knows when coordinates change, not just the array length
+  // Create a string out of the stops so React knows when coordinates change
   const stopsSignature = stops.map(s => `${s.lat},${s.lng}`).join('|');
   const validStopsCount = stops.filter(s => s.lat && s.lng).length;
 
-  // 🔥 TRIGGER: Only run when NUMBERS or STOPS change (Debounced)
+  // TRIGGER: Only run when NUMBERS or STOPS change (Debounced)
   useEffect(() => {
     if (mapsLoaded && pickup.lat && destination.lat) {
       const timer = setTimeout(() => {
@@ -895,7 +895,7 @@ const RiderDashboard = () => {
     }
   }, [mapsLoaded, pickup.lat, pickup.lng, destination.lat, destination.lng, stopsSignature, calculateRoute]);
 
-  // 🔥 TRIGGER: Update Price when distance, vehicle, or valid stops change
+  // TRIGGER: Update Price when distance, vehicle, or valid stops change
   useEffect(() => {
     if (routeInfo) {
       const surge = surgeInfo?.multiplier || 1.0;
