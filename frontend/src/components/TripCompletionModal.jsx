@@ -20,7 +20,7 @@ export const DriverTripCompletionModal = ({
   onConfirm 
 }) => {
   const { t } = useLanguage();
-  const isCash = paymentMethod === "cash";
+  const isCash = String(paymentMethod).toLowerCase().trim() === "cash";
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -155,7 +155,7 @@ export const RiderTripCompletionModal = ({
   onRateDriver 
 }) => {
   const { t } = useLanguage();
-  const isCash = paymentMethod === "cash";
+  
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

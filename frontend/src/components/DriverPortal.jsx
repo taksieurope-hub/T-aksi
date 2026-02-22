@@ -1322,9 +1322,12 @@ const DriverDashboard = () => {
       <DriverTripCompletionModal
         isOpen={!!completedRide}
         onClose={() => setCompletedRide(null)}
-        fareAmount={completedRide?.final_fare}
-        paymentMethod={completedRide?.payment_method}
-        riderName={completedRide?.rider_name}
+        fareAmount={completedRide?.final_fare || completedRide?.estimated_fare}
+        
+        // 🔥 FIX: Check BOTH naming conventions from the backend just in case!
+        paymentMethod={completedRide?.payment_method || completedRide?.paymentMethod || "cash"} 
+        
+        riderName={completedRide?.rider_name || completedRide?.riderName}
         onConfirm={() => setCompletedRide(null)}
       />
 
