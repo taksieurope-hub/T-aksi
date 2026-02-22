@@ -93,12 +93,15 @@ const RatingModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="glass-heavy border-primary/30 sm:max-w-md">
+      {/* 🔥 ADDED aria-describedby here */}
+      <DialogContent aria-describedby="rating-dialog-description" className="glass-heavy border-primary/30 sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-primary text-center font-heading">
             {t('rate_your_ride') || "Rate Your Ride"}
           </DialogTitle>
-          <DialogDescription className="text-center text-muted-foreground">
+          
+          {/* 🔥 ADDED id here to match the aria-describedby above */}
+          <DialogDescription id="rating-dialog-description" className="text-center text-muted-foreground">
             {ratingType === "driver" 
               ? `How was your ride with ${driverName}?`
               : "Rate your passenger"}

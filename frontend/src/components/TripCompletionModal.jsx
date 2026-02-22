@@ -5,7 +5,8 @@ import {
   DollarSign, AlertTriangle, ThumbsUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+// 🔥 ADDED DialogDescription to the import
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -23,7 +24,16 @@ export const DriverTripCompletionModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md border-0 p-0 overflow-hidden">
+      <DialogContent aria-describedby="driver-trip-desc" className="sm:max-w-md border-0 p-0 overflow-hidden">
+        
+        {/* 🔥 ADDED HIDDEN HEADER TO SILENCE RADIX WARNINGS */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>Trip Completed</DialogTitle>
+          <DialogDescription id="driver-trip-desc">
+            Payment collection instructions and trip summary.
+          </DialogDescription>
+        </DialogHeader>
+
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -62,7 +72,7 @@ export const DriverTripCompletionModal = ({
             </p>
           </motion.div>
 
-          {/* Payment Instruction - THE KEY PART */}
+          {/* Payment Instruction */}
           <motion.div 
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -94,12 +104,12 @@ export const DriverTripCompletionModal = ({
                   </span>
                 </div>
                 <p className="text-blue-300/80 text-sm mb-4">
-                  {t('payment_via_card') || "Payment already processed via card"}
+                  {t('payment_via_card') || "Payment already processed via card/wallet"}
                 </p>
               </div>
             )}
 
-            {/* Fare Amount - Big and Prominent */}
+            {/* Fare Amount */}
             <div className="text-center">
               <p className="text-white/60 text-sm mb-1">{t('fare_amount') || "Fare Amount"}</p>
               <p className={`text-5xl font-bold ${isCash ? 'text-green-400' : 'text-blue-400'}`}>
@@ -149,7 +159,16 @@ export const RiderTripCompletionModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md border-0 p-0 overflow-hidden">
+      <DialogContent aria-describedby="rider-trip-desc" className="sm:max-w-md border-0 p-0 overflow-hidden">
+        
+        {/* 🔥 ADDED HIDDEN HEADER TO SILENCE RADIX WARNINGS */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>Trip Completed</DialogTitle>
+          <DialogDescription id="rider-trip-desc">
+            Trip total fare and driver rating prompt.
+          </DialogDescription>
+        </DialogHeader>
+
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -224,7 +243,7 @@ export const RiderTripCompletionModal = ({
                   <CreditCard className="w-6 h-6 text-blue-400" />
                   <div>
                     <p className="font-semibold text-blue-400">
-                      {t('card_payment') || "Card Payment"}
+                      {t('card_payment') || "Digital Payment"}
                     </p>
                     <p className="text-xs text-blue-300/70">
                       {t('payment_processed') || "Payment automatically processed"}
