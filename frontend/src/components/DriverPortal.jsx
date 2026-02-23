@@ -1,4 +1,7 @@
-﻿import { useState, useEffect, useRef, useCallback } from "react";
+﻿window.addEventListener("error", (e) => console.error("WINDOW ERROR:", e.error || e.message));
+window.addEventListener("unhandledrejection", (e) => console.error("UNHANDLED REJECTION:", e.reason));
+console.log("APP BOOT: reached main entry");
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { PayPalScriptProvider, PayPalCardFieldsProvider, PayPalCardFieldsForm } from "@paypal/react-paypal-js";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
