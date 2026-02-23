@@ -163,11 +163,10 @@ const [isToppingUp, setIsToppingUp] = useState(false);
       setRiders(ridersRes.data.riders || []);
       setDrivers(driversRes.data.drivers || []);
       setPendingDrivers(pendingRes.data.pending_drivers || []);
-      setPendingWithdrawals(withdrawalsRes.data.pending_withdrawals || []);
+      setPendingWithdrawals(Array.isArray(withdrawalsRes.data) ? withdrawalsRes.data : []);
       setPendingTopups(topupsRes.data.pending_topups || []);
     } catch (error) {
       console.error("Error fetching data:", error);
-      // Don't show error toast on load to avoid spamming if backend is partial
     } finally {
       setLoading(false);
     }
@@ -267,33 +266,36 @@ const handleManualTopUp = async (e) => {
   };
 
   const handleAddBalance = async () => {
-  if (!selectedUser) return;
-  if (!fundAmount || isNaN(fundAmount) || Number(fundAmount) <= 0) {
-    return toast.error("Please enter a valid amount.");
-  }
+    if (!selectedUser) return;
+    
+    const amount = parseFloat(fundAmount);
+    
+    // 🔥 FIX: We now allow negative numbers, just not ZERO or NaN
+    if (!fundAmount || isNaN(amount) || amount === 0) {
+      return toast.error("Please enter a valid amount (positive to add, negative to take).");
+    }
 
-  try {
-    // Send the money to the backend route we verified in your server.py
-    await api.post(`/admin/add-balance/${selectedUser.id}`, {
-      amount: parseFloat(fundAmount),
-      reason: fundReason || "Admin manual refund/adjustment"
-    });
+    try {
+      // Calls your existing backend route
+      await api.post(`/admin/add-balance/${selectedUser.id}`, {
+        amount: amount, 
+        reason: fundReason || "Admin manual adjustment"
+      });
 
-    toast.success(`Successfully added ₾${fundAmount} to ${selectedUser.name}`);
+      // Dynamic success message
+      const actionText = amount > 0 ? "added to" : "deducted from";
+      toast.success(`Successfully ${actionText} ${selectedUser.name}: ₾${Math.abs(amount).toFixed(2)}`);
 
-    // Clear the form
-    setFundAmount("");
-    setFundReason("");
-
-    // 🔥 Crucial: Refresh the riders list so the table updates instantly!
-    // (Replace 'fetchRiders' with whatever function you use to load the table)
-    fetchDashboardData();
-
-  } catch (error) {
-    console.error("Top-up Error:", error);
-    toast.error(error.response?.data?.detail || "Failed to add balance.");
-  }
-};
+      // Clear the form and refresh data
+      setFundAmount("");
+      setFundReason("");
+      fetchDashboardData();
+      
+    } catch (error) {
+      console.error("Adjustment Error:", error);
+      toast.error(error.response?.data?.detail || "Failed to adjust balance.");
+    }
+  };
 
   const fetchUserDetails = async (userId, userType) => {
     try {
@@ -736,42 +738,80 @@ const handleManualTopUp = async (e) => {
           <TabsContent value="withdrawals">
             <Card className="bg-black/60 border border-pink-500/30">
               <CardHeader>
-                <CardTitle className="text-pink-400">Pending Withdrawals ({pendingWithdrawals.length})</CardTitle>
+                <CardTitle className="text-pink-400 flex items-center">
+                  <Banknote className="mr-2 w-6 h-6" /> 
+                  Pending Payouts ({pendingWithdrawals.length})
+                </CardTitle>
+                <CardDescription className="text-gray-400">
+                  Send the GEL to the IBANs below, then mark as paid. ₾1.00 fee is already deducted from driver balance.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {pendingWithdrawals.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">No pending withdrawals</div>
+                  <div className="text-center py-12 text-gray-500">
+                    <CheckCircle2 className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                    <p>All drivers are paid up. Great job!</p>
+                  </div>
                 ) : (
                   <div className="space-y-4">
                     {pendingWithdrawals.map(withdrawal => (
-                      <div key={withdrawal.id} className="bg-black/50 border border-pink-500/20 rounded-xl p-4">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="text-white font-semibold">{withdrawal.driver_name}</p>
-                            <p className="text-gray-400 text-sm">Bank: {withdrawal.bank_details}</p>
-                            <p className="text-xs text-gray-600">
-                              Requested: {withdrawal.requested_at ? new Date(withdrawal.requested_at).toLocaleString() : "N/A"}
+                      <div key={withdrawal.id} className="bg-black/50 border border-pink-500/20 rounded-2xl p-5 hover:border-pink-500/50 transition-colors">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                          
+                          {/* Driver Info & Amount */}
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <p className="text-white text-lg font-bold">{withdrawal.driver_name}</p>
+                              <Badge variant="outline" className="text-[10px] border-pink-500/30 text-pink-400 uppercase">
+                                ID: {withdrawal.id}
+                              </Badge>
+                            </div>
+                            <p className="text-3xl font-black text-[#00ff88]">
+                              ₾{withdrawal.amount_requested?.toFixed(2)}
+                            </p>
+                            <p className="text-[10px] text-gray-500">
+                              Requested: {new Date(withdrawal.created_at).toLocaleString()}
                             </p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-3xl font-bold text-pink-400">₾{withdrawal.amount?.toFixed(2)}</p>
-                            <div className="flex space-x-2 mt-2">
-                              <Button
-                                size="sm"
-                                className="bg-[#00ff88] text-black"
-                                onClick={() => handleApproveWithdrawal(withdrawal.id)}
+
+                          {/* IBAN Copy Box */}
+                          <div className="flex-1 w-full md:max-w-md">
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center justify-between group">
+                              <div className="overflow-hidden">
+                                <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Bank Details / IBAN</p>
+                                <p className="text-sm font-mono text-white truncate">{withdrawal.bank_details}</p>
+                              </div>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-[#00d4ff] hover:bg-[#00d4ff]/10"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(withdrawal.bank_details);
+                                  toast.success("IBAN Copied to Clipboard!");
+                                }}
                               >
-                                <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleRejectWithdrawal(withdrawal.id)}
-                              >
-                                <XCircle className="w-4 h-4" />
+                                Copy
                               </Button>
                             </div>
                           </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex gap-2 w-full md:w-auto">
+                            <Button
+                              className="flex-1 md:flex-none bg-[#00ff88] text-black font-bold h-12 px-6 hover:bg-[#00cc6a]"
+                              onClick={() => handleApproveWithdrawal(withdrawal.id)}
+                            >
+                              <CheckCircle2 className="w-4 h-4 mr-2" /> Mark Paid
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              className="h-12 w-12"
+                              onClick={() => handleRejectWithdrawal(withdrawal.id)}
+                            >
+                              <XCircle className="w-5 h-5" />
+                            </Button>
+                          </div>
+
                         </div>
                       </div>
                     ))}

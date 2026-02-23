@@ -636,6 +636,32 @@ const DriverDashboard = () => {
   const registrationStatus = user?.registration_status;
   const hasVehicle = user?.driver_info?.vehicle;
 
+  const handleWithdrawalRequest = async () => {
+    const amount = parseFloat(withdrawalData.amount);
+    if (isNaN(amount) || amount <= 0) return toast.error("Enter a valid amount");
+    
+    // 🔥 Rule: Must leave 5 GEL + pay 1 GEL fee (Total 6 GEL buffer)
+    if (balance < (amount + 6)) {
+      return toast.error("Insufficient balance. You must leave ₾5.00 in your wallet.");
+    }
+
+    setLoading(true);
+    try {
+      await api.post(`/driver/withdraw`, { 
+        amount: amount, 
+        bank_details: withdrawalData.bank_details 
+      });
+      toast.success("Withdrawal requested!");
+      const userRes = await api.get(`/auth/me`);
+      updateUser(userRes.data);
+      setWithdrawalData({ amount: "", bank_details: "" });
+    } catch (e) {
+      toast.error("Transfer failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCardInput = (field, value) => {
     let formatted = value;
     if (field === "number") formatted = value.replace(/\D/g, "").slice(0, 16);
@@ -1340,16 +1366,91 @@ const DriverDashboard = () => {
                   </Card>
               </TabsContent>
 
-              <TabsContent value="earnings">
-                <div className="space-y-4">
-                  <Card className="p-6 bg-black/60 border border-[#00ff88] text-center">
-                    <p className="text-gray-400">Balance</p>
-                    <p className="text-4xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
-                  </Card>
-                  <Input type="number" placeholder="Amount" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="bg-black/50 text-white border-[#00d4ff]/30 h-12" />
-                  <Button className="w-full bg-[#00ff88] text-black h-12 font-bold" onClick={() => setShowCardModal(true)}>Top Up</Button>
-                </div>
-              </TabsContent>
+              <TabsContent value="earnings" className="m-0 space-y-6">
+  {/* 1. BALANCE OVERVIEW */}
+  <Card className="p-6 bg-black/60 border border-[#00ff88] text-center shadow-[0_0_20px_rgba(0,255,136,0.1)]">
+    <p className="text-gray-400 text-xs uppercase tracking-widest font-bold">Current Balance</p>
+    <p className="text-5xl font-bold text-[#00ff88] my-2">₾{balance.toFixed(2)}</p>
+    <p className="text-[10px] text-[#00ff88]/50 uppercase">Ready for payouts or commissions</p>
+  </Card>
+
+  {/* 2. TOP UP SECTION */}
+  <div className="space-y-3">
+    <h3 className="text-[#00d4ff] text-sm font-bold flex items-center">
+      <Zap className="w-4 h-4 mr-2" /> Quick Top Up
+    </h3>
+    <div className="flex gap-2">
+      <Input 
+        type="number" 
+        placeholder="Amount" 
+        value={topupAmount} 
+        onChange={e => setTopupAmount(e.target.value)} 
+        className="bg-black/50 text-white border-[#00d4ff]/30 h-12 text-lg" 
+      />
+      <Button 
+        className="bg-[#00d4ff] text-black h-12 font-bold px-8 shadow-neon-cyan" 
+        onClick={() => setShowCardModal(true)}
+      >
+        Pay
+      </Button>
+    </div>
+  </div>
+
+  <Separator className="bg-white/10" />
+
+  {/* 3. WITHDRAWAL SECTION */}
+  <div className="space-y-4">
+    <h3 className="text-[#00ff88] text-sm font-bold flex items-center">
+      <Banknote className="w-4 h-4 mr-2" /> Withdraw Earnings
+    </h3>
+    
+    <div className="grid grid-cols-2 gap-3 mb-2">
+      <div className="bg-white/5 p-3 rounded-xl border border-white/10">
+        <p className="text-[10px] text-gray-500 uppercase">Fixed Fee</p>
+        <p className="text-white font-bold">₾1.00</p>
+      </div>
+      <div className="bg-white/5 p-3 rounded-xl border border-white/10">
+        <p className="text-[10px] text-gray-500 uppercase">Min. Retention</p>
+        <p className="text-white font-bold">₾5.00</p>
+      </div>
+    </div>
+
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <Label className="text-gray-400 text-xs">AMOUNT TO RECEIVE (₾)</Label>
+        <Input 
+          type="number" 
+          placeholder="0.00" 
+          value={withdrawalData.amount}
+          onChange={(e) => setWithdrawalData({...withdrawalData, amount: e.target.value})}
+          className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-lg focus:border-[#00ff88]"
+        />
+      </div>
+
+      <div className="space-y-1">
+        <Label className="text-gray-400 text-xs">BANK DETAILS (IBAN / NAME)</Label>
+        <textarea 
+          className="w-full bg-black/50 border border-[#00ff88]/20 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#00ff88] transition-all h-20"
+          placeholder="GE00BG0000000000000000..."
+          value={withdrawalData.bank_details}
+          onChange={(e) => setWithdrawalData({...withdrawalData, bank_details: e.target.value})}
+        />
+      </div>
+
+      <Button 
+        onClick={handleWithdrawalRequest}
+        disabled={loading || !withdrawalData.amount || !withdrawalData.bank_details}
+        className="w-full bg-[#00ff88] text-black font-bold h-14 text-lg rounded-xl shadow-lg active:scale-95 transition-transform"
+      >
+        {loading ? <Loader2 className="animate-spin" /> : "Request Withdrawal"}
+      </Button>
+      
+      <p className="text-[10px] text-gray-500 text-center italic">
+        Withdrawals are processed within 1 business day.
+      </p>
+    </div>
+  </div>
+</TabsContent>
 
               <TabsContent value="history">
                 <ScrollArea className="h-[400px]">

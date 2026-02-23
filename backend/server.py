@@ -24,6 +24,11 @@ import shutil
 from pydantic import BaseModel, Field, ConfigDict
 from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from pydantic import BaseModel
+
+class WithdrawalRequest(BaseModel):
+    amount: float
+    bank_details: str
 
 import bcrypt
 import jwt
@@ -224,6 +229,36 @@ def get_current_user_id(
     return None
 
 
+
+
+# --- Auth helpers (role-aware) ---
+def get_current_user_ctx(authorization: Optional[str] = Header(None)) -> Optional[dict]:
+    """
+    Returns {"user_id": str, "role": str} from JWT, or None.
+    Keeps get_current_user_id() for backwards compatibility.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.replace("Bearer ", "")
+    decoded = decode_token(token)
+    if not decoded or "user_id" not in decoded:
+        return None
+    return {"user_id": decoded.get("user_id"), "role": decoded.get("role")}
+
+def require_auth(ctx: Optional[dict] = Depends(get_current_user_ctx)) -> dict:
+    if not ctx or not ctx.get("user_id"):
+        raise HTTPException(401, "Not authenticated")
+    return ctx
+
+def require_driver(ctx: dict = Depends(require_auth)) -> dict:
+    if ctx.get("role") not in ("driver", "admin"):
+        raise HTTPException(403, "Driver account required")
+    return ctx
+
+def require_rider(ctx: dict = Depends(require_auth)) -> dict:
+    if ctx.get("role") not in ("rider", "admin"):
+        raise HTTPException(403, "Rider account required")
+    return ctx
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate distance between two points in km"""
     R = 6371
@@ -234,6 +269,29 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
          math.sin(dlon / 2) ** 2)
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
+
+def estimate_eta_minutes(distance_km: float, avg_speed_kmh: float = 25.0) -> int:
+    # Simple baseline ETA; replace with OSRM/Maps later.
+    if distance_km <= 0:
+        return 0
+    return max(1, int((distance_km / max(5.0, avg_speed_kmh)) * 60))
+
+def driver_match_score(distance_km: float, rating: float, acceptance_rate: float, cancel_rate: float, idle_minutes: float) -> float:
+    """
+    Lower is better.
+    Tuned to prefer:
+    - closer drivers (distance)
+    - higher rating
+    - higher acceptance_rate
+    - lower cancel_rate
+    - fairness via idle_minutes (drivers waiting longer get a small boost)
+    """
+    distance_term = distance_km * 1.0
+    rating_term = -0.35 * (rating - 4.7)  # small reward above baseline
+    accept_term = -0.8 * (acceptance_rate - 0.6)  # reward above 60%
+    cancel_term = 1.2 * cancel_rate  # penalize cancels
+    idle_term = -0.02 * idle_minutes  # small fairness reward
+    return distance_term + rating_term + accept_term + cancel_term + idle_term
 
 
 async def get_paypal_token():
@@ -1085,36 +1143,74 @@ async def request_topup(request: TopUpRequest, user_id: str = Depends(get_curren
     }
 
 
-@app.post("/api/driver/withdraw", tags=["Driver"])
-async def request_withdrawal(request: WithdrawalRequest, user_id: str = Depends(get_current_user_id)):
-    if not user_id:
-        raise HTTPException(401, "Not authenticated")
+# --- DRIVER WITHDRAWAL ENDPOINT ---
+@app.post("/driver/withdraw")
+async def request_withdrawal(
+    data: WithdrawalRequest, 
+    current_user: dict = Depends(get_current_user)
+):
+    # 1. Config
+    WITHDRAWAL_FEE = 1.00
+    MIN_RETENTION = 5.00  # Buffer to keep them online for next ride
+    
+    # 2. Get Balance
+    # Assuming user data has earnings -> balance
+    earnings = current_user.get("earnings", {})
+    current_balance = float(earnings.get("balance", 0.0))
+    
+    total_deduction = data.amount + WITHDRAWAL_FEE
+    
+    # 3. Safety Check: Balance must cover (Amount + Fee + 5 GEL Retention)
+    if current_balance < (total_deduction + MIN_RETENTION):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Insufficient funds. You must maintain at least ₾{MIN_RETENTION} in your wallet after the ₾{WITHDRAWAL_FEE} fee."
+        )
 
-    db = get_db()
-    driver_doc = db.collection("users").document(user_id).get()
-    if not driver_doc.exists:
-        raise HTTPException(404, "Driver not found")
-
-    driver_data = driver_doc.to_dict()
-    balance = driver_data.get("earnings", {}).get("balance", 0)
-
-    if request.amount > balance:
-        raise HTTPException(400, f"Insufficient balance. Available: ₾{balance}")
-
-    withdrawal_ref = db.collection("driver_withdrawals").document()
-    withdrawal_data = {
-        "id": withdrawal_ref.id,
-        "driver_id": user_id,
-        "driver_name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}",
-        "amount": request.amount,
-        "bank_details": request.bank_details,
+    # 4. Create the Payout Record
+    withdrawal_id = f"WD-{datetime.now(timezone.utc).strftime('%y%m%d%H%M')}-{current_user['id'][:4]}"
+    
+    payout_doc = {
+        "id": withdrawal_id,
+        "driver_id": current_user["id"],
+        "driver_name": f"{current_user.get('name')} {current_user.get('surname')}",
+        "amount_requested": data.amount,
+        "fee": WITHDRAWAL_FEE,
+        "total_deducted": total_deduction,
+        "bank_details": data.bank_details,
         "status": "pending",
-        "requested_at": firestore.SERVER_TIMESTAMP,
+        "created_at": datetime.now(timezone.utc)
     }
-    withdrawal_ref.set(withdrawal_data)
 
-    return {"message": f"Withdrawal request for ₾{request.amount} submitted", "request_id": withdrawal_ref.id}
+    try:
+        # Save to 'withdrawals' collection for Admin to see
+        db.collection("withdrawals").document(withdrawal_id).set(payout_doc)
 
+        # Update Driver's Balance immediately
+        new_balance = current_balance - total_deduction
+        db.collection("users").document(current_user["id"]).update({
+            "earnings.balance": new_balance
+        })
+
+
+        # Log to Transaction History
+        transaction_log = {
+            "type": "withdrawal",
+            "amount": -total_deduction,
+            "description": f"Withdrawal {withdrawal_id}",
+            "timestamp": datetime.now(timezone.utc)
+        }
+        db.collection("users").document(current_user["id"]).collection("transactions").add(transaction_log)
+
+        return {
+            "status": "success", 
+            "message": "Withdrawal request submitted", 
+            "new_balance": new_balance
+        }
+
+    except Exception as e:
+        logging.error(f"Withdrawal Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database update failed")
 
 @app.get("/api/driver/rides/available", tags=["Driver"])
 async def get_available_rides(user_id: str = Depends(get_current_user_id)):
@@ -1500,37 +1596,73 @@ async def match_drivers_to_ride(ride_id: str):
         declined = ride_data.get("declined_drivers", [])
         already_notified = ride_data.get("notified_drivers", [])
 
+        stale_seconds = int(os.getenv("DRIVER_LOCATION_STALE_SECONDS", "120"))
+        now = datetime.now(timezone.utc)
+
         for driver in drivers:
-            driver_data = driver.to_dict()
-            driver_location = driver_data.get("current_location")
+            driver_data = driver.to_dict() or {}
+            driver_location = driver_data.get("current_location") or {}
 
             if driver.id in declined or driver.id in already_notified:
                 continue
 
+            # Busy driver guard
+            if driver_data.get("active_ride_id"):
+                continue
+
+            # Stale location guard
+            last_seen = driver_location.get("updated_at")
+            if last_seen and hasattr(last_seen, "timestamp"):
+                age = (now - last_seen).total_seconds()
+                if age > stale_seconds:
+                    continue
+
             estimated_fare = ride_data.get("estimated_fare", 0)
             commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
             required_commission = estimated_fare * commission_rate
-            driver_balance = driver_data.get("earnings", {}).get("balance", 0)
+            driver_balance = (driver_data.get("earnings", {}) or {}).get("balance", 0) or 0
 
             if driver_balance < required_commission:
                 continue
 
-            if driver_location and driver_location.get("lat") and driver_location.get("lng"):
+            if driver_location.get("lat") and driver_location.get("lng"):
                 distance = haversine_distance(
                     pickup_lat, pickup_lng,
                     driver_location["lat"], driver_location["lng"]
                 )
                 if distance <= radius:
+                    rating = float(driver_data.get("rating", 5.0) or 5.0)
+                    perf = driver_data.get("performance", {}) or {}
+                    acceptance_rate = float(perf.get("acceptance_rate", 0.65) or 0.65)
+                    cancel_rate = float(perf.get("cancel_rate", 0.05) or 0.05)
+                    idle_minutes = float(perf.get("idle_minutes", 0) or 0)
+
+                    eta_min = estimate_eta_minutes(distance)
+
+                    score = driver_match_score(
+                        distance_km=float(distance),
+                        rating=rating,
+                        acceptance_rate=acceptance_rate,
+                        cancel_rate=cancel_rate,
+                        idle_minutes=idle_minutes,
+                    )
+
                     nearby_drivers.append({
                         "id": driver.id,
                         "distance": round(distance, 2),
+                        "eta_min": eta_min,
+                        "score": round(score, 4),
                         "name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}".strip(),
-                        "vehicle": driver_data.get("driver_info", {}).get("vehicle", {}),
-                        "rating": driver_data.get("rating", 5.0),
-                        "balance": driver_balance,
+                        "vehicle": (driver_data.get("driver_info", {}) or {}).get("vehicle", {}),
+                        "rating": rating,
+                        "balance": float(driver_balance),
+                        "acceptance_rate": acceptance_rate,
+                        "cancel_rate": cancel_rate,
                     })
 
-        nearby_drivers.sort(key=lambda x: x["distance"])
+        # Prefer best score first (not just distance)
+        nearby_drivers.sort(key=lambda x: (-x["score"], x["eta_min"], x["distance"]))
+
         batch_size = drivers_per_radius[idx]
         selected_drivers = nearby_drivers[:batch_size]
 
@@ -1617,71 +1749,114 @@ async def get_vehicle_tier_from_ai(make: str, model: str, year: int) -> str:
     return "economy"
 
 @app.post("/api/rides/{ride_id}/accept", tags=["Rides"])
-async def accept_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    if not user_id:
-        raise HTTPException(401, "Not authenticated")
-
+async def accept_ride(ride_id: str, ctx: dict = Depends(require_driver)):
+    """
+    Transaction-safe accept:
+    - prevents double-accept race conditions
+    - holds commission atomically
+    - sets driver's active_ride_id
+    """
+    user_id = ctx["user_id"]
     db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    driver_ref = db.collection("users").document(user_id)
 
-    driver_doc = db.collection("users").document(user_id).get()
-    if not driver_doc.exists:
-        raise HTTPException(404, "Driver not found")
-    driver_data = driver_doc.to_dict()
+    @firestore.transactional
+    def _tx_accept(transaction: firestore.Transaction):
+        ride_snap = ride_ref.get(transaction=transaction)
+        if not ride_snap.exists:
+            raise HTTPException(404, "Ride not found")
+        ride_data = ride_snap.to_dict() or {}
 
-    ride_doc = db.collection("rides").document(ride_id).get()
-    if not ride_doc.exists:
-        raise HTTPException(404, "Ride not found")
-    ride_data = ride_doc.to_dict()
+        if ride_data.get("status") != "searching":
+            raise HTTPException(400, "Ride is no longer available")
 
-    if ride_data.get("status") != "searching":
-        raise HTTPException(400, "Ride is no longer available")
+        declined = set(ride_data.get("declined_drivers", []) or [])
+        if user_id in declined:
+            raise HTTPException(400, "You have already declined this ride")
 
-    commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
-    surge_multiplier = ride_data.get("surge_multiplier", 1.0)
+        notified = set(ride_data.get("notified_drivers", []) or [])
+        if notified and user_id not in notified:
+            raise HTTPException(403, "You were not offered this ride")
 
-    balance = driver_data.get("earnings", {}).get("balance", 0)
-    held_commission = (ride_data.get("estimated_fare", 0) or 0) * commission_rate
+        driver_snap = driver_ref.get(transaction=transaction)
+        if not driver_snap.exists:
+            raise HTTPException(404, "Driver not found")
+        driver_data = driver_snap.to_dict() or {}
 
-    if balance < held_commission:
-        raise HTTPException(400, f"Insufficient balance. Need ₾{held_commission:.2f}, have ₾{balance:.2f}")
+        if driver_data.get("user_type") != "driver":
+            raise HTTPException(403, "Driver account required")
+        if not driver_data.get("is_online"):
+            raise HTTPException(400, "You must be online to accept rides")
+        if driver_data.get("registration_status") != "approved":
+            raise HTTPException(400, "Your driver registration is not approved")
+        if driver_data.get("active_ride_id"):
+            raise HTTPException(400, "You are already on an active ride")
 
-    # HOLD commission at accept time
-    new_balance = balance - held_commission
-    db.collection("users").document(user_id).update({
-        "earnings.balance": new_balance,
-        "earnings.total_commission_paid": firestore.Increment(held_commission),
-    })
+        stale_seconds = int(os.getenv("DRIVER_LOCATION_STALE_SECONDS", "120"))
+        last_seen = (driver_data.get("current_location", {}) or {}).get("updated_at")
+        if last_seen and hasattr(last_seen, "timestamp"):
+            now = datetime.now(timezone.utc)
+            age = (now - last_seen).total_seconds()
+            if age > stale_seconds:
+                raise HTTPException(400, "Your location is stale. Open the driver app and try again.")
 
-    vehicle = driver_data.get("driver_info", {}).get("vehicle", {})
-    driver_location = driver_data.get("current_location", {}) or {}
+        commission_rate = float(ride_data.get("commission_rate", DRIVER_COMMISSION_RATE))
+        estimated_fare = float(ride_data.get("estimated_fare", 0) or 0)
+        held_commission = estimated_fare * commission_rate
 
-    db.collection("rides").document(ride_id).update({
-        "status": "accepted",
-        "driver_id": user_id,
-        "driver_info": {
-            "id": user_id,
-            "name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}",
-            "cellphone": driver_data.get("cellphone"),
-            "car_make": vehicle.get("car_make"),
-            "car_model": vehicle.get("car_model"),
-            "car_color": vehicle.get("car_color"),
-            "license_plate": vehicle.get("license_plate"),
-            "rating": driver_data.get("rating", 5.0),
-        },
-        "driver_location": driver_location,
-        "commission_paid": held_commission,
-        "commission_rate_used": commission_rate,
-        "accepted_at": firestore.SERVER_TIMESTAMP,
-    })
+        balance = float((driver_data.get("earnings", {}) or {}).get("balance", 0) or 0)
+        if balance < held_commission:
+            raise HTTPException(400, f"Insufficient balance. Need ₾{held_commission:.2f}, have ₾{balance:.2f}")
 
-    return {
-        "message": "Ride accepted!",
-        "commission_deducted": held_commission,
-        "commission_rate": f"{commission_rate * 100:.1f}%",
-        "surge_multiplier": surge_multiplier,
-        "new_balance": new_balance,
-    }
+        vehicle = (driver_data.get("driver_info", {}) or {}).get("vehicle", {}) or {}
+        driver_location = driver_data.get("current_location", {}) or {}
 
+        transaction.update(driver_ref, {
+            "earnings.balance": balance - held_commission,
+            "earnings.total_commission_paid": firestore.Increment(held_commission),
+            "active_ride_id": ride_id,
+            "active_ride_set_at": firestore.SERVER_TIMESTAMP,
+        })
+
+        transaction.update(ride_ref, {
+            "status": "accepted",
+            "driver_id": user_id,
+            "driver_info": {
+                "id": user_id,
+                "name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}".strip(),
+                "cellphone": driver_data.get("cellphone"),
+                "car_make": vehicle.get("car_make"),
+                "car_model": vehicle.get("car_model"),
+                "car_color": vehicle.get("car_color"),
+                "license_plate": vehicle.get("license_plate"),
+                "rating": driver_data.get("rating", 5.0),
+            },
+            "driver_location": driver_location,
+            "commission_held": held_commission,
+            "commission_rate_used": commission_rate,
+            "accepted_at": firestore.SERVER_TIMESTAMP,
+        })
+
+        hold_ref = ride_ref.collection("commission_holds").document(user_id)
+        transaction.set(hold_ref, {
+            "driver_id": user_id,
+            "ride_id": ride_id,
+            "amount": held_commission,
+            "rate": commission_rate,
+            "status": "held",
+            "created_at": firestore.SERVER_TIMESTAMP,
+        })
+
+        return {
+            "commission_deducted": held_commission,
+            "commission_rate": f"{commission_rate * 100:.1f}%",
+            "new_balance": balance - held_commission,
+            "surge_multiplier": float(ride_data.get("surge_multiplier", 1.0) or 1.0),
+        }
+
+    result = _tx_accept(db.transaction())
+    return {"message": "Ride accepted!", **result}
 
 @app.post("/api/rides/{ride_id}/decline", tags=["Rides"])
 async def decline_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1729,20 +1904,60 @@ async def start_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
 
 
 @app.post("/api/rides/{ride_id}/update-tracking", tags=["Rides"])
-async def update_ride_tracking(ride_id: str, location: LocationUpdate, user_id: str = Depends(get_current_user_id)):
+async def update_ride_tracking(ride_id: str, location: LocationUpdate, ctx: dict = Depends(require_driver)):
+    """
+    Production-safe tracking:
+    - only the assigned driver can update tracking
+    - keeps ride doc small (no route_points array growth)
+    - stores track points in a subcollection (rides/{ride_id}/track_points)
+    """
+    user_id = ctx["user_id"]
     db = get_db()
 
-    ride_doc = db.collection("rides").document(ride_id).get()
+    ride_ref = db.collection("rides").document(ride_id)
+    ride_doc = ride_ref.get()
     if not ride_doc.exists:
         raise HTTPException(404, "Ride not found")
 
-    db.collection("rides").document(ride_id).update({
-        "driver_location": {"lat": location.lat, "lng": location.lng, "heading": location.heading, "speed": location.speed},
-        "route_points": firestore.ArrayUnion([{
-            "lat": location.lat,
-            "lng": location.lng,
-            "timestamp": now_iso(),
-        }]),
+    ride_data = ride_doc.to_dict() or {}
+    if ride_data.get("driver_id") and ride_data.get("driver_id") != user_id:
+        raise HTTPException(403, "Not authorized")
+    if ride_data.get("status") not in ("accepted", "arrived", "in_progress"):
+        raise HTTPException(400, f"Cannot update tracking when ride status is {ride_data.get('status')}")
+
+    loc_payload = {
+        "lat": float(location.lat),
+        "lng": float(location.lng),
+        "heading": float(location.heading) if location.heading is not None else None,
+        "speed": float(location.speed) if location.speed is not None else None,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    }
+
+    # Small, hot fields on the ride document
+    ride_ref.update({
+        "driver_location": loc_payload,
+        "last_driver_location_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    # Append-only tracking points in subcollection
+    ride_ref.collection("track_points").add({
+        "lat": loc_payload["lat"],
+        "lng": loc_payload["lng"],
+        "heading": loc_payload["heading"],
+        "speed": loc_payload["speed"],
+        "ts": firestore.SERVER_TIMESTAMP,
+        "driver_id": user_id,
+    })
+
+    # Optionally keep driver's own location fresh too
+    db.collection("users").document(user_id).update({
+        "current_location": {
+            "lat": loc_payload["lat"],
+            "lng": loc_payload["lng"],
+            "heading": loc_payload["heading"],
+            "speed": loc_payload["speed"],
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
     })
 
     return {"message": "Tracking updated"}
@@ -1860,18 +2075,61 @@ async def complete_ride(
     }
     ride_ref.update(ride_updates)
 
-    # 4. DRIVER EARNINGS ALGORITHM
+    # 4. DRIVER EARNINGS SETTLEMENT (transaction-safe)
     if driver_id:
-        held_commission = ride_data.get("commission_paid", 0) or 0
-        commission_rate = ride_data.get("commission_rate", 0.23)
-        
-        actual_commission = commissionable_amount * commission_rate
-        driver_share = commissionable_amount - actual_commission
+        driver_ref = db.collection("users").document(driver_id)
 
-        # Wallet Change = What they earned MINUS What they physically took in cash
-        wallet_change = driver_share - cash_to_collect + held_commission
+        @firestore.transactional
+        def _tx_settle(transaction: firestore.Transaction):
+            ride_snap = ride_ref.get(transaction=transaction)
+            if not ride_snap.exists:
+                raise HTTPException(404, "Ride not found")
+            rd = ride_snap.to_dict() or {}
 
-        # 5. Update Rider Stats
+            # Commission that was held at accept time
+            held_commission = float(rd.get("commission_held", rd.get("commission_paid", 0)) or 0)
+            commission_rate = float(rd.get("commission_rate_used", rd.get("commission_rate", 0.23)) or 0.23)
+
+            actual_commission = float(commissionable_amount) * commission_rate
+            driver_share = float(commissionable_amount) - actual_commission
+
+            # Wallet change = earned minus cash collected + held commission returned into balance calc
+            wallet_change = driver_share - float(cash_to_collect) + held_commission
+
+            driver_snap = driver_ref.get(transaction=transaction)
+            if not driver_snap.exists:
+                return
+
+            transaction.update(driver_ref, {
+                "earnings.balance": firestore.Increment(wallet_change),
+                "earnings.total_earned": firestore.Increment(driver_share),
+                "earnings.total_commission_paid": firestore.Increment(0),  # already incremented at accept
+                "active_ride_id": firestore.DELETE_FIELD,
+                "active_ride_set_at": firestore.DELETE_FIELD,
+                "last_completed_ride_at": firestore.SERVER_TIMESTAMP,
+            })
+
+            # Mark the hold as settled for auditability
+            hold_ref = ride_ref.collection("commission_holds").document(driver_id)
+            transaction.set(hold_ref, {
+                "driver_id": driver_id,
+                "ride_id": ride_id,
+                "amount": held_commission,
+                "rate": commission_rate,
+                "status": "settled",
+                "settled_at": firestore.SERVER_TIMESTAMP,
+            }, merge=True)
+
+            transaction.update(ride_ref, {
+                "commission_actual": actual_commission,
+                "driver_payout": driver_share,
+                "settled_at": firestore.SERVER_TIMESTAMP,
+            })
+
+        _tx_settle(db.transaction())
+
+    # 5. Update Rider Stats
+
     if rider_id and rider_ref:
         rider_ref.update({"total_rides": firestore.Increment(1)})
 
@@ -3518,3 +3776,43 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)
+# ==========================================
+# 🔥 ADMIN MANAGEMENT ROUTES
+# ==========================================
+
+@app.get("/admin/withdrawals/pending")
+async def get_pending_withdrawals(current_user: dict = Depends(get_current_user)):
+    """Allows Admin to see who needs to be paid"""
+    if current_user.get("user_type") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Fetch all docs from 'withdrawals' where status is 'pending'
+    docs = db.collection("withdrawals").where("status", "==", "pending").stream()
+    
+    results = []
+    for doc in docs:
+        d = doc.to_dict()
+        # Ensure the document ID is included so we can approve it later
+        d["id"] = doc.id
+        if "created_at" in d and hasattr(d["created_at"], "isoformat"):
+            d["created_at"] = d["created_at"].isoformat()
+        results.append(d)
+        
+    return results
+
+@app.post("/admin/withdrawals/{wd_id}/approve")
+async def approve_withdrawal(wd_id: str, current_user: dict = Depends(get_current_user)):
+    """Marks a withdrawal as finished after you send the bank transfer"""
+    if current_user.get("user_type") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        db.collection("withdrawals").document(wd_id).update({
+            "status": "paid",
+            "paid_at": datetime.now(timezone.utc),
+            "approved_by": current_user["id"]
+        })
+        return {"status": "success"}
+    except Exception as e:
+        logging.error(f"Approval error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to mark as paid")
