@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { PayPalScriptProvider, PayPalCardFieldsProvider, PayPalCardFieldsForm } from "@paypal/react-paypal-js";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RideCommunication from "./RideCommunication";
+import { PayPalButtons } from "@paypal/react-paypal-js";
 import { 
   Dialog, 
   DialogContent, 
@@ -35,6 +36,7 @@ import {
   MapPinned, CheckCircle2, XCircle, Play, Timer, PauseCircle
 } from "lucide-react";
 
+const ENABLE_PAYPAL_VAULT = import.meta.env.VITE_ENABLE_PAYPAL_VAULT === "true";
 // Pricing Rules (Needed for Wait Timer & Earning Calculations)
 const PRICING_RULES = {
   economy: { name: 'Economy', base: 2.80, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
@@ -453,51 +455,67 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
   }, [driverLocation, isFollowing, routeSteps, currentStepIndex]);
 
-  // 3. Draw Route & Extract Steps
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) {
-        if (routeRendererRef.current) routeRendererRef.current.setDirections({routes: []});
-        setRouteSteps([]);
-        return;
-    }
+ // 3. Draw Route & Extract Steps
+useEffect(() => {
+  if (!mapInstanceRef.current || !window.google || !activeRide || !driverLocation) {
+    // Clear the route safely
+    if (routeRendererRef.current) routeRendererRef.current.setMap(null);
+    setRouteSteps([]);
+    setCurrentStepIndex(0);
+    return;
+  }
 
-    const dLat = getSafeCoord(driverLocation.lat);
-    const dLng = getSafeCoord(driverLocation.lng);
-    if (!dLat || !dLng) return;
+  // Ensure renderer is attached when we have ride + location
+  if (routeRendererRef.current) routeRendererRef.current.setMap(mapInstanceRef.current);
 
-    let target = null;
-    if (["accepted", "arrived"].includes(activeRide.status)) {
-        target = { lat: parseFloat(activeRide.pickup_lat), lng: parseFloat(activeRide.pickup_lng) };
-    } else if (activeRide.status === "in_progress") {
-        target = { lat: parseFloat(activeRide.dest_lat || activeRide.destination_lat), lng: parseFloat(activeRide.dest_lng || activeRide.destination_lng) };
-    }
+  const dLat = getSafeCoord(driverLocation.lat);
+  const dLng = getSafeCoord(driverLocation.lng);
+  if (!dLat || !dLng) return;
 
-    if (target && target.lat) {
-        directionsServiceRef.current.route({
-            origin: { lat: dLat, lng: dLng },
-            destination: target,
-            travelMode: window.google.maps.TravelMode.DRIVING
-        }, (result, status) => {
-            if (status === 'OK' && routeRendererRef.current) {
-                routeRendererRef.current.setDirections(result);
-                routeRendererRef.current.setMap(mapInstanceRef.current); // 🔥 Ensure it's attached to the map instance
-                
-                // Extract steps for the navigation panel
-                const steps = result.routes[0].legs[0].steps;
-                setRouteSteps(steps);
-                setCurrentStepIndex(0); // Reset to first step
-            } else {
-                console.error(`Directions request failed due to ${status}`);
-            }
-        });
+  let target = null;
+
+  if (["accepted", "arrived"].includes(activeRide.status)) {
+    const tLat = parseFloat(activeRide.pickup_lat);
+    const tLng = parseFloat(activeRide.pickup_lng);
+    if (!Number.isNaN(tLat) && !Number.isNaN(tLng)) target = { lat: tLat, lng: tLng };
+  } else if (activeRide.status === "in_progress") {
+    const tLat = parseFloat(activeRide.dest_lat ?? activeRide.destination_lat);
+    const tLng = parseFloat(activeRide.dest_lng ?? activeRide.destination_lng);
+    if (!Number.isNaN(tLat) && !Number.isNaN(tLng)) target = { lat: tLat, lng: tLng };
+  }
+
+  if (!target) return;
+  if (!directionsServiceRef.current) return;
+
+  directionsServiceRef.current.route(
+    {
+      origin: { lat: dLat, lng: dLng },
+      destination: target,
+      travelMode: window.google.maps.TravelMode.DRIVING,
+    },
+    (result, status) => {
+      if (status === "OK" && result && routeRendererRef.current) {
+        routeRendererRef.current.setDirections(result);
+
+        const steps = result.routes?.[0]?.legs?.[0]?.steps ?? [];
+        setRouteSteps(steps);
+        setCurrentStepIndex(0);
+      } else {
+        console.error(`Directions request failed due to ${status}`);
+      }
     }
-  }, [
-      driverLocation?.lat, 
-      driverLocation?.lng, 
-      activeRide?.status, 
-      activeRide?.pickup_lat, 
-      activeRide?.dest_lat
-  ]); // 🔥 FIX: Added driverLocation to the dependency array
+  );
+}, [
+  driverLocation?.lat,
+  driverLocation?.lng,
+  activeRide?.status,
+  activeRide?.pickup_lat,
+  activeRide?.pickup_lng,
+  activeRide?.dest_lat,
+  activeRide?.dest_lng,
+  activeRide?.destination_lat,
+  activeRide?.destination_lng,
+]);
 
   // --- MANUAL ZOOM CONTROLS ---
   const handleZoomIn = () => {
@@ -837,11 +855,6 @@ const DriverDashboard = () => {
     }
     prevRideStatus.current = activeRide?.status;
   }, [activeRide]);
-}
-
-  const handleRideAction = async (action) => {
-    if (!activeRide) return;
-    setLoading(true);
 
   const handleRideAction = async (action) => {
     if (!activeRide) return;
@@ -862,34 +875,25 @@ const DriverDashboard = () => {
         lastPositionRef.current = driverLocation;
         toast.success("Ride started");
       } 
-
-     else if (action === "complete") {
+      else if (action === "complete") {
         const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled);
         const finalWait = isNaN(waitTimer) ? 0 : parseInt(waitTimer);
         const dLat = driverLocation?.lat || "";
         const dLng = driverLocation?.lng || "";
         
-        // 🔥 FIX 1: Explicitly define the endpoint with all variables in the URL string so FastAPI accepts it
         const completeEndpoint = `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${dLat}&dropoff_lng=${dLng}`;
-
-        // 🔥 FIX 2: Send the POST request to the endpoint we just defined
         const res = await api.post(completeEndpoint);
         
-        const finalFare = res.data.final_fare > 0 
-            ? res.data.final_fare 
-            : (activeRide.estimated_fare || 0);
-            
-        // Make sure the driver knows exactly how much CASH to ask for!
+        const finalFare = res.data.final_fare > 0 ? res.data.final_fare : (activeRide.estimated_fare || 0);
         const cashToCollect = res.data.cash_to_collect || 0;
-
         const completeData = { ...res.data, final_fare: finalFare };
         
         setCompletedRide(completeData);
         
         if (cashToCollect > 0) {
-            toast.success(`Trip Done! Collect exactly ₾${cashToCollect.toFixed(2)} in CASH.`, { duration: 8000 });
+            toast.success(`Trip Done! Collect ₾${cashToCollect.toFixed(2)} in CASH.`, { duration: 8000 });
         } else {
-            toast.success(`Trip Done! Paid fully via Wallet/Card. Do not collect cash.`);
+            toast.success(`Trip Done! Paid via Wallet.`);
         }
         
         setActiveRide(null);
@@ -897,7 +901,7 @@ const DriverDashboard = () => {
         setWaitTimer(0);
         setArrivedTime(null);
         setRideStartTime(null);
-        setIsWaitingAtStop(false); // Reset stop wait toggle
+        setIsWaitingAtStop(false);
         
         fetchRideHistory();
         const userRes = await api.get(`/auth/me`);
@@ -912,8 +916,7 @@ const DriverDashboard = () => {
 
     } catch (e) {
         console.error("Action Error:", e);
-        const errorMsg = e.response?.data?.detail || "Action failed";
-        toast.error(errorMsg);
+        toast.error(e.response?.data?.detail || "Action failed");
     } finally {
         setLoading(false);
     }
@@ -1475,67 +1478,75 @@ const DriverDashboard = () => {
       </div>
 
       {/* --- MODALS OVERLAYING THE ENTIRE SCREEN --- */}
-      <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
-        <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]">
-          <DialogHeader>
-            <DialogTitle className="text-[#00ff88] flex items-center gap-2">
-              <Wallet className="w-5 h-5" /> Top Up Wallet
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-4 relative z-50">
-            <PayPalButtons
-              fundingSource="card"
-              style={{ layout: "vertical", shape: "rect" }}
-              createOrder={(data, actions) => {
-                const usdAmount = (parseFloat(topupAmount) * 0.37).toFixed(2);
-                return actions.order.create({
-                  purchase_units: [{ amount: { value: usdAmount, currency_code: "USD" } }],
-                  application_context: { shipping_preference: "NO_SHIPPING" }
-                });
-              }}
-              onApprove={async (data, actions) => {
-                try {
-                  setLoading(true);
-                  await actions.order.capture(); 
-                  await api.post(`/driver/wallet/topup/paypal`, { order_id: data.orderID, amount: parseFloat(topupAmount) });
-                  toast.success(`Successfully added ₾${topupAmount}!`);
-                  setShowCardModal(false); setTopupAmount("");
-                  const userRes = await api.get(`/auth/me`); updateUser(userRes.data);
-                } catch (error) { toast.error("Top-up failed."); } finally { setLoading(false); }
-              }}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
-  <DialogContent 
-    aria-describedby="cancel-dialog-description" 
-    className="bg-[#1a1a2e] border border-red-500/50 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]"
-  >
+<Dialog open={showCardModal} onOpenChange={setShowCardModal}>
+  <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]">
     <DialogHeader>
-      <DialogTitle className="text-red-500 flex items-center gap-2">
-        <AlertTriangle className="w-5 h-5" /> Cancel Ride
+      <DialogTitle className="text-[#00ff88] flex items-center gap-2">
+        <Wallet className="w-5 h-5" /> Top Up Wallet
       </DialogTitle>
-      <DialogDescription id="cancel-dialog-description" className="text-gray-400">
-        Please select a reason. <span className="text-red-400 font-bold block mt-1">Warning: Unjustified cancellations may affect your score.</span>
-      </DialogDescription>
     </DialogHeader>
-    <ScrollArea className="max-h-[300px] pr-4">
-      <div className="grid gap-2 py-4">
-        {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map((reason) => (
-          <div
-            key={reason} onClick={() => setSelectedCancelReason(reason)}
-            className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedCancelReason === reason ? "bg-red-500 text-white border-red-500" : "bg-black/40 border-gray-700 hover:border-red-500/50 hover:bg-red-500/10"}`}
-          >
-            <p className="font-medium text-sm">{reason}</p>
-          </div>
-        ))}
-      </div>
-    </ScrollArea>
-    <div className="flex gap-2 mt-2">
-      <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 text-gray-400 border border-gray-700 h-12">Back</Button>
-      <Button variant="destructive" onClick={handleCancelRide} disabled={!selectedCancelReason || loading} className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-12">Confirm Cancel</Button>
+
+    <div className="py-4 relative z-50 space-y-3">
+      <p className="text-xs text-gray-400">
+        Pay securely by card (processed by PayPal).
+      </p>
+
+      <PayPalButtons
+        fundingSource="card"
+        style={{ layout: "vertical", shape: "rect" }}
+        disabled={loading}
+
+        createOrder={async () => {
+          // 1) amount in GEL from your UI
+          const gelAmount = Number(topupAmount);
+          if (!gelAmount || gelAmount <= 0) {
+            toast.error("Enter a valid top-up amount");
+            throw new Error("Invalid topup amount");
+          }
+
+          // 2) OPTIONAL: if your backend expects USD, convert here.
+          // If your backend already handles GEL, REMOVE conversion and just send gelAmount.
+          const usdAmount = (gelAmount * 0.37).toFixed(2);
+
+          // 3) call backend to create PayPal order
+          const res = await api.post("/api/paypal/create-order", {
+            amount: usdAmount,
+          });
+
+          // backend returns { id: "PAYPAL_ORDER_ID", ... }
+          return res.data.id;
+        }}
+
+        onApprove={async (data) => {
+          try {
+            setLoading(true);
+
+            // This is the IMPORTANT part:
+            // After PayPal approves/captures, you update wallet in YOUR backend
+            await api.post("/api/driver/wallet/topup/paypal", {
+              order_id: data.orderID,
+              amount: Number(topupAmount), // wallet credited in GEL
+            });
+
+            toast.success(`Successfully added ₾${topupAmount}`);
+            setShowCardModal(false);
+          } catch (err) {
+            console.error(err);
+            toast.error("Top-up failed");
+          } finally {
+            setLoading(false);
+          }
+        }}
+
+        onError={(err) => {
+          console.error("PayPal error:", err);
+          toast.error("Payment failed");
+        }}
+      />
+
+      <p className="text-[10px] text-gray-400">
+        Note: card payments run via PayPal. Your wallet is credited only after backend verification.
+      </p>
     </div>
   </DialogContent>
 </Dialog>
@@ -1569,7 +1580,14 @@ const DriverPortal = () => {
   }
 
   return (
-    <PayPalScriptProvider options={{ "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID, currency: "USD" }}>
+    <PayPalScriptProvider
+  options={{
+    "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
+    currency: "USD",
+    locale: "en_US",
+    components: "buttons,card-fields" // keep it explicit
+  }}
+>
       <Routes>
         <Route path="/" element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DriverDashboard />} />

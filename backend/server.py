@@ -35,954 +35,141 @@ import jwt
 import httpx
 
 # =========================
-# ENV + INITIALIZATION
+# PAYPAL HELPERS + ROUTE (FIXED)
 # =========================
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")  # IMPORTANT: load first
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("taksi")
-
-# JWT
-JWT_SECRET = os.environ.get("JWT_SECRET", "taksi_galactic_secret_2025_secure_key")
-JWT_ALGORITHM = "HS256"
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "D'Ahl-Enterprise9409145169086")
-
-# PayPal
-PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID")
-PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET")
-PAYPAL_MODE = os.environ.get("PAYPAL_MODE", "live").lower()  # "sandbox" or "live"
-PAYPAL_API_BASE = os.environ.get(
-    "PAYPAL_API_BASE",
-    "https://api-m.sandbox.paypal.com" if PAYPAL_MODE == "sandbox" else "https://api-m.paypal.com"
-)
-
-# CORS - EXPLICIT TRUST
-ALLOW_ORIGINS = [
-    "https://t-aksi-frontend.onrender.com", 
-    "http://localhost:5173",
-    "http://localhost:3000"
-]
-
-# Firebase
-SERVICE_ACCOUNT_PATH = Path(os.environ.get(
-    "FIREBASE_SERVICE_ACCOUNT_PATH",
-    str(ROOT_DIR / "firebase-service-account.json")
-))
-
-# ✅ Best: supply service account JSON in env on Render:
-# export FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
-FIREBASE_SA_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+class PayPalTopUpRequest(BaseModel):
+    order_id: str
 
 
-def init_firebase():
-    if firebase_admin._apps:
-        return
-
-    try:
-        if FIREBASE_SA_JSON:
-            cred = credentials.Certificate(json.loads(FIREBASE_SA_JSON))
-            firebase_admin.initialize_app(cred)
-            logger.info("Firebase Admin initialized from FIREBASE_SERVICE_ACCOUNT_JSON")
-            return
-
-        if SERVICE_ACCOUNT_PATH.exists():
-            cred = credentials.Certificate(str(SERVICE_ACCOUNT_PATH))
-            firebase_admin.initialize_app(cred)
-            logger.info(f"Firebase Admin initialized from file: {SERVICE_ACCOUNT_PATH}")
-            return
-
-        # ⚠️ This is risky on Render unless you truly configured ADC.
-        # We keep it as a last resort, but we log clearly.
-        firebase_admin.initialize_app()
-        logger.warning("Firebase Admin initialized using default credentials (ADC). "
-                       "If login fails on Render, set FIREBASE_SERVICE_ACCOUNT_JSON.")
-    except Exception as e:
-        logger.error(f"Could not initialize Firebase Admin SDK: {e}")
-        raise
-
-
-init_firebase()
-
-_db = None
-
-
-def get_db():
-    global _db
-    if _db is None:
-        _db = firestore.client()
-    return _db
-
-
-# =========================
-# HELPERS
-# =========================
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def serialize_firestore_data(data):
+async def get_paypal_token() -> Optional[str]:
     """
-    Recursively converts Firestore objects for JSON serialization.
-    Handles Timestamp, SERVER_TIMESTAMP sentinel, nested dicts/lists.
+    Gets a PayPal access token (live or sandbox based on PAYPAL_API_BASE).
     """
-    if data is None:
-        return None
-
-    # If already primitive
-    if isinstance(data, (str, int, float, bool)):
-        return data
-
-    # Firestore Timestamp often has isoformat OR timestamp
-    if hasattr(data, "isoformat"):
-        try:
-            return data.isoformat()
-        except Exception:
-            pass
-    if hasattr(data, "timestamp"):
-        try:
-            # Firestore Timestamp
-            return datetime.fromtimestamp(data.timestamp(), tz=timezone.utc).isoformat()
-        except Exception:
-            pass
-
-    # Dict
-    if isinstance(data, dict):
-        out = {}
-        for k, v in data.items():
-            # SERVER_TIMESTAMP sentinel sometimes has _sentinel
-            if hasattr(v, "_sentinel"):
-                out[k] = now_iso()
-            else:
-                out[k] = serialize_firestore_data(v)
-        return out
-
-    # List
-    if isinstance(data, list):
-        return [serialize_firestore_data(x) for x in data]
-
-    # Fallback
-    try:
-        return str(data)
-    except Exception:
-        return None
-
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-
-def verify_password(password: str, hashed: str) -> bool:
-    if not hashed:
-        return False
-    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
-
-
-def create_token(user_id: str, role: str) -> str:
-    payload = {
-        "user_id": user_id,
-        "role": role,
-        "exp": int(datetime.now(timezone.utc).timestamp() + (7 * 24 * 60 * 60))
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def decode_token(token: str) -> Optional[dict]:
-    try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except Exception:
-        return None
-
-
-def normalize_phone(phone: str) -> str:
-    """
-    Removes spaces/dashes etc, keeps digits and +.
-    Converts leading 00 to +.
-    """
-    if not phone:
-        return ""
-    p = phone.strip()
-    p = re.sub(r"[^\d+]", "", p)
-    if p.startswith("00"):
-        p = "+" + p[2:]
-    return p
-
-
-def get_current_user_id(
-    authorization: Optional[str] = Header(None)
-):
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-        
-    token = authorization.replace("Bearer ", "")
-    
-    try:
-        decoded = decode_token(token)
-        if decoded and "user_id" in decoded:
-            return decoded.get("user_id")
-    except Exception:
-        # If the token is expired or invalid, fail securely
-        return None
-        
-    return None
-
-
-
-
-# --- Auth helpers (role-aware) ---
-def get_current_user_ctx(authorization: Optional[str] = Header(None)) -> Optional[dict]:
-    """
-    Returns {"user_id": str, "role": str} from JWT, or None.
-    Keeps get_current_user_id() for backwards compatibility.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-    token = authorization.replace("Bearer ", "")
-    decoded = decode_token(token)
-    if not decoded or "user_id" not in decoded:
-        return None
-    return {"user_id": decoded.get("user_id"), "role": decoded.get("role")}
-
-def require_auth(ctx: Optional[dict] = Depends(get_current_user_ctx)) -> dict:
-    if not ctx or not ctx.get("user_id"):
-        raise HTTPException(401, "Not authenticated")
-    return ctx
-
-def require_driver(ctx: dict = Depends(require_auth)) -> dict:
-    if ctx.get("role") not in ("driver", "admin"):
-        raise HTTPException(403, "Driver account required")
-    return ctx
-
-def require_rider(ctx: dict = Depends(require_auth)) -> dict:
-    if ctx.get("role") not in ("rider", "admin"):
-        raise HTTPException(403, "Rider account required")
-    return ctx
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate distance between two points in km"""
-    R = 6371
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (math.sin(dlat / 2) ** 2 +
-         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
-         math.sin(dlon / 2) ** 2)
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return R * c
-
-def estimate_eta_minutes(distance_km: float, avg_speed_kmh: float = 25.0) -> int:
-    # Simple baseline ETA; replace with OSRM/Maps later.
-    if distance_km <= 0:
-        return 0
-    return max(1, int((distance_km / max(5.0, avg_speed_kmh)) * 60))
-
-def driver_match_score(distance_km: float, rating: float, acceptance_rate: float, cancel_rate: float, idle_minutes: float) -> float:
-    """
-    Lower is better.
-    Tuned to prefer:
-    - closer drivers (distance)
-    - higher rating
-    - higher acceptance_rate
-    - lower cancel_rate
-    - fairness via idle_minutes (drivers waiting longer get a small boost)
-    """
-    distance_term = distance_km * 1.0
-    rating_term = -0.35 * (rating - 4.7)  # small reward above baseline
-    accept_term = -0.8 * (acceptance_rate - 0.6)  # reward above 60%
-    cancel_term = 1.2 * cancel_rate  # penalize cancels
-    idle_term = -0.02 * idle_minutes  # small fairness reward
-    return distance_term + rating_term + accept_term + cancel_term + idle_term
-
-
-async def get_paypal_token():
     if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
-        logger.error("PayPal credentials missing")
+        logger.error("PayPal credentials missing (PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET)")
         return None
 
     auth_str = f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}"
     b64_auth = base64.b64encode(auth_str.encode()).decode()
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=25) as client:
         try:
-            response = await client.post(
+            resp = await client.post(
                 f"{PAYPAL_API_BASE}/v1/oauth2/token",
                 headers={"Authorization": f"Basic {b64_auth}"},
-                data={"grant_type": "client_credentials"}
+                data={"grant_type": "client_credentials"},
             )
-            if response.status_code not in (200, 201):
-                logger.error(f"PayPal token failed: {response.status_code} {response.text}")
+            if resp.status_code not in (200, 201):
+                logger.error(f"PayPal token failed: {resp.status_code} {resp.text}")
                 return None
-            return response.json().get("access_token")
+            return resp.json().get("access_token")
         except Exception as e:
             logger.error(f"PayPal Token Error: {e}")
             return None
-        
-        
 
-
-# =========================
-# FASTAPI APP
-# =========================
-
-app = FastAPI(title="T'aksi API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOW_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# =========================
-# MODELS
-# =========================
-
-class UserRegister(BaseModel):
-    name: str
-    surname: str
-    cellphone: str
-    password: str
-    email: Optional[str] = None
-
-
-class UserLogin(BaseModel):
-    cellphone: str
-    password: str
-
-
-class VehicleInfo(BaseModel):
-    car_make: str
-    car_model: str
-    car_year: int = Field(ge=1990, le=2030)
-    car_color: str
-    license_plate: str
-
-
-class StopLocation(BaseModel):
-    address: str
-    lat: float
-    lng: float
-    order: int = 0
-
-
-class RideRequest(BaseModel):
-    user_id: Optional[str] = Field(None, alias="userId")
-    car_type: Optional[str] = Field("economy", alias="carType")
-    pickup: str
-    pickup_lat: float = Field(alias="pickupLat")
-    pickup_lng: float = Field(alias="pickupLng")
-    destination: Optional[str] = None
-    destination_lat: Optional[float] = Field(None, alias="destinationLat")
-    destination_lng: Optional[float] = Field(None, alias="destinationLng")
-    stops: List[StopLocation] = []
-    payment_method: Optional[str] = Field("cash", alias="paymentMethod")
-    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId")
-    estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
-    estimated_duration: Optional[int] = Field(0, alias="estimatedDuration")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class RiderWalletTopUp(BaseModel):
-    amount: float = Field(gt=0)
-    reference: Optional[str] = None
-
-
-class TopUpRequest(BaseModel):
-    amount: float = Field(gt=0)
-    payment_reference: Optional[str] = None
-
-
-class WithdrawalRequest(BaseModel):
-    amount: float = Field(gt=0)
-    bank_details: str
-
-
-class AdminAddBalanceRequest(BaseModel):
-    amount: float
-    reason: Optional[str] = "Admin Adjustment"
-
-
-class LocationUpdate(BaseModel):
-    lat: float
-    lng: float
-    heading: Optional[float] = None
-    speed: Optional[float] = None
-
-
-class RatePassengerRequest(BaseModel):
-    rating: int = Field(ge=1, le=5)
-    review: Optional[str] = ""
-
-
-class RateDriverRequest(BaseModel):
-    rating: int = Field(ge=1, le=5)
-    review: Optional[str] = ""
-
-
-class ChatMessage(BaseModel):
-    message: str
-
-
-class UpdateRideFare(BaseModel):
-    distance_km: float
-    wait_minutes: int = 0
-    stop_wait_minutes: int = 0
-
-
-# =========================
-# PRICING + SURGE
-# =========================
-
-PRICING_RULES = {
-    "economy": {
-        "base": 2.00,
-        "per_km": 0.50,
-        "per_minute_wait": 0.50,
-        "free_wait_minutes": 2,
-        "stop_fee": 0.00,
-        "long_distance_threshold": 7.0,
-        "long_distance_fee_per_km": 0.15,
-        "very_long_threshold": 30.0,
-        "very_long_surcharge_per_15km": 5.00,
-    },
-    "comfort": {
-        "base": 2.50,
-        "per_km": 0.55,
-        "per_minute_wait": 0.50,
-        "free_wait_minutes": 2,
-        "stop_fee": 0.00,
-        "long_distance_threshold": 7.0,
-        "long_distance_fee_per_km": 0.18,
-        "very_long_threshold": 30.0,
-        "very_long_surcharge_per_15km": 6.00,
-    },
-    "suv": {
-        "base": 3.90,
-        "per_km": 0.80,
-        "per_minute_wait": 0.50,
-        "free_wait_minutes": 2,
-        "stop_fee": 0.00,
-        "long_distance_threshold": 7.0,
-        "long_distance_fee_per_km": 0.25,
-        "very_long_threshold": 30.0,
-        "very_long_surcharge_per_15km": 8.00,
-    },
-    "personal": {
-        "base": 4.00,
-        "per_km": 0.70,
-        "per_minute_wait": 0.50,
-        "free_wait_minutes": 2,
-        "stop_fee": 0.00,
-        "long_distance_threshold": 7.0,
-        "long_distance_fee_per_km": 0.20,
-        "very_long_threshold": 30.0,
-        "very_long_surcharge_per_15km": 7.00,
-    },
-    "jumpstart": {
-        "base": 4.50,
-        "per_km": 0.00,
-        "per_minute_wait": 0.50,
-        "free_wait_minutes": 999,
-        "stop_fee": 0.00,
-        "long_distance_threshold": 999.0,
-        "long_distance_fee_per_km": 0.00,
-        "very_long_threshold": 999.0,
-        "very_long_surcharge_per_15km": 0.00,
-    },
-}
-
-DRIVER_COMMISSION_RATE = 0.23
-
-# Surge hours: Wednesday 18:00-02:00, Friday 18:00-04:00, Saturday 18:00-04:00
-SURGE_SCHEDULE = {
-    2: {"start": 18, "end": 26},  # Wednesday
-    4: {"start": 18, "end": 28},  # Friday
-    5: {"start": 18, "end": 28},  # Saturday
-}
-
-SURGE_LEVELS = {
-    1.0: 0.230,
-    1.2: 0.232,
-    1.5: 0.235,
-    1.8: 0.238,
-    2.0: 0.240,
-}
-
-
-def is_surge_time() -> bool:
-    now = datetime.now(timezone.utc)
-    georgia_hour = (now.hour + 4) % 24
-    weekday = now.weekday()
-
-    if weekday in SURGE_SCHEDULE:
-        schedule = SURGE_SCHEDULE[weekday]
-        if schedule["end"] > 24:
-            if georgia_hour >= schedule["start"] or georgia_hour < (schedule["end"] - 24):
-                return True
-        else:
-            if schedule["start"] <= georgia_hour < schedule["end"]:
-                return True
-
-    prev_weekday = (weekday - 1) % 7
-    if prev_weekday in SURGE_SCHEDULE:
-        schedule = SURGE_SCHEDULE[prev_weekday]
-        if schedule["end"] > 24 and georgia_hour < (schedule["end"] - 24):
-            return True
-
-    return False
-
-
-def get_area_demand(lat: float, lng: float) -> float:
-    db = get_db()
-    try:
-        active_rides = list(
-            db.collection("rides")
-            .where("status", "in", ["searching", "accepted", "arrived", "in_progress"])
-            .stream()
-        )
-
-        nearby_rides = 0
-        for ride in active_rides:
-            ride_data = ride.to_dict()
-            ride_lat = ride_data.get("pickup_lat")
-            ride_lng = ride_data.get("pickup_lng")
-            if ride_lat and ride_lng:
-                dist = haversine_distance(lat, lng, ride_lat, ride_lng)
-                if dist <= 5:
-                    nearby_rides += 1
-
-        online_drivers = list(
-            db.collection("users")
-            .where("user_type", "==", "driver")
-            .where("is_online", "==", True)
-            .stream()
-        )
-
-        nearby_drivers = 0
-        for driver in online_drivers:
-            driver_data = driver.to_dict()
-            driver_loc = driver_data.get("current_location")
-            if driver_loc and driver_loc.get("lat"):
-                dist = haversine_distance(lat, lng, driver_loc["lat"], driver_loc["lng"])
-                if dist <= 5:
-                    nearby_drivers += 1
-
-        if nearby_drivers == 0:
-            demand = 1.0 if nearby_rides > 0 else 0.0
-        else:
-            demand = min(1.0, nearby_rides / max(1, nearby_drivers * 2))
-
-        return demand
-
-    except Exception as e:
-        logger.warning(f"Error calculating area demand: {e}")
-        return 0.3
-
-
-def get_surge_multiplier(lat: float = None, lng: float = None) -> dict:
-    if not is_surge_time():
-        return {
-            "multiplier": 1.0,
-            "commission_rate": DRIVER_COMMISSION_RATE,
-            "is_surge": False,
-            "surge_reason": None,
-        }
-
-    demand = 0.5
-    if lat and lng:
-        demand = get_area_demand(lat, lng)
-
-    if demand >= 0.75:
-        multiplier = 2.0
-        reason = "Very high demand"
-    elif demand >= 0.5:
-        multiplier = 1.8
-        reason = "High demand"
-    elif demand >= 0.25:
-        multiplier = 1.5
-        reason = "Moderate demand"
-    else:
-        multiplier = 1.2
-        reason = "Surge hours"
-
-    commission_rate = SURGE_LEVELS.get(multiplier, DRIVER_COMMISSION_RATE)
-
-    return {
-        "multiplier": multiplier,
-        "commission_rate": commission_rate,
-        "is_surge": True,
-        "surge_reason": reason,
-        "demand_level": round(demand, 2),
-    }
-
-
-def calculate_fare(
-    car_type: str,
-    distance_km: float,
-    wait_minutes: int = 0,
-    stop_wait_minutes: int = 0,
-    num_stops: int = 0,
-    surge_multiplier: float = 1.0,
-) -> dict:
-    rules = PRICING_RULES.get(car_type, PRICING_RULES["economy"])
-
-    base_fare = rules["base"]
-    distance_fare = distance_km * rules["per_km"]
-
-    long_distance_fee = 0
-    if distance_km > rules["long_distance_threshold"]:
-        extra_km = distance_km - rules["long_distance_threshold"]
-        long_distance_fee = extra_km * rules["long_distance_fee_per_km"]
-
-    very_long_surcharge = 0
-    if distance_km > rules["very_long_threshold"]:
-        extra_km = distance_km - rules["very_long_threshold"]
-        num_blocks = math.ceil(extra_km / 15)
-        very_long_surcharge = num_blocks * rules["very_long_surcharge_per_15km"]
-
-    pickup_wait_fee = 0
-    billable_wait = max(0, wait_minutes - rules["free_wait_minutes"])
-    if billable_wait > 0:
-        pickup_wait_fee = billable_wait * rules["per_minute_wait"]
-
-    stop_wait_fee = stop_wait_minutes * rules["per_minute_wait"]
-    stop_fee = num_stops * rules["stop_fee"]
-
-    subtotal = (
-        base_fare
-        + distance_fare
-        + long_distance_fee
-        + very_long_surcharge
-        + pickup_wait_fee
-        + stop_wait_fee
-        + stop_fee
-    )
-
-    surge_fee = 0
-    if surge_multiplier > 1.0:
-        surge_fee = subtotal * (surge_multiplier - 1.0)
-
-    # ... (keep all your existing calculation logic above)
-    total = subtotal + surge_fee
-
-    return {
-        "base": round(base_fare, 2),
-        "distance": round(distance_fare, 2),
-        "long_distance": round(long_distance_fee, 2),
-        "very_long_surcharge": round(very_long_surcharge, 2),
-        "pickup_wait": round(pickup_wait_fee, 2),
-        "stop_wait": round(stop_wait_fee, 2),
-        "stop_fee": round(stop_fee, 2),
-        "subtotal": round(subtotal, 2),
-        "surge_fee": round(surge_fee, 2),
-        "surge_multiplier": surge_multiplier,
-        "base_total": round(total, 2),  
-        "total": round(total, 2),       
-        "breakdown": {
-            "distance_km": round(distance_km, 2),
-            "wait_minutes": wait_minutes,
-            "stop_wait_minutes": stop_wait_minutes,
-            "num_stops": num_stops,
-            "free_wait_minutes": rules["free_wait_minutes"],
-        },
-    }
-
-
-# =========================
-# AUTH ROUTES
-# =========================
-
-@app.post("/api/rides/{ride_id}/toggle-stop-wait", tags=["Rides"])
-async def toggle_stop_wait(ride_id: str, is_waiting: bool, user_id: str = Depends(get_current_user_id)):
-    db = get_db()
-    ride_ref = db.collection("rides").document(ride_id)
-    
-    if is_waiting:
-        # Record the exact moment the driver started waiting at the stop
-        update_data = {"stop_wait_start": firestore.SERVER_TIMESTAMP}
-    else:
-        # Calculate the elapsed time and add it to the total billable stop_wait_minutes
-        ride_snap = ride_ref.get()
-        ride_data = ride_snap.to_dict()
-        start_time = ride_data.get("stop_wait_start")
-        
-        if start_time:
-            wait_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
-            wait_minutes = round(wait_seconds / 60, 2)
-            update_data = {
-                "stop_wait_minutes": firestore.Increment(wait_minutes),
-                "stop_wait_start": None # Reset the start time
-            }
-            
-    ride_ref.update(update_data)
-    return {"status": "updated", "is_waiting": is_waiting}
-
-@app.post("/api/auth/register/rider", tags=["Auth"])
-async def register_rider(data: UserRegister):
-    db = get_db()
-
-    phone_norm = normalize_phone(data.cellphone)
-
-    existing = list(
-        db.collection("users")
-        .where("cellphone_norm", "==", phone_norm)
-        .limit(1)
-        .stream()
-    )
-    if existing:
-        raise HTTPException(400, "Phone number already registered")
-
-    user_ref = db.collection("users").document()
-    user_data = {
-        "id": user_ref.id,
-        "name": data.name,
-        "surname": data.surname,
-        "cellphone": data.cellphone,
-        "cellphone_norm": phone_norm,
-        "email": data.email,
-        "password_hash": hash_password(data.password),
-        "user_type": "rider",
-        "wallet_balance": 0.0,
-        "total_rides": 0,
-        "rating": 5.0,
-        "created_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP,
-    }
-    user_ref.set(user_data)
-
-    token = create_token(user_ref.id, "rider")
-
-    safe_user = {
-        "id": user_ref.id,
-        "name": data.name,
-        "surname": data.surname,
-        "cellphone": data.cellphone,
-        "cellphone_norm": phone_norm,
-        "email": data.email,
-        "user_type": "rider",
-        "wallet_balance": 0.0,
-        "total_rides": 0,
-        "rating": 5.0,
-        "created_at": now_iso(),
-    }
-
-    return {"token": token, "user": safe_user}
-
-
-@app.post("/api/auth/register/driver", tags=["Auth"])
-@app.post("/api/driver/register", tags=["Auth"])
-async def register_driver(data: UserRegister):
-    db = get_db()
-
-    phone_norm = normalize_phone(data.cellphone)
-
-    existing = list(
-        db.collection("users")
-        .where("cellphone_norm", "==", phone_norm)
-        .limit(1)
-        .stream()
-    )
-    if existing:
-        raise HTTPException(400, "Phone number already registered")
-
-    user_ref = db.collection("users").document()
-    user_data = {
-        "id": user_ref.id,
-        "name": data.name,
-        "surname": data.surname,
-        "cellphone": data.cellphone,
-        "cellphone_norm": phone_norm,
-        "email": data.email,
-        "password_hash": hash_password(data.password),
-        "user_type": "driver",
-        "registration_status": "pending_vehicle",
-        "is_online": False,
-        "current_location": None,
-        "driver_info": {"vehicle": None, "vehicle_tier": None},
-        "earnings": {
-            "balance": 0.0,
-            "total_earned": 0.0,
-            "total_topped_up": 0.0,
-            "total_withdrawn": 0.0,
-            "total_commission_paid": 0.0,
-        },
-        "total_rides": 0,
-        "rating": 5.0,
-        "created_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP,
-    }
-    user_ref.set(user_data)
-
-    token = create_token(user_ref.id, "driver")
-
-    safe_user = {
-        "id": user_ref.id,
-        "name": data.name,
-        "surname": data.surname,
-        "cellphone": data.cellphone,
-        "cellphone_norm": phone_norm,
-        "email": data.email,
-        "user_type": "driver",
-        "registration_status": "pending_vehicle",
-        "is_online": False,
-        "current_location": None,
-        "driver_info": {"vehicle": None, "vehicle_tier": None},
-        "earnings": user_data["earnings"],
-        "total_rides": 0,
-        "rating": 5.0,
-        "created_at": now_iso(),
-    }
-
-    return {"token": token, "user": safe_user}
-
-
-@app.post("/api/auth/login", tags=["Auth"])
-@app.post("/api/rider/login", tags=["Auth"])
-async def login(data: UserLogin):
-    db = get_db()
-
-    phone_norm = normalize_phone(data.cellphone)
-
-    # ✅ Primary lookup uses normalized phone
-    users = list(
-        db.collection("users")
-        .where("cellphone_norm", "==", phone_norm)
-        .limit(1)
-        .stream()
-    )
-
-    # Backwards-compat fallback for old records that don't have cellphone_norm
-    if not users:
-        users = list(
-            db.collection("users")
-            .where("cellphone", "==", data.cellphone)
-            .limit(1)
-            .stream()
-        )
-
-    if not users:
-        raise HTTPException(401, "Invalid credentials")
-
-    user_doc = users[0]
-    user_data = user_doc.to_dict()
-
-    if not verify_password(data.password, user_data.get("password_hash", "")):
-        raise HTTPException(401, "Invalid credentials")
-
-    token = create_token(user_doc.id, user_data.get("user_type", "rider"))
-    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
-    safe_user["id"] = user_doc.id
-
-    return {"token": token, "user": serialize_firestore_data(safe_user)}
-
-
-@app.post("/api/driver/login", tags=["Auth"])
-async def driver_login(data: UserLogin):
-    db = get_db()
-
-    phone_norm = normalize_phone(data.cellphone)
-
-    users = list(
-        db.collection("users")
-        .where("cellphone_norm", "==", phone_norm)
-        .where("user_type", "==", "driver")
-        .limit(1)
-        .stream()
-    )
-
-    if not users:
-        # fallback legacy
-        users = list(
-            db.collection("users")
-            .where("cellphone", "==", data.cellphone)
-            .where("user_type", "==", "driver")
-            .limit(1)
-            .stream()
-        )
-
-    if not users:
-        raise HTTPException(401, "Invalid credentials or not a driver account")
-
-    user_doc = users[0]
-    user_data = user_doc.to_dict()
-
-    if not verify_password(data.password, user_data.get("password_hash", "")):
-        raise HTTPException(401, "Invalid credentials")
-
-    token = create_token(user_doc.id, "driver")
-    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
-    safe_user["id"] = user_doc.id
-
-    return {"token": token, "user": serialize_firestore_data(safe_user)}
-
-
-@app.get("/api/auth/me", tags=["Auth"])
-async def get_current_user(user_id: str = Depends(get_current_user_id)):
-    if not user_id:
-        raise HTTPException(401, "Not authenticated")
-
-    db = get_db()
-    doc = db.collection("users").document(user_id).get()
-    if not doc.exists:
-        raise HTTPException(404, "User not found")
-
-    user_data = doc.to_dict()
-    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
-    safe_user["id"] = doc.id
-    return serialize_firestore_data(safe_user)
-
-
-# =========================
-# DRIVER ROUTES
-# =========================
-
-import uuid # Needed to generate unique IDs for each car in the garage
-
-class PayPalTopUpRequest(BaseModel):
-    order_id: str
-    amount: float
 
 @app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
-async def driver_topup_paypal(req: PayPalTopUpRequest, user_id: str = Depends(get_current_user_id)):
+async def driver_topup_paypal(
+    req: PayPalTopUpRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Verifies PayPal order server-side and credits driver's wallet.
+    SECURITY FIXES:
+    - Do NOT trust amount from client
+    - Only credit on COMPLETED
+    - Prevent double-credit by order_id
+    """
     if not user_id:
         raise HTTPException(401, "Not authenticated")
-        
-    # 1. Verify with PayPal that they actually paid
+
     access_token = await get_paypal_token()
     if not access_token:
         raise HTTPException(500, "PayPal auth failed")
-        
+
+    # 1) Fetch order from PayPal
     async with httpx.AsyncClient(timeout=25) as client:
         resp = await client.get(
             f"{PAYPAL_API_BASE}/v2/checkout/orders/{req.order_id}",
-            headers={"Authorization": f"Bearer {access_token}"}
+            headers={"Authorization": f"Bearer {access_token}"},
         )
-        if resp.status_code != 200:
-            raise HTTPException(400, "Invalid PayPal order")
-            
-        data = resp.json()
-        if data.get("status") not in ("COMPLETED", "APPROVED"):
-            raise HTTPException(400, "Payment not completed")
-            
-    # 2. Payment is legit! Instantly increase their virtual wallet balance.
+
+    if resp.status_code != 200:
+        logger.warning(f"PayPal order lookup failed: {resp.status_code} {resp.text}")
+        raise HTTPException(400, "Invalid PayPal order")
+
+    data = resp.json()
+
+    # Must be COMPLETED to credit wallet
+    status = data.get("status")
+    if status != "COMPLETED":
+        # APPROVED means authorized but not captured yet - do NOT credit
+        raise HTTPException(400, f"Payment not completed (status={status})")
+
+    # 2) Extract PAID AMOUNT from PayPal (do NOT trust client)
+    purchase_units = data.get("purchase_units") or []
+    if not purchase_units or not purchase_units[0].get("amount"):
+        raise HTTPException(400, "PayPal order missing amount")
+
+    paid_amount_str = purchase_units[0]["amount"].get("value")
+    paid_currency = purchase_units[0]["amount"].get("currency_code")
+
+    try:
+        paid_amount = float(paid_amount_str)
+    except Exception:
+        raise HTTPException(400, "Invalid PayPal paid amount")
+
+    if paid_amount <= 0:
+        raise HTTPException(400, "Invalid PayPal paid amount")
+
+    # 3) Idempotency: prevent double crediting same order_id
     db = get_db()
-    db.collection("users").document(user_id).update({
-        "earnings.balance": firestore.Increment(req.amount),
-        "earnings.total_topped_up": firestore.Increment(req.amount)
-    })
-    
-    # 3. Log the transaction for your records
-    db.collection("wallet_transactions").add({
-        "driver_id": user_id,
-        "type": "driver_paypal_topup",
-        "amount": req.amount,
+
+    existing = list(
+        db.collection("wallet_transactions")
+        .where("type", "==", "driver_paypal_topup")
+        .where("order_id", "==", req.order_id)
+        .limit(1)
+        .stream()
+    )
+    if existing:
+        # Already processed
+        return {
+            "message": "Order already processed",
+            "order_id": req.order_id,
+            "credited_amount": paid_amount,
+            "currency": paid_currency,
+        }
+
+    # 4) Credit wallet + log transaction (single logical operation)
+    db.collection("users").document(user_id).update(
+        {
+            "earnings.balance": firestore.Increment(paid_amount),
+            "earnings.total_topped_up": firestore.Increment(paid_amount),
+        }
+    )
+
+    db.collection("wallet_transactions").add(
+        {
+            "driver_id": user_id,
+            "type": "driver_paypal_topup",
+            "amount": paid_amount,
+            "currency": paid_currency,
+            "order_id": req.order_id,
+            "paypal_status": status,
+            "created_at": firestore.SERVER_TIMESTAMP,
+        }
+    )
+
+    # NOTE: This is credited in the SAME currency PayPal charged (usually USD).
+    # If you want GEL, you must convert server-side and store GEL instead.
+    return {
+        "message": "Wallet topup successful",
         "order_id": req.order_id,
-        "created_at": firestore.SERVER_TIMESTAMP
-    })
-    
-    return {"message": f"Successfully added {req.amount} GEL to wallet"}
+        "credited_amount": paid_amount,
+        "currency": paid_currency,
+    }
 
 @app.post("/api/driver/vehicle", tags=["Driver"])
 async def register_vehicle(
@@ -2512,9 +1699,15 @@ async def admin_reject_driver(id: str, reason: str = "Documents not satisfactory
     return {"message": "Driver rejected"}
 
 
-@app.post("/api/admin/users/{id}/add-balance", tags=["Admin"])
-@app.post("/api/admin/add-balance/{id}", tags=["Admin"])
-async def admin_add_balance(id: str, req: AdminAddBalanceRequest):
+@app.post("/api/admin/adjust-balance/{id}", tags=["Admin"])
+async def admin_adjust_balance(
+    id: str, 
+    req: AdminAddBalanceRequest,
+    current_user: dict = Depends(get_current_user) # 🔥 Secure it!
+):
+    if current_user.get("user_type") != "admin":
+        raise HTTPException(403, "Forbidden: Admin access only")
+
     db = get_db()
     ref = db.collection("users").document(id)
     doc = ref.get()
@@ -2524,27 +1717,36 @@ async def admin_add_balance(id: str, req: AdminAddBalanceRequest):
 
     user_data = doc.to_dict()
     user_type = user_data.get("user_type", "rider")
+    
+    # 🔥 The logic: positive adds, negative takes.
+    is_deduction = req.amount < 0
+    action_type = "deduction" if is_deduction else "addition"
 
     if user_type == "driver":
         ref.update({
             "earnings.balance": firestore.Increment(req.amount),
-            "earnings.total_topped_up": firestore.Increment(abs(req.amount)) if req.amount > 0 else firestore.Increment(0),
+            # We only track "total_topped_up" if it's actual new money coming in
+            "earnings.total_topped_up": firestore.Increment(req.amount) if not is_deduction else firestore.Increment(0)
         })
     else:
         ref.update({"wallet_balance": firestore.Increment(req.amount)})
 
+    # Log the correction for audit (very important for 'accidents')
     db.collection("admin_balance_logs").add({
         "target_user_id": id,
         "target_user_name": f"{user_data.get('name', '')} {user_data.get('surname', '')}",
         "target_user_type": user_type,
         "amount": req.amount,
         "reason": req.reason,
-        "admin_action": "add_balance",
+        "admin_id": current_user.get("id"),
+        "admin_action": action_type,
         "timestamp": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": f"Successfully added ₾{req.amount} to {user_type} account"}
-
+    return {
+        "status": "success", 
+        "message": f"Successfully performed {action_type} of ₾{abs(req.amount)} on {user_type} account"
+    }
 
 @app.get("/api/admin/topups/pending", tags=["Admin"])
 async def get_pending_topups():

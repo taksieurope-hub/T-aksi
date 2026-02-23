@@ -17,15 +17,17 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { PayPalScriptProvider, PayPalCardFieldsProvider, PayPalCardFieldsForm } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
-import { 
-  Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft, 
-  Lock, Phone, MessageSquare, Star, Clock, Shield, AlertTriangle, Loader2, 
+import { PayPalButtons } from "@paypal/react-paypal-js";
+import {
+  Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
+  Lock, Phone, MessageSquare, Star, Clock, Shield, AlertTriangle, Loader2,
   Search, X, Crosshair, MapPinned, CheckCircle2, Zap, Activity,
-  Plus, TrendingUp, Timer, CreditCard, Target, Route as RouteIcon, Wallet
+  Plus, TrendingUp, Timer, CreditCard, Target, Route as RouteLineIcon, Wallet
 } from "lucide-react";
 
+const ENABLE_PAYPAL_VAULT = import.meta.env.VITE_ENABLE_PAYPAL_VAULT === "true";
 // Pricing Rules (Updated to your specific base prices)
 const PRICING_RULES = {
   economy: { name: 'Economy', base: 2.80, perKm: 0.50, perMinWait: 0.40, freeWait: 2, stopFee: 0.00, icon: "🚗" },
@@ -1072,64 +1074,65 @@ const RiderDashboard = () => {
   };
 
   const pollRideStatus = async (rideId) => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await api.get(`/rides/${rideId}`);
-        setActiveRide(res.data);
+  const interval = setInterval(async () => {
+    try {
+      const res = await api.get(`/rides/${rideId}`);
+      setActiveRide(res.data);
 
-        // Inside your ride status polling logic:
-if (res.data.status === "arrived") {
-  if (!notifiedArrived.current) {
-    // 🔔 TRIGGER THE NOTIFICATION
-    toast.success("YOUR DRIVER HAS ARRIVED!", {
-      description: "Please meet your driver at the pickup location. The free wait timer has started.",
-      duration: 10000, 
-      icon: "🚗",
-    });
-    
-    // Play a subtle sound if you want to get fancy later
-    notifiedArrived.current = True; 
-  }
-} else if (res.data.status === "searching") {
-  // Reset the flag if they book a new ride later
-  notifiedArrived.current = false;
-}
-
-        if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
-          clearInterval(interval);
-          
-          if (res.data.status === "completed") {
-            // Store the completed ride data to show in modal
-            setCompletedRideData({
-              id: res.data.id,
-              final_fare: res.data.final_fare || res.data.estimated_fare,
-              payment_method: res.data.payment_method,
-              driver_name: res.data.driver_info?.name || res.data.driver_name
-            });
-            
-            fetchRideHistory();
-            
-            // Clear active ride after short delay
-            setTimeout(() => {
-              setActiveRide(null);
-              setActiveTab("book");
-            }, 500);
-            
-          } else if (res.data.status === "no_drivers") {
-            toast.error("No drivers available. Please try again.");
-          }
-        } else if (res.data.status === "accepted" && res.data.driver_info) {
-  
-  if (!notifiedAccepted.current) {
-    toast.success(`Driver ${res.data.driver_info.name} is coming!`);
-    notifiedAccepted.current = true;
-  }
-}
-      } catch (error) {
-        clearInterval(interval);
+      // ✅ ARRIVED TOAST (only once)
+      if (res.data.status === "arrived") {
+        if (!notifiedArrived.current) {
+          toast.success("YOUR DRIVER HAS ARRIVED!", {
+            description:
+              "Please meet your driver at the pickup location. The free wait timer has started.",
+            duration: 10000,
+            icon: "🚗",
+          });
+          notifiedArrived.current = true;
+        }
+      } else if (res.data.status === "searching") {
+        // Reset flags if they book a new ride later
+        notifiedArrived.current = false;
+        notifiedAccepted.current = false;
       }
-    }, 3000);
-  };
+
+      // ✅ ACCEPTED TOAST (only once)
+      if (res.data.status === "accepted" && res.data.driver_info) {
+        if (!notifiedAccepted.current) {
+          toast.success(`Driver ${res.data.driver_info.name} is coming!`);
+          notifiedAccepted.current = true;
+        }
+      }
+
+      // ✅ STOP POLLING on terminal states
+      if (["completed", "cancelled", "no_drivers"].includes(res.data.status)) {
+        clearInterval(interval);
+
+        if (res.data.status === "completed") {
+          setCompletedRideData({
+            id: res.data.id,
+            final_fare: res.data.final_fare || res.data.estimated_fare,
+            payment_method: res.data.payment_method,
+            driver_name: res.data.driver_info?.name || res.data.driver_name,
+          });
+
+          fetchRideHistory();
+
+          // Clear active ride after short delay
+          setTimeout(() => {
+            setActiveRide(null);
+            setActiveTab("book");
+          }, 500);
+        } else if (res.data.status === "no_drivers") {
+          toast.error("No drivers available. Please try again.");
+        }
+      }
+    } catch (error) {
+      clearInterval(interval);
+      console.error("pollRideStatus error:", error);
+    }
+  }, 3000);
+};
 
   const handleCancelRide = async () => {
     if (!activeRide) return;
@@ -1343,24 +1346,32 @@ if (res.data.status === "arrived") {
                   </div>
                 )}
                 {routeInfo && (
-                  <div className="bg-secondary/10 border border-secondary/30 rounded-xl p-4">
-                    <div className="flex justify-between items-center mb-2 text-secondary">
-                      <span className="flex items-center"><RouteIcon className="w-4 h-4 mr-1" /> {t('route')}</span>
-                      <span className="font-bold">{routeInfo.distance} {t('km')} • ~{routeInfo.duration} {t('min')}</span>
-                    </div>
-                    {fareEstimate && (
-                        <div className="flex flex-col">
-                            <div className="flex justify-between text-lg text-secondary font-bold">
-                                <span>{t('estimated_total')}</span>
-                                <span>₾{fareEstimate.total.toFixed(2)}</span>
-                            </div>
-                            {paymentMethod === 'card' && (
-                                <p className="text-xs text-primary text-right mt-1">{t('card_fee_included')}</p>
-                            )}
-                        </div>
-                    )}
-                  </div>
-                )}
+  <div className="bg-secondary/10 border border-secondary/30 rounded-xl p-4">
+    <div className="flex justify-between items-center mb-2 text-secondary">
+      <span className="flex items-center">
+        <RouteLineIcon className="w-4 h-4 mr-1" /> {t("route")}
+      </span>
+      <span className="font-bold">
+        {routeInfo.distance} {t("km")} • ~{routeInfo.duration} {t("min")}
+      </span>
+    </div>
+
+    {fareEstimate && (
+      <div className="flex flex-col">
+        <div className="flex justify-between text-lg text-secondary font-bold">
+          <span>{t("estimated_total")}</span>
+          <span>₾{fareEstimate.total.toFixed(2)}</span>
+        </div>
+
+        {paymentMethod === "card" && (
+          <p className="text-xs text-primary text-right mt-1">
+            {t("card_fee_included")}
+          </p>
+        )}
+      </div>
+    )}
+  </div>
+)}
                 <div className="space-y-2">
                   <Label className="text-secondary">{t('vehicle_class')}</Label>
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
@@ -1412,72 +1423,65 @@ if (res.data.status === "arrived") {
             </Card>
           </TabsContent>
 
-          {/* 🔥 THE MISSING CARD MODAL */}
-        <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
-          <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]">
-            <DialogHeader>
-              <DialogTitle className="text-[#00ff88] flex items-center gap-2">
-                <CreditCard className="w-5 h-5"/> Pay with Card
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCardPayment} className="space-y-4 mt-2">
-              <div className="space-y-2">
-                <Label className="text-gray-400 text-xs">CARD NUMBER</Label>
-                <div className="relative">
-                  <CreditCard className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" />
-                  <Input
-                    value={cardDetails.number}
-                    onChange={(e)=>handleCardInput("number", e.target.value)}
-                    placeholder="0000 0000 0000 0000"
-                    className="pl-10 bg-black/50 border-[#00ff88]/30 text-white h-12"
-                    inputMode="numeric"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-gray-400 text-xs">EXPIRY</Label>
-                    <Input value={cardDetails.expiry} onChange={(e)=>handleCardInput("expiry", e.target.value)} placeholder="MM/YY" className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center" inputMode="numeric"/>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-gray-400 text-xs">CVV</Label>
-                    <Input value={cardDetails.cvv} onChange={(e)=>handleCardInput("cvv", e.target.value)} placeholder="123" className="bg-black/50 border-[#00ff88]/30 text-white h-12 text-center" inputMode="numeric" type="password"/>
-                  </div>
-              </div>
-              <Button type="submit" className="w-full bg-[#00ff88] text-black font-bold h-12" disabled={loading}>
-                {loading ? <Loader2 className="animate-spin" /> : `Pay`}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+          {/* 🔥 CARD PAYMENT MODAL */}
+<Dialog open={showCardModal} onOpenChange={setShowCardModal}>
+  <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]">
+    <DialogHeader>
+      <DialogTitle className="text-[#00ff88] flex items-center gap-2">
+        <CreditCard className="w-5 h-5" /> Pay with Card
+      </DialogTitle>
+    </DialogHeader>
 
-          {/* 👇 Add this opening line to check if Card is selected 👇 */}
-{paymentMethod === "card" && (
-  <div className="mt-4 w-full animate-in fade-in slide-in-from-top-4">
-    <PayPalButtons
-      fundingSource="card"
-      style={{ layout: "vertical", shape: "rect" }}
-      createOrder={(data, actions) => {
-        return actions.order.create({
-          purchase_units: [{
-            amount: {
-              value: (fareEstimate.total * 0.37).toFixed(2),
-              currency_code: "USD"
-            }
-          }],
-          application_context: {
-            shipping_preference: "NO_SHIPPING" // 🔥 This deletes the address/zip code fields
+    <div className="mt-4 space-y-4">
+      
+      <p className="text-xs text-gray-400">
+        Secure card payment powered by PayPal
+      </p>
+
+      <PayPalButtons
+        fundingSource="card"
+        style={{ layout: "vertical", shape: "rect" }}
+
+        createOrder={async () => {
+          // Convert GEL to USD (adjust rate if needed)
+          const usdAmount = (parseFloat(topupAmount) * 0.37).toFixed(2);
+
+          const res = await api.post("/api/paypal/create-order", {
+            amount: usdAmount
+          });
+
+          return res.data.id;
+        }}
+
+        onApprove={async (data) => {
+          try {
+            setLoading(true);
+
+            await api.post("/api/driver/wallet/topup/paypal", {
+              order_id: data.orderID,
+              amount: parseFloat(topupAmount)
+            });
+
+            toast.success(`Added ₾${topupAmount}`);
+            setShowCardModal(false);
+
+          } catch (err) {
+            console.error(err);
+            toast.error("Topup failed");
+          } finally {
+            setLoading(false);
           }
-        });
-      }}
-      onApprove={async (data, actions) => {
-        await actions.order.capture();
-        toast.success("Payment successful!");
-        await processRideRequest();
-      }}
-    />
-  </div>
-)}
+        }}
+
+        onError={(err) => {
+          console.error("PayPal error:", err);
+          toast.error("Payment failed");
+        }}
+      />
+
+    </div>
+  </DialogContent>
+</Dialog>
 
           {/* Active Tab */}
           <TabsContent value="active">

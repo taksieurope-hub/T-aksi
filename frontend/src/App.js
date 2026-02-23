@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import axios from "axios";
+import { PayPalScriptProvider } from "@paypal/react-paypal-js";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -39,15 +40,24 @@ const Home = () => {
 
 function App() {
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <PayPalScriptProvider
+      options={{
+        "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
+        currency: "USD",
+        components: "buttons,card-fields",
+        intent: "capture"
+      }}
+    >
+      <div className="App">
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Home />}>
+              <Route index element={<Home />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </div>
+    </PayPalScriptProvider>
   );
 }
 
