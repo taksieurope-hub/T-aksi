@@ -2998,12 +2998,11 @@ async def health_check():
 @app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
 async def driver_topup_paypal(
     req: PayPalTopUpRequest,
-    current_user: dict = Depends(get_current_user), # 🔥 FIXED: Using your actual auth function!
+    current_user: dict = Depends(get_current_user) # 🔥 Changed to your actual function
 ):
-    """
-    Verifies PayPal order server-side and credits driver's wallet.
-    """
-    # Extract the user_id from your current_user dictionary
+    """Verifies PayPal order server-side and credits driver's wallet."""
+    
+    # Extract the user ID from your auth token dictionary
     user_id = current_user.get("id")
     if not user_id:
         raise HTTPException(401, "Not authenticated")
@@ -3046,8 +3045,8 @@ async def driver_topup_paypal(
     if paid_amount <= 0:
         raise HTTPException(400, "Invalid PayPal paid amount")
 
-    # 3) Idempotency: prevent double crediting same order_id
-    db = firestore.client() # 🔥 Ensure we grab the db instance
+    # 3) Idempotency: prevent double crediting
+    db = firestore.client() # Get database instance safely
 
     existing = list(
         db.collection("wallet_transactions")
