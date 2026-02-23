@@ -407,46 +407,86 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     });
   };
 
-  // 3. Driver Marker & Camera Follow Logic
+  // 3. Driver Marker & Camera Follow Logic (🔥 SMOOTH 60-FPS ANIMATION)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
     
-    const pos = { 
-        lat: parseFloat(driverLocation.lat), 
-        lng: parseFloat(driverLocation.lng) 
-    };
-
-    // 🔥 FIX: Custom Spaceship SVG Path
+    const endLat = parseFloat(driverLocation.lat);
+    const endLng = parseFloat(driverLocation.lng);
+    const currentHeading = parseFloat(driverLocation.heading) || 0;
     const SPACESHIP_SVG = "M 0,-18 L 12,14 L 0,8 L -12,14 Z";
 
-    // Update or Create Marker
+    // 1. INITIAL SETUP (If marker doesn't exist yet, drop it immediately)
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
-        position: pos,
+        position: { lat: endLat, lng: endLng },
         map: mapInstanceRef.current,
         icon: {
-          path: SPACESHIP_SVG, // 🔥 Replaces the basic arrow
+          path: SPACESHIP_SVG, 
           scale: 1.5, 
           fillColor: "#00d4ff", 
           fillOpacity: 1, 
           strokeColor: "#ffffff", 
           strokeWeight: 2,
-          rotation: parseFloat(driverLocation.heading) || 0,
+          rotation: currentHeading, 
           anchor: new window.google.maps.Point(0, 0)
         },
         zIndex: 1000
       });
-    } else {
-      driverMarkerRef.current.setPosition(pos);
-      const icon = driverMarkerRef.current.getIcon();
-      icon.rotation = parseFloat(driverLocation.heading) || 0;
-      driverMarkerRef.current.setIcon(icon);
+
+      if (isFollowing) {
+        mapInstanceRef.current.moveCamera({ 
+            center: { lat: endLat, lng: endLng }, 
+            heading: currentHeading, 
+            tilt: 45, 
+            zoom: 18 
+        });
+      }
+      return; 
     }
 
-    // Auto-Follow Logic
-    if (isFollowing) {
-        mapInstanceRef.current.panTo(pos);
-    }
+    // 2. THE UBER TRICK: SMOOTH ANIMATION LOOP
+    if (window.animationFrameId) cancelAnimationFrame(window.animationFrameId);
+
+    const startLat = driverMarkerRef.current.getPosition().lat();
+    const startLng = driverMarkerRef.current.getPosition().lng();
+    
+    const icon = driverMarkerRef.current.getIcon();
+    icon.rotation = currentHeading;
+    driverMarkerRef.current.setIcon(icon);
+
+    const startTime = performance.now();
+    const duration = 1000; // 1 second glide to match our polling rate!
+
+    const animateMarker = (currentTime) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        const currentLat = startLat + (endLat - startLat) * progress;
+        const currentLng = startLng + (endLng - startLng) * progress;
+        const currentPos = { lat: currentLat, lng: currentLng };
+
+        driverMarkerRef.current.setPosition(currentPos);
+
+        if (isFollowing) {
+            mapInstanceRef.current.moveCamera({
+                center: currentPos,
+                heading: currentHeading,
+                tilt: 45,
+                zoom: 18
+            });
+        }
+
+        if (progress < 1) {
+            window.animationFrameId = requestAnimationFrame(animateMarker);
+        }
+    };
+
+    window.animationFrameId = requestAnimationFrame(animateMarker);
+
+    return () => {
+        if (window.animationFrameId) cancelAnimationFrame(window.animationFrameId);
+    };
 
   }, [driverLocation, isFollowing]);
 
@@ -910,7 +950,7 @@ const RiderDashboard = () => {
   useEffect(() => {
     let interval;
     if (activeRide && !["completed", "cancelled", "no_drivers"].includes(activeRide.status)) {
-      interval = setInterval(fetchActiveRide, 3000);
+      interval = setInterval(fetchActiveRide, 100);
     }
     return () => clearInterval(interval);
   }, [activeRide?.status]);
@@ -1043,7 +1083,7 @@ if (res.data.status === "arrived") {
     // 🔔 TRIGGER THE NOTIFICATION
     toast.success("YOUR DRIVER HAS ARRIVED!", {
       description: "Please meet your driver at the pickup location. The free wait timer has started.",
-      duration: 10000, // Keep it visible for 10 seconds
+      duration: 10000, 
       icon: "🚗",
     });
     
@@ -1079,7 +1119,7 @@ if (res.data.status === "arrived") {
             toast.error("No drivers available. Please try again.");
           }
         } else if (res.data.status === "accepted" && res.data.driver_info) {
-  // Only show the toast IF we haven't shown it yet
+  
   if (!notifiedAccepted.current) {
     toast.success(`Driver ${res.data.driver_info.name} is coming!`);
     notifiedAccepted.current = true;

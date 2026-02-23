@@ -4,33 +4,63 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import api from "@/api";
+import { toast } from "sonner"; // For toast notifications
 
 const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUserId, isDriver }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  // Audio & Notification state
+  const [hasUnread, setHasUnread] = useState(false);
+  const previousMessageCount = useRef(0);
   const messagesEndRef = useRef(null);
 
   const themeColor = isDriver ? "border-[#00d4ff] text-[#00d4ff]" : "border-[#00ff88] text-[#00ff88]";
   const themeBg = isDriver ? "bg-[#00d4ff]" : "bg-[#00ff88]";
 
-  // Scroll Logic: Only auto-scroll if a NEW message actually arrived
+  // 🔥 NEW: Play a clean message "Ding!"
+  const playMessageSound = () => {
+    const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+    audio.play().catch(e => console.log("Browser blocked auto-play:", e));
+  };
+
+  // Scroll Logic
   useEffect(() => {
     if (messages.length > 0 && isOpen) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages.length, isOpen]);
 
-  // Polling Engine
+  // Polling Engine & Notification Trigger
   useEffect(() => {
-    if (!isOpen || !rideId) return;
+    if (!rideId) return;
 
     const fetchMessages = async () => {
       try {
         const res = await api.get(`/rides/${rideId}/chat`);
         if (res.data && res.data.messages) {
-          setMessages(res.data.messages);
+          const newMessages = res.data.messages;
+          
+          // Check if we received NEW messages
+          if (newMessages.length > previousMessageCount.current) {
+            
+            // Look at the very last message to see who sent it
+            const lastMessage = newMessages[newMessages.length - 1];
+            const isMe = String(lastMessage.sender_id) === String(currentUserId);
+            
+            if (!isMe) {
+              playMessageSound();
+              if (!isOpen) {
+                setHasUnread(true);
+                toast.info(`New message from ${otherPartyName || (isDriver ? "Rider" : "Driver")}`);
+              }
+            }
+          }
+          
+          setMessages(newMessages);
+          previousMessageCount.current = newMessages.length; // Update our tracker
         }
       } catch (error) {
         console.error("Failed to fetch chat:", error);
@@ -38,9 +68,15 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
     };
 
     fetchMessages();
-    const interval = setInterval(fetchMessages, 3000);
+    const interval = setInterval(fetchMessages, 3000); // Check every 3 seconds
     return () => clearInterval(interval);
-  }, [isOpen, rideId]);
+  }, [isOpen, rideId, currentUserId, otherPartyName, isDriver]);
+
+  // When they open the chat, clear the unread badge
+  const handleOpenChat = () => {
+    setIsOpen(true);
+    setHasUnread(false);
+  };
 
   const handleSend = async (e) => {
     e?.preventDefault();
@@ -52,16 +88,21 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
 
     try {
       await api.post(`/rides/${rideId}/chat`, { message: messageText });
-      // Optimistic UI update - NOW WITH EXPLICIT ROLE TAGGING
-      setMessages(prev => [...prev, {
+      
+      const optimisticMessage = {
         id: Date.now().toString(),
         sender_id: currentUserId,
-        sender_type: isDriver ? "driver" : "rider", // 🔥 Added this
+        sender_type: isDriver ? "driver" : "rider", 
         message: messageText,
         timestamp: new Date().toISOString()
-      }]);
+      };
+      
+      setMessages(prev => [...prev, optimisticMessage]);
+      previousMessageCount.current += 1; // Update tracker so we don't 'ding' ourselves on next poll
+
     } catch (error) {
       console.error("Failed to send message:", error);
+      toast.error("Failed to send message");
     } finally {
       setLoading(false);
     }
@@ -69,22 +110,27 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
 
   return (
     <div className="flex gap-2 mt-4 w-full">
-      {/* 📞 Call Button (Always visible to both) */}
-      <Button 
-        variant="outline" 
-        className={`flex-1 ${themeColor} hover:${themeBg} hover:text-black transition-colors`}
-        onClick={() => window.location.href = `tel:${otherPartyPhone}`}
+      {/* 📞 Call Button - 🔥 FIXED to use native <a> tag for mobile dialer */}
+      <a 
+        href={`tel:${otherPartyPhone}`}
+        className={`flex-1 flex items-center justify-center h-10 rounded-md border text-sm font-medium ${themeColor} hover:${themeBg} hover:text-black transition-colors`}
       >
         <Phone className="w-4 h-4 mr-2" /> Call
-      </Button>
+      </a>
 
-      {/* 💬 Chat Button */}
+      {/* 💬 Chat Button with Unread Badge */}
       <Button 
         variant="outline" 
-        className={`flex-1 ${themeColor} hover:${themeBg} hover:text-black transition-colors`}
-        onClick={() => setIsOpen(true)}
+        className={`flex-1 relative ${themeColor} hover:${themeBg} hover:text-black transition-colors`}
+        onClick={handleOpenChat}
       >
         <MessageSquare className="w-4 h-4 mr-2" /> Chat
+        {hasUnread && (
+          <span className="absolute -top-1 -right-1 flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+          </span>
+        )}
       </Button>
 
       {/* 🗨️ Chat Popup Window */}
@@ -102,7 +148,6 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
                 </h3>
               </div>
               
-              {/* The Exit Button */}
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -121,7 +166,6 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
                 </div>
               ) : (
                 messages.map((msg, i) => {
-                  // 🔥 Bulletproof Check: Check the backend role first, fallback to ID if missing
                   let isMe = false;
                   const role = msg.sender_type || msg.sender_role; 
                   
@@ -131,7 +175,6 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
                     isMe = String(msg.sender_id) === String(currentUserId);
                   }
 
-                  // Determine the exact label
                   const senderLabel = isMe ? "You" : (isDriver ? "Rider" : "Driver");
 
                   return (
@@ -142,7 +185,6 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
                           : "bg-gray-800 text-white border border-gray-700 rounded-tl-none"
                       }`}>
                         
-                        {/* 🔥 Using our bulletproof label */}
                         <span className="text-[9px] font-bold uppercase opacity-50 mb-0.5">
                           {senderLabel}
                         </span>

@@ -3,6 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
+import InstallPrompt from '@/components/InstallPrompt'; // ✅ Imported correctly
 
 // Providers
 import { AuthProvider, API } from "@/config";
@@ -19,26 +20,20 @@ import SupportChatWidget from "@/components/SupportChatWidget";
 
 /**
  * Axios interceptor (Global)
- * - Uses the SAME token key as config.jsx: "token"
- * - Adds Authorization header to all requests
  */
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-
-  // Optional: if you sometimes call axios with relative URLs,
-  // ensure baseURL is set.
   if (!config.baseURL && API) {
     config.baseURL = API;
   }
-
   return config;
 });
 
 /**
- * Stars background (memoized so it doesn't re-randomize every render)
+ * Stars background (memoized)
  */
 const StarsBackground = () => {
   const stars = useMemo(() => {
@@ -75,6 +70,9 @@ function App() {
       <AuthProvider>
         <div className="App min-h-screen bg-black relative">
           <StarsBackground />
+
+          {/* 🔥 THE AGGRESSIVE INSTALL PROMPT LIVES HERE! */}
+          <InstallPrompt />
 
           <div className="relative z-10">
             <BrowserRouter>

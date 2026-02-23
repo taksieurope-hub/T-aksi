@@ -46,7 +46,7 @@ const PRICING_RULES = {
 
 const DRIVER_COMMISSION_RATE = 0.23;
 const PAYMENT_LINK = "https://egreve.bog.ge//Taksi";
-const LOCATION_UPDATE_INTERVAL = 2000; // 2 seconds
+const LOCATION_UPDATE_INTERVAL = 10000// 10 seconds
 
 const CANCEL_REASONS = {
   accepted: [ 
@@ -329,9 +329,10 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat: 41.7151, lng: 44.8271 },
         zoom: 17,
-        disableDefaultUI: true, // Hides default tiny buttons
+        mapId: "DEMO_MAP_ID",
+        disableDefaultUI: true, 
         zoomControl: false, 
-        gestureHandling: "greedy", // Allows 1-finger panning on mobile
+        gestureHandling: "greedy",
         backgroundColor: '#ffffff',
         styles: [
           { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
@@ -359,37 +360,78 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }
   }, []);
 
-  // 2. Update Driver Marker & Turn-by-Turn Logic
+  // 2. Update Driver Marker & Turn-by-Turn Logic (🔥 SMOOTH 60-FPS ANIMATION)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
 
-    const lat = getSafeCoord(driverLocation.lat);
-    const lng = getSafeCoord(driverLocation.lng);
-    const heading = parseFloat(driverLocation.heading) || 0;
+    const endLat = getSafeCoord(driverLocation.lat);
+    const endLng = getSafeCoord(driverLocation.lng);
+    const currentHeading = parseFloat(driverLocation.heading) || 0;
 
-    if (!lat || !lng) return;
-    const pos = { lat, lng };
+    if (!endLat || !endLng) return;
 
+    // 1. INITIAL SETUP
     if (!markerRef.current) {
       markerRef.current = new window.google.maps.Marker({
-        position: pos,
+        position: { lat: endLat, lng: endLng },
         map: mapInstanceRef.current,
         icon: {
           path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 6, fillColor: "#00d4ff", fillOpacity: 1, strokeColor: "white", strokeWeight: 2,
-          rotation: heading, anchor: new window.google.maps.Point(0, 2.5)
+          rotation: currentHeading, anchor: new window.google.maps.Point(0, 2.5)
         },
         zIndex: 1000
       });
-    } else {
-      markerRef.current.setPosition(pos);
-      const icon = markerRef.current.getIcon();
-      icon.rotation = heading;
-      markerRef.current.setIcon(icon);
-    }
 
-    if (isFollowing) {
-        mapInstanceRef.current.panTo(pos);
+      if (isFollowing) {
+        mapInstanceRef.current.moveCamera({
+            center: { lat: endLat, lng: endLng },
+            heading: currentHeading, 
+            tilt: 45,        
+            zoom: 18         
+        });
+      }
+    } 
+    
+    // 2. SMOOTH ANIMATION LOOP
+    else {
+      if (window.animationFrameIdDriver) cancelAnimationFrame(window.animationFrameIdDriver);
+
+      const startLat = markerRef.current.getPosition().lat();
+      const startLng = markerRef.current.getPosition().lng();
+      
+      const icon = markerRef.current.getIcon();
+      icon.rotation = currentHeading;
+      markerRef.current.setIcon(icon);
+
+      const startTime = performance.now();
+      const duration = 1000; // 1 second glide
+
+      const animateMarker = (currentTime) => {
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+
+          const currentLat = startLat + (endLat - startLat) * progress;
+          const currentLng = startLng + (endLng - startLng) * progress;
+          const currentPos = { lat: currentLat, lng: currentLng };
+
+          markerRef.current.setPosition(currentPos);
+
+          if (isFollowing) {
+              mapInstanceRef.current.moveCamera({
+                  center: currentPos,
+                  heading: currentHeading,
+                  tilt: 45,
+                  zoom: 18
+              });
+          }
+
+          if (progress < 1) {
+              window.animationFrameIdDriver = requestAnimationFrame(animateMarker);
+          }
+      };
+
+      window.animationFrameIdDriver = requestAnimationFrame(animateMarker);
     }
 
     // --- TURN-BY-TURN STEP PROGRESSION ---
@@ -398,14 +440,17 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         const stepEndLat = currentStep.end_location.lat();
         const stepEndLng = currentStep.end_location.lng();
         
-        // Calculate how far driver is from the exact turning point
-        const distanceToTurn = getDistanceKm(lat, lng, stepEndLat, stepEndLng);
+        const distanceToTurn = getDistanceKm(endLat, endLng, stepEndLat, stepEndLng);
         
-        // If driver is within 40 meters (0.04 km) of the turn, jump to the next instruction
         if (distanceToTurn < 0.04) {
             setCurrentStepIndex(prev => prev + 1);
         }
     }
+
+    return () => {
+        if (window.animationFrameIdDriver) cancelAnimationFrame(window.animationFrameIdDriver);
+    };
+
   }, [driverLocation, isFollowing, routeSteps, currentStepIndex]);
 
   // 3. Draw Route & Extract Steps
@@ -642,6 +687,41 @@ const DriverDashboard = () => {
     touchStartY.current = null;
   };
 
+// 🔥 WAKE LOCK: KEEP DRIVER SCREEN TURNED ON
+  useEffect(() => {
+    let wakeLock = null;
+
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log('Screen Wake Lock is active!');
+        }
+      } catch (err) {
+        console.error(`Wake Lock failed: ${err.message}`);
+      }
+    };
+
+    // Only stay awake if the driver is Online or on a Job
+    if (isOnline || activeRide) {
+      requestWakeLock();
+    }
+
+    // Re-request when user returns to the tab (e.g., after checking Waze)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && (isOnline || activeRide)) {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (wakeLock) wakeLock.release();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isOnline, activeRide]);
+
   useEffect(() => {
     if (window.google) { setMapsLoaded(true); return; }
     const script = document.createElement('script');
@@ -696,6 +776,46 @@ const DriverDashboard = () => {
   const fetchActiveRide = async () => { try { const res = await api.get(`/driver/active-ride`); if (res.data) { setActiveRide(res.data); setActiveTab("rides"); } } catch (e) {} };
   const fetchRideHistory = async () => { try { const res = await api.get(`/driver/history`); setRideHistory(res.data.rides || []); } catch (e) {} };
   const fetchNearbyRides = async () => { try { const res = await api.get(`/driver/rides/nearby?radius=${searchRadius}`); setNearbyRides(res.data.rides || []); } catch (e) {} };
+
+// 🔥 NEW RIDE NOTIFICATION ALARM FOR DRIVER
+  const prevAvailableCount = useRef(0);
+  const prevRideStatus = useRef(null);
+
+  useEffect(() => {
+    // If the number of available rides goes UP, a new request just came in!
+    if (availableRides.length > prevAvailableCount.current) {
+      // Play a loud, distinct alert sound for the driver
+      const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2867/2867-preview.mp3");
+      audio.play().catch(e => console.log("Browser blocked audio:", e));
+      
+      toast.info("🚨 NEW RIDE REQUEST!", {
+        description: "A passenger is looking for a driver nearby.",
+        duration: 10000,
+        icon: "🚕",
+      });
+    }
+    prevAvailableCount.current = availableRides.length;
+  }, [availableRides]);
+
+  // 🔥 RIDER CANCELLED NOTIFICATION FOR DRIVER
+  useEffect(() => {
+    if (activeRide && prevRideStatus.current) {
+      if (activeRide.status === "cancelled" && prevRideStatus.current !== "cancelled") {
+        const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+        audio.play().catch(e => {});
+        toast.error("⚠️ THE RIDER CANCELLED THE TRIP", { 
+          description: "You can safely return to the home screen.",
+          duration: 10000 
+        });
+      }
+    }
+    prevRideStatus.current = activeRide?.status;
+  }, [activeRide]);
+}
+
+  const handleRideAction = async (action) => {
+    if (!activeRide) return;
+    setLoading(true);
 
   const handleRideAction = async (action) => {
     if (!activeRide) return;
@@ -1324,8 +1444,8 @@ const DriverDashboard = () => {
         onClose={() => setCompletedRide(null)}
         fareAmount={completedRide?.final_fare || completedRide?.estimated_fare}
         
-        // 🔥 FIX: Check BOTH naming conventions from the backend just in case!
-        paymentMethod={completedRide?.payment_method || completedRide?.paymentMethod || "cash"} 
+        //If there is cash to collect, it's cash. Otherwise, it's a wallet/card trip!
+        paymentMethod={completedRide?.cash_to_collect > 0 ? "cash" : "wallet"} 
         
         riderName={completedRide?.rider_name || completedRide?.riderName}
         onConfirm={() => setCompletedRide(null)}
