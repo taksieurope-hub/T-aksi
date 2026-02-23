@@ -5,6 +5,9 @@
 # - Consistent serialization of Firestore timestamps
 # - Keeps ALL your routes + logic (auth, rides, matching, surge, chat, wallet, admin)
 
+# ==========================================
+# 1. ALL IMPORTS MUST BE AT THE VERY TOP
+# ==========================================
 import logging
 import math
 import os
@@ -12,6 +15,7 @@ import asyncio
 import base64
 import json
 import re
+import shutil
 from typing import List, Optional
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,32 +24,71 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form
-import shutil
 from pydantic import BaseModel, Field, ConfigDict
 from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from pydantic import BaseModel
-
-class WithdrawalRequest(BaseModel):
-    amount: float
-    bank_details: str
 
 import bcrypt
 import jwt
 import httpx
 
-# =========================
-# PAYPAL HELPERS + ROUTE (FIXED)
-# =========================
+# ==========================================
+# 2. SETUP APP, LOGS, & FIREBASE
+# ==========================================
+load_dotenv()
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="T'aksi API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize Firebase (Ensure you don't double-initialize)
+if not firebase_admin._apps:
+    # If you use a specific JSON cert, put it here instead of ApplicationDefault
+    cred = credentials.ApplicationDefault() 
+    firebase_admin.initialize_app(cred)
+
+def get_db():
+    return firestore.client()
+
+# ==========================================
+# 3. PYDANTIC MODELS
+# ==========================================
+class WithdrawalRequest(BaseModel):
+    amount: float
+    bank_details: str
 
 class PayPalTopUpRequest(BaseModel):
     order_id: str
 
+# ==========================================
+# 4. DEPENDENCIES & AUTH
+# ==========================================
+# 🔥 CRITICAL: Your auth functions MUST be defined before your routes!
+# Ensure your actual 'get_current_user_id' function is placed right here.
+# Example placeholder (replace with your actual auth logic if it's currently at the bottom of your file):
+
+# async def get_current_user_id(token: str = Header(None)):
+#     if not token: raise HTTPException(401, "Missing token")
+#     # ... your decode logic ...
+#     return decoded_user_id
+
+
+# ==========================================
+# 5. PAYPAL HELPERS & ROUTES
+# ==========================================
+PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID", "")
+PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET", "")
+PAYPAL_API_BASE = os.getenv("PAYPAL_API_BASE", "https://api-m.sandbox.paypal.com")
 
 async def get_paypal_token() -> Optional[str]:
-    """
-    Gets a PayPal access token (live or sandbox based on PAYPAL_API_BASE).
-    """
+    """Gets a PayPal access token (live or sandbox based on PAYPAL_API_BASE)."""
     if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
         logger.error("PayPal credentials missing (PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET)")
         return None
@@ -104,10 +147,9 @@ async def driver_topup_paypal(
     # Must be COMPLETED to credit wallet
     status = data.get("status")
     if status != "COMPLETED":
-        # APPROVED means authorized but not captured yet - do NOT credit
         raise HTTPException(400, f"Payment not completed (status={status})")
 
-    # 2) Extract PAID AMOUNT from PayPal (do NOT trust client)
+    # 2) Extract PAID AMOUNT from PayPal
     purchase_units = data.get("purchase_units") or []
     if not purchase_units or not purchase_units[0].get("amount"):
         raise HTTPException(400, "PayPal order missing amount")
@@ -134,7 +176,6 @@ async def driver_topup_paypal(
         .stream()
     )
     if existing:
-        # Already processed
         return {
             "message": "Order already processed",
             "order_id": req.order_id,
@@ -142,7 +183,7 @@ async def driver_topup_paypal(
             "currency": paid_currency,
         }
 
-    # 4) Credit wallet + log transaction (single logical operation)
+    # 4) Credit wallet + log transaction
     db.collection("users").document(user_id).update(
         {
             "earnings.balance": firestore.Increment(paid_amount),
@@ -162,14 +203,16 @@ async def driver_topup_paypal(
         }
     )
 
-    # NOTE: This is credited in the SAME currency PayPal charged (usually USD).
-    # If you want GEL, you must convert server-side and store GEL instead.
     return {
         "message": "Wallet topup successful",
         "order_id": req.order_id,
         "credited_amount": paid_amount,
         "currency": paid_currency,
     }
+
+# ==========================================
+# (YOUR OTHER ROUTES / APP.POST / APP.GET CONTINUE HERE...)
+# ==========================================
 
 @app.post("/api/driver/vehicle", tags=["Driver"])
 async def register_vehicle(
