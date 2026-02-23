@@ -112,24 +112,7 @@ async def get_paypal_token() -> Optional[str]:
             return None
 
 
-@app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
-async def driver_topup_paypal(
-    req: PayPalTopUpRequest,
-    user_id: str = Depends(get_current_user_id),
-):
-    """
-    Verifies PayPal order server-side and credits driver's wallet.
-    SECURITY FIXES:
-    - Do NOT trust amount from client
-    - Only credit on COMPLETED
-    - Prevent double-credit by order_id
-    """
-    if not user_id:
-        raise HTTPException(401, "Not authenticated")
 
-    access_token = await get_paypal_token()
-    if not access_token:
-        raise HTTPException(500, "PayPal auth failed")
 
     # 1) Fetch order from PayPal
     async with httpx.AsyncClient(timeout=25) as client:
@@ -3012,6 +2995,24 @@ async def update_driver_campaign_progress(driver_id: str, ride_data: dict):
 async def health_check():
     return {"status": "healthy", "timestamp": now_iso()}
 
+@app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
+async def driver_topup_paypal(
+    req: PayPalTopUpRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Verifies PayPal order server-side and credits driver's wallet.
+    SECURITY FIXES:
+    - Do NOT trust amount from client
+    - Only credit on COMPLETED
+    - Prevent double-credit by order_id
+    """
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    access_token = await get_paypal_token()
+    if not access_token:
+        raise HTTPException(500, "PayPal auth failed")
 
 @app.get("/api/", tags=["Health"])
 async def root():
