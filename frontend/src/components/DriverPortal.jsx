@@ -73,6 +73,18 @@ const DriverWaitTimer = ({ arrivedAt, carType }) => {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
+    // Fetch immediately on load
+    fetchNearbyRides();
+
+    // Set up an interval to check for new riders every 10 seconds
+    const interval = setInterval(() => {
+      fetchNearbyRides();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     const startTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
     const interval = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTime) / 1000));
@@ -830,6 +842,20 @@ const DriverDashboard = () => {
     toast.error("Could not load trip history");
   } 
 };
+
+// --- FETCH AVAILABLE RIDES ---
+  const fetchNearbyRides = async () => {
+    try {
+      // Calls your FastAPI backend to see who is requesting a taxi
+      const response = await api.get('/driver/rides/available');
+      
+      // Assuming you have a state variable called 'availableRides'
+      // Adjust 'setAvailableRides' if your state variable is named differently!
+      setAvailableRides(response.data.rides || []); 
+    } catch (error) {
+      console.error("Error fetching nearby rides:", error);
+    }
+  };
 
 // 🔥 NEW RIDE NOTIFICATION ALARM FOR DRIVER
   const prevAvailableCount = useRef(0);
