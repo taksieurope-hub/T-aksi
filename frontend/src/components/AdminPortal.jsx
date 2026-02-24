@@ -1,27 +1,27 @@
-﻿import { useState, useEffect } from "react";
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { auth } from "../lib/firebase";
-import { useAuth } from "@/config";
-import api from "@/api";
-import { useLanguage } from "@/i18n/LanguageContext";
-import LanguageSelector from "@/i18n/LanguageSelector";
-import AdminSupportPanel from "@/components/AdminSupportPanel";
-import AdminCampaignsPanel from "@/components/AdminCampaignsPanel";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import {
-  Shield, Users, Car, Home, LogOut, Lock, ArrowLeft, Loader2,
-  CheckCircle2, XCircle, TrendingUp,
-  UserCheck, Banknote, BarChart3, PlusCircle, CreditCard, MessageSquare
- , UserMinus, Search, Wallet, Loader2 } from "lucide-react";
+﻿import { 
+  Search, 
+  Wallet, 
+  UserMinus, 
+  Loader2, 
+  CheckCircle2, 
+  XCircle, 
+  TrendingUp, 
+  UserCheck, 
+  Banknote, 
+  BarChart3, 
+  PlusCircle, 
+  CreditCard, 
+  MessageSquare,
+  User,
+  Car,
+  Star,
+  Lock,
+  Navigation,
+  ArrowLeft,
+  Settings,
+  LogOut,
+  ShieldCheck
+} from "lucide-react";
 
 const ADMIN_PASSWORD = "D'Ahl-Enterprise9409145169086";
 
@@ -925,3 +925,4 @@ const AdminPortal = () => {
 };
 
 export default AdminPortal;
+
