@@ -60,6 +60,30 @@ def get_db():
 # ==========================================
 # 3. PYDANTIC MODELS
 # ==========================================
+# ==========================================
+# 3. PYDANTIC MODELS (DATA DEFINITIONS)
+# ==========================================
+from pydantic import BaseModel
+from typing import Optional
+
+class LocationUpdate(BaseModel):
+    lat: float
+    lng: float
+    heading: Optional[float] = None
+    speed: Optional[float] = None
+
+class TopUpRequest(BaseModel):
+    amount: float
+    payment_reference: str
+
+class WithdrawalRequest(BaseModel):
+    amount: float
+    bank_details: str
+
+class PayPalTopUpRequest(BaseModel):
+    order_id: str
+    amount: Optional[float] = 0.0
+
 class WithdrawalRequest(BaseModel):
     amount: float
     bank_details: str
