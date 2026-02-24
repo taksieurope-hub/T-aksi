@@ -52,3 +52,4 @@ async def continue_trip(ride_id: str, stop_index: int):
     return {"status": "error", "message": "No arrival time found"}
 
 # Rest of your existing routes (login, search, etc.) follow...
+
