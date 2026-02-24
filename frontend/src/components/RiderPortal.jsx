@@ -1550,10 +1550,13 @@ const RiderDashboard = () => {
           <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
             <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]">
               <DialogHeader>
-                <DialogTitle className="text-[#00ff88] flex items-center gap-2">
-                  <CreditCard className="w-5 h-5" /> Pay with Card
-                </DialogTitle>
-              </DialogHeader>
+  <DialogTitle className="text-[#00ff88] flex items-center gap-2">
+    <CreditCard className="w-5 h-5" /> Pay with Card
+  </DialogTitle>
+  <DialogDescription className="text-gray-400 text-xs">
+    Complete your ride payment securely via PayPal.
+  </DialogDescription>
+</DialogHeader>
 
               <div className="mt-2 space-y-3">
                 <p className="text-xs text-gray-400">

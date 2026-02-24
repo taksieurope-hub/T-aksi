@@ -51,7 +51,7 @@ function initMap() {
             map.fitBounds(place.geometry.viewport);
         } else {
             map.setCenter(place.geometry.location);
-            map.setZoom(17);
+            map.panTo({ lat, lng })
         }
 
         marker.setPosition(place.geometry.location);

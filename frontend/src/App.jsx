@@ -3,7 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
-import InstallPrompt from '@/components/InstallPrompt'; // ✅ Imported correctly
+import InstallPrompt from '@/components/InstallPrompt'; 
 
 // Providers
 import { AuthProvider, API } from "@/config";
@@ -13,10 +13,14 @@ import { LanguageProvider } from "@/i18n/LanguageContext";
 import LandingPage from "@/components/LandingPage";
 import RiderPortal from "@/components/RiderPortal";
 import DriverPortal from "@/components/DriverPortal";
-import AdminPortal from "@/components/AdminPortal";
+// 🚀 Verify this path! If it's in a folder called 'adminPortal', change the path below
+import AdminPortal from "@/components/AdminPortal"; 
 
 // Global Components
 import SupportChatWidget from "@/components/SupportChatWidget";
+
+// 🌍 Detect building mode
+const MODE = import.meta.env.VITE_APP_MODE;
 
 /**
  * Axios interceptor (Global)
@@ -32,9 +36,6 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
-/**
- * Stars background (memoized)
- */
 const StarsBackground = () => {
   const stars = useMemo(() => {
     return [...Array(50)].map((_, i) => ({
@@ -65,34 +66,36 @@ const StarsBackground = () => {
 };
 
 function App() {
+  // Debug log to see what the browser actually sees
+  console.log("🛠️ VITE_APP_MODE detected as:", MODE);
+
   return (
     <LanguageProvider>
       <AuthProvider>
         <div className="App min-h-screen bg-black relative">
           <StarsBackground />
-
-          {/* 🔥 THE AGGRESSIVE INSTALL PROMPT LIVES HERE! */}
           <InstallPrompt />
 
           <div className="relative z-10">
             <BrowserRouter>
               <Routes>
-                {/* Public Landing Page */}
-                <Route path="/" element={<LandingPage />} />
-
-                {/* Public trip tracking */}
-                <Route path="/track/:rideId" element={<LandingPage />} />
-
-                <Route path="/admin/*" element={<AdminPortal />} />
+                {/* 🔒 STRICT PORTAL TUNNELING */}
+                {MODE === 'admin' ? (
+                   <Route path="/*" element={<AdminPortal />} />
+                ) : MODE === 'driver' ? (
+                   <Route path="/*" element={<DriverPortal />} />
+                ) : (
+                  <>
+                    <Route path="/" element={<LandingPage />} />
+                    <Route path="/track/:rideId" element={<LandingPage />} />
+                    <Route path="/*" element={<RiderPortal />} />
+                  </>
+                )}
                 
-                <Route path="/rider/*" element={<RiderPortal />} />
-                <Route path="/driver/*" element={<DriverPortal />} />
-
-                {/* Fallback - Redirect unknown routes to Landing Page */}
+                {/* Global Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
               
-              {/* Global Support Chat Widget */}
               <SupportChatWidget />
             </BrowserRouter>
           </div>
