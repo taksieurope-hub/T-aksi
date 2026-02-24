@@ -3138,3 +3138,87 @@ async def approve_withdrawal(wd_id: str, current_user: dict = Depends(get_curren
     except Exception as e:
         logging.error(f"Approval error: {e}")
         raise HTTPException(status_code=500, detail="Failed to mark as paid")
+    
+    # =========================
+# PAYPAL ROUTE (MOVED TO BOTTOM)
+# =========================
+
+class PayPalTopUpRequest(BaseModel):
+    order_id: str
+    amount: float
+
+@app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
+async def driver_topup_paypal(
+    req: PayPalTopUpRequest,
+    current_user: dict = Depends(get_current_user), # 🔥 Uses your actual auth function!
+):
+    """Verifies PayPal order server-side and credits driver's wallet."""
+    
+    # Grab the user ID safely
+    user_id = current_user.get("id") or current_user.get("uid")
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+
+    access_token = await get_paypal_token()
+    if not access_token:
+        raise HTTPException(500, "PayPal auth failed")
+
+    # 1) Fetch order from PayPal
+    async with httpx.AsyncClient(timeout=25) as client:
+        resp = await client.get(
+            f"{PAYPAL_API_BASE}/v2/checkout/orders/{req.order_id}",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(400, "Invalid PayPal order")
+
+    data = resp.json()
+
+    # Must be COMPLETED to credit wallet
+    status = data.get("status")
+    if status != "COMPLETED":
+        raise HTTPException(400, f"Payment not completed (status={status})")
+
+    paid_amount = req.amount
+    if paid_amount <= 0:
+        raise HTTPException(400, "Invalid PayPal paid amount")
+
+    db = get_db()
+
+    # 2) Idempotency: prevent double crediting
+    existing = list(
+        db.collection("wallet_transactions")
+        .where("type", "==", "driver_paypal_topup")
+        .where("order_id", "==", req.order_id)
+        .limit(1)
+        .stream()
+    )
+    if existing:
+        return {"message": "Order already processed", "order_id": req.order_id}
+
+    # 3) Credit wallet + log transaction
+    db.collection("users").document(user_id).update(
+        {
+            "earnings.balance": firestore.Increment(paid_amount),
+            "earnings.total_topped_up": firestore.Increment(paid_amount),
+        }
+    )
+
+    db.collection("wallet_transactions").add(
+        {
+            "driver_id": user_id,
+            "type": "driver_paypal_topup",
+            "amount": paid_amount,
+            "order_id": req.order_id,
+            "paypal_status": status,
+            "created_at": firestore.SERVER_TIMESTAMP,
+        }
+    )
+
+    return {
+        "status": "success",
+        "message": "Wallet topup successful",
+        "order_id": req.order_id,
+        "credited_amount": paid_amount
+    }
