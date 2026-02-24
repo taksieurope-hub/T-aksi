@@ -66,6 +66,11 @@ from typing import Optional
 
 from typing import List, Optional
 
+class LoginRequest(BaseModel):
+    cellphone: Optional[str] = None
+    email: Optional[str] = None
+    password: str
+
 class RatePassengerRequest(BaseModel):
     rating: float = Field(..., ge=1, le=5)
     review: Optional[str] = None
@@ -155,6 +160,55 @@ async def require_driver(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "driver":
         raise HTTPException(403, "Driver access required")
     return {"user_id": current_user["id"], "user": current_user}
+
+# ==========================================
+# AUTHENTICATION ROUTES
+# ==========================================
+from datetime import timedelta
+
+@app.post("/api/auth/login", tags=["Auth"])
+async def login(req: LoginRequest):
+    db = get_db()
+    
+    # Check if user is logging in with phone or email
+    if req.cellphone:
+        users = list(db.collection("users").where("cellphone", "==", req.cellphone).limit(1).stream())
+    elif req.email:
+        users = list(db.collection("users").where("email", "==", req.email).limit(1).stream())
+    else:
+        raise HTTPException(400, "Must provide cellphone or email")
+
+    if not users:
+        raise HTTPException(404, "User not found")
+        
+    user_doc = users[0]
+    user_data = user_doc.to_dict()
+    
+    # Verify password (using bcrypt which you have imported)
+    stored_password = user_data.get("password", "")
+    try:
+        if not bcrypt.checkpw(req.password.encode('utf-8'), stored_password.encode('utf-8')):
+            raise HTTPException(401, "Invalid password")
+    except ValueError:
+        # Fallback just in case passwords were saved as plain text during testing
+        if req.password != stored_password:
+            raise HTTPException(401, "Invalid password")
+        
+    # Generate JWT Token
+    token_data = {
+        "user_id": user_doc.id,
+        "user_type": user_data.get("user_type", "rider"),
+        "exp": datetime.now(timezone.utc) + timedelta(days=30) # Token lasts 30 days
+    }
+    
+    token = jwt.encode(token_data, JWT_SECRET, algorithm="HS256")
+    
+    # Return user data and token to React
+    return {
+        "status": "success",
+        "token": token,
+        "user": serialize_firestore_data({**user_data, "id": user_doc.id})
+    }
 
 # ==========================================
 # 5. PAYPAL HELPERS & ROUTES
@@ -460,7 +514,7 @@ async def request_topup(request: TopUpRequest, user_id: str = Depends(get_curren
 
 
 # --- DRIVER WITHDRAWAL ENDPOINT ---
-@app.post("/driver/withdraw")
+@app.post("/api/driver/withdraw", tags=["Driver"])
 async def request_withdrawal(
     data: WithdrawalRequest, 
     current_user: dict = Depends(get_current_user)
