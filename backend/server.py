@@ -66,6 +66,23 @@ from typing import Optional
 
 from typing import List, Optional
 
+class RiderRegisterRequest(BaseModel):
+    name: str
+    surname: str
+    cellphone: str
+    email: str
+    password: str
+
+class DriverRegisterRequest(BaseModel):
+    name: str
+    surname: str
+    cellphone: str
+    email: str
+    password: str
+    car_model: Optional[str] = ""
+    car_plate: Optional[str] = ""
+    car_color: Optional[str] = ""
+
 class LoginRequest(BaseModel):
     cellphone: Optional[str] = None
     email: Optional[str] = None
@@ -164,7 +181,72 @@ async def require_driver(current_user: dict = Depends(get_current_user)):
 # ==========================================
 # AUTHENTICATION ROUTES
 # ==========================================
-from datetime import timedelta
+# ==========================================
+# REGISTRATION ROUTES
+# ==========================================
+import bcrypt
+from datetime import datetime, timezone
+
+@app.post("/api/auth/register/rider", tags=["Auth"])
+async def register_rider(req: RiderRegisterRequest):
+    db = get_db()
+    
+    # 1. Check if user already exists
+    existing = list(db.collection("users").where("cellphone", "==", req.cellphone).limit(1).stream())
+    if existing:
+        raise HTTPException(status_code=400, detail="A user with this cellphone already exists")
+    
+    # 2. Hash the password securely
+    hashed_password = bcrypt.hashpw(req.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    # 3. Create the user document
+    user_data = {
+        "name": req.name,
+        "surname": req.surname,
+        "cellphone": req.cellphone,
+        "email": req.email,
+        "password": hashed_password,
+        "user_type": "rider",
+        "created_at": datetime.now(timezone.utc),
+        "earnings": {"balance": 0.0} # Riders have wallets too!
+    }
+    
+    # 4. Save to Firestore
+    new_user_ref = db.collection("users").document()
+    new_user_ref.set(user_data)
+    
+    return {"status": "success", "message": "Rider registered successfully", "user_id": new_user_ref.id}
+
+
+@app.post("/api/auth/register/driver", tags=["Auth"])
+async def register_driver(req: DriverRegisterRequest):
+    db = get_db()
+    
+    existing = list(db.collection("users").where("cellphone", "==", req.cellphone).limit(1).stream())
+    if existing:
+        raise HTTPException(status_code=400, detail="A user with this cellphone already exists")
+    
+    hashed_password = bcrypt.hashpw(req.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    user_data = {
+        "name": req.name,
+        "surname": req.surname,
+        "cellphone": req.cellphone,
+        "email": req.email,
+        "password": hashed_password,
+        "user_type": "driver",
+        "car_model": req.car_model,
+        "car_plate": req.car_plate,
+        "car_color": req.car_color,
+        "status": "offline", # Drivers start offline
+        "created_at": datetime.now(timezone.utc),
+        "earnings": {"balance": 0.0}
+    }
+    
+    new_user_ref = db.collection("users").document()
+    new_user_ref.set(user_data)
+    
+    return {"status": "success", "message": "Driver registered successfully", "user_id": new_user_ref.id}
 
 @app.post("/api/auth/login", tags=["Auth"])
 async def login(req: LoginRequest):
