@@ -1631,6 +1631,27 @@ const DriverDashboard = () => {
                   </Card>
                 ) : (
                   <div className="space-y-4">
+            {activeRide?.waiting_on_stop && (
+              <div className="bg-yellow-500/10 border-2 border-yellow-500/50 p-6 rounded-2xl text-center space-y-4 my-4 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-ping" />
+                  <p className="text-yellow-500 font-black uppercase text-sm tracking-widest">Passenger at Stop</p>
+                </div>
+                <div className="text-5xl font-mono text-white font-bold">
+                  {formatWaitTime(waitTimeSeconds)}
+                </div>
+                <div className="bg-yellow-500/20 py-2 rounded-lg">
+                  <p className="text-xs text-yellow-200/70 uppercase font-bold">Current Wait Charge</p>
+                  <p className="text-2xl text-yellow-400 font-bold">₾{waitCharge}</p>
+                </div>
+                <Button 
+                  className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black h-14 text-lg shadow-lg"
+                  onClick={handleContinueTrip}
+                >
+                  CONTINUE TRIP
+                </Button>
+              </div>
+            )}
                     {availableRides.map((raw) => {
                       const ride = normalizeRide(raw);
                       const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
@@ -1685,6 +1706,27 @@ const DriverDashboard = () => {
               {/* NEARBY TAB (FIXED: uses nearbyRides state) */}
               <TabsContent value="nearby">
                 <div className="space-y-4">
+            {activeRide?.waiting_on_stop && (
+              <div className="bg-yellow-500/10 border-2 border-yellow-500/50 p-6 rounded-2xl text-center space-y-4 my-4 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-ping" />
+                  <p className="text-yellow-500 font-black uppercase text-sm tracking-widest">Passenger at Stop</p>
+                </div>
+                <div className="text-5xl font-mono text-white font-bold">
+                  {formatWaitTime(waitTimeSeconds)}
+                </div>
+                <div className="bg-yellow-500/20 py-2 rounded-lg">
+                  <p className="text-xs text-yellow-200/70 uppercase font-bold">Current Wait Charge</p>
+                  <p className="text-2xl text-yellow-400 font-bold">₾{waitCharge}</p>
+                </div>
+                <Button 
+                  className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black h-14 text-lg shadow-lg"
+                  onClick={handleContinueTrip}
+                >
+                  CONTINUE TRIP
+                </Button>
+              </div>
+            )}
                   <div className="flex justify-end mb-2">
                     <Button
                       size="sm"
@@ -1957,6 +1999,27 @@ const DriverDashboard = () => {
                 <Separator className="bg-white/10" />
 
                 <div className="space-y-4">
+            {activeRide?.waiting_on_stop && (
+              <div className="bg-yellow-500/10 border-2 border-yellow-500/50 p-6 rounded-2xl text-center space-y-4 my-4 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-ping" />
+                  <p className="text-yellow-500 font-black uppercase text-sm tracking-widest">Passenger at Stop</p>
+                </div>
+                <div className="text-5xl font-mono text-white font-bold">
+                  {formatWaitTime(waitTimeSeconds)}
+                </div>
+                <div className="bg-yellow-500/20 py-2 rounded-lg">
+                  <p className="text-xs text-yellow-200/70 uppercase font-bold">Current Wait Charge</p>
+                  <p className="text-2xl text-yellow-400 font-bold">₾{waitCharge}</p>
+                </div>
+                <Button 
+                  className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black h-14 text-lg shadow-lg"
+                  onClick={handleContinueTrip}
+                >
+                  CONTINUE TRIP
+                </Button>
+              </div>
+            )}
                   <h3 className="text-[#00ff88] text-sm font-bold flex items-center">
                     <Banknote className="w-4 h-4 mr-2" /> Withdraw Earnings
                   </h3>
@@ -2177,6 +2240,40 @@ const DriverDashboard = () => {
 
 // ---------- Main Router ----------
 const DriverPortal = () => {
+  const [waitTimeSeconds, setWaitTimeSeconds] = useState(0);
+
+  // ⏱️ Timer Logic: Calculates elapsed time and 0.40/min charge
+  useEffect(() => {
+    let interval;
+    if (activeRide?.waiting_on_stop) {
+      interval = setInterval(() => {
+        setWaitTimeSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      setWaitTimeSeconds(0);
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [activeRide?.waiting_on_stop]);
+
+  const formatWaitTime = (totalSeconds) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const waitCharge = (waitTimeSeconds / 60 * 0.40).toFixed(2);
+
+  const handleContinueTrip = async () => {
+    try {
+      await api.post(`/rides/${activeRide.id}/continue-from-stop`, { 
+        stop_index: activeRide.current_stop_index 
+      });
+      toast.success("Trip resumed!");
+    } catch (err) {
+      toast.error("Failed to resume trip.");
+    }
+  };
   const { user } = useAuth();
   const location = useLocation();
 
