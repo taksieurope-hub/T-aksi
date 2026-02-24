@@ -521,35 +521,31 @@ useEffect(() => {
 ]);
 
   // --- MANUAL ZOOM CONTROLS ---
-  const handleZoomIn = () => {
-    if (mapInstanceRef.current) mapInstanceRef.current.setZoom(mapInstanceRef.current.getZoom() + 1);
-  };
-  const handleZoomOut = () => {
-    if (mapInstanceRef.current) mapInstanceRef.current.setZoom(mapInstanceRef.current.getZoom() - 1);
-  };
+const handleZoomIn = () => {
+  if (mapInstanceRef.current) {
+    setIsFollowing(false); // Stop auto-snapping!
+    mapInstanceRef.current.setZoom(mapInstanceRef.current.getZoom() + 1);
+  }
+};
 
-  const handleRecenter = () => {
-      setIsFollowing(true);
-      if (driverLocation) {
-          mapInstanceRef.current.panTo({ lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) });
-      }
-  };
+const handleZoomOut = () => {
+  if (mapInstanceRef.current) {
+    setIsFollowing(false); // Stop auto-snapping!
+    mapInstanceRef.current.setZoom(mapInstanceRef.current.getZoom() - 1);
+  }
+};
 
-  const handleNav = (app) => { 
-    if (!activeRide) return;
-    let destLat, destLng; let waypoints = "";
-    if (["accepted", "arrived"].includes(activeRide.status)) { destLat = activeRide.pickup_lat; destLng = activeRide.pickup_lng; } 
-    else {
-        destLat = activeRide.dest_lat || activeRide.destination_lat; destLng = activeRide.dest_lng || activeRide.destination_lng;
-        if (activeRide.stops && activeRide.stops.length > 0 && app === 'google') {
-            const stopsStr = activeRide.stops.filter(s => s.lat && s.lng).map(s => `${s.lat},${s.lng}`).join('|');
-            if (stopsStr) waypoints = `&waypoints=${stopsStr}`;
-        }
-    }
-    if (!destLat || !destLng) return toast.error("No destination coordinates found");
-    const url = app === 'waze' ? `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes` : `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
-    window.open(url, '_blank');
-  };
+const handleRecenter = () => {
+  setIsFollowing(true); // Turn auto-follow back on!
+  if (driverLocation && mapInstanceRef.current) {
+    mapInstanceRef.current.panTo({ 
+      lat: parseFloat(driverLocation.lat), 
+      lng: parseFloat(driverLocation.lng) 
+    });
+    // Optional: Reset zoom to a nice driving level
+    mapInstanceRef.current.setZoom(17); 
+  }
+};
 
   // Turn Icon Mapper
   const getTurnIcon = (maneuver) => {
@@ -821,8 +817,19 @@ const DriverDashboard = () => {
 
   const fetchAvailableRides = async () => { try { const res = await api.get(`/driver/rides/available`); setAvailableRides(res.data.rides || []); } catch (e) {} };
   const fetchActiveRide = async () => { try { const res = await api.get(`/driver/active-ride`); if (res.data) { setActiveRide(res.data); setActiveTab("rides"); } } catch (e) {} };
-  const fetchRideHistory = async () => { try { const res = await api.get(`/driver/history`); setRideHistory(res.data.rides || []); } catch (e) {} };
-  const fetchNearbyRides = async () => { try { const res = await api.get(`/driver/rides/nearby?radius=${searchRadius}`); setNearbyRides(res.data.rides || []); } catch (e) {} };
+  const fetchRideHistory = async () => { 
+  try { 
+    const res = await api.get(`/driver/history`); 
+    
+    // 🔥 Print EXACTLY what Python is sending us to the browser console
+    console.log("Raw History Data from Backend:", res.data); 
+    
+    setRideHistory(res.data.rides || []); 
+  } catch (e) {
+    console.error("History fetch error:", e);
+    toast.error("Could not load trip history");
+  } 
+};
 
 // 🔥 NEW RIDE NOTIFICATION ALARM FOR DRIVER
   const prevAvailableCount = useRef(0);
@@ -1002,7 +1009,31 @@ const DriverDashboard = () => {
   const handleDeclineRide = async (rideId) => { try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(p => p.filter(r => r.id !== rideId)); toast.info("Declined"); } catch (e) {} };
   const handleRequestToJoin = async (rideId) => { setLoading(true); try { await api.post(`/rides/${rideId}/request-join`); toast.success("Requested!"); fetchAvailableRides(); } catch (e) {} finally { setLoading(false); } };
   const handleRequestTopup = async () => { setLoading(true); try { await api.post(`/driver/topup/request`, { amount: parseFloat(topupAmount), payment_reference: topupReference }); toast.success("Request sent"); window.open("https://bankofgeorgia.ge", "_blank"); } catch(e) {} finally { setLoading(false); } };
-  const handleWithdrawal = async () => { setLoading(true); try { await api.post(`/driver/withdraw`, { amount: parseFloat(withdrawalData.amount), bank_details: withdrawalData.bank_details }); toast.success("Requested"); } catch(e) {} finally { setLoading(false); } };
+  const handleWithdrawal = async () => { 
+  setLoading(true); 
+  try { 
+    // Make sure 'withdrawalData.amount' and 'bank_details' are actually filled out!
+    await api.post(`/driver/withdraw`, { 
+      amount: parseFloat(withdrawalData.amount), 
+      bank_details: withdrawalData.bank_details 
+    }); 
+    
+    toast.success("Withdrawal requested successfully!"); 
+    
+    // Optional: Reset the form or close the modal here
+    // setShowWithdrawModal(false);
+
+  } catch(e) {
+    console.error("Withdrawal error:", e);
+    
+    // 🔥 This is the magic line. It will pop up a red toast with the EXACT error message from Python!
+    const errorMessage = e.response?.data?.detail || "Withdrawal failed. Please check your balance.";
+    toast.error(errorMessage);
+
+  } finally { 
+    setLoading(false); 
+  } 
+};
 
   const statusColors = { pending_vehicle: "bg-yellow-500 text-black", pending_review: "bg-orange-500 text-black", approved: "bg-[#00ff88] text-black", rejected: "bg-red-500 text-white" };
   const rideStatusColors = { searching: "bg-yellow-500 text-black", accepted: "bg-blue-500 text-white", arrived: "bg-purple-500 text-white", in_progress: "bg-[#00ff88] text-black", completed: "bg-green-600 text-white", cancelled: "bg-red-500 text-white" };
@@ -1499,7 +1530,7 @@ const DriverDashboard = () => {
         style={{ layout: "vertical", shape: "rect" }}
         disabled={loading}
 
-        createOrder={async () => {
+        createOrder={(data, actions) => {
           // 1) amount in GEL from your UI
           const gelAmount = Number(topupAmount);
           if (!gelAmount || gelAmount <= 0) {
@@ -1507,17 +1538,20 @@ const DriverDashboard = () => {
             throw new Error("Invalid topup amount");
           }
 
-          // 2) OPTIONAL: if your backend expects USD, convert here.
-          // If your backend already handles GEL, REMOVE conversion and just send gelAmount.
+          // 2) convert to USD for PayPal
           const usdAmount = (gelAmount * 0.37).toFixed(2);
 
-          // 3) call backend to create PayPal order
-          const res = await api.post("/api/paypal/create-order", {
-            amount: usdAmount,
+          // 3) Create order directly via PayPal SDK (NO BACKEND CALL HERE)
+          return actions.order.create({
+            purchase_units: [
+              {
+                amount: {
+                  value: usdAmount,
+                  currency_code: "USD",
+                },
+              },
+            ],
           });
-
-          // backend returns { id: "PAYPAL_ORDER_ID", ... }
-          return res.data.id;
         }}
 
         onApprove={async (data) => {
@@ -1525,8 +1559,9 @@ const DriverDashboard = () => {
             setLoading(true);
 
             // This is the IMPORTANT part:
-            // After PayPal approves/captures, you update wallet in YOUR backend
-            await api.post("/api/driver/wallet/topup/paypal", {
+            // Send the successful PayPal order ID to your backend for verification.
+            // 🔥 FIXED: Removed the "/api" prefix because your 'api' instance already adds it!
+            await api.post("/driver/wallet/topup/paypal", {
               order_id: data.orderID,
               amount: Number(topupAmount), // wallet credited in GEL
             });
@@ -1535,7 +1570,7 @@ const DriverDashboard = () => {
             setShowCardModal(false);
           } catch (err) {
             console.error(err);
-            toast.error("Top-up failed");
+            toast.error("Top-up failed during verification");
           } finally {
             setLoading(false);
           }
@@ -1584,13 +1619,13 @@ const DriverPortal = () => {
 
   return (
     <PayPalScriptProvider
-  options={{
-    "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
-    currency: "USD",
-    locale: "en_US",
-    components: "buttons,card-fields" // keep it explicit
-  }}
->
+      options={{
+        "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
+        currency: "USD",
+        locale: "en_US",
+        components: "buttons,card-fields" // keep it explicit
+      }}
+    >
       <Routes>
         <Route path="/" element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DriverDashboard />} />
