@@ -18,7 +18,7 @@ import re
 import shutil
 import uuid
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import firebase_admin
@@ -56,6 +56,20 @@ if not firebase_admin._apps:
 
 def get_db():
     return firestore.client()
+
+def get_db():
+    return firestore.client()
+
+
+def serialize_firestore_data(data):
+    """Recursively converts Firestore dates/objects into JSON-friendly formats."""
+    if isinstance(data, dict):
+        return {k: serialize_firestore_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [serialize_firestore_data(v) for v in data]
+    elif hasattr(data, 'timestamp'):  # Handles Firestore Datetime
+        return data.isoformat() if hasattr(data, 'isoformat') else str(data)
+    return data
 
 # ==========================================
 # 3. PYDANTIC MODELS
@@ -181,11 +195,7 @@ async def require_driver(current_user: dict = Depends(get_current_user)):
 # ==========================================
 # AUTHENTICATION ROUTES
 # ==========================================
-# ==========================================
-# REGISTRATION ROUTES
-# ==========================================
 import bcrypt
-from datetime import datetime, timezone
 
 @app.post("/api/auth/register/rider", tags=["Auth"])
 async def register_rider(req: RiderRegisterRequest):
