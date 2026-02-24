@@ -14,7 +14,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 app = FastAPI(title="T'aksi API")
 
-# --- BROAD CORS ALLOWANCE ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,24 +36,12 @@ JWT_SECRET = os.getenv("JWT_SECRET", "dev_secret_change_me")
 JWT_ALGORITHM = "HS256"
 
 def normalize_phone(p): return re.sub(r"[^\d+]", "", str(p).strip())
+
 def serialize_firestore_data(d):
     if isinstance(d, dict): return {k: serialize_firestore_data(v) for k, v in d.items()}
     if isinstance(d, list): return [serialize_firestore_data(v) for v in d]
     if hasattr(d, "timestamp"): return d.isoformat()
     return d
-
-async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
-    if not creds: raise HTTPException(401, "Not authenticated")
-    try:
-        p = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_signature": False})
-        uid = p.get("id") or p.get("sub") or p.get("user_id")
-        doc = get_db().collection("users").document(uid).get()
-        if not doc.exists: raise HTTPException(401, "User not found")
-        data = doc.to_dict(); data["id"] = uid
-        return data
-    except Exception as e:
-        logger.error(f"Auth Error: {e}")
-        raise HTTPException(401, "Invalid token")
 
 class LoginRequest(BaseModel):
     cellphone: Optional[str] = None
@@ -65,7 +52,8 @@ class LoginRequest(BaseModel):
 async def reg_rider(req: dict):
     db = get_db()
     phone = normalize_phone(req.get("cellphone") or req.get("phone") or f"u_{uuid.uuid4().hex[:6]}")
-    hashed = bcrypt.hashpw((req.get("password") or "pass").encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    pw = str(req.get("password") or "pass")
+    hashed = bcrypt.hashpw(pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     data = {"name": req.get("name","Test"), "surname": req.get("surname","User"), "cellphone": phone, "password": hashed, "user_type": "rider", "created_at": datetime.now(timezone.utc)}
     ref = db.collection("users").document(); ref.set(data)
     return {"status": "success", "user_id": ref.id}
@@ -75,23 +63,43 @@ async def reg_rider(req: dict):
 async def login(req: LoginRequest):
     db = get_db()
     try:
-        search = normalize_phone(req.cellphone) if req.cellphone else req.email.lower().strip()
+        search = normalize_phone(req.cellphone) if req.cellphone else str(req.email).lower().strip()
         field = "cellphone" if req.cellphone else "email"
         users = list(db.collection("users").where(field, "==", search).limit(1).stream())
+        
         if not users: raise HTTPException(404, "User not found")
-        u_doc = users[0]; u_data = u_doc.to_dict()
+        
+        u_doc = users[0]
+        u_data = u_doc.to_dict()
+        stored_pw = str(u_data.get('password', ''))
+        provided_pw = str(req.password)
+        
         match = False
-        stored_pw = u_data.get('password', '')
         try:
-            if bcrypt.checkpw(req.password.encode('utf-8'), stored_pw.encode('utf-8')): match = True
+            if bcrypt.checkpw(provided_pw.encode('utf-8'), stored_pw.encode('utf-8')): match = True
         except:
-            if req.password == stored_pw: match = True
+            if provided_pw == stored_pw: match = True
+            
         if not match: raise HTTPException(401, "Invalid password")
-        token = jwt.encode({"id": u_doc.id, "user_type": u_data.get("user_type","rider"), "exp": datetime.now(timezone.utc)+timedelta(days=30)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
-        return {"status": "success", "token": token, "user": serialize_firestore_data({**u_data, "id": u_doc.id})}
+        
+        token_payload = {
+            "id": u_doc.id,
+            "user_type": u_data.get("user_type","rider"),
+            "exp": datetime.now(timezone.utc) + timedelta(days=30)
+        }
+        
+        # Ensure token is a string
+        token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        if isinstance(token, bytes): token = token.decode('utf-8')
+        
+        return {
+            "status": "success",
+            "token": token,
+            "user": serialize_firestore_data({**u_data, "id": u_doc.id})
+        }
     except Exception as e:
-        logger.error(f"Login Crash: {e}")
-        raise HTTPException(500, str(e))
+        logger.error(f"Login Crash: {str(e)}")
+        raise HTTPException(500, detail=str(e))
 
 @app.get("/api/health")
 async def health(): return {"status": "healthy"}
