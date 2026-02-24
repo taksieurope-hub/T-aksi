@@ -32,7 +32,7 @@ if not firebase_admin._apps:
 def get_db(): return firestore.client()
 
 security = HTTPBearer(auto_error=False)
-JWT_SECRET = os.getenv("JWT_SECRET", "dev_secret_change_me")
+JWT_SECRET = str(os.getenv("JWT_SECRET", "dev_secret_change_me"))
 JWT_ALGORITHM = "HS256"
 
 def normalize_phone(p): return re.sub(r"[^\d+]", "", str(p).strip())
@@ -63,10 +63,15 @@ async def reg_rider(req: dict):
 async def login(req: LoginRequest):
     db = get_db()
     try:
-        search = normalize_phone(req.cellphone) if req.cellphone else str(req.email).lower().strip()
+        # Use whatever identifier React provides
+        search_val = req.cellphone or req.email
+        if not search_val:
+            raise HTTPException(400, "Missing credentials")
+            
+        search = normalize_phone(search_val) if req.cellphone else str(search_val).lower().strip()
         field = "cellphone" if req.cellphone else "email"
-        users = list(db.collection("users").where(field, "==", search).limit(1).stream())
         
+        users = list(db.collection("users").where(field, "==", search).limit(1).stream())
         if not users: raise HTTPException(404, "User not found")
         
         u_doc = users[0]
@@ -83,23 +88,25 @@ async def login(req: LoginRequest):
         if not match: raise HTTPException(401, "Invalid password")
         
         token_payload = {
-            "id": u_doc.id,
+            "id": str(u_doc.id),
             "user_type": u_data.get("user_type","rider"),
             "exp": datetime.now(timezone.utc) + timedelta(days=30)
         }
         
-        # Ensure token is a string
         token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        # Handle cases where jwt.encode returns bytes
         if isinstance(token, bytes): token = token.decode('utf-8')
         
         return {
             "status": "success",
-            "token": token,
+            "token": str(token),
             "user": serialize_firestore_data({**u_data, "id": u_doc.id})
         }
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        logger.error(f"Login Crash: {str(e)}")
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"FATAL LOGIN CRASH: {str(e)}")
+        raise HTTPException(500, detail=f"Backend Error: {str(e)}")
 
 @app.get("/api/health")
 async def health(): return {"status": "healthy"}
