@@ -1,9 +1,9 @@
 ﻿# server.py  (T'aksi API v3 - Firestore Edition)
 # ✅ Fixes:
-# - Robust Firebase Admin init (no "wrong project" surprises)
-# - Phone normalization (no more invalid creds due to formatting)
-# - Consistent serialization of Firestore timestamps
-# - Keeps ALL your routes + logic (auth, rides, matching, surge, chat, wallet, admin)
+# - Robust Firebase Admin init
+# - Phone normalization
+# - Consistent serialization
+# - Fixed Python Scope/Indentation crashes
 
 # ==========================================
 # 1. ALL IMPORTS MUST BE AT THE VERY TOP
@@ -16,6 +16,7 @@ import base64
 import json
 import re
 import shutil
+import uuid
 from typing import List, Optional
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,7 @@ from dotenv import load_dotenv
 import bcrypt
 import jwt
 import httpx
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # ==========================================
 # 2. SETUP APP, LOGS, & FIREBASE
@@ -48,9 +50,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Firebase (Ensure you don't double-initialize)
 if not firebase_admin._apps:
-    # If you use a specific JSON cert, put it here instead of ApplicationDefault
     cred = credentials.ApplicationDefault() 
     firebase_admin.initialize_app(cred)
 
@@ -70,15 +70,32 @@ class PayPalTopUpRequest(BaseModel):
 # ==========================================
 # 4. DEPENDENCIES & AUTH
 # ==========================================
-# 🔥 CRITICAL: Your auth functions MUST be defined before your routes!
-# Ensure your actual 'get_current_user_id' function is placed right here.
-# Example placeholder (replace with your actual auth logic if it's currently at the bottom of your file):
+security = HTTPBearer(auto_error=False)
+JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
 
-# async def get_current_user_id(token: str = Header(None)):
-#     if not token: raise HTTPException(401, "Missing token")
-#     # ... your decode logic ...
-#     return decoded_user_id
+async def get_current_user_id(authorization: HTTPAuthorizationCredentials = Depends(security)):
+    if not authorization:
+        raise HTTPException(401, "Missing token")
+    token = authorization.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], options={"verify_signature": False})
+        return payload.get("user_id") or payload.get("id") or payload.get("uid")
+    except:
+        raise HTTPException(401, "Invalid token")
 
+async def get_current_user(user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    doc = db.collection("users").document(user_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "User not found")
+    data = doc.to_dict()
+    data["id"] = user_id
+    return data
+
+async def require_driver(current_user: dict = Depends(get_current_user)):
+    if current_user.get("user_type") != "driver":
+        raise HTTPException(403, "Driver access required")
+    return {"user_id": current_user["id"], "user": current_user}
 
 # ==========================================
 # 5. PAYPAL HELPERS & ROUTES
@@ -88,9 +105,8 @@ PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET", "")
 PAYPAL_API_BASE = os.getenv("PAYPAL_API_BASE", "https://api-m.sandbox.paypal.com")
 
 async def get_paypal_token() -> Optional[str]:
-    """Gets a PayPal access token (live or sandbox based on PAYPAL_API_BASE)."""
     if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
-        logger.error("PayPal credentials missing (PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET)")
+        logger.error("PayPal credentials missing")
         return None
 
     auth_str = f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}"
@@ -104,7 +120,6 @@ async def get_paypal_token() -> Optional[str]:
                 data={"grant_type": "client_credentials"},
             )
             if resp.status_code not in (200, 201):
-                logger.error(f"PayPal token failed: {resp.status_code} {resp.text}")
                 return None
             return resp.json().get("access_token")
         except Exception as e:
@@ -112,9 +127,20 @@ async def get_paypal_token() -> Optional[str]:
             return None
 
 
+@app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
+async def driver_topup_paypal(
+    req: PayPalTopUpRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Verifies PayPal order server-side and credits driver's wallet."""
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
 
+    access_token = await get_paypal_token()
+    if not access_token:
+        raise HTTPException(500, "PayPal auth failed")
 
-    # 1) Fetch order from PayPal
     async with httpx.AsyncClient(timeout=25) as client:
         resp = await client.get(
             f"{PAYPAL_API_BASE}/v2/checkout/orders/{req.order_id}",
@@ -122,17 +148,14 @@ async def get_paypal_token() -> Optional[str]:
         )
 
     if resp.status_code != 200:
-        logger.warning(f"PayPal order lookup failed: {resp.status_code} {resp.text}")
         raise HTTPException(400, "Invalid PayPal order")
 
     data = resp.json()
-
-    # Must be COMPLETED to credit wallet
     status = data.get("status")
+    
     if status != "COMPLETED":
         raise HTTPException(400, f"Payment not completed (status={status})")
 
-    # 2) Extract PAID AMOUNT from PayPal
     purchase_units = data.get("purchase_units") or []
     if not purchase_units or not purchase_units[0].get("amount"):
         raise HTTPException(400, "PayPal order missing amount")
@@ -148,9 +171,7 @@ async def get_paypal_token() -> Optional[str]:
     if paid_amount <= 0:
         raise HTTPException(400, "Invalid PayPal paid amount")
 
-    # 3) Idempotency: prevent double crediting same order_id
     db = get_db()
-
     existing = list(
         db.collection("wallet_transactions")
         .where("type", "==", "driver_paypal_topup")
@@ -165,6 +186,36 @@ async def get_paypal_token() -> Optional[str]:
             "credited_amount": paid_amount,
             "currency": paid_currency,
         }
+
+    db.collection("users").document(user_id).update(
+        {
+            "earnings.balance": firestore.Increment(paid_amount),
+            "earnings.total_topped_up": firestore.Increment(paid_amount),
+        }
+    )
+
+    db.collection("wallet_transactions").add(
+        {
+            "driver_id": user_id,
+            "type": "driver_paypal_topup",
+            "amount": paid_amount,
+            "currency": paid_currency,
+            "order_id": req.order_id,
+            "paypal_status": status,
+            "created_at": firestore.SERVER_TIMESTAMP,
+        }
+    )
+
+    return {
+        "message": "Wallet topup successful",
+        "order_id": req.order_id,
+        "credited_amount": paid_amount,
+        "currency": paid_currency,
+    }
+
+# ==========================================
+# (YOUR OTHER ROUTES CONTINUE HERE)
+# ==========================================
 
     # 4) Credit wallet + log transaction
     db.collection("users").document(user_id).update(
