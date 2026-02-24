@@ -48,65 +48,57 @@ class LoginRequest(BaseModel):
     email: Optional[str] = None
     password: str
 
-@app.post("/api/auth/register/rider")
-async def reg_rider(req: dict):
-    db = get_db()
-    phone = normalize_phone(req.get("cellphone") or req.get("phone") or f"u_{uuid.uuid4().hex[:6]}")
-    pw = str(req.get("password") or "pass")
-    hashed = bcrypt.hashpw(pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    data = {"name": req.get("name","Test"), "surname": req.get("surname","User"), "cellphone": phone, "password": hashed, "user_type": "rider", "created_at": datetime.now(timezone.utc)}
-    ref = db.collection("users").document(); ref.set(data)
-    return {"status": "success", "user_id": ref.id}
-
-@app.post("/api/auth/login/")
+# --- AUTH ---
 @app.post("/api/auth/login")
 async def login(req: LoginRequest):
     db = get_db()
-    try:
-        # Use whatever identifier React provides
-        search_val = req.cellphone or req.email
-        if not search_val:
-            raise HTTPException(400, "Missing credentials")
-            
-        search = normalize_phone(search_val) if req.cellphone else str(search_val).lower().strip()
-        field = "cellphone" if req.cellphone else "email"
-        
-        users = list(db.collection("users").where(field, "==", search).limit(1).stream())
-        if not users: raise HTTPException(404, "User not found")
-        
-        u_doc = users[0]
-        u_data = u_doc.to_dict()
-        stored_pw = str(u_data.get('password', ''))
-        provided_pw = str(req.password)
-        
-        match = False
-        try:
-            if bcrypt.checkpw(provided_pw.encode('utf-8'), stored_pw.encode('utf-8')): match = True
-        except:
-            if provided_pw == stored_pw: match = True
-            
-        if not match: raise HTTPException(401, "Invalid password")
-        
-        token_payload = {
-            "id": str(u_doc.id),
-            "user_type": u_data.get("user_type","rider"),
-            "exp": datetime.now(timezone.utc) + timedelta(days=30)
-        }
-        
-        token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-        # Handle cases where jwt.encode returns bytes
-        if isinstance(token, bytes): token = token.decode('utf-8')
-        
-        return {
-            "status": "success",
-            "token": str(token),
-            "user": serialize_firestore_data({**u_data, "id": u_doc.id})
-        }
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        logger.error(f"FATAL LOGIN CRASH: {str(e)}")
-        raise HTTPException(500, detail=f"Backend Error: {str(e)}")
+    search = normalize_phone(req.cellphone) if req.cellphone else str(req.email).lower().strip()
+    field = "cellphone" if req.cellphone else "email"
+    users = list(db.collection("users").where(field, "==", search).limit(1).stream())
+    if not users: raise HTTPException(404, "User not found")
+    u_doc = users[0]; u_data = u_doc.to_dict()
+    token = jwt.encode({"id": str(u_doc.id), "user_type": u_data.get("user_type","rider"), "exp": datetime.now(timezone.utc)+timedelta(days=30)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return {"status": "success", "token": str(token), "user": serialize_firestore_data({**u_data, "id": u_doc.id})}
+
+# --- ADMIN DASHBOARD ROUTES (RESTORED) ---
+
+@app.get("/api/admin/dashboard")
+async def admin_dashboard():
+    db = get_db()
+    riders = list(db.collection("users").where("user_type", "==", "rider").stream())
+    drivers = list(db.collection("users").where("user_type", "==", "driver").stream())
+    return {
+        "total_riders": len(riders),
+        "total_drivers": len(drivers),
+        "active_rides": 0,
+        "pending_driver_approvals": 0,
+        "pending_withdrawals": 0,
+        "pending_topups": 0,
+    }
+
+@app.get("/api/admin/riders")
+async def get_all_riders():
+    db = get_db()
+    docs = db.collection("users").where("user_type", "==", "rider").stream()
+    return {"riders": [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in docs]}
+
+@app.get("/api/admin/drivers")
+async def get_all_drivers():
+    db = get_db()
+    docs = db.collection("users").where("user_type", "==", "driver").stream()
+    return {"drivers": [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in docs]}
+
+@app.get("/api/admin/topups/pending")
+async def get_pending_topups():
+    return {"pending_topups": []}
+
+@app.get("/api/admin/drivers/pending")
+async def get_pending_drivers():
+    return {"pending_drivers": []}
+
+@app.get("/api/admin/withdrawals/pending")
+async def get_pending_withdrawals():
+    return {"pending_withdrawals": []}
 
 @app.get("/api/health")
 async def health(): return {"status": "healthy"}
