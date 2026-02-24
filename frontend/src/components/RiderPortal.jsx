@@ -23,7 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
@@ -1550,9 +1550,9 @@ const RiderDashboard = () => {
           <Dialog open={showCardModal} onOpenChange={setShowCardModal}>
             <DialogContent className="bg-[#1a1a2e] border border-[#00ff88]/30 text-white sm:max-w-md w-[95%]">
               <DialogHeader>
-  <DialogTitle className="text-[#00ff88] flex items-center gap-2">
+  <DialogTitle, DialogDescription className="text-[#00ff88] flex items-center gap-2">
     <CreditCard className="w-5 h-5" /> Pay with Card
-  </DialogTitle>
+  </DialogTitle, DialogDescription>
   <DialogDescription className="text-gray-400 text-xs">
     Complete your ride payment securely via PayPal.
   </DialogDescription>
@@ -1931,4 +1931,5 @@ const RiderPortal = () => {
 };
 
 export default RiderPortal;
+
 
