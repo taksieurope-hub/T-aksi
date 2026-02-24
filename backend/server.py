@@ -66,6 +66,24 @@ from typing import Optional
 
 from typing import List, Optional
 
+class RatePassengerRequest(BaseModel):
+    rating: float = Field(..., ge=1, le=5)
+    review: Optional[str] = None
+
+class RateDriverRequest(BaseModel):
+    rating: float = Field(..., ge=1, le=5)
+    review: Optional[str] = None
+
+class ChatMessage(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000)
+
+class RiderWalletTopUp(BaseModel):
+    amount: float = Field(..., gt=0)
+
+class AdminAddBalanceRequest(BaseModel):
+    amount: float
+    reason: Optional[str] = "Adjustment"
+
 class Stop(BaseModel):
     address: str
     lat: float
@@ -100,10 +118,6 @@ class TopUpRequest(BaseModel):
 class WithdrawalRequest(BaseModel):
     amount: float
     bank_details: str
-
-class PayPalTopUpRequest(BaseModel):
-    order_id: str
-    amount: Optional[float] = 0.0
 
 class WithdrawalRequest(BaseModel):
     amount: float
@@ -171,13 +185,6 @@ async def get_paypal_token() -> Optional[str]:
             logger.error(f"PayPal Token Error: {e}")
             return None
 
-
-@app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
-async def driver_topup_paypal(
-    req: PayPalTopUpRequest,
-    current_user: dict = Depends(get_current_user)
-):
-    """Verifies PayPal order server-side and credits driver's wallet."""
     user_id = current_user.get("id")
     if not user_id:
         raise HTTPException(401, "Not authenticated")
@@ -3191,9 +3198,7 @@ async def root():
     return {"message": "T'aksi API v3 - Firebase Edition"}
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)
+
 # ==========================================
 # 🔥 ADMIN MANAGEMENT ROUTES
 # ==========================================
@@ -3238,17 +3243,6 @@ async def approve_withdrawal(wd_id: str, current_user: dict = Depends(get_curren
     # =========================
 # PAYPAL ROUTE (MOVED TO BOTTOM)
 # =========================
-
-class PayPalTopUpRequest(BaseModel):
-    order_id: str
-    amount: float
-
-@app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
-async def driver_topup_paypal(
-    req: PayPalTopUpRequest,
-    current_user: dict = Depends(get_current_user), # 🔥 Uses your actual auth function!
-):
-    """Verifies PayPal order server-side and credits driver's wallet."""
     
     # Grab the user ID safely
     user_id = current_user.get("id") or current_user.get("uid")
@@ -3318,3 +3312,26 @@ async def driver_topup_paypal(
         "order_id": req.order_id,
         "credited_amount": paid_amount
     }
+
+# =========================
+# HEALTH
+# =========================
+@app.get("/api/health", tags=["Health"])
+async def health_check():
+    return {"status": "healthy"}
+
+@app.get("/api/", tags=["Health"])
+async def root():
+    return {"message": "T'aksi API v3"}
+
+# =========================
+# MAIN ENTRY (LAST THING IN FILE)
+# =========================
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "8000")),
+        reload=True
+    )
