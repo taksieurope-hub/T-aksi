@@ -410,7 +410,7 @@ async def register_rider(req: dict):
 
     return {"status": "success", "message": "Rider registered successfully", "user_id": new_user_ref.id}
 
-@app.post("/api/auth/login", tags=["Auth"])
+@app.post("/api/auth/login/", tags=["Auth"])
 async def login(req: LoginRequest):
     db = get_db()
     
@@ -2422,3 +2422,7 @@ async def resolve_ticket(ticket_id: str, notes: str = ""):
         "updated_at": firestore.SERVER_TIMESTAMP,
     })
     return {"status": "closed"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)
