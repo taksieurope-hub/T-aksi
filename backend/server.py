@@ -410,6 +410,46 @@ async def register_rider(req: dict):
 
     return {"status": "success", "message": "Rider registered successfully", "user_id": new_user_ref.id}
 
+@app.post("/api/auth/login", tags=["Auth"])
+async def login(req: LoginRequest):
+    db = get_db()
+    
+    if req.cellphone:
+        users = list(db.collection("users").where("cellphone", "==", req.cellphone).limit(1).stream())
+    elif req.email:
+        users = list(db.collection("users").where("email", "==", req.email).limit(1).stream())
+    else:
+        raise HTTPException(400, "Must provide cellphone or email")
+
+    if not users:
+        raise HTTPException(404, "User not found")
+        
+    user_doc = users[0]
+    user_data = user_doc.to_dict()
+    
+    stored_password = user_data.get("password", "")
+    try:
+        if not bcrypt.checkpw(req.password.encode('utf-8'), stored_password.encode('utf-8')):
+            raise HTTPException(401, "Invalid password")
+    except ValueError:
+        # Fallback just in case passwords were saved as plain text during testing
+        if req.password != stored_password:
+            raise HTTPException(401, "Invalid password")
+        
+    token_data = {
+        "user_id": user_doc.id,
+        "user_type": user_data.get("user_type", "rider"),
+        "exp": datetime.now(timezone.utc) + timedelta(days=30)
+    }
+    
+    token = jwt.encode(token_data, JWT_SECRET, algorithm="HS256")
+    
+    return {
+        "status": "success",
+        "token": token,
+        "user": serialize_firestore_data({**user_data, "id": user_doc.id})
+    }
+
 @app.post("/api/auth/register/driver", tags=["Auth"])
 async def register_driver(req: dict):
     db = get_db()
