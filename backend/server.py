@@ -60,11 +60,32 @@ def get_db():
 # ==========================================
 # 3. PYDANTIC MODELS
 # ==========================================
-# ==========================================
-# 3. PYDANTIC MODELS (DATA DEFINITIONS)
-# ==========================================
+
 from pydantic import BaseModel
 from typing import Optional
+
+from typing import List, Optional
+
+class Stop(BaseModel):
+    address: str
+    lat: float
+    lng: float
+    order: int
+
+class RideRequest(BaseModel):
+    user_id: Optional[str] = None
+    car_type: str = "economy"
+    pickup: str
+    pickup_lat: float
+    pickup_lng: float
+    destination: str
+    destination_lat: float
+    destination_lng: float
+    stops: List[Stop] = []
+    payment_method: str = "cash"
+    payment_order_id: Optional[str] = None
+    estimated_distance: float = 0.0
+    estimated_duration: int = 0
 
 class LocationUpdate(BaseModel):
     lat: float
