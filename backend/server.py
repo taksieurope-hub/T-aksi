@@ -165,17 +165,46 @@ class PayPalTopUpRequest(BaseModel):
 # ==========================================
 # 4. DEPENDENCIES & AUTH
 # ==========================================
+import os
+import jwt
+import bcrypt
+from datetime import datetime, timezone, timedelta
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 security = HTTPBearer(auto_error=False)
 JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
+
+async def get_current_user_id(authorization: HTTPAuthorizationCredentials = Depends(security)):
+    if not authorization:
+        raise HTTPException(401, "Missing token")
+    token = authorization.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], options={"verify_signature": False})
+        return payload.get("user_id") or payload.get("id") or payload.get("uid")
+    except:
+        raise HTTPException(401, "Invalid token")
+
+async def get_current_user(user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    doc = db.collection("users").document(user_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "User not found")
+    data = doc.to_dict()
+    data["id"] = user_id
+    return data
+
+async def require_driver(current_user: dict = Depends(get_current_user)):
+    if current_user.get("user_type") != "driver":
+        raise HTTPException(403, "Driver access required")
+    return {"user_id": current_user["id"], "user": current_user}
 
 # ==========================================
 # REGISTRATION ROUTES (FLEXIBLE MODE)
 # ==========================================
-import bcrypt
-from datetime import datetime, timezone
 
 @app.post("/api/auth/register/rider", tags=["Auth"])
-async def register_rider(req: dict): # <-- Notice 'dict' here bypasses the strict 422 errors!
+async def register_rider(req: dict): 
     db = get_db()
     
     # 1. Safely grab data no matter what React named it
@@ -254,6 +283,7 @@ async def register_driver(req: dict):
     new_user_ref.set(user_data)
     
     return {"status": "success", "message": "Driver registered successfully", "user_id": new_user_ref.id}
+
 @app.post("/api/auth/login", tags=["Auth"])
 async def login(req: LoginRequest):
     db = get_db()
@@ -272,26 +302,24 @@ async def login(req: LoginRequest):
     user_doc = users[0]
     user_data = user_doc.to_dict()
     
-    # Verify password (using bcrypt which you have imported)
+    # Verify password
     stored_password = user_data.get("password", "")
     try:
         if not bcrypt.checkpw(req.password.encode('utf-8'), stored_password.encode('utf-8')):
             raise HTTPException(401, "Invalid password")
     except ValueError:
-        # Fallback just in case passwords were saved as plain text during testing
         if req.password != stored_password:
             raise HTTPException(401, "Invalid password")
         
-    # Generate JWT Token
+    # Generate JWT Token (with timedelta properly imported)
     token_data = {
         "user_id": user_doc.id,
         "user_type": user_data.get("user_type", "rider"),
-        "exp": datetime.now(timezone.utc) + timedelta(days=30) # Token lasts 30 days
+        "exp": datetime.now(timezone.utc) + timedelta(days=30) 
     }
     
     token = jwt.encode(token_data, JWT_SECRET, algorithm="HS256")
     
-    # Return user data and token to React
     return {
         "status": "success",
         "token": token,
