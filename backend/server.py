@@ -168,60 +168,47 @@ class PayPalTopUpRequest(BaseModel):
 security = HTTPBearer(auto_error=False)
 JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
 
-async def get_current_user_id(authorization: HTTPAuthorizationCredentials = Depends(security)):
-    if not authorization:
-        raise HTTPException(401, "Missing token")
-    token = authorization.credentials
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], options={"verify_signature": False})
-        return payload.get("user_id") or payload.get("id") or payload.get("uid")
-    except:
-        raise HTTPException(401, "Invalid token")
-
-async def get_current_user(user_id: str = Depends(get_current_user_id)):
-    db = get_db()
-    doc = db.collection("users").document(user_id).get()
-    if not doc.exists:
-        raise HTTPException(404, "User not found")
-    data = doc.to_dict()
-    data["id"] = user_id
-    return data
-
-async def require_driver(current_user: dict = Depends(get_current_user)):
-    if current_user.get("user_type") != "driver":
-        raise HTTPException(403, "Driver access required")
-    return {"user_id": current_user["id"], "user": current_user}
-
 # ==========================================
-# AUTHENTICATION ROUTES
+# REGISTRATION ROUTES (FLEXIBLE MODE)
 # ==========================================
 import bcrypt
+from datetime import datetime, timezone
 
 @app.post("/api/auth/register/rider", tags=["Auth"])
-async def register_rider(req: RiderRegisterRequest):
+async def register_rider(req: dict): # <-- Notice 'dict' here bypasses the strict 422 errors!
     db = get_db()
     
-    # 1. Check if user already exists
-    existing = list(db.collection("users").where("cellphone", "==", req.cellphone).limit(1).stream())
+    # 1. Safely grab data no matter what React named it
+    phone = req.get("cellphone") or req.get("phone") or req.get("phoneNumber") or ""
+    first_name = req.get("name") or req.get("firstName") or ""
+    last_name = req.get("surname") or req.get("lastName") or ""
+    email = req.get("email", "")
+    password = req.get("password", "")
+
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone number is required")
+    
+    # 2. Check if user already exists
+    existing = list(db.collection("users").where("cellphone", "==", phone).limit(1).stream())
     if existing:
         raise HTTPException(status_code=400, detail="A user with this cellphone already exists")
     
-    # 2. Hash the password securely
-    hashed_password = bcrypt.hashpw(req.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    # 3. Hash the password securely
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
-    # 3. Create the user document
+    # 4. Create the user document
     user_data = {
-        "name": req.name,
-        "surname": req.surname,
-        "cellphone": req.cellphone,
-        "email": req.email,
+        "name": first_name,
+        "surname": last_name,
+        "cellphone": phone,
+        "email": email,
         "password": hashed_password,
         "user_type": "rider",
         "created_at": datetime.now(timezone.utc),
-        "earnings": {"balance": 0.0} # Riders have wallets too!
+        "earnings": {"balance": 0.0} 
     }
     
-    # 4. Save to Firestore
+    # 5. Save to Firestore
     new_user_ref = db.collection("users").document()
     new_user_ref.set(user_data)
     
@@ -229,26 +216,36 @@ async def register_rider(req: RiderRegisterRequest):
 
 
 @app.post("/api/auth/register/driver", tags=["Auth"])
-async def register_driver(req: DriverRegisterRequest):
+async def register_driver(req: dict):
     db = get_db()
     
-    existing = list(db.collection("users").where("cellphone", "==", req.cellphone).limit(1).stream())
+    # Safely grab data
+    phone = req.get("cellphone") or req.get("phone") or req.get("phoneNumber") or ""
+    first_name = req.get("name") or req.get("firstName") or ""
+    last_name = req.get("surname") or req.get("lastName") or ""
+    email = req.get("email", "")
+    password = req.get("password", "")
+
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone number is required")
+    
+    existing = list(db.collection("users").where("cellphone", "==", phone).limit(1).stream())
     if existing:
         raise HTTPException(status_code=400, detail="A user with this cellphone already exists")
     
-    hashed_password = bcrypt.hashpw(req.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
     user_data = {
-        "name": req.name,
-        "surname": req.surname,
-        "cellphone": req.cellphone,
-        "email": req.email,
+        "name": first_name,
+        "surname": last_name,
+        "cellphone": phone,
+        "email": email,
         "password": hashed_password,
         "user_type": "driver",
-        "car_model": req.car_model,
-        "car_plate": req.car_plate,
-        "car_color": req.car_color,
-        "status": "offline", # Drivers start offline
+        "car_model": req.get("car_model") or req.get("carModel") or "",
+        "car_plate": req.get("car_plate") or req.get("carPlate") or "",
+        "car_color": req.get("car_color") or req.get("carColor") or "",
+        "status": "offline", 
         "created_at": datetime.now(timezone.utc),
         "earnings": {"balance": 0.0}
     }
@@ -257,7 +254,6 @@ async def register_driver(req: DriverRegisterRequest):
     new_user_ref.set(user_data)
     
     return {"status": "success", "message": "Driver registered successfully", "user_id": new_user_ref.id}
-
 @app.post("/api/auth/login", tags=["Auth"])
 async def login(req: LoginRequest):
     db = get_db()
