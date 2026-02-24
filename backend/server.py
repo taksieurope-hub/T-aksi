@@ -3227,21 +3227,23 @@ async def update_driver_campaign_progress(driver_id: str, ride_data: dict):
 
 
 # =========================
-# HEALTH
+# HEALTH & PAYPAL
 # =========================
 
 @app.get("/api/health", tags=["Health"])
 async def health_check():
-    return {"status": "healthy", "timestamp": now_iso()}
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+@app.get("/api/", tags=["Health"])
+async def root():
+    return {"message": "T'aksi API v3 - Firebase Edition"}
 
 @app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
 async def driver_topup_paypal(
     req: PayPalTopUpRequest,
-    current_user: dict = Depends(get_current_user) # 🔥 Changed to your actual function
+    current_user: dict = Depends(get_current_user)
 ):
     """Verifies PayPal order server-side and credits driver's wallet."""
-    
-    # Extract the user ID from your auth token dictionary
     user_id = current_user.get("id")
     if not user_id:
         raise HTTPException(401, "Not authenticated")
@@ -3285,7 +3287,7 @@ async def driver_topup_paypal(
         raise HTTPException(400, "Invalid PayPal paid amount")
 
     # 3) Idempotency: prevent double crediting
-    db = firestore.client() # Get database instance safely
+    db = get_db()
 
     existing = list(
         db.collection("wallet_transactions")
@@ -3303,24 +3305,20 @@ async def driver_topup_paypal(
         }
 
     # 4) Credit wallet + log transaction
-    db.collection("users").document(user_id).update(
-        {
-            "earnings.balance": firestore.Increment(paid_amount),
-            "earnings.total_topped_up": firestore.Increment(paid_amount),
-        }
-    )
+    db.collection("users").document(user_id).update({
+        "earnings.balance": firestore.Increment(paid_amount),
+        "earnings.total_topped_up": firestore.Increment(paid_amount),
+    })
 
-    db.collection("wallet_transactions").add(
-        {
-            "driver_id": user_id,
-            "type": "driver_paypal_topup",
-            "amount": paid_amount,
-            "currency": paid_currency,
-            "order_id": req.order_id,
-            "paypal_status": status,
-            "created_at": firestore.SERVER_TIMESTAMP,
-        }
-    )
+    db.collection("wallet_transactions").add({
+        "driver_id": user_id,
+        "type": "driver_paypal_topup",
+        "amount": paid_amount,
+        "currency": paid_currency,
+        "order_id": req.order_id,
+        "paypal_status": status,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    })
 
     return {
         "message": "Wallet topup successful",
@@ -3329,29 +3327,24 @@ async def driver_topup_paypal(
         "currency": paid_currency,
     }
 
-@app.get("/api/", tags=["Health"])
-async def root():
-    return {"message": "T'aksi API v3 - Firebase Edition"}
-
-
 
 # ==========================================
 # 🔥 ADMIN MANAGEMENT ROUTES
 # ==========================================
 
-@app.get("/admin/withdrawals/pending")
+@app.get("/api/admin/withdrawals/pending", tags=["Admin"])
 async def get_pending_withdrawals(current_user: dict = Depends(get_current_user)):
     """Allows Admin to see who needs to be paid"""
     if current_user.get("user_type") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     
+    db = get_db()
     # Fetch all docs from 'withdrawals' where status is 'pending'
     docs = db.collection("withdrawals").where("status", "==", "pending").stream()
     
     results = []
     for doc in docs:
         d = doc.to_dict()
-        # Ensure the document ID is included so we can approve it later
         d["id"] = doc.id
         if "created_at" in d and hasattr(d["created_at"], "isoformat"):
             d["created_at"] = d["created_at"].isoformat()
@@ -3359,12 +3352,14 @@ async def get_pending_withdrawals(current_user: dict = Depends(get_current_user)
         
     return results
 
-@app.post("/admin/withdrawals/{wd_id}/approve")
-async def approve_withdrawal(wd_id: str, current_user: dict = Depends(get_current_user)):
+
+@app.post("/api/admin/withdrawals/{wd_id}/approve", tags=["Admin"])
+async def approve_admin_withdrawal(wd_id: str, current_user: dict = Depends(get_current_user)):
     """Marks a withdrawal as finished after you send the bank transfer"""
     if current_user.get("user_type") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     
+    db = get_db()
     try:
         db.collection("withdrawals").document(wd_id).update({
             "status": "paid",
@@ -3373,92 +3368,9 @@ async def approve_withdrawal(wd_id: str, current_user: dict = Depends(get_curren
         })
         return {"status": "success"}
     except Exception as e:
-        logging.error(f"Approval error: {e}")
+        logger.error(f"Approval error: {e}")
         raise HTTPException(status_code=500, detail="Failed to mark as paid")
-    
-    # =========================
-# PAYPAL ROUTE (MOVED TO BOTTOM)
-# =========================
-    
-    # Grab the user ID safely
-    user_id = current_user.get("id") or current_user.get("uid")
-    if not user_id:
-        raise HTTPException(401, "Not authenticated")
 
-    access_token = await get_paypal_token()
-    if not access_token:
-        raise HTTPException(500, "PayPal auth failed")
-
-    # 1) Fetch order from PayPal
-    async with httpx.AsyncClient(timeout=25) as client:
-        resp = await client.get(
-            f"{PAYPAL_API_BASE}/v2/checkout/orders/{req.order_id}",
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-
-    if resp.status_code != 200:
-        raise HTTPException(400, "Invalid PayPal order")
-
-    data = resp.json()
-
-    # Must be COMPLETED to credit wallet
-    status = data.get("status")
-    if status != "COMPLETED":
-        raise HTTPException(400, f"Payment not completed (status={status})")
-
-    paid_amount = req.amount
-    if paid_amount <= 0:
-        raise HTTPException(400, "Invalid PayPal paid amount")
-
-    db = get_db()
-
-    # 2) Idempotency: prevent double crediting
-    existing = list(
-        db.collection("wallet_transactions")
-        .where("type", "==", "driver_paypal_topup")
-        .where("order_id", "==", req.order_id)
-        .limit(1)
-        .stream()
-    )
-    if existing:
-        return {"message": "Order already processed", "order_id": req.order_id}
-
-    # 3) Credit wallet + log transaction
-    db.collection("users").document(user_id).update(
-        {
-            "earnings.balance": firestore.Increment(paid_amount),
-            "earnings.total_topped_up": firestore.Increment(paid_amount),
-        }
-    )
-
-    db.collection("wallet_transactions").add(
-        {
-            "driver_id": user_id,
-            "type": "driver_paypal_topup",
-            "amount": paid_amount,
-            "order_id": req.order_id,
-            "paypal_status": status,
-            "created_at": firestore.SERVER_TIMESTAMP,
-        }
-    )
-
-    return {
-        "status": "success",
-        "message": "Wallet topup successful",
-        "order_id": req.order_id,
-        "credited_amount": paid_amount
-    }
-
-# =========================
-# HEALTH
-# =========================
-@app.get("/api/health", tags=["Health"])
-async def health_check():
-    return {"status": "healthy"}
-
-@app.get("/api/", tags=["Health"])
-async def root():
-    return {"message": "T'aksi API v3"}
 
 # =========================
 # MAIN ENTRY (LAST THING IN FILE)
