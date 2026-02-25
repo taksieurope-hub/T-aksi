@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import DisputeManager from './DisputeManager';
 import {
   Shield, Users, Car, Home, LogOut, Lock, ArrowLeft, Loader2,
   CheckCircle2, XCircle, TrendingUp,
@@ -104,6 +105,7 @@ const AdminLogin = () => {
                   placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                   required
                 />
+                <DisputeManager />
               </div>
             </div>
             <Button
