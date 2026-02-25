@@ -1,26 +1,26 @@
-﻿import { 
-  Search, 
-  Wallet, 
-  UserMinus, 
-  Loader2, 
-  CheckCircle2, 
-  XCircle, 
-  TrendingUp, 
-  UserCheck, 
-  Banknote, 
-  BarChart3, 
-  PlusCircle, 
-  CreditCard, 
-  MessageSquare,
-  User,
-  Car,
-  Star,
-  Lock,
-  Navigation,
-  ArrowLeft,
-  Settings,
-  LogOut,
-  ShieldCheck
+import { useState, useEffect } from "react";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { auth } from "../lib/firebase";
+import { useAuth } from "@/config";
+import api from "@/api";
+import { useLanguage } from "@/i18n/LanguageContext";
+import LanguageSelector from "@/i18n/LanguageSelector";
+import AdminSupportPanel from "@/components/AdminSupportPanel";
+import AdminCampaignsPanel from "@/components/AdminCampaignsPanel";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Shield, Users, Car, Home, LogOut, Lock, ArrowLeft, Loader2,
+  CheckCircle2, XCircle, TrendingUp,
+  UserCheck, Banknote, BarChart3, PlusCircle, CreditCard, MessageSquare
 } from "lucide-react";
 
 const ADMIN_PASSWORD = "D'Ahl-Enterprise9409145169086";
@@ -47,7 +47,7 @@ const AdminLogin = () => {
         };
         
         login("master_admin_token", adminUser);
-        toast.success("âš¡ Master Key Accepted. Command Center Unlocked.");
+        toast.success("⚡ Master Key Accepted. Command Center Unlocked.");
         navigate("/admin/dashboard");
       } else {
         const res = await api.post(`/auth/login`, {
@@ -101,7 +101,7 @@ const AdminLogin = () => {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   className="pl-10 bg-black/50 border-purple-500/30 text-white"
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="••••••••••••"
                   required
                 />
               </div>
@@ -163,10 +163,11 @@ const [isToppingUp, setIsToppingUp] = useState(false);
       setRiders(ridersRes.data.riders || []);
       setDrivers(driversRes.data.drivers || []);
       setPendingDrivers(pendingRes.data.pending_drivers || []);
-      setPendingWithdrawals(Array.isArray(withdrawalsRes.data) ? withdrawalsRes.data : []);
+      setPendingWithdrawals(withdrawalsRes.data.pending_withdrawals || []);
       setPendingTopups(topupsRes.data.pending_topups || []);
     } catch (error) {
       console.error("Error fetching data:", error);
+      // Don't show error toast on load to avoid spamming if backend is partial
     } finally {
       setLoading(false);
     }
@@ -186,7 +187,7 @@ const handleManualTopUp = async (e) => {
       reason: topUpReason || "Admin manual adjustment/refund"
     });
     
-    toast.success(`Successfully added â‚¾${topUpAmount} to ${selectedUserForTopUp.name}'s wallet`);
+    toast.success(`Successfully added ₾${topUpAmount} to ${selectedUserForTopUp.name}'s wallet`);
     
     // Reset and close
     setSelectedUserForTopUp(null);
@@ -266,36 +267,33 @@ const handleManualTopUp = async (e) => {
   };
 
   const handleAddBalance = async () => {
-    if (!selectedUser) return;
-    
-    const amount = parseFloat(fundAmount);
-    
-    // ðŸ”¥ FIX: We now allow negative numbers, just not ZERO or NaN
-    if (!fundAmount || isNaN(amount) || amount === 0) {
-      return toast.error("Please enter a valid amount (positive to add, negative to take).");
-    }
+  if (!selectedUser) return;
+  if (!fundAmount || isNaN(fundAmount) || Number(fundAmount) <= 0) {
+    return toast.error("Please enter a valid amount.");
+  }
 
-    try {
-      // Calls your existing backend route
-      await api.post(`/admin/add-balance/${selectedUser.id}`, {
-        amount: amount, 
-        reason: fundReason || "Admin manual adjustment"
-      });
+  try {
+    // Send the money to the backend route we verified in your server.py
+    await api.post(`/admin/add-balance/${selectedUser.id}`, {
+      amount: parseFloat(fundAmount),
+      reason: fundReason || "Admin manual refund/adjustment"
+    });
 
-      // Dynamic success message
-      const actionText = amount > 0 ? "added to" : "deducted from";
-      toast.success(`Successfully ${actionText} ${selectedUser.name}: â‚¾${Math.abs(amount).toFixed(2)}`);
+    toast.success(`Successfully added ₾${fundAmount} to ${selectedUser.name}`);
 
-      // Clear the form and refresh data
-      setFundAmount("");
-      setFundReason("");
-      fetchDashboardData();
-      
-    } catch (error) {
-      console.error("Adjustment Error:", error);
-      toast.error(error.response?.data?.detail || "Failed to adjust balance.");
-    }
-  };
+    // Clear the form
+    setFundAmount("");
+    setFundReason("");
+
+    // 🔥 Crucial: Refresh the riders list so the table updates instantly!
+    // (Replace 'fetchRiders' with whatever function you use to load the table)
+    fetchDashboardData();
+
+  } catch (error) {
+    console.error("Top-up Error:", error);
+    toast.error(error.response?.data?.detail || "Failed to add balance.");
+  }
+};
 
   const fetchUserDetails = async (userId, userType) => {
     try {
@@ -345,42 +343,6 @@ const handleManualTopUp = async (e) => {
 
       {/* Main Content */}
       <main className="container mx-auto p-4 max-w-6xl">
-      <div className="p-6 space-y-6">
-        <div className="flex gap-2">
-          <input 
-            placeholder="Search by name or phone..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 bg-black/40 border border-[#00ff88]/30 text-white p-2 rounded"
-          />
-          <button onClick={handleSearch} disabled={isSearching} className="bg-[#00ff88] text-black px-4 py-2 rounded font-bold flex items-center">
-            {isSearching ? "..." : "Search"}
-          </button>
-        </div>
-        <div className="grid gap-4">
-          {searchResults.map((user) => (
-            <div key={user.id} className="bg-black/60 border border-white/10 text-white p-4 rounded-xl">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="font-bold text-lg">{user.name} {user.surname}</p>
-                  <p className="text-gray-400 text-sm">{user.cellphone} • <span className="capitalize text-[#00d4ff]">{user.user_type}</span></p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500 uppercase">Balance</p>
-                    <p className="text-[#00ff88] font-mono font-bold text-xl">GEL {(user.wallet_balance || 0).toFixed(2)}</p>
-                  </div>
-                  {user.user_type === 'driver' && (
-                    <button className="bg-red-500/20 text-red-500 border border-red-500 px-3 py-1 rounded text-sm" onClick={() => handleDeduct(user.id, user.wallet_balance)}>
-                      Deduct
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid grid-cols-7 bg-black/50 border border-purple-500/20 mb-6">
             <TabsTrigger value="overview" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
@@ -471,7 +433,7 @@ const handleManualTopUp = async (e) => {
                         <TableRow key={rider.id} className="border-[#00ff88]/10">
                           <TableCell className="text-white">{rider.name} {rider.surname}</TableCell>
                           <TableCell className="text-gray-400">{rider.cellphone}</TableCell>
-                          <TableCell className="text-[#00ff88] font-bold">â‚¾{rider.wallet_balance?.toFixed(2) || "0.00"}</TableCell>
+                          <TableCell className="text-[#00ff88] font-bold">₾{rider.wallet_balance?.toFixed(2) || "0.00"}</TableCell>
                           <TableCell className="text-gray-400">{rider.total_rides || 0}</TableCell>
                           <TableCell>
                             <Dialog>
@@ -488,7 +450,7 @@ const handleManualTopUp = async (e) => {
                               <DialogContent aria-describedby={undefined} className="bg-black border border-[#00ff88]/30">
                                 <DialogHeader>
                                   <DialogTitle className="text-[#00ff88]">Add Balance to Rider</DialogTitle>
-                                  {/* ðŸ”¥ ADD THIS LINE to silence the warning */}
+                                  {/* 🔥 ADD THIS LINE to silence the warning */}
                                   <DialogDescription className="sr-only">
                                     Specify the amount and reason to add balance to this rider.
                                   </DialogDescription>
@@ -499,11 +461,11 @@ const handleManualTopUp = async (e) => {
                                       <p className="text-white font-semibold">{selectedUser.name} {selectedUser.surname}</p>
                                       <p className="text-gray-400 text-sm">{selectedUser.cellphone}</p>
                                       <p className="text-[#00ff88] font-bold mt-2">
-                                        Current Balance: â‚¾{selectedUser.wallet_balance?.toFixed(2) || "0.00"}
+                                        Current Balance: ₾{selectedUser.wallet_balance?.toFixed(2) || "0.00"}
                                       </p>
                                     </div>
                                     <div className="space-y-2">
-                                      <Label className="text-[#00ff88]">Amount (â‚¾)</Label>
+                                      <Label className="text-[#00ff88]">Amount (₾)</Label>
                                       <Input
                                         type="number"
                                         value={fundAmount}
@@ -565,7 +527,7 @@ const handleManualTopUp = async (e) => {
                         <TableRow key={driver.id} className="border-[#00d4ff]/10">
                           <TableCell className="text-white">{driver.name} {driver.surname}</TableCell>
                           <TableCell className="text-gray-400">{driver.cellphone}</TableCell>
-                          <TableCell className="text-[#00ff88] font-bold">â‚¾{driver.earnings?.balance?.toFixed(2) || "0.00"}</TableCell>
+                          <TableCell className="text-[#00ff88] font-bold">₾{driver.earnings?.balance?.toFixed(2) || "0.00"}</TableCell>
                           <TableCell>
                             <Badge className={
   driver.registration_status === "approved" ? "bg-[#00ff88] text-black" :
@@ -581,7 +543,7 @@ const handleManualTopUp = async (e) => {
                             "N/A"}
                         </TableCell>
                         
-                        {/* ðŸ”¥ FIXED ACTION CELL: BOTH BUTTONS SIDE BY SIDE */}
+                        {/* 🔥 FIXED ACTION CELL: BOTH BUTTONS SIDE BY SIDE */}
                         <TableCell className="flex items-center gap-2">
                           
                           {/* QUICK APPROVE BUTTON */}
@@ -609,7 +571,7 @@ const handleManualTopUp = async (e) => {
                             <DialogContent aria-describedby={undefined} className="bg-black border border-[#00d4ff]/30">
                               <DialogHeader>
                                <DialogTitle className ="text-[#00d4ff]">Add Balance to Driver</DialogTitle>
-                               {/* ðŸ”¥ ADD THIS LINE to silence the warning */}
+                               {/* 🔥 ADD THIS LINE to silence the warning */}
                                <DialogDescription className="sr-only">
                                   Specify the amount and reason to add balance to this driver.
                                </DialogDescription>
@@ -620,11 +582,11 @@ const handleManualTopUp = async (e) => {
                                     <p className="text-white font-semibold">{selectedUser.name} {selectedUser.surname}</p>
                                     <p className="text-gray-400 text-sm">{selectedUser.cellphone}</p>
                                     <p className="text-[#00ff88] font-bold mt-2">
-                                      Current Balance: â‚¾{selectedUser.earnings?.balance?.toFixed(2) || "0.00"}
+                                      Current Balance: ₾{selectedUser.earnings?.balance?.toFixed(2) || "0.00"}
                                     </p>
                                   </div>
                                   <div className="space-y-2">
-                                    <Label className="text-[#00d4ff]">Amount (â‚¾)</Label>
+                                    <Label className="text-[#00d4ff]">Amount (₾)</Label>
                                     <Input
                                       type="number"
                                       value={fundAmount}
@@ -686,7 +648,7 @@ const handleManualTopUp = async (e) => {
                                 <p className="text-[#00d4ff]">
                                   {driver.driver_info.vehicle.car_year} {driver.driver_info.vehicle.car_make} {driver.driver_info.vehicle.car_model}
                                 </p>
-                                <p className="text-gray-500">{driver.driver_info.vehicle.car_color} â€¢ {driver.driver_info.vehicle.license_plate}</p>
+                                <p className="text-gray-500">{driver.driver_info.vehicle.car_color} • {driver.driver_info.vehicle.license_plate}</p>
                                 <Badge className="mt-1 bg-purple-500/20 text-purple-400">
                                   Tier: {driver.driver_info.vehicle_tier?.toUpperCase()}
                                 </Badge>
@@ -742,7 +704,7 @@ const handleManualTopUp = async (e) => {
                               </p>
                             </div>
                             <div className="text-right">
-                              <p className="text-3xl font-bold text-purple-400">â‚¾{topup.amount?.toFixed(2)}</p>
+                              <p className="text-3xl font-bold text-purple-400">₾{topup.amount?.toFixed(2)}</p>
                               <div className="flex space-x-2 mt-2">
                                 <Button
                                   size="sm"
@@ -774,80 +736,42 @@ const handleManualTopUp = async (e) => {
           <TabsContent value="withdrawals">
             <Card className="bg-black/60 border border-pink-500/30">
               <CardHeader>
-                <CardTitle className="text-pink-400 flex items-center">
-                  <Banknote className="mr-2 w-6 h-6" /> 
-                  Pending Payouts ({pendingWithdrawals.length})
-                </CardTitle>
-                <CardDescription className="text-gray-400">
-                  Send the GEL to the IBANs below, then mark as paid. â‚¾1.00 fee is already deducted from driver balance.
-                </CardDescription>
+                <CardTitle className="text-pink-400">Pending Withdrawals ({pendingWithdrawals.length})</CardTitle>
               </CardHeader>
               <CardContent>
                 {pendingWithdrawals.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <CheckCircle2 className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                    <p>All drivers are paid up. Great job!</p>
-                  </div>
+                  <div className="text-center py-8 text-gray-500">No pending withdrawals</div>
                 ) : (
                   <div className="space-y-4">
                     {pendingWithdrawals.map(withdrawal => (
-                      <div key={withdrawal.id} className="bg-black/50 border border-pink-500/20 rounded-2xl p-5 hover:border-pink-500/50 transition-colors">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                          
-                          {/* Driver Info & Amount */}
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <p className="text-white text-lg font-bold">{withdrawal.driver_name}</p>
-                              <Badge variant="outline" className="text-[10px] border-pink-500/30 text-pink-400 uppercase">
-                                ID: {withdrawal.id}
-                              </Badge>
-                            </div>
-                            <p className="text-3xl font-black text-[#00ff88]">
-                              â‚¾{withdrawal.amount_requested?.toFixed(2)}
-                            </p>
-                            <p className="text-[10px] text-gray-500">
-                              Requested: {new Date(withdrawal.created_at).toLocaleString()}
+                      <div key={withdrawal.id} className="bg-black/50 border border-pink-500/20 rounded-xl p-4">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-white font-semibold">{withdrawal.driver_name}</p>
+                            <p className="text-gray-400 text-sm">Bank: {withdrawal.bank_details}</p>
+                            <p className="text-xs text-gray-600">
+                              Requested: {withdrawal.requested_at ? new Date(withdrawal.requested_at).toLocaleString() : "N/A"}
                             </p>
                           </div>
-
-                          {/* IBAN Copy Box */}
-                          <div className="flex-1 w-full md:max-w-md">
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center justify-between group">
-                              <div className="overflow-hidden">
-                                <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Bank Details / IBAN</p>
-                                <p className="text-sm font-mono text-white truncate">{withdrawal.bank_details}</p>
-                              </div>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-[#00d4ff] hover:bg-[#00d4ff]/10"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(withdrawal.bank_details);
-                                  toast.success("IBAN Copied to Clipboard!");
-                                }}
+                          <div className="text-right">
+                            <p className="text-3xl font-bold text-pink-400">₾{withdrawal.amount?.toFixed(2)}</p>
+                            <div className="flex space-x-2 mt-2">
+                              <Button
+                                size="sm"
+                                className="bg-[#00ff88] text-black"
+                                onClick={() => handleApproveWithdrawal(withdrawal.id)}
                               >
-                                Copy
+                                <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleRejectWithdrawal(withdrawal.id)}
+                              >
+                                <XCircle className="w-4 h-4" />
                               </Button>
                             </div>
                           </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex gap-2 w-full md:w-auto">
-                            <Button
-                              className="flex-1 md:flex-none bg-[#00ff88] text-black font-bold h-12 px-6 hover:bg-[#00cc6a]"
-                              onClick={() => handleApproveWithdrawal(withdrawal.id)}
-                            >
-                              <CheckCircle2 className="w-4 h-4 mr-2" /> Mark Paid
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              className="h-12 w-12"
-                              onClick={() => handleRejectWithdrawal(withdrawal.id)}
-                            >
-                              <XCircle className="w-5 h-5" />
-                            </Button>
-                          </div>
-
                         </div>
                       </div>
                     ))}
@@ -874,35 +798,6 @@ const handleManualTopUp = async (e) => {
 
 // Main Router
 const AdminPortal = () => {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-
-  const handleSearch = async () => {
-    if (!searchQuery) return;
-    setIsSearching(true);
-    try {
-      const res = await axios.get(`/admin/users/search?q=${searchQuery}`);
-      setSearchResults(res.data.users || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleDeduct = async (userId, currentBalance) => {
-    const amountStr = prompt(`Current Balance: GEL ${currentBalance}\nEnter amount to DEDUCT:`);
-    if (!amountStr || isNaN(amountStr)) return;
-    const reason = prompt("Enter reason (e.g. Fraudulent Ride #123):");
-    if (!reason) return;
-    try {
-      await axios.post(`/admin/drivers/${userId}/wallet/deduct`, { amount: parseFloat(amountStr), reason });
-      handleSearch();
-    } catch (err) {
-      alert("Failed to deduct funds.");
-    }
-  };
   const { user } = useAuth();
   const location = useLocation();
 
@@ -925,4 +820,3 @@ const AdminPortal = () => {
 };
 
 export default AdminPortal;
-
