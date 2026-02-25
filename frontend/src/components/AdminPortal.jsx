@@ -226,7 +226,7 @@ const handleManualTopUp = async (e) => {
         amount: parseFloat(disputeAmount),
         reason: disputeReason
       });
-      toast.success(Successfully transferred ₾ from Driver to Rider!);
+      toast.success(`Successfully transferred ₾${disputeAmount} from Driver to Rider!`);
       setDisputeDriverId("");
       setDisputeRiderId("");
       setDisputeAmount("");
