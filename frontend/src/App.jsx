@@ -13,52 +13,28 @@ import { LanguageProvider } from "@/i18n/LanguageContext";
 import LandingPage from "@/components/LandingPage";
 import RiderPortal from "@/components/RiderPortal";
 import DriverPortal from "@/components/DriverPortal";
-// 🚀 Verify this path! If it's in a folder called 'adminPortal', change the path below
 import AdminPortal from "@/components/AdminPortal"; 
-
-// Global Components
 import SupportChatWidget from "@/components/SupportChatWidget";
 
-// 🌍 Detect building mode
-const MODE = import.meta.env.VITE_APP_MODE;
-
-/**
- * Axios interceptor (Global)
- */
+// Global Axios setup
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  if (!config.baseURL && API) {
-    config.baseURL = API;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (!config.baseURL && API) config.baseURL = API;
   return config;
 });
 
 const StarsBackground = () => {
-  const stars = useMemo(() => {
-    return [...Array(50)].map((_, i) => ({
-      id: i,
-      top: Math.random() * 100,
-      left: Math.random() * 100,
-      duration: 2 + Math.random() * 3,
-      opacity: Math.random() * 0.5,
-    }));
-  }, []);
+  const stars = useMemo(() => [...Array(50)].map((_, i) => ({
+    id: i, top: Math.random() * 100, left: Math.random() * 100,
+    duration: 2 + Math.random() * 3, opacity: Math.random() * 0.5,
+  })), []);
 
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none">
       {stars.map((s) => (
-        <div
-          key={s.id}
-          className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
-          style={{
-            top: `${s.top}%`,
-            left: `${s.left}%`,
-            animationDuration: `${s.duration}s`,
-            opacity: s.opacity,
-          }}
+        <div key={s.id} className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
+          style={{ top: `${s.top}%`, left: `${s.left}%`, animationDuration: `${s.duration}s`, opacity: s.opacity }}
         />
       ))}
     </div>
@@ -66,40 +42,31 @@ const StarsBackground = () => {
 };
 
 function App() {
-  // Debug log to see what the browser actually sees
-  console.log("🛠️ VITE_APP_MODE detected as:", MODE);
-
   return (
     <LanguageProvider>
       <AuthProvider>
         <div className="App min-h-screen bg-black relative">
           <StarsBackground />
           <InstallPrompt />
-
           <div className="relative z-10">
             <BrowserRouter>
               <Routes>
-                {/* 🔒 STRICT PORTAL TUNNELING */}
-                {MODE === 'admin' ? (
-                   <Route path="/*" element={<AdminPortal />} />
-                ) : MODE === 'driver' ? (
-                   <Route path="/*" element={<DriverPortal />} />
-                ) : (
-                  <>
-                    <Route path="/" element={<LandingPage />} />
-                    <Route path="/track/:rideId" element={<LandingPage />} />
-                    <Route path="/*" element={<RiderPortal />} />
-                  </>
-                )}
+                {/* Public Landing */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/track/:rideId" element={<LandingPage />} />
                 
-                {/* Global Fallback */}
+                {/* 🚦 URL-Based Routing (Fixes the mixed portals) */}
+                <Route path="/rider/*" element={<RiderPortal />} />
+                <Route path="/driver/*" element={<DriverPortal />} />
+                <Route path="/admin/*" element={<AdminPortal />} />
+                
+                {/* Fallbacks */}
+                <Route path="/dashboard" element={<Navigate to="/rider/dashboard" replace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
-              
               <SupportChatWidget />
             </BrowserRouter>
           </div>
-
           <Toaster position="top-center" richColors />
         </div>
       </AuthProvider>
