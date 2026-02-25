@@ -1,5 +1,5 @@
-﻿# server.py  (T'aksi API v3 - Firestore Edition)
-# ✅ Fixes:
+# server.py  (T'aksi API v3 - Firestore Edition)
+# ? Fixes:
 # - Robust Firebase Admin init (no "wrong project" surprises)
 # - Phone normalization (no more invalid creds due to formatting)
 # - Consistent serialization of Firestore timestamps
@@ -83,7 +83,7 @@ SERVICE_ACCOUNT_PATH = Path(os.environ.get(
     str(ROOT_DIR / "firebase-service-account.json")
 ))
 
-# ✅ Best: supply service account JSON in env on Render:
+# ? Best: supply service account JSON in env on Render:
 # export FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
 FIREBASE_SA_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
 
@@ -105,7 +105,7 @@ def init_firebase():
             logger.info(f"Firebase Admin initialized from file: {SERVICE_ACCOUNT_PATH}")
             return
 
-        # ⚠️ This is risky on Render unless you truly configured ADC.
+        # ?? This is risky on Render unless you truly configured ADC.
         # We keep it as a last resort, but we log clearly.
         firebase_admin.initialize_app()
         logger.warning("Firebase Admin initialized using default credentials (ADC). "
@@ -285,7 +285,7 @@ async def get_paypal_token():
 
 app = FastAPI(title="T'aksi API")
 
-# --- 🚦 API RATE LIMITING (Audit Priority #3) ---
+# --- ?? API RATE LIMITING (Audit Priority #3) ---
 import time
 from collections import defaultdict
 from starlette.responses import JSONResponse
@@ -297,9 +297,15 @@ ip_tracker = defaultdict(list)
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    # Skip rate limiting for health checks
     if request.url.path == "/api/health":
         return await call_next(request)
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    current_time = time.time()
+    ip_tracker[client_ip] = [t for t in ip_tracker[client_ip] if current_time - t < RATE_LIMIT_WINDOW]
+    if len(ip_tracker[client_ip]) >= MAX_REQUESTS:
+        return JSONResponse(status_code=429, content={"detail": "Too many requests. Please try again in 15 minutes."})
+    ip_tracker[client_ip].append(current_time)
+    return await call_next(request)
         
     client_ip = request.client.host if request.client else "127.0.0.1"
     current_time = time.time()
@@ -859,7 +865,7 @@ async def login(data: UserLogin):
 
     phone_norm = normalize_phone(data.cellphone)
 
-    # ✅ Primary lookup uses normalized phone
+    # ? Primary lookup uses normalized phone
     users = list(
         db.collection("users")
         .where("cellphone_norm", "==", phone_norm)
@@ -1049,9 +1055,9 @@ async def register_vehicle(
         "car_photo_right": save_file(car_photo_right, "car_right"),
     }
 
-    # 🔥 UPGRADED: Let Gemini intelligently decide the tier
+    # ?? UPGRADED: Let Gemini intelligently decide the tier
     tier = await get_vehicle_tier_from_ai(car_make, car_model, car_year)
-    logger.info(f"🤖 AI categorized the {car_year} {car_make} {car_model} as: {tier.upper()}")
+    logger.info(f"?? AI categorized the {car_year} {car_make} {car_model} as: {tier.upper()}")
 
     # Package the text data, image paths, and tier into one object
     vehicle_data = {
@@ -1066,7 +1072,7 @@ async def register_vehicle(
         "status": "pending"
     }
 
-    # 🔥 UPGRADED: Use ArrayUnion to add to a "Garage" instead of overwriting
+    # ?? UPGRADED: Use ArrayUnion to add to a "Garage" instead of overwriting
     db.collection("users").document(user_id).update({
         "driver_info.vehicles": firestore.ArrayUnion([vehicle_data]),
         "driver_info.active_vehicle_id": vehicle_data["id"],
@@ -1150,7 +1156,7 @@ async def request_topup(request: TopUpRequest, user_id: str = Depends(get_curren
     topup_ref.set(topup_data)
 
     return {
-        "message": f"Top-up request for ₾{request.amount} submitted",
+        "message": f"Top-up request for ?{request.amount} submitted",
         "request_id": topup_ref.id,
         "amount": request.amount,
         "payment_link": "https://egreve.bog.ge//Taksi",
@@ -1171,7 +1177,7 @@ async def request_withdrawal(request: WithdrawalRequest, user_id: str = Depends(
     balance = driver_data.get("earnings", {}).get("balance", 0)
 
     if request.amount > balance:
-        raise HTTPException(400, f"Insufficient balance. Available: ₾{balance}")
+        raise HTTPException(400, f"Insufficient balance. Available: ?{balance}")
 
     withdrawal_ref = db.collection("driver_withdrawals").document()
     withdrawal_data = {
@@ -1185,7 +1191,7 @@ async def request_withdrawal(request: WithdrawalRequest, user_id: str = Depends(
     }
     withdrawal_ref.set(withdrawal_data)
 
-    return {"message": f"Withdrawal request for ₾{request.amount} submitted", "request_id": withdrawal_ref.id}
+    return {"message": f"Withdrawal request for ?{request.amount} submitted", "request_id": withdrawal_ref.id}
 
 
 @app.get("/api/driver/rides/available", tags=["Driver"])
@@ -1357,7 +1363,7 @@ async def request_to_join_ride(ride_id: str, user_id: str = Depends(get_current_
     driver_balance = driver_data.get("earnings", {}).get("balance", 0)
 
     if driver_balance < required_commission:
-        raise HTTPException(400, f"Insufficient balance. Need ₾{required_commission:.2f}")
+        raise HTTPException(400, f"Insufficient balance. Need ?{required_commission:.2f}")
 
     db.collection("rides").document(ride_id).update({
         "notified_drivers": firestore.ArrayUnion([user_id])
@@ -1384,7 +1390,7 @@ async def retry_ride_matching(ride_id: str, background_tasks: BackgroundTasks, u
     if ride_data.get("status") not in ["no_drivers", "cancelled"]:
         raise HTTPException(400, f"Cannot retry ride with status: {ride_data.get('status')}")
 
-    # 🔥 FIXED: Check both spellings of the ID to prevent 403 Forbidden errors
+    # ?? FIXED: Check both spellings of the ID to prevent 403 Forbidden errors
     ride_owner = ride_data.get("userId") or ride_data.get("user_id")
     
     if ride_owner != user_id:
@@ -1458,7 +1464,7 @@ async def request_ride(ride_data: RideRequest, background_tasks: BackgroundTasks
     new_ride = {
         "id": ride_ref.id,
         "userId": user_id or ride_data.user_id,
-        "rider_id": user_id or ride_data.user_id,  # 🔥 FIX: Saves both ID styles so Tipping works
+        "rider_id": user_id or ride_data.user_id,  # ?? FIX: Saves both ID styles so Tipping works
         "carType": ride_data.car_type,
         "pickup": ride_data.pickup,
         "pickup_lat": ride_data.pickup_lat,
@@ -1469,7 +1475,7 @@ async def request_ride(ride_data: RideRequest, background_tasks: BackgroundTasks
         "stops": stops_data,
         "num_stops": num_stops,
         "payment_method": payment_method,
-        "paymentMethod": payment_method,  # 🔥 FIX: Feeds the exact camelCase to the Driver App
+        "paymentMethod": payment_method,  # ?? FIX: Feeds the exact camelCase to the Driver App
         "payment_order_id": ride_data.payment_order_id,
         "estimated_distance": ride_data.estimated_distance,
         "estimated_duration": ride_data.estimated_duration,
@@ -1632,7 +1638,7 @@ async def match_drivers_to_ride(ride_id: str):
         if idx + 1 >= len(radius_progression):
             break
 
-    # 🔥 AUTO-REFUND LOGIC (For "No Drivers Found")
+    # ?? AUTO-REFUND LOGIC (For "No Drivers Found")
     ride_ref = db.collection("rides").document(ride_id)
     fresh_ride_data = ride_ref.get().to_dict()
     
@@ -1655,7 +1661,7 @@ async def match_drivers_to_ride(ride_id: str):
             })
             update_data["refunded"] = True
             update_data["refund_amount"] = fare_to_refund
-            logger.info(f"Refunded ₾{fare_to_refund} to wallet for unfulfilled ride {ride_id}")
+            logger.info(f"Refunded ?{fare_to_refund} to wallet for unfulfilled ride {ride_id}")
 
     ride_ref.update(update_data)
     logger.info(f"Ride {ride_id}: Matching completed, no drivers found. Refund processed if card.")
@@ -1715,7 +1721,7 @@ async def accept_ride(ride_id: str, user_id: str = Depends(get_current_user_id))
     held_commission = (ride_data.get("estimated_fare", 0) or 0) * commission_rate
 
     if balance < held_commission:
-        raise HTTPException(400, f"Insufficient balance. Need ₾{held_commission:.2f}, have ₾{balance:.2f}")
+        raise HTTPException(400, f"Insufficient balance. Need ?{held_commission:.2f}, have ?{balance:.2f}")
 
     # HOLD commission at accept time
     new_balance = balance - held_commission
@@ -1862,7 +1868,7 @@ async def complete_ride(
     raw_payment = ride_data.get("payment_method") or ride_data.get("paymentMethod") or "cash"
     safe_payment_method = str(raw_payment).lower().strip()
 
-    # 🔥 FIX 1: Fuzzy matching so "virtual_wallet" or "Card" doesn't break the system
+    # ?? FIX 1: Fuzzy matching so "virtual_wallet" or "Card" doesn't break the system
     is_wallet = "wallet" in safe_payment_method or "balance" in safe_payment_method
     is_card = "card" in safe_payment_method or "stripe" in safe_payment_method
 
@@ -1874,7 +1880,7 @@ async def complete_ride(
     final_fare["service_fee"] = service_fee
     final_fare["total"] = total_with_fee
 
-    # 🔥 FIX 2: Bulletproof ID Check to prevent Ghost Trips
+    # ?? FIX 2: Bulletproof ID Check to prevent Ghost Trips
     rider_id = ride_data.get("userId") or ride_data.get("rider_id") or ride_data.get("user_id")
     driver_id = ride_data.get("driverId") or ride_data.get("driver_id")
     
@@ -1897,12 +1903,12 @@ async def complete_ride(
         cash_to_collect = total_with_fee - wallet_used
         payment_status = "paid_fully_via_wallet" if cash_to_collect == 0 else "split_cash_required"
         
-        # 🔥 Actually deduct the money from the Rider
+        # ?? Actually deduct the money from the Rider
         if wallet_used > 0 and rider_ref:
             rider_ref.update({
                 "wallet_balance": firestore.Increment(-float(wallet_used))
             })
-            logger.info(f"Deducted ₾{wallet_used} from Rider {rider_id}")
+            logger.info(f"Deducted ?{wallet_used} from Rider {rider_id}")
 
     elif is_card:
         cash_to_collect = 0.0
@@ -1924,7 +1930,7 @@ async def complete_ride(
         "final_fare_breakdown": final_fare,
         "payment_status": payment_status,
         "completed_at": firestore.SERVER_TIMESTAMP,
-        # 🔥 FIX 3: Force both casing styles so the History query NEVER misses it
+        # ?? FIX 3: Force both casing styles so the History query NEVER misses it
         "driver_id": driver_id,
         "driverId": driver_id,
         "user_id": rider_id,
@@ -2035,7 +2041,7 @@ async def cancel_ride(ride_id: str, reason: str = "User cancelled", user_id: str
         "cancelled_at": firestore.SERVER_TIMESTAMP,
     }
     
-    # 🔥 AUTO-REFUND LOGIC (For user cancellations)
+    # ?? AUTO-REFUND LOGIC (For user cancellations)
     payment_method = ride_data.get("payment_method") or ride_data.get("paymentMethod")
     if payment_method == "card" and not ride_data.get("refunded"):
         # Only refund if the ride hasn't been completed yet
@@ -2050,7 +2056,7 @@ async def cancel_ride(ride_id: str, reason: str = "User cancelled", user_id: str
                 })
                 update_data["refunded"] = True
                 update_data["refund_amount"] = fare_to_refund
-                logger.info(f"Refunded ₾{fare_to_refund} to wallet for cancelled ride {ride_id}")
+                logger.info(f"Refunded ?{fare_to_refund} to wallet for cancelled ride {ride_id}")
 
     ride_ref.update(update_data)
     return {"message": "Ride cancelled. Card payments have been refunded to your wallet."}
@@ -2357,7 +2363,7 @@ async def admin_add_balance(id: str, req: AdminAddBalanceRequest):
         "timestamp": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": f"Successfully added ₾{req.amount} to {user_type} account"}
+    return {"message": f"Successfully added ?{req.amount} to {user_type} account"}
 
 
 @app.get("/api/admin/topups/pending", tags=["Admin"])
@@ -2388,7 +2394,7 @@ async def approve_topup(id: str):
         "approved_at": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": f"Top-up of ₾{amount} approved"}
+    return {"message": f"Top-up of ?{amount} approved"}
 
 
 @app.post("/api/admin/topups/{id}/reject", tags=["Admin"])
@@ -2431,7 +2437,7 @@ async def approve_withdrawal(id: str):
         "approved_at": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": f"Withdrawal of ₾{amount} approved"}
+    return {"message": f"Withdrawal of ?{amount} approved"}
 
 
 @app.post("/api/admin/withdrawals/{id}/reject", tags=["Admin"])
@@ -2479,7 +2485,7 @@ async def admin_refund_ride(req: AdminRefundRequest):
         "timestamp": firestore.SERVER_TIMESTAMP,
     })
     
-    return {"message": f"Successfully refunded ₾{refund_amount} from Driver to Rider."}
+    return {"message": f"Successfully refunded ?{refund_amount} from Driver to Rider."}
 
 # AI FEATURES - TRANSLATION, SUPPORT, CHAT
 
@@ -2576,7 +2582,7 @@ async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(g
         user_data = user_doc.to_dict()
         user_context = {"name": user_data.get("name", "Unknown"), "phone": user_data.get("cellphone", ""), "ride_count": user_data.get("total_rides", 0)}
     
-    # 🔥 THE FIX: Bypass the failing AI and lock your exact text into the database permanently
+    # ?? THE FIX: Bypass the failing AI and lock your exact text into the database permanently
     guaranteed_response = "We appreciate you contacting us, I have forwarded your ticket to our support team and someone will get back to you promptly."
     
     chat_history = [
@@ -3105,7 +3111,7 @@ async def apply_referral_code(req: ReferralCodeRequest, user_id: str = Depends(g
     return {
         "status": "applied",
         "bonus_received": bonus["referee_bonus"],
-        "message": f"You received ₾{bonus['referee_bonus']} bonus!"
+        "message": f"You received ?{bonus['referee_bonus']} bonus!"
     }
 
 
@@ -3125,7 +3131,7 @@ async def add_tip(ride_id: str, tip: TipRequest, user_id: str = Depends(get_curr
     
     ride_data = ride.to_dict()
     
-    # 🔥 FIX: Check all 3 ways the ID might be saved in the database
+    # ?? FIX: Check all 3 ways the ID might be saved in the database
     actual_rider_id = ride_data.get("rider_id") or ride_data.get("userId") or ride_data.get("user_id")
     
     if actual_rider_id != user_id:
@@ -3203,7 +3209,7 @@ async def get_trip_receipt(ride_id: str, user_id: str = Depends(get_current_user
         "tip": ride_data.get("tip_amount", 0),
         "total": ride_data.get("final_fare", ride_data.get("estimated_fare", 0)),
         
-        # 🔥 Show the Split Payment details on the receipt
+        # ?? Show the Split Payment details on the receipt
         "wallet_used": ride_data.get("wallet_used", 0),
         "cash_collected": ride_data.get("cash_to_collect", 0),
         
