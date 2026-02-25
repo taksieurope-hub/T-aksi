@@ -40,20 +40,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("taksi")
 
 # JWT
-# --- 🚦 API RATE LIMITING (Audit Priority #3) ---
-import time
-from collections import defaultdict
-from starlette.responses import JSONResponse
 
-RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
-MAX_REQUESTS = 100       # Max requests per IP within the window
-ip_tracker = defaultdict(list)
-
-@app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    # Skip rate limiting for health checks so Render doesn't think the server is dead
-    if request.url.path == "/api/health":
-        return await call_next(request)
         
     client_ip = request.client.host if request.client else "127.0.0.1"
     current_time = time.time()
@@ -297,6 +284,33 @@ async def get_paypal_token():
 # =========================
 
 app = FastAPI(title="T'aksi API")
+
+# --- 🚦 API RATE LIMITING (Audit Priority #3) ---
+import time
+from collections import defaultdict
+from starlette.responses import JSONResponse
+from fastapi import Request
+
+RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
+MAX_REQUESTS = 100       # Max requests per IP within the window
+ip_tracker = defaultdict(list)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path == "/api/health":
+        return await call_next(request)
+        
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    current_time = time.time()
+    
+    ip_tracker[client_ip] = [t for t in ip_tracker[client_ip] if current_time - t < RATE_LIMIT_WINDOW]
+    
+    if len(ip_tracker[client_ip]) >= MAX_REQUESTS:
+        logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+        return JSONResponse(status_code=429, content={"detail": "Too many requests. Please try again in 15 minutes."})
+        
+    ip_tracker[client_ip].append(current_time)
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
@@ -3585,6 +3599,7 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)
+
 
 
 
