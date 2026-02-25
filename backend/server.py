@@ -113,6 +113,29 @@ def get_db():
 # HELPERS
 # =========================
 
+# --- 💳 PAYPAL FASTLANE AUTH ---
+@app.get("/api/paypal/client-token", tags=["Payments"])
+async def get_paypal_client_token():
+    try:
+        async with httpx.AsyncClient() as client:
+            # 1. Get Access Token from PayPal
+            auth_response = await client.post(
+                f"{PAYPAL_API_BASE}/v1/oauth2/token",
+                auth=(PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET),
+                data={"grant_type": "client_credentials"}
+            )
+            access_token = auth_response.json().get("access_token")
+
+            # 2. Get Client Token using the Access Token
+            token_response = await client.post(
+                f"{PAYPAL_API_BASE}/v1/identity/generate-token",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            return token_response.json()
+    except Exception as e:
+        logger.error(f"PayPal Token Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate PayPal token")
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -3672,6 +3695,7 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)
+
 
 
 
