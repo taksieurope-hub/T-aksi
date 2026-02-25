@@ -668,7 +668,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
     if (!target || !directionsServiceRef.current || !routeRendererRef.current) return;
 
-    const sig = `${activeRide.id}|${activeRide.status}|${dLat},${dLng}|${target.lat},${target.lng}`;
+    const sig = `${currentRide.id}|${activeRide.status}|${dLat},${dLng}|${target.lat},${target.lng}`;
     if (routeSigRef.current === sig) return;
     routeSigRef.current = sig;
 
@@ -690,14 +690,14 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       }
     );
   }, [
-    activeRide?.id,
-    activeRide?.status,
-    activeRide?.pickup_lat,
-    activeRide?.pickup_lng,
-    activeRide?.dest_lat,
-    activeRide?.dest_lng,
-    activeRide?.destination_lat,
-    activeRide?.destination_lng,
+    currentRide?.id,
+    currentRide?.status,
+    currentRide?.pickup_lat,
+    currentRide?.pickup_lng,
+    currentRide?.dest_lat,
+    currentRide?.dest_lng,
+    currentRide?.destination_lat,
+    currentRide?.destination_lng,
     driverLocation?.lat,
     driverLocation?.lng,
   ]);
@@ -949,7 +949,7 @@ const DriverDashboard = () => {
           setDistanceTraveled((prev) => prev + dist);
 
           // optional tracking
-          await api.post(`/rides/${activeRide.id}/update-tracking`, location);
+          await api.post(`/rides/${currentRide.id}/update-tracking`, location);
         }
 
         lastPositionRef.current = location;
@@ -965,7 +965,7 @@ const DriverDashboard = () => {
   // ---- Wait timer while arrived ----
   useEffect(() => {
     let interval;
-    if (activeRide?.status === "arrived") {
+    if (currentRide?.status === "arrived") {
       if (!arrivedTime && activeRide.arrived_at) setArrivedTime(new Date(activeRide.arrived_at).getTime());
       interval = setInterval(() => {
         const start = arrivedTime || Date.now();
@@ -1046,11 +1046,11 @@ const DriverDashboard = () => {
 
   // active ride polling (FIXED: stable, stops on terminal)
   useEffect(() => {
-    if (!activeRide?.id) return;
+    if (!currentRide?.id) return;
 
     const interval = setInterval(async () => {
       try {
-        const res = await api.get(`/rides/${activeRide.id}`);
+        const res = await api.get(`/rides/${currentRide.id}`);
         const r = normalizeRide(res.data);
         if (!mountedRef.current) return;
 
@@ -1064,7 +1064,7 @@ const DriverDashboard = () => {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [activeRide?.id]);
+  }, [currentRide?.id]);
 
   // new ride alarm
   useEffect(() => {
@@ -1093,7 +1093,7 @@ const DriverDashboard = () => {
         });
       }
     }
-    prevRideStatus.current = activeRide?.status;
+    prevRideStatus.current = currentRide?.status;
   }, [activeRide]);
 
   // ---- Driver actions ----
@@ -1104,11 +1104,11 @@ const DriverDashboard = () => {
     setLoading(true);
     try {
       if (action === "arrived") {
-        await api.post(`/rides/${activeRide.id}/arrived`);
+        await api.post(`/rides/${currentRide.id}/arrived`);
         setArrivedTime(Date.now());
         toast.success("Marked as arrived");
       } else if (action === "start") {
-        await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: parseInt(waitTimer || 0, 10) });
+        await api.post(`/rides/${currentRide.id}/start`, { pickup_wait_time: parseInt(waitTimer || 0, 10) });
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
         lastPositionRef.current = driverLocation;
@@ -1119,7 +1119,7 @@ const DriverDashboard = () => {
         const dLat = driverLocation?.lat || "";
         const dLng = driverLocation?.lng || "";
 
-        const completeEndpoint = `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${dLat}&dropoff_lng=${dLng}`;
+        const completeEndpoint = `/rides/${currentRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${dLat}&dropoff_lng=${dLng}`;
         const res = await api.post(completeEndpoint);
 
         const finalFare =
@@ -1149,7 +1149,7 @@ const DriverDashboard = () => {
       }
 
       // refresh active ride after non-terminal actions
-      const rideRes = await api.get(`/rides/${activeRide.id}`);
+      const rideRes = await api.get(`/rides/${currentRide.id}`);
       setActiveRide(normalizeRide(rideRes.data));
     } catch (e) {
       console.error("Action Error:", e);
@@ -1165,7 +1165,7 @@ const DriverDashboard = () => {
 
     setLoading(true);
     try {
-      await api.post(`/rides/${activeRide.id}/cancel`, {
+      await api.post(`/rides/${currentRide.id}/cancel`, {
         reason: selectedCancelReason,
         stage: activeRide.status,
       });
@@ -1289,7 +1289,7 @@ const DriverDashboard = () => {
     if (!activeRide) return;
     try {
       const newStatus = !isWaitingAtStop;
-      await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=${newStatus}`);
+      await api.post(`/rides/${currentRide.id}/toggle-stop-wait?is_waiting=${newStatus}`);
       setIsWaitingAtStop(newStatus);
       toast.success(newStatus ? "Stop wait timer started" : "Stop wait timer paused");
     } catch (error) {
@@ -1333,7 +1333,7 @@ const DriverDashboard = () => {
   const [isMinimized, setIsMinimized] = useState(false);
   const touchStartY = useRef(null);
 
-  useEffect(() => setIsMinimized(false), [activeRide?.status]);
+  useEffect(() => setIsMinimized(false), [currentRide?.status]);
 
   const handleTouchStart = (e) => {
     touchStartY.current = e.touches[0].clientY;
@@ -1532,7 +1532,7 @@ const DriverDashboard = () => {
 
                       <div className="mt-3">
                         <RideCommunication
-                          rideId={activeRide.id}
+                          rideId={currentRide.id}
                           otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone}
                           otherPartyName={activeRide.rider_name || activeRide.rider?.name || "Rider"}
                           currentUserId={user?.id}
@@ -1631,7 +1631,7 @@ const DriverDashboard = () => {
                   </Card>
                 ) : (
                   <div className="space-y-4">
-            {activeRide?.waiting_on_stop && (
+            {currentRide?.waiting_on_stop && (
               <div className="bg-yellow-500/10 border-2 border-yellow-500/50 p-6 rounded-2xl text-center space-y-4 my-4 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
                 <div className="flex items-center justify-center gap-2">
                   <div className="w-2 h-2 bg-yellow-500 rounded-full animate-ping" />
@@ -1706,7 +1706,7 @@ const DriverDashboard = () => {
               {/* NEARBY TAB (FIXED: uses nearbyRides state) */}
               <TabsContent value="nearby">
                 <div className="space-y-4">
-            {activeRide?.waiting_on_stop && (
+            {currentRide?.waiting_on_stop && (
               <div className="bg-yellow-500/10 border-2 border-yellow-500/50 p-6 rounded-2xl text-center space-y-4 my-4 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
                 <div className="flex items-center justify-center gap-2">
                   <div className="w-2 h-2 bg-yellow-500 rounded-full animate-ping" />
@@ -1999,7 +1999,7 @@ const DriverDashboard = () => {
                 <Separator className="bg-white/10" />
 
                 <div className="space-y-4">
-            {activeRide?.waiting_on_stop && (
+            {currentRide?.waiting_on_stop && (
               <div className="bg-yellow-500/10 border-2 border-yellow-500/50 p-6 rounded-2xl text-center space-y-4 my-4 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
                 <div className="flex items-center justify-center gap-2">
                   <div className="w-2 h-2 bg-yellow-500 rounded-full animate-ping" />
@@ -2111,7 +2111,7 @@ const DriverDashboard = () => {
           </DialogHeader>
 
           <div className="space-y-2">
-            {(CANCEL_REASONS[activeRide?.status] || []).map((reason) => (
+            {(CANCEL_REASONS[currentRide?.status] || []).map((reason) => (
               <button
                 key={reason}
                 onClick={() => setSelectedCancelReason(reason)}
@@ -2245,7 +2245,7 @@ const DriverPortal = () => {
   // ⏱️ Timer Logic: Calculates elapsed time and 0.40/min charge
   useEffect(() => {
     let interval;
-    if (activeRide?.waiting_on_stop) {
+    if (currentRide?.waiting_on_stop) {
       interval = setInterval(() => {
         setWaitTimeSeconds(prev => prev + 1);
       }, 1000);
@@ -2254,7 +2254,7 @@ const DriverPortal = () => {
       clearInterval(interval);
     }
     return () => clearInterval(interval);
-  }, [activeRide?.waiting_on_stop]);
+  }, [currentRide?.waiting_on_stop]);
 
   const formatWaitTime = (totalSeconds) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -2266,8 +2266,8 @@ const DriverPortal = () => {
 
   const handleContinueTrip = async () => {
     try {
-      await api.post(`/rides/${activeRide.id}/continue-from-stop`, { 
-        stop_index: activeRide.current_stop_index 
+      await api.post(`/rides/${currentRide.id}/continue-from-stop`, { 
+        stop_index: currentRide.current_stop_index 
       });
       toast.success("Trip resumed!");
     } catch (err) {
@@ -2301,3 +2301,4 @@ const DriverPortal = () => {
 };
 
 export default DriverPortal;
+
