@@ -1,4 +1,4 @@
-﻿# server.py  (T'aksi API v3 - Firestore Edition)
+# server.py  (T'aksi API v3 - Firestore Edition)
 # ? Fixes:
 # - Robust Firebase Admin init (no "wrong project" surprises)
 # - Phone normalization (no more invalid creds due to formatting)
@@ -296,10 +296,16 @@ MAX_REQUESTS = 100       # Max requests per IP within the window
 ip_tracker = defaultdict(list)
 
 @app.middleware("http")
-@app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     if request.url.path == "/api/health":
         return await call_next(request)
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    current_time = time.time()
+    ip_tracker[client_ip] = [t for t in ip_tracker[client_ip] if current_time - t < RATE_LIMIT_WINDOW]
+    if len(ip_tracker[client_ip]) >= MAX_REQUESTS:
+        return JSONResponse(status_code=429, content={"detail": "Too many requests."})
+    ip_tracker[client_ip].append(current_time)
+    return await call_next(request)
     client_ip = request.client.host if request.client else "127.0.0.1"
     current_time = time.time()
     ip_tracker[client_ip] = [t for t in ip_tracker[client_ip] if current_time - t < RATE_LIMIT_WINDOW]
