@@ -26,6 +26,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import DriverWithdrawal from './DriverWithdrawal';
 import {
   Car, MapPin, Star, History, Home, LogOut, User,
   Phone, Lock, ArrowLeft, Navigation, Wallet, Loader2, Rocket,
@@ -1227,7 +1228,12 @@ const DriverDashboard = () => {
                     <p className="text-4xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
                   </Card>
                   <Input type="number" placeholder="Amount" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="bg-black/50 text-white border-[#00d4ff]/30 h-12" />
-                  <Button className="w-full bg-[#00ff88] text-black h-12 font-bold" onClick={() => setShowCardModal(true)}>Top Up</Button>
+                                    <Button className="w-full bg-[#00ff88] text-black h-12 font-bold" onClick={() => setShowCardModal(true)}>Top Up</Button>
+                  
+                  {/* --- WITHDRAWAL MODULE --- */}
+                  <div className="mt-8 border-t border-[#00ff88]/30 pt-6">
+                    <DriverWithdrawal driverId={user?.id} currentBalance={balance} />
+                  </div>
                 </div>
               </TabsContent>
 
@@ -1359,3 +1365,4 @@ const DriverPortal = () => {
 };
 
 export default DriverPortal;
+
