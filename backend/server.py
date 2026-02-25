@@ -3695,3 +3695,52 @@ async def get_paypal_client_token():
     except Exception as e:
         logger.error(f"PayPal Token Error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate PayPal token")
+
+# --- 💸 DRIVER WITHDRAWAL SYSTEM ---
+class WithdrawRequest(BaseModel):
+    driver_id: str
+    amount: float
+    bank_details: str
+
+@app.post("/api/driver/withdraw", tags=["Driver"])
+async def request_withdrawal(req: WithdrawRequest):
+    db = get_db()
+    driver_ref = db.collection("users").document(req.driver_id)
+    doc = driver_ref.get()
+    
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Driver not found")
+        
+    data = doc.to_dict()
+    # Check both schema locations just in case
+    earnings = data.get("earnings", {}).get("balance")
+    if earnings is None:
+        earnings = data.get("wallet_balance", 0.0)
+        update_field = "wallet_balance"
+    else:
+        update_field = "earnings.balance"
+        
+    total_deduction = req.amount + 1.0  # Amount + 1 GEL fee
+    
+    # Enforce the 5 GEL minimum remainder rule
+    if earnings - total_deduction < 5.0:
+        max_withdrawal = max(0, earnings - 6.0)
+        raise HTTPException(status_code=400, detail=f"Insufficient funds. Must leave ₾5.00 reserve + ₾1.00 fee. Max withdrawal: ₾{max_withdrawal:.2f}")
+        
+    # Deduct funds safely
+    driver_ref.update({
+        update_field: firestore.Increment(-total_deduction)
+    })
+    
+    # Log the pending request for the Admin to pay out
+    db.collection("withdrawal_requests").add({
+        "driver_id": req.driver_id,
+        "amount": req.amount,
+        "fee": 1.0,
+        "total_deducted": total_deduction,
+        "bank_details": req.bank_details,
+        "status": "pending",
+        "timestamp": firestore.SERVER_TIMESTAMP
+    })
+    
+    return {"message": f"Successfully requested ₾{req.amount}. A ₾1 fee was applied."}
