@@ -297,8 +297,22 @@ ip_tracker = defaultdict(list)
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
+    # Skip rate limiting for health checks
     if request.url.path == "/api/health":
         return await call_next(request)
+        
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    current_time = time.time()
+    
+    # Clean up old requests
+    ip_tracker[client_ip] = [t for t in ip_tracker[client_ip] if current_time - t < RATE_LIMIT_WINDOW]
+    
+    # Block if they hit the limit
+    if len(ip_tracker[client_ip]) >= MAX_REQUESTS:
+        return JSONResponse(status_code=429, content={"detail": "Too many requests. Please try again in 15 minutes."})
+        
+    ip_tracker[client_ip].append(current_time)
+    return await call_next(request)
         
     client_ip = request.client.host if request.client else "127.0.0.1"
     current_time = time.time()
@@ -3599,6 +3613,7 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)
+
 
 
 
