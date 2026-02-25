@@ -36,7 +36,7 @@ const AdminLogin = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       if (password === ADMIN_PASSWORD) {
         const adminUser = {
@@ -46,7 +46,7 @@ const AdminLogin = () => {
           user_type: "admin",
           cellphone: "admin_master"
         };
-        
+
         login("master_admin_token", adminUser);
         toast.success("âš¡ Master Key Accepted. Command Center Unlocked.");
         navigate("/admin/dashboard");
@@ -55,7 +55,7 @@ const AdminLogin = () => {
           cellphone: "admin",
           password: password,
         });
-        
+
         if (res.data.user.user_type === 'admin') {
           login(res.data.token, res.data.user);
           toast.success("Welcome to Command Center!");
@@ -105,7 +105,7 @@ const AdminLogin = () => {
                   placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                   required
                 />
-                <DisputeManager />
+
               </div>
             </div>
             <Button
@@ -139,14 +139,14 @@ const AdminDashboard = () => {
 const [topUpAmount, setTopUpAmount] = useState("");
 const [topUpReason, setTopUpReason] = useState("");
 const [isToppingUp, setIsToppingUp] = useState(false);
-  
+
   // Dispute State
   const [disputeDriverId, setDisputeDriverId] = useState("");
   const [disputeRiderId, setDisputeRiderId] = useState("");
   const [disputeAmount, setDisputeAmount] = useState("");
   const [disputeReason, setDisputeReason] = useState("");
   const [isRefunding, setIsRefunding] = useState(false);
-  
+
   // Selected user for details
   const [selectedUser, setSelectedUser] = useState(null);
   const [fundAmount, setFundAmount] = useState("");
@@ -195,16 +195,16 @@ const handleManualTopUp = async (e) => {
       amount: parseFloat(topUpAmount),
       reason: topUpReason || "Admin manual adjustment/refund"
     });
-    
+
     toast.success(`Successfully added â‚¾${topUpAmount} to ${selectedUserForTopUp.name}'s wallet`);
-    
+
     // Reset and close
     setSelectedUserForTopUp(null);
     setTopUpAmount("");
     setTopUpReason("");
 
     fetchDashboardData();
-    
+
     // Optional: Call your fetch functions to refresh the tables
     // fetchRiders(); 
     // fetchDrivers();
@@ -580,10 +580,10 @@ const handleManualTopUp = async (e) => {
                             `${driver.driver_info.vehicle.car_year} ${driver.driver_info.vehicle.car_make} ${driver.driver_info.vehicle.car_model}` : 
                             "N/A"}
                         </TableCell>
-                        
+
                         {/* ðŸ”¥ FIXED ACTION CELL: BOTH BUTTONS SIDE BY SIDE */}
                         <TableCell className="flex items-center gap-2">
-                          
+
                           {/* QUICK APPROVE BUTTON */}
                           {driver.registration_status?.includes("pending") && (
                             <Button 
@@ -865,7 +865,7 @@ const handleManualTopUp = async (e) => {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-white">Amount (₾)</Label>
@@ -933,6 +933,5 @@ const AdminPortal = () => {
 };
 
 export default AdminPortal;
-
 
 

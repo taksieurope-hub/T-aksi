@@ -241,11 +241,7 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
-    intervalRef.current = setInterval(() => {
-      if (lastLocationRef.current) {
-        onLocationUpdate(lastLocationRef.current);
-      }
-    }, LOCATION_UPDATE_INTERVAL);
+    intervalRef.current = setInterval(() => { if (lastLocationRef.current) { onLocationUpdate(lastLocationRef.current); } }, 10000);
 
     return () => {
       if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
@@ -691,7 +687,7 @@ const DriverDashboard = () => {
   }, [arrivedTime, activeRide]);
 
   useEffect(() => { fetchActiveRide(); fetchRideHistory(); }, []);
-  useEffect(() => { if (registrationStatus === "approved" && isOnline) { fetchAvailableRides(); const interval = setInterval(fetchAvailableRides, 5000); return () => clearInterval(interval); } }, [isOnline, registrationStatus]);
+  useEffect(() => { if (registrationStatus === "approved" && isOnline) { fetchAvailableRides(); const interval = setInterval(fetchAvailableRides, 15000); return () => clearInterval(interval); } }, [isOnline, registrationStatus]);
 
   const fetchAvailableRides = async () => { try { const res = await api.get(`/driver/rides/available`); setAvailableRides(res.data.rides || []); } catch (e) {} };
   const fetchActiveRide = async () => { try { const res = await api.get(`/driver/active-ride`); if (res.data) { setActiveRide(res.data); setActiveTab("rides"); } } catch (e) {} };
@@ -1365,4 +1361,5 @@ const DriverPortal = () => {
 };
 
 export default DriverPortal;
+
 
