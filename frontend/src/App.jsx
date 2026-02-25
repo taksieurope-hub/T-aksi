@@ -16,10 +16,9 @@ import DriverPortal from "@/components/DriverPortal";
 import AdminPortal from "@/components/AdminPortal"; 
 import SupportChatWidget from "@/components/SupportChatWidget";
 
-// Global Axios setup
+// Global Axios setup - 🍪 SECURE COOKIE MODE
+axios.defaults.withCredentials = true; // Tells browser to ALWAYS send cookies cross-domain
 axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
   if (!config.baseURL && API) config.baseURL = API;
   return config;
 });
@@ -75,3 +74,4 @@ function App() {
 }
 
 export default App;
+

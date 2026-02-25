@@ -40,6 +40,36 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("taksi")
 
 # JWT
+# --- 🚦 API RATE LIMITING (Audit Priority #3) ---
+import time
+from collections import defaultdict
+from starlette.responses import JSONResponse
+
+RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
+MAX_REQUESTS = 100       # Max requests per IP within the window
+ip_tracker = defaultdict(list)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    # Skip rate limiting for health checks so Render doesn't think the server is dead
+    if request.url.path == "/api/health":
+        return await call_next(request)
+        
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    current_time = time.time()
+    
+    # Clean up old requests outside the 15-minute window
+    ip_tracker[client_ip] = [t for t in ip_tracker[client_ip] if current_time - t < RATE_LIMIT_WINDOW]
+    
+    # Block if they hit the limit
+    if len(ip_tracker[client_ip]) >= MAX_REQUESTS:
+        logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+        return JSONResponse(status_code=429, content={"detail": "Too many requests. Please try again in 15 minutes."})
+        
+    # Log the new request and continue
+    ip_tracker[client_ip].append(current_time)
+    return await call_next(request)
+
 JWT_SECRET = os.environ.get("JWT_SECRET", "taksi_galactic_secret_2025_secure_key")
 JWT_ALGORITHM = "HS256"
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "D'Ahl-Enterprise9409145169086")
@@ -2372,6 +2402,43 @@ async def reject_withdrawal(id: str):
     })
     return {"message": "Withdrawal rejected"}
 
+class AdminRefundRequest(BaseModel):
+    driver_id: str
+    rider_id: str
+    amount: float
+    reason: str
+
+@app.post("/api/admin/dispute/refund", tags=["Admin"])
+async def admin_refund_ride(req: AdminRefundRequest):
+    db = get_db()
+    
+    driver_ref = db.collection("users").document(req.driver_id)
+    if not driver_ref.get().exists: raise HTTPException(404, "Driver not found")
+        
+    rider_ref = db.collection("users").document(req.rider_id)
+    if not rider_ref.get().exists: raise HTTPException(404, "Rider not found")
+
+    # Force the amount to be positive for the math, then deduct/add appropriately
+    refund_amount = abs(req.amount)
+
+    # 1. Take money from the driver
+    driver_ref.update({"earnings.balance": firestore.Increment(-refund_amount)})
+    
+    # 2. Give money to the rider
+    rider_ref.update({"wallet_balance": firestore.Increment(refund_amount)})
+    
+    # 3. Log the administrative action for your records
+    db.collection("admin_balance_logs").add({
+        "driver_id": req.driver_id,
+        "rider_id": req.rider_id,
+        "amount": refund_amount,
+        "reason": req.reason,
+        "admin_action": "dispute_refund",
+        "timestamp": firestore.SERVER_TIMESTAMP,
+    })
+    
+    return {"message": f"Successfully refunded ₾{refund_amount} from Driver to Rider."}
+
 # AI FEATURES - TRANSLATION, SUPPORT, CHAT
 
 from ai_features import (
@@ -3518,3 +3585,7 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), reload=True)
+
+
+
+

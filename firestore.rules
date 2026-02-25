@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // This fixes the 'permission-denied' for your code
+    match /riders/{userId} {
+      allow read: if true; 
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Keep this for any other 'users' logic
+    match /users/{userId} {
+      allow read: if true; 
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow ride creation/reading for logged-in users
+    match /rides/{rideId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Support messages nested under riders
+    match /riders/{userId}/support_messages/{msgId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { Phone, MessageSquare, X, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import api from "@/api";
-import { toast } from "sonner"; // For toast notifications
+import { toast } from "sonner"; 
 
 const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUserId, isDriver }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -12,28 +12,25 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   
-  // Audio & Notification state
-  const [hasUnread, setHasUnread] = useState(false);
+  // 🚀 UPGRADED: Mathematical counter for unread messages
+  const [unreadCount, setUnreadCount] = useState(0);
   const previousMessageCount = useRef(0);
   const messagesEndRef = useRef(null);
 
   const themeColor = isDriver ? "border-[#00d4ff] text-[#00d4ff]" : "border-[#00ff88] text-[#00ff88]";
   const themeBg = isDriver ? "bg-[#00d4ff]" : "bg-[#00ff88]";
 
-  // 🔥 NEW: Play a clean message "Ding!"
   const playMessageSound = () => {
     const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
     audio.play().catch(e => console.log("Browser blocked auto-play:", e));
   };
 
-  // Scroll Logic
   useEffect(() => {
     if (messages.length > 0 && isOpen) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages.length, isOpen]);
 
-  // Polling Engine & Notification Trigger
   useEffect(() => {
     if (!rideId) return;
 
@@ -43,24 +40,26 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
         if (res.data && res.data.messages) {
           const newMessages = res.data.messages;
           
-          // Check if we received NEW messages
           if (newMessages.length > previousMessageCount.current) {
-            
-            // Look at the very last message to see who sent it
+            const missedCount = newMessages.length - previousMessageCount.current;
             const lastMessage = newMessages[newMessages.length - 1];
+            
+            // Bulletproof check: Is this message NOT from me?
             const isMe = String(lastMessage.sender_id) === String(currentUserId);
             
             if (!isMe) {
               playMessageSound();
               if (!isOpen) {
-                setHasUnread(true);
-                toast.info(`New message from ${otherPartyName || (isDriver ? "Rider" : "Driver")}`);
+                setUnreadCount(prev => prev + missedCount);
+                // 🚀 UPGRADED: Toast now shows preview of the message
+                const senderTitle = otherPartyName || (isDriver ? "Rider" : "Driver");
+                toast.info(`New message from ${senderTitle}: "${lastMessage.message}"`);
               }
             }
           }
           
           setMessages(newMessages);
-          previousMessageCount.current = newMessages.length; // Update our tracker
+          previousMessageCount.current = newMessages.length;
         }
       } catch (error) {
         console.error("Failed to fetch chat:", error);
@@ -68,14 +67,13 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
     };
 
     fetchMessages();
-    const interval = setInterval(fetchMessages, 3000); // Check every 3 seconds
+    const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
   }, [isOpen, rideId, currentUserId, otherPartyName, isDriver]);
 
-  // When they open the chat, clear the unread badge
   const handleOpenChat = () => {
     setIsOpen(true);
-    setHasUnread(false);
+    setUnreadCount(0); // Clear the badge when opened
   };
 
   const handleSend = async (e) => {
@@ -98,7 +96,7 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
       };
       
       setMessages(prev => [...prev, optimisticMessage]);
-      previousMessageCount.current += 1; // Update tracker so we don't 'ding' ourselves on next poll
+      previousMessageCount.current += 1;
 
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -110,7 +108,6 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
 
   return (
     <div className="flex gap-2 mt-4 w-full">
-      {/* 📞 Call Button - 🔥 FIXED to use native <a> tag for mobile dialer */}
       <a 
         href={`tel:${otherPartyPhone}`}
         className={`flex-1 flex items-center justify-center h-10 rounded-md border text-sm font-medium ${themeColor} hover:${themeBg} hover:text-black transition-colors`}
@@ -118,28 +115,24 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
         <Phone className="w-4 h-4 mr-2" /> Call
       </a>
 
-      {/* 💬 Chat Button with Unread Badge */}
       <Button 
         variant="outline" 
         className={`flex-1 relative ${themeColor} hover:${themeBg} hover:text-black transition-colors`}
         onClick={handleOpenChat}
       >
         <MessageSquare className="w-4 h-4 mr-2" /> Chat
-        {hasUnread && (
-          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+        {/* 🚀 UPGRADED: Numbered Red Badge */}
+        {unreadCount > 0 && (
+          <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 border border-black text-[10px] font-bold text-white shadow-lg">
+            {unreadCount}
           </span>
         )}
       </Button>
 
-      {/* 🗨️ Chat Popup Window */}
       {isOpen && (
         <div className="fixed inset-0 z-[10500] p-4 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          
           <Card className={`w-full max-w-md h-[600px] max-h-full flex flex-col bg-black border-2 rounded-2xl ${themeColor.replace('text', 'border')} shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in zoom-in-95 duration-200`}>
             
-            {/* Header */}
             <div className="p-4 border-b border-white/10 flex justify-between items-center bg-[#111] shrink-0">
               <div>
                 <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Live Chat</p>
@@ -147,7 +140,6 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
                   {otherPartyName || (isDriver ? "Rider" : "Driver")}
                 </h3>
               </div>
-              
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -158,7 +150,6 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
               </Button>
             </div>
 
-            {/* Message Area */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-4 bg-black/40 w-full">
               {messages.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-gray-500 text-sm italic px-6 text-center">
@@ -166,16 +157,9 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
                 </div>
               ) : (
                 messages.map((msg, i) => {
-                  let isMe = false;
-                  const role = msg.sender_type || msg.sender_role; 
-                  
-                  if (role) {
-                    isMe = (isDriver && role === "driver") || (!isDriver && role === "rider");
-                  } else {
-                    isMe = String(msg.sender_id) === String(currentUserId);
-                  }
-
-                  const senderLabel = isMe ? "You" : (isDriver ? "Rider" : "Driver");
+                  // 🚀 UPGRADED: Foolproof sender check
+                  const isMe = String(msg.sender_id) === String(currentUserId);
+                  const senderLabel = isMe ? "You" : (otherPartyName || (isDriver ? "Rider" : "Driver"));
 
                   return (
                     <div key={msg.id || i} className={`flex w-full ${isMe ? "justify-end" : "justify-start"}`}>
@@ -185,7 +169,7 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
                           : "bg-gray-800 text-white border border-gray-700 rounded-tl-none"
                       }`}>
                         
-                        <span className="text-[9px] font-bold uppercase opacity-50 mb-0.5">
+                        <span className="text-[10px] font-black uppercase opacity-60 mb-1">
                           {senderLabel}
                         </span>
                         
@@ -203,7 +187,6 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
             <form onSubmit={handleSend} className="p-3 sm:p-4 border-t border-white/10 bg-black flex gap-2 shrink-0">
               <Input
                 value={input}
@@ -216,7 +199,6 @@ const RideCommunication = ({ rideId, otherPartyPhone, otherPartyName, currentUse
               </Button>
             </form>
           </Card>
-
         </div>
       )}
     </div>
