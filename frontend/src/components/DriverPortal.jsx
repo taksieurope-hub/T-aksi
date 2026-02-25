@@ -1225,6 +1225,11 @@ const DriverDashboard = () => {
                   </Card>
                   <Input type="number" placeholder="Amount" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="bg-black/50 text-white border-[#00d4ff]/30 h-12" />
                                     <Button className="w-full bg-[#00ff88] text-black h-12 font-bold" onClick={() => setShowCardModal(true)}>Top Up</Button>
+
+                  {/* --- WITHDRAWAL MODULE --- */}
+                  <div className="mt-8 border-t border-[#00ff88]/30 pt-6">
+                    <DriverWithdrawal driverId={user?.id} currentBalance={balance} />
+                  </div>
                   
                   {/* --- WITHDRAWAL MODULE --- */}
                   <div className="mt-8 border-t border-[#00ff88]/30 pt-6">
@@ -1361,5 +1366,6 @@ const DriverPortal = () => {
 };
 
 export default DriverPortal;
+
 
 
