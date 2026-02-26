@@ -231,16 +231,16 @@ app = FastAPI(title="T'aksi API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOW_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
     allow_origins=[
         "http://localhost:5173",
         "https://t-aksi-frontend.onrender.com",
-        "https://taksi-admin.onrender.com", 
+        "https://taksi-admin.onrender.com", # <--- Just add the URL inside the brackets
     ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
 
 # --- RATE LIMITING ---
 import time
