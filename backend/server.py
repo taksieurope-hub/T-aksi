@@ -235,6 +235,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://t-aksi-frontend.onrender.com",
+        "https://taksi-admin.onrender.com", 
+    ],
 )
 
 # --- RATE LIMITING ---
