@@ -1061,9 +1061,10 @@ const RiderDashboard = () => {
         setActiveRide(res.data);
         handleRideStatusChange(res.data);
       } catch {}
-    }, 3000);
+    }, 10000); // <--- MAKE SURE THIS IS 10000
+
     return () => clearInterval(interval);
-  }, [activeRide?.id, activeRide?.status]); // eslint-disable-line
+  }, [activeRide]);
 
   const handleRideStatusChange = (ride) => {
     if (ride.status === "arrived" && !notifiedArrived.current) {
