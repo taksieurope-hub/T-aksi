@@ -1003,9 +1003,12 @@ const AdminDashboard = () => {
           {/* ── SOS ── */}
           <TabsContent value="sos">
             <SOSPanel />
-          </TabsContent>
+          </TabsContent>        </Tabs>
 
-        </Tabs>
+        {/* ── DRIVER PENALTY MANAGER ── */}
+        <div className="mt-12 mb-8 border-t border-purple-500/30 pt-6">
+          <DisputeManager />
+        </div>
       </main>
     </div>
   );
