@@ -8,29 +8,29 @@ import LanguageSelector from "@/i18n/LanguageSelector";
 import { DriverTripCompletionModal } from "@/components/TripCompletionModal";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import RideCommunication from "./RideCommunication";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-  DialogDescription, DialogFooter,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import {
-  Car, MapPin, Star, History, Home, LogOut, User,
-  Phone, Lock, ArrowLeft, ArrowRight, Navigation, Wallet, Loader2, Rocket,
-  Plus, X, Zap, TrendingUp, MessageSquare,
-  Target, Crosshair, Send, Banknote, CreditCard, ExternalLink,
-  AlertTriangle, Activity, MapPinned, CheckCircle2, XCircle,
-  Play, Timer, PauseCircle, Building2, Info,
+  Car, MapPin, Star, History, Home, LogOut, User, Phone, Lock,
+  ArrowLeft, ArrowRight, Navigation, Wallet, Loader2, Rocket, Plus, X,
+  Zap, TrendingUp, MessageSquare, Target, Crosshair, Send, Banknote,
+  CreditCard, ExternalLink, AlertTriangle, Activity, MapPinned,
+  CheckCircle2, XCircle, Play, Timer, PauseCircle, Building2, Info,
+  Shield, Users, Gift, LifeBuoy, Copy, Share2, ChevronDown, ChevronUp,
+  ChevronRight, Bell, Flame, Calendar, Truck, Settings, RefreshCw,
+  Award, BarChart3, FileText, Heart, Headphones, AlertCircle,
 } from "lucide-react";
 
 // =============================================================================
-// PRICING RULES — Synced with server.py + RiderPortal exactly
+// CONSTANTS — synced with server.py
 // =============================================================================
 const PRICING_RULES = {
   economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   icon: "🚗" },
@@ -41,25 +41,87 @@ const PRICING_RULES = {
 };
 
 const DRIVER_COMMISSION_RATE = 0.23;
-const LOCATION_UPDATE_INTERVAL = 2000; // ms
-
-// Minimum balance reserve + fee enforced by server
+const LOCATION_UPDATE_INTERVAL = 2000;
 const WITHDRAWAL_RESERVE = 5.00;
-const WITHDRAWAL_FEE    = 1.00;
+const WITHDRAWAL_FEE = 1.00;
 
 const CANCEL_REASONS = {
-  accepted: [
-    "Heavy Traffic / Stuck", "Car Trouble / Mechanical Issue",
-    "Accidentally Accepted", "Cannot Locate Pickup Address", "Personal Emergency",
-  ],
-  arrived: [
-    "Client Not Showing Up (Timer Expired)", "Client Refused Ride",
-    "Too Much Luggage / Cargo", "Unaccompanied Minor", "No Mask / Safety Concern",
-  ],
-  in_progress: [
-    "Client Requested Early End", "Client Behavior / Rude",
-    "Safety Concern", "Wrong Destination", "Vehicle Breakdown",
-  ],
+  accepted:    ["Heavy Traffic / Stuck", "Car Trouble", "Accidentally Accepted", "Cannot Locate Pickup", "Personal Emergency"],
+  arrived:     ["Client Not Showing (Timer Expired)", "Client Refused Ride", "Too Much Luggage", "Unaccompanied Minor", "Safety Concern"],
+  in_progress: ["Client Requested Early End", "Client Behavior / Rude", "Safety Concern", "Wrong Destination", "Vehicle Breakdown"],
+};
+
+// =============================================================================
+// DESIGN TOKENS
+// =============================================================================
+const C = {
+  green:  "#00ff88",
+  cyan:   "#00d4ff",
+  bg:     "#07070f",
+  card:   "#0e0e1c",
+  card2:  "#13132a",
+  border: "rgba(255,255,255,0.07)",
+  muted:  "rgba(255,255,255,0.4)",
+};
+
+// =============================================================================
+// SHARED UI COMPONENTS
+// =============================================================================
+const GlassCard = ({ children, className = "", accent = false }) => (
+  <div className={`rounded-2xl border ${accent ? "border-[#00ff88]/25 bg-[#00ff88]/5" : "border-white/7 bg-white/3"} backdrop-blur-sm ${className}`}>
+    {children}
+  </div>
+);
+
+const StatPill = ({ label, value, color = "text-white" }) => (
+  <div className="bg-white/4 rounded-xl p-3 text-center border border-white/7">
+    <p className="text-[10px] uppercase tracking-widest text-white/40 mb-1">{label}</p>
+    <p className={`text-lg font-bold font-mono ${color}`}>{value}</p>
+  </div>
+);
+
+const SectionHeader = ({ icon: Icon, title, subtitle, action }) => (
+  <div className="flex items-center justify-between mb-4">
+    <div className="flex items-center gap-2">
+      {Icon && <div className="w-7 h-7 rounded-lg bg-[#00ff88]/15 flex items-center justify-center"><Icon className="w-4 h-4 text-[#00ff88]" /></div>}
+      <div>
+        <h3 className="text-white font-semibold text-[15px]">{title}</h3>
+        {subtitle && <p className="text-white/40 text-xs">{subtitle}</p>}
+      </div>
+    </div>
+    {action}
+  </div>
+);
+
+const BackButton = ({ onClick, label = "Back" }) => (
+  <button onClick={onClick} className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-4 transition-colors">
+    <ArrowLeft className="w-4 h-4" /> {label}
+  </button>
+);
+
+const StatusBadge = ({ status }) => {
+  const map = {
+    pending_vehicle: ["bg-amber-500/20 text-amber-400 border-amber-500/30", "Pending Vehicle"],
+    pending_review:  ["bg-orange-500/20 text-orange-400 border-orange-500/30", "Under Review"],
+    approved:        ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "Approved"],
+    rejected:        ["bg-red-500/20 text-red-400 border-red-500/30", "Rejected"],
+    searching:       ["bg-yellow-500/20 text-yellow-400 border-yellow-500/30", "Searching"],
+    accepted:        ["bg-blue-500/20 text-blue-400 border-blue-500/30", "Accepted"],
+    arrived:         ["bg-purple-500/20 text-purple-400 border-purple-500/30", "Arrived"],
+    in_progress:     ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "In Progress"],
+    completed:       ["bg-emerald-500/20 text-emerald-400 border-emerald-500/30", "Completed"],
+    cancelled:       ["bg-red-500/20 text-red-400 border-red-500/30", "Cancelled"],
+    escalated:       ["bg-red-500/20 text-red-400 border-red-500/30", "Escalated"],
+    in_progress_ticket: ["bg-blue-500/20 text-blue-400 border-blue-500/30", "In Progress"],
+    resolved:        ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "Resolved"],
+    closed:          ["bg-white/10 text-white/40 border-white/10", "Closed"],
+    active:          ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "Active"],
+    pending:         ["bg-amber-500/20 text-amber-400 border-amber-500/30", "Pending"],
+    approved_w:      ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "Approved"],
+    rejected_w:      ["bg-red-500/20 text-red-400 border-red-500/30", "Rejected"],
+  };
+  const [cls, label] = map[status] || ["bg-white/10 text-white/50 border-white/10", status || "Unknown"];
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${cls}`}>{label}</span>;
 };
 
 // =============================================================================
@@ -67,234 +129,954 @@ const CANCEL_REASONS = {
 // =============================================================================
 const DriverWaitTimer = ({ arrivedAt, carType }) => {
   const [elapsed, setElapsed] = useState(0);
-
   useEffect(() => {
-    const startTime = arrivedAt && !isNaN(new Date(arrivedAt).getTime())
-      ? new Date(arrivedAt).getTime()
-      : Date.now();
-    const interval = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
-    return () => clearInterval(interval);
+    const start = arrivedAt && !isNaN(new Date(arrivedAt).getTime()) ? new Date(arrivedAt).getTime() : Date.now();
+    const iv = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(iv);
   }, [arrivedAt]);
 
-  const rules           = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
-  const freeWaitSeconds = rules.freeWait * 60;
+  const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
+  const freeWaitSec = rules.freeWait * 60;
 
-  if (elapsed <= freeWaitSeconds) {
-    const remaining = freeWaitSeconds - elapsed;
-    const mins = String(Math.floor(remaining / 60)).padStart(2, "0");
-    const secs = String(remaining % 60).padStart(2, "0");
+  if (elapsed <= freeWaitSec) {
+    const rem = freeWaitSec - elapsed;
     return (
-      <div className="bg-blue-500/20 border border-blue-500 p-4 rounded-xl flex items-center justify-between col-span-2">
-        <div className="flex items-center text-blue-400">
-          <Timer className="w-5 h-5 mr-2 animate-pulse" />
-          <span className="font-medium">Free Wait Time</span>
+      <div className="col-span-2 bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-blue-400">
+          <Timer className="w-5 h-5 animate-pulse" />
+          <span className="font-medium text-sm">Free Wait</span>
         </div>
         <div className="text-right">
-          <div className="text-blue-400 font-mono text-xl font-bold">{mins}:{secs}</div>
-          <div className="text-blue-400/70 text-[10px] uppercase font-bold tracking-wider">Remaining</div>
+          <div className="text-blue-300 font-mono text-2xl font-bold">
+            {String(Math.floor(rem / 60)).padStart(2, "0")}:{String(rem % 60).padStart(2, "0")}
+          </div>
+          <div className="text-blue-400/50 text-[10px] uppercase tracking-wider">remaining</div>
         </div>
       </div>
     );
   }
 
-  const overtime    = elapsed - freeWaitSeconds;
-  const mins        = String(Math.floor(overtime / 60)).padStart(2, "0");
-  const secs        = String(overtime % 60).padStart(2, "0");
-  const liveEarnings = ((overtime / 60) * rules.perMinWait).toFixed(2);
-
+  const overtime = elapsed - freeWaitSec;
+  const earned = ((overtime / 60) * rules.perMinWait).toFixed(2);
   return (
-    <div className="bg-[#00ff88]/20 border border-[#00ff88] p-4 rounded-xl flex items-center justify-between shadow-[0_0_15px_rgba(0,255,136,0.2)] col-span-2">
-      <div className="flex items-center text-[#00ff88]">
-        <Timer className="w-5 h-5 mr-2 animate-pulse" />
-        <span className="font-medium">Paid Wait Time</span>
+    <div className="col-span-2 bg-[#00ff88]/10 border border-[#00ff88]/40 rounded-xl p-4 flex items-center justify-between">
+      <div className="flex items-center gap-2 text-[#00ff88]">
+        <Timer className="w-5 h-5 animate-pulse" />
+        <span className="font-medium text-sm">Paid Wait</span>
       </div>
       <div className="text-right">
-        <div className="text-[#00ff88] font-mono text-xl font-bold">{mins}:{secs}</div>
-        <div className="text-[#00ff88] font-bold text-sm">Earned: +₾{liveEarnings}</div>
+        <div className="text-[#00ff88] font-mono text-2xl font-bold">
+          {String(Math.floor(overtime / 60)).padStart(2, "0")}:{String(overtime % 60).padStart(2, "0")}
+        </div>
+        <div className="text-[#00ff88] font-bold text-sm">+₾{earned}</div>
       </div>
     </div>
   );
 };
 
 // =============================================================================
-// WITHDRAWAL PANEL — talks to /api/driver/withdraw
-// server.py: WithdrawRequest { driver_id, amount, bank_details }
-// Rules: ₾5 reserve + ₾1 fee. Max withdrawal = balance - 6
+// SURGE INDICATOR
 // =============================================================================
-const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
-  const [amount,      setAmount]      = useState("");
-  const [bankDetails, setBankDetails] = useState("");
-  const [bankType,    setBankType]    = useState("iban"); // "iban" | "bog" | "tbc"
-  const [loading,     setLoading]     = useState(false);
-  const [history,     setHistory]     = useState([]);
-
-  const maxWithdrawal = Math.max(0, balance - WITHDRAWAL_RESERVE - WITHDRAWAL_FEE);
-  const requestedAmt  = parseFloat(amount) || 0;
-  const fee           = requestedAmt > 0 ? WITHDRAWAL_FEE : 0;
-  const totalDeducted = requestedAmt + fee;
-  const remainingBal  = balance - totalDeducted;
-  const isValid       = requestedAmt >= 1 && requestedAmt <= maxWithdrawal && bankDetails.trim().length >= 5;
-
+const SurgeIndicator = ({ location }) => {
+  const [surge, setSurge] = useState(null);
   useEffect(() => {
-    const fetchHistory = async () => {
+    const fetch = async () => {
       try {
-        const res = await api.get("/driver/withdrawals/history");
-        setHistory(res.data.withdrawals || []);
+        const q = location ? `?lat=${location.lat}&lng=${location.lng}` : "";
+        const r = await api.get(`/surge/status${q}`);
+        setSurge(r.data);
       } catch (_) {}
     };
-    fetchHistory();
-  }, []);
+    fetch();
+    const iv = setInterval(fetch, 60000);
+    return () => clearInterval(iv);
+  }, [location?.lat, location?.lng]);
 
-  const handleWithdraw = async () => {
-    if (!isValid) return;
+  if (!surge?.is_surge) return null;
+  return (
+    <div className="flex items-center gap-1.5 bg-orange-500/15 border border-orange-500/30 rounded-lg px-2.5 py-1">
+      <Flame className="w-3.5 h-3.5 text-orange-400 animate-pulse" />
+      <span className="text-orange-300 text-xs font-bold">{surge.multiplier}x</span>
+    </div>
+  );
+};
+
+// =============================================================================
+// SOS BUTTON
+// =============================================================================
+const SOSButton = ({ activeRide, location }) => {
+  const [confirm, setConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const trigger = async () => {
     setLoading(true);
     try {
-      const res = await api.post("/driver/withdraw", {
-        driver_id:    driverId,
-        amount:       requestedAmt,
-        bank_details: `[${bankType.toUpperCase()}] ${bankDetails.trim()}`,
+      await api.post("/sos", {
+        ride_id: activeRide?.id || null,
+        lat: location?.lat || 0,
+        lng: location?.lng || 0,
+        message: `Driver SOS — Ride: ${activeRide?.id || "none"}`,
       });
-      toast.success(res.data.message || `Withdrawal of ₾${requestedAmt.toFixed(2)} requested!`);
-      setAmount("");
-      setBankDetails("");
-      if (onSuccess) onSuccess();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Withdrawal failed");
+      toast.error("🚨 SOS sent! Support team has been alerted.", { duration: 10000 });
+      setConfirm(false);
+    } catch (_) {
+      toast.error("SOS failed — call emergency services directly");
     } finally {
       setLoading(false);
     }
   };
 
-  const bankTypeLabels = {
-    iban: "IBAN (Any Georgian Bank)",
-    bog:  "Bank of Georgia Account #",
-    tbc:  "TBC Bank Account #",
+  return (
+    <>
+      <button onClick={() => setConfirm(true)}
+        className="flex items-center gap-1.5 bg-red-500/15 border border-red-500/40 rounded-lg px-2.5 py-1 active:bg-red-500/30 transition-colors">
+        <Shield className="w-3.5 h-3.5 text-red-400" />
+        <span className="text-red-400 text-xs font-bold">SOS</span>
+      </button>
+
+      <Dialog open={confirm} onOpenChange={setConfirm}>
+        <DialogContent className="bg-[#0e0e1c] border border-red-500/50 text-white max-w-sm rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-red-400 flex items-center gap-2 text-xl">
+              <Shield className="w-6 h-6" /> Emergency SOS
+            </DialogTitle>
+            <DialogDescription className="text-white/60 text-sm">
+              This will immediately alert the T'aksi support team with your location. Use only in genuine emergencies.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 mt-2">
+            <Button variant="ghost" onClick={() => setConfirm(false)} className="flex-1 border border-white/10 text-white/60 h-12">Cancel</Button>
+            <Button onClick={trigger} disabled={loading} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold h-12">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "🚨 Send SOS"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
+
+// =============================================================================
+// RATE PASSENGER MODAL
+// =============================================================================
+const RatePassengerModal = ({ rideId, riderName, onDone }) => {
+  const [rating, setRating] = useState(5);
+  const [review, setReview] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setLoading(true);
+    try {
+      await api.post(`/rides/${rideId}/rate-passenger`, { rating, review });
+      toast.success("Passenger rated!");
+      onDone();
+    } catch (_) {
+      toast.error("Failed to submit rating");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="space-y-5">
-      {/* Balance summary */}
+    <div className="space-y-4">
+      <p className="text-white/60 text-sm text-center">How was your ride with <span className="text-white font-medium">{riderName || "this passenger"}</span>?</p>
+      <div className="flex justify-center gap-3">
+        {[1,2,3,4,5].map(s => (
+          <button key={s} onClick={() => setRating(s)}
+            className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "bg-[#00ff88]/20 border border-[#00ff88] scale-110" : "bg-white/5 border border-white/10"}`}>
+            ⭐
+          </button>
+        ))}
+      </div>
+      <Input value={review} onChange={e => setReview(e.target.value)} placeholder="Optional feedback..."
+        className="bg-white/5 border-white/10 text-white placeholder:text-white/30" />
+      <div className="flex gap-3">
+        <Button variant="ghost" onClick={onDone} className="flex-1 border border-white/10 text-white/60">Skip</Button>
+        <Button onClick={submit} disabled={loading} className="flex-1 bg-[#00ff88] text-black font-bold">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Rating"}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+// =============================================================================
+// WITHDRAWAL PANEL
+// =============================================================================
+const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
+  const [amount, setAmount] = useState("");
+  const [bankDetails, setBankDetails] = useState("");
+  const [bankType, setBankType] = useState("iban");
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+
+  const maxW = Math.max(0, balance - WITHDRAWAL_RESERVE - WITHDRAWAL_FEE);
+  const amt = parseFloat(amount) || 0;
+  const isValid = amt >= 1 && amt <= maxW && bankDetails.trim().length >= 5;
+
+  useEffect(() => {
+    api.get("/driver/withdrawals/history").then(r => setHistory(r.data.withdrawals || [])).catch(() => {});
+  }, []);
+
+  const submit = async () => {
+    if (!isValid) return;
+    setLoading(true);
+    try {
+      const r = await api.post("/driver/withdraw", {
+        driver_id: driverId, amount: amt,
+        bank_details: `[${bankType.toUpperCase()}] ${bankDetails.trim()}`,
+      });
+      toast.success(r.data.message || `Withdrawal of ₾${amt.toFixed(2)} requested!`);
+      setAmount(""); setBankDetails("");
+      onSuccess?.();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Withdrawal failed");
+    } finally { setLoading(false); }
+  };
+
+  const bankLabels = { iban: "IBAN", bog: "Bank of Georgia", tbc: "TBC Bank" };
+  const bankPlaceholders = {
+    iban: "GE29NB0000000101904917", bog: "GE29BG0000000101904917", tbc: "GE29TB0000000101904917",
+  };
+
+  return (
+    <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-4 text-center">
-          <p className="text-[#00ff88]/60 text-xs mb-1">Available Balance</p>
-          <p className="text-2xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
-        </div>
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-          <p className="text-gray-400 text-xs mb-1">Max Withdrawal</p>
-          <p className="text-2xl font-bold text-white">₾{maxWithdrawal.toFixed(2)}</p>
-          <p className="text-gray-500 text-[10px] mt-0.5">₾5 reserve + ₾1 fee held</p>
-        </div>
+        <GlassCard accent className="p-4 text-center">
+          <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
+          <p className="text-2xl font-bold font-mono text-[#00ff88]">₾{balance.toFixed(2)}</p>
+        </GlassCard>
+        <GlassCard className="p-4 text-center">
+          <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Max Withdraw</p>
+          <p className="text-2xl font-bold font-mono text-white">₾{maxW.toFixed(2)}</p>
+          <p className="text-white/30 text-[9px] mt-0.5">₾5 reserve + ₾1 fee</p>
+        </GlassCard>
       </div>
 
-      {/* Amount input */}
-      <div className="space-y-2">
-        <Label className="text-gray-300 text-sm">Withdrawal Amount (GEL)</Label>
+      <div className="space-y-1.5">
+        <Label className="text-white/60 text-xs uppercase tracking-wider">Amount (GEL)</Label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold text-lg">₾</span>
-          <Input
-            type="number" min="1" max={maxWithdrawal} step="0.01"
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            placeholder="0.00"
-            className="pl-8 bg-black/50 border-[#00ff88]/30 text-white text-lg h-12"
-          />
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">₾</span>
+          <Input type="number" min="1" max={maxW} value={amount} onChange={e => setAmount(e.target.value)}
+            placeholder="0.00" className="pl-7 bg-white/4 border-white/10 text-white text-lg h-12 font-mono" />
         </div>
-        <div className="flex justify-between text-xs">
-          <button onClick={() => setAmount(String(Math.floor(maxWithdrawal / 2)))}
-            className="text-[#00d4ff] underline">½ Amount</button>
-          <button onClick={() => setAmount(String(maxWithdrawal.toFixed(2)))}
-            className="text-[#00d4ff] underline">Max</button>
+        <div className="flex gap-3 text-xs">
+          <button onClick={() => setAmount(String(Math.floor(maxW / 2)))} className="text-[#00d4ff] underline">Half</button>
+          <button onClick={() => setAmount(String(maxW.toFixed(2)))} className="text-[#00d4ff] underline">Max</button>
         </div>
       </div>
 
-      {/* Bank type selector */}
-      <div className="space-y-2">
-        <Label className="text-gray-300 text-sm">Bank / Transfer Method</Label>
+      <div className="space-y-1.5">
+        <Label className="text-white/60 text-xs uppercase tracking-wider">Transfer Method</Label>
         <div className="grid grid-cols-3 gap-2">
-          {Object.entries(bankTypeLabels).map(([key, label]) => (
-            <button key={key} onClick={() => setBankType(key)}
-              className={`py-2 px-2 rounded-lg border text-xs font-semibold transition-all ${
-                bankType === key
-                  ? "bg-[#00ff88]/20 border-[#00ff88] text-[#00ff88]"
-                  : "border-white/10 text-gray-400 hover:border-white/30"
-              }`}>
-              {key.toUpperCase()}
+          {Object.entries(bankLabels).map(([k, v]) => (
+            <button key={k} onClick={() => setBankType(k)}
+              className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${bankType === k ? "bg-[#00ff88]/15 border-[#00ff88]/50 text-[#00ff88]" : "border-white/10 text-white/40 hover:border-white/25"}`}>
+              {k.toUpperCase()}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Bank details */}
-      <div className="space-y-2">
-        <Label className="text-gray-300 text-sm">{bankTypeLabels[bankType]}</Label>
-        <Input
-          value={bankDetails}
-          onChange={e => setBankDetails(e.target.value)}
-          placeholder={
-            bankType === "iban" ? "GE29NB0000000101904917" :
-            bankType === "bog"  ? "GE29BG0000000101904917" :
-                                  "GE29TB0000000101904917"
-          }
-          className="bg-black/50 border-[#00ff88]/30 text-white font-mono uppercase"
-        />
+      <div className="space-y-1.5">
+        <Label className="text-white/60 text-xs uppercase tracking-wider">{bankLabels[bankType]} Details</Label>
+        <Input value={bankDetails} onChange={e => setBankDetails(e.target.value)} placeholder={bankPlaceholders[bankType]}
+          className="bg-white/4 border-white/10 text-white font-mono uppercase placeholder:normal-case placeholder:text-white/20" />
       </div>
 
-      {/* Fee breakdown */}
-      {requestedAmt > 0 && (
-        <div className="bg-black/50 border border-white/10 rounded-xl p-4 space-y-2 text-sm">
-          <div className="flex justify-between text-gray-300">
-            <span>You request</span><span className="font-mono">₾{requestedAmt.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-red-400">
-            <span>Processing fee</span><span className="font-mono">−₾{WITHDRAWAL_FEE.toFixed(2)}</span>
-          </div>
+      {amt > 0 && (
+        <GlassCard className="p-4 space-y-2 text-sm">
+          <div className="flex justify-between text-white/70"><span>Requested</span><span className="font-mono">₾{amt.toFixed(2)}</span></div>
+          <div className="flex justify-between text-red-400"><span>Processing fee</span><span className="font-mono">−₾{WITHDRAWAL_FEE.toFixed(2)}</span></div>
           <Separator className="bg-white/10" />
-          <div className="flex justify-between font-bold text-white">
-            <span>Total deducted</span><span className="font-mono text-red-400">−₾{totalDeducted.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between font-bold">
-            <span className="text-gray-400">Balance after</span>
-            <span className={`font-mono ${remainingBal >= WITHDRAWAL_RESERVE ? "text-[#00ff88]" : "text-red-400"}`}>
-              ₾{remainingBal.toFixed(2)}
+          <div className="flex justify-between text-white font-bold"><span>Total deducted</span><span className="font-mono text-red-400">−₾{(amt + WITHDRAWAL_FEE).toFixed(2)}</span></div>
+          <div className="flex justify-between">
+            <span className="text-white/50">Balance after</span>
+            <span className={`font-mono font-bold ${balance - amt - WITHDRAWAL_FEE >= WITHDRAWAL_RESERVE ? "text-[#00ff88]" : "text-red-400"}`}>
+              ₾{(balance - amt - WITHDRAWAL_FEE).toFixed(2)}
             </span>
+          </div>
+        </GlassCard>
+      )}
+
+      <div className="flex gap-2 bg-blue-500/8 border border-blue-500/20 rounded-xl p-3">
+        <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+        <p className="text-blue-300/80 text-xs leading-relaxed">Processed by admin in 1–2 business days. ₾5 reserve always maintained.</p>
+      </div>
+
+      <Button onClick={submit} disabled={!isValid || loading}
+        className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold disabled:opacity-30">
+        {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Banknote className="w-5 h-5 mr-2" />}
+        {loading ? "Processing..." : `Withdraw ₾${amt > 0 ? amt.toFixed(2) : "0.00"}`}
+      </Button>
+
+      {history.length > 0 && (
+        <div className="space-y-2 pt-2">
+          <p className="text-white/30 text-[10px] uppercase tracking-widest">Recent</p>
+          {history.slice(0, 5).map((w, i) => (
+            <div key={i} className="flex justify-between items-center bg-white/3 rounded-xl p-3 border border-white/5">
+              <div>
+                <p className="text-white font-mono font-bold">₾{w.amount?.toFixed(2)}</p>
+                <p className="text-white/30 text-xs">{w.created_at ? new Date(w.created_at).toLocaleDateString() : "—"}</p>
+              </div>
+              <StatusBadge status={w.status === "approved" ? "approved_w" : w.status === "rejected" ? "rejected_w" : "pending"} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// CAMPAIGNS PANEL
+// =============================================================================
+const CampaignsPanel = ({ driverRating }) => {
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [joining, setJoining] = useState(null);
+  const [tab, setTab] = useState("available");
+
+  useEffect(() => {
+    api.get("/driver/campaigns").then(r => { setCampaigns(r.data.campaigns || []); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
+
+  const joinCampaign = async (id, title) => {
+    setJoining(id);
+    try {
+      await api.post(`/driver/campaigns/${id}/join`);
+      toast.success(`Joined "${title}"!`);
+      const r = await api.get("/driver/campaigns");
+      setCampaigns(r.data.campaigns || []);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to join");
+    } finally { setJoining(null); }
+  };
+
+  const available = campaigns.filter(c => !c.joined);
+  const joined = campaigns.filter(c => c.joined);
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader icon={Award} title="Driver Campaigns" subtitle="Complete challenges, earn bonuses" />
+
+      <div className="flex gap-2">
+        {[["available", "Available", available.length], ["joined", "My Progress", joined.length]].map(([k, l, n]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${tab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/40"}`}>
+            {l} {n > 0 && <span className="ml-1 bg-[#00ff88]/20 text-[#00ff88] text-xs px-1.5 rounded-full">{n}</span>}
+          </button>
+        ))}
+      </div>
+
+      {tab === "available" && (
+        <div className="space-y-3">
+          {available.length === 0 && (
+            <div className="text-center py-8 text-white/30">
+              <Award className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              <p>No new campaigns available</p>
+            </div>
+          )}
+          {available.map(c => (
+            <GlassCard key={c.id} className="p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">{c.emoji || "🎯"}</span>
+                  <div>
+                    <p className="text-white font-semibold">{c.title}</p>
+                    <p className="text-white/50 text-xs mt-0.5">{c.description}</p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 ml-2">
+                  <p className="text-[#00ff88] font-bold font-mono">+₾{c.bonus_amount}</p>
+                  <p className="text-white/30 text-[10px]">bonus</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                  <Target className="w-3 h-3" />
+                  <span>Goal: {c.target_value} {c.campaign_type === "rides_count" ? "rides" : c.campaign_type === "earnings_target" ? "GEL earned" : "tasks"}</span>
+                </div>
+                {!c.eligible ? (
+                  <span className="text-amber-400/70 text-xs">{c.eligibility_reason}</span>
+                ) : (
+                  <Button size="sm" onClick={() => joinCampaign(c.id, c.title)} disabled={joining === c.id}
+                    className="bg-[#00ff88]/15 border border-[#00ff88]/40 text-[#00ff88] hover:bg-[#00ff88]/25 h-8 text-xs">
+                    {joining === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Join"}
+                  </Button>
+                )}
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+
+      {tab === "joined" && (
+        <div className="space-y-3">
+          {joined.length === 0 && (
+            <div className="text-center py-8 text-white/30">
+              <Target className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              <p>Join campaigns to see your progress</p>
+            </div>
+          )}
+          {joined.map(c => {
+            const pct = c.progress?.percentage || 0;
+            const done = c.progress?.completed;
+            return (
+              <GlassCard key={c.id} className={`p-4 ${done ? "border-[#00ff88]/30" : ""}`}>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">{c.emoji || "🎯"}</span>
+                    <div>
+                      <p className="text-white font-semibold">{c.title}</p>
+                      <p className="text-white/50 text-xs">{c.progress?.current}/{c.progress?.target} {c.campaign_type === "rides_count" ? "rides" : "completed"}</p>
+                    </div>
+                  </div>
+                  {done ? <StatusBadge status="approved" /> : <p className="text-[#00ff88] font-bold font-mono">+₾{c.bonus_amount}</p>}
+                </div>
+                <div className="space-y-1.5">
+                  <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-500 ${done ? "bg-[#00ff88]" : "bg-gradient-to-r from-[#00ff88] to-[#00d4ff]"}`}
+                      style={{ width: `${Math.min(100, pct)}%` }} />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-white/30">
+                    <span>{pct.toFixed(1)}% complete</span>
+                    {done && <span className="text-[#00ff88]">✓ Bonus earned!</span>}
+                  </div>
+                </div>
+              </GlassCard>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// FLEET PANEL
+// =============================================================================
+const FleetPanel = ({ registrationStatus }) => {
+  const [vehicles, setVehicles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ car_make: "", car_model: "", car_year: "", car_color: "", license_plate: "", driver_name: "", driver_phone: "", car_type: "economy" });
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    api.get("/driver/fleet").then(r => { setVehicles(r.data.vehicles || []); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
+
+  const addVehicle = async () => {
+    setSubmitting(true);
+    try {
+      await api.post("/driver/fleet/add", { ...form, car_year: parseInt(form.car_year), license_plate: form.license_plate.toUpperCase() });
+      toast.success("Fleet vehicle added!");
+      const r = await api.get("/driver/fleet");
+      setVehicles(r.data.vehicles || []);
+      setShowAdd(false);
+      setForm({ car_make: "", car_model: "", car_year: "", car_color: "", license_plate: "", driver_name: "", driver_phone: "", car_type: "economy" });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to add vehicle");
+    } finally { setSubmitting(false); }
+  };
+
+  const removeVehicle = async (id) => {
+    try {
+      await api.delete(`/driver/fleet/${id}`);
+      setVehicles(prev => prev.filter(v => v.id !== id));
+      toast.success("Vehicle removed");
+    } catch (_) { toast.error("Failed to remove"); }
+  };
+
+  if (registrationStatus !== "approved") {
+    return (
+      <div className="text-center py-12">
+        <Truck className="w-12 h-12 text-white/20 mx-auto mb-3" />
+        <p className="text-white/40 text-sm">Your account must be approved<br />before managing fleet vehicles.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader icon={Truck} title="Fleet Management" subtitle="Manage your vehicles & drivers"
+        action={<Button size="sm" onClick={() => setShowAdd(!showAdd)} className={`h-8 text-xs font-bold ${showAdd ? "bg-red-500/20 border border-red-500/40 text-red-400" : "bg-[#00ff88]/15 border border-[#00ff88]/40 text-[#00ff88]"}`}>
+          {showAdd ? <><X className="w-3.5 h-3.5 mr-1" /> Cancel</> : <><Plus className="w-3.5 h-3.5 mr-1" /> Add Vehicle</>}
+        </Button>}
+      />
+
+      {showAdd && (
+        <GlassCard className="p-4 space-y-3">
+          <p className="text-white/60 text-xs uppercase tracking-wider mb-1">Vehicle Details</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            {[["car_make","Make","Toyota"],["car_model","Model","Camry"],["car_year","Year","2020"],["car_color","Color","Silver"],["license_plate","Plate","AB-123-CD"],["driver_name","Driver Name","Full Name"],["driver_phone","Driver Phone","+995 555 000 000"]].map(([k,l,p]) => (
+              <div key={k} className={`space-y-1 ${k === "driver_name" || k === "driver_phone" ? "col-span-2" : ""}`}>
+                <Label className="text-white/40 text-[11px]">{l}</Label>
+                <Input value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} placeholder={p}
+                  className="bg-white/4 border-white/10 text-white h-9 text-sm placeholder:text-white/20" />
+              </div>
+            ))}
+            <div className="col-span-2 space-y-1">
+              <Label className="text-white/40 text-[11px]">Vehicle Type</Label>
+              <select value={form.car_type} onChange={e => setForm({ ...form, car_type: e.target.value })}
+                className="w-full bg-white/4 border border-white/10 text-white rounded-lg h-9 px-3 text-sm">
+                {Object.entries(PRICING_RULES).map(([k, v]) => <option key={k} value={k} className="bg-[#0e0e1c]">{v.icon} {v.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <Button onClick={addVehicle} disabled={submitting || !form.car_make || !form.license_plate || !form.driver_name}
+            className="w-full bg-[#00ff88] text-black font-bold h-10">
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Add to Fleet
+          </Button>
+        </GlassCard>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" /></div>
+      ) : vehicles.length === 0 ? (
+        <div className="text-center py-10 text-white/30">
+          <Truck className="w-10 h-10 mx-auto mb-2 opacity-30" />
+          <p>No fleet vehicles yet</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {vehicles.map(v => (
+            <GlassCard key={v.id} className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-white font-semibold">{v.car_year} {v.car_make} {v.car_model}</p>
+                    <StatusBadge status={v.status || "active"} />
+                  </div>
+                  <p className="text-white/40 text-sm font-mono">{v.license_plate}</p>
+                  <p className="text-white/50 text-xs mt-1.5">🧑 {v.driver_name} · {v.driver_phone}</p>
+                </div>
+                <button onClick={() => removeVehicle(v.id)} className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// SUPPORT PANEL
+// =============================================================================
+const SupportPanel = () => {
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+
+  useEffect(() => {
+    api.get("/support/history").then(r => { setTickets(r.data.tickets || []); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
+
+  const send = async () => {
+    if (!message.trim()) return;
+    setSending(true);
+    try {
+      await api.post("/support/message", { message: message.trim() });
+      toast.success("Support ticket created. We'll respond shortly.");
+      setMessage("");
+      const r = await api.get("/support/history");
+      setTickets(r.data.tickets || []);
+    } catch (_) {
+      toast.error("Failed to send message");
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader icon={Headphones} title="Support" subtitle="Get help from our team" />
+
+      <GlassCard className="p-4 space-y-3">
+        <Label className="text-white/60 text-xs uppercase tracking-wider">New Message</Label>
+        <textarea value={message} onChange={e => setMessage(e.target.value)} rows={3}
+          placeholder="Describe your issue..."
+          className="w-full bg-white/4 border border-white/10 rounded-xl p-3 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-[#00ff88]/40" />
+        <Button onClick={send} disabled={!message.trim() || sending}
+          className="w-full bg-[#00ff88] text-black font-bold h-10">
+          {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+          {sending ? "Sending..." : "Send Message"}
+        </Button>
+      </GlassCard>
+
+      {loading ? (
+        <div className="flex justify-center py-6"><Loader2 className="w-6 h-6 animate-spin text-[#00ff88]" /></div>
+      ) : tickets.length === 0 ? (
+        <div className="text-center py-8 text-white/30">
+          <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-30" />
+          <p>No tickets yet</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-white/30 text-[10px] uppercase tracking-widest">Previous Tickets</p>
+          {tickets.map(t => (
+            <GlassCard key={t.id} className="overflow-hidden">
+              <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}>
+                <div>
+                  <p className="text-white text-sm line-clamp-1 font-medium">{t.message}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <StatusBadge status={t.status === "in_progress" ? "in_progress_ticket" : t.status} />
+                    <span className="text-white/30 text-[10px]">{t.created_at ? new Date(t.created_at).toLocaleDateString() : "—"}</span>
+                  </div>
+                </div>
+                {expandedId === t.id ? <ChevronUp className="w-4 h-4 text-white/30 shrink-0" /> : <ChevronDown className="w-4 h-4 text-white/30 shrink-0" />}
+              </button>
+              {expandedId === t.id && (
+                <div className="px-4 pb-4 space-y-2 border-t border-white/5 pt-3">
+                  {(t.chat_history || []).map((msg, i) => (
+                    <div key={i} className={`rounded-xl p-3 text-sm ${msg.role === "user" ? "bg-[#00ff88]/8 border border-[#00ff88]/15 ml-4" : "bg-white/4 border border-white/8 mr-4"}`}>
+                      <p className={`text-[10px] uppercase tracking-wider mb-1 ${msg.role === "user" ? "text-[#00ff88]/60" : msg.role === "admin" ? "text-blue-400/70" : "text-white/40"}`}>
+                        {msg.role === "user" ? "You" : msg.role === "admin" ? "Support Agent" : "System"}
+                      </p>
+                      <p className="text-white/80">{msg.content}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </GlassCard>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// REFERRAL PANEL
+// =============================================================================
+const ReferralPanel = () => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [code, setCode] = useState("");
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    api.get("/user/referral").then(r => { setData(r.data); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(data.referral_code);
+    toast.success("Code copied!");
+  };
+
+  const applyCode = async () => {
+    if (!code.trim()) return;
+    setApplying(true);
+    try {
+      const r = await api.post("/user/referral/apply", { code: code.trim().toUpperCase() });
+      toast.success(r.data.message || "Referral code applied!");
+      setCode("");
+      const r2 = await api.get("/user/referral");
+      setData(r2.data);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid code");
+    } finally { setApplying(false); }
+  };
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader icon={Gift} title="Referrals" subtitle="Invite drivers, earn bonuses" />
+
+      {data && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <StatPill label="Referrals" value={data.referrals_count || 0} color="text-white" />
+            <StatPill label="Bonus Earned" value={`₾${(data.bonus_earned || 0).toFixed(2)}`} color="text-[#00ff88]" />
+          </div>
+
+          <GlassCard accent className="p-4 space-y-3">
+            <p className="text-[#00ff88]/60 text-[10px] uppercase tracking-widest">Your Code</p>
+            <div className="flex items-center gap-3">
+              <p className="text-3xl font-bold font-mono tracking-widest text-white flex-1">{data.referral_code}</p>
+              <button onClick={copyCode} className="p-2.5 rounded-xl bg-[#00ff88]/15 border border-[#00ff88]/30 text-[#00ff88] hover:bg-[#00ff88]/25 transition-colors">
+                <Copy className="w-4 h-4" />
+              </button>
+              <button onClick={() => navigator.share?.({ title: "Join T'aksi", url: data.referral_link || `https://taksi.ge/ref/${data.referral_code}` })}
+                className="p-2.5 rounded-xl bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] hover:bg-[#00d4ff]/25 transition-colors">
+                <Share2 className="w-4 h-4" />
+              </button>
+            </div>
+          </GlassCard>
+
+          <GlassCard className="p-4 space-y-3">
+            <p className="text-white/60 text-[10px] uppercase tracking-widest">Apply a Code</p>
+            <div className="flex gap-2">
+              <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="ENTER CODE"
+                className="bg-white/4 border-white/10 text-white font-mono uppercase placeholder:normal-case placeholder:text-white/20 flex-1" />
+              <Button onClick={applyCode} disabled={!code.trim() || applying} className="bg-[#00ff88] text-black font-bold px-5">
+                {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}
+              </Button>
+            </div>
+          </GlassCard>
+
+          <GlassCard className="p-4">
+            <p className="text-white/60 text-xs uppercase tracking-wider mb-3">How it works</p>
+            {[["Invite a friend", "Share your code with another driver"], ["They sign up", "Friend registers with your code"], ["Both earn bonus", "₾5 for them + ₾10 for you"]].map(([t,d],i) => (
+              <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
+                <div className="w-6 h-6 rounded-full bg-[#00ff88]/15 border border-[#00ff88]/30 flex items-center justify-center text-[#00ff88] text-xs font-bold shrink-0">{i+1}</div>
+                <div><p className="text-white text-sm font-medium">{t}</p><p className="text-white/40 text-xs">{d}</p></div>
+              </div>
+            ))}
+          </GlassCard>
+        </>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// MORE PANEL — hub for campaigns, fleet, support, referrals
+// =============================================================================
+const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocation }) => {
+  const [view, setView] = useState("menu");
+
+  const menuItems = [
+    { id: "campaigns", label: "Campaigns",    icon: Award,       desc: "Challenges & bonuses",  color: "text-yellow-400",  bg: "bg-yellow-400/10", border: "border-yellow-400/20" },
+    { id: "fleet",     label: "Fleet",         icon: Truck,       desc: "Manage your vehicles",  color: "text-blue-400",    bg: "bg-blue-400/10",   border: "border-blue-400/20" },
+    { id: "referrals", label: "Referrals",     icon: Gift,        desc: "Invite & earn",         color: "text-purple-400",  bg: "bg-purple-400/10", border: "border-purple-400/20" },
+    { id: "support",   label: "Support",       icon: Headphones,  desc: "Get help",              color: "text-[#00d4ff]",   bg: "bg-[#00d4ff]/10",  border: "border-[#00d4ff]/20" },
+  ];
+
+  if (view !== "menu") {
+    const back = () => setView("menu");
+    if (view === "campaigns") return <div><BackButton onClick={back} /><CampaignsPanel driverRating={driverRating} /></div>;
+    if (view === "fleet")     return <div><BackButton onClick={back} /><FleetPanel registrationStatus={registrationStatus} /></div>;
+    if (view === "referrals") return <div><BackButton onClick={back} /><ReferralPanel /></div>;
+    if (view === "support")   return <div><BackButton onClick={back} /><SupportPanel /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        {menuItems.map(({ id, label, icon: Icon, desc, color, bg, border }) => (
+          <button key={id} onClick={() => setView(id)}
+            className={`${bg} border ${border} rounded-2xl p-4 text-left transition-all active:scale-95`}>
+            <Icon className={`w-6 h-6 ${color} mb-2`} />
+            <p className="text-white font-semibold text-sm">{label}</p>
+            <p className="text-white/40 text-xs mt-0.5">{desc}</p>
+            <ChevronRight className={`w-4 h-4 ${color} mt-2`} />
+          </button>
+        ))}
+      </div>
+
+      {/* SOS always visible */}
+      <GlassCard className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center">
+              <Shield className="w-5 h-5 text-red-400" />
+            </div>
+            <div>
+              <p className="text-white font-semibold text-sm">Emergency SOS</p>
+              <p className="text-white/40 text-xs">Alert support instantly</p>
+            </div>
+          </div>
+          <SOSButton activeRide={activeRide} location={driverLocation} />
+        </div>
+      </GlassCard>
+    </div>
+  );
+};
+
+// =============================================================================
+// LOCATION TRACKER HOOK
+// =============================================================================
+const useLocationTracker = (isOnline, onLocationUpdate) => {
+  const watchIdRef = useRef(null);
+  const intervalRef = useRef(null);
+  const lastLocationRef = useRef(null);
+  const callbackRef = useRef(onLocationUpdate);
+  useEffect(() => { callbackRef.current = onLocationUpdate; }, [onLocationUpdate]);
+
+  useEffect(() => {
+    if (!isOnline) {
+      if (watchIdRef.current != null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
+      if (intervalRef.current != null) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      return;
+    }
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      pos => { lastLocationRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: pos.coords.heading, speed: pos.coords.speed }; },
+      err => console.error("GPS error:", err),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+    intervalRef.current = setInterval(() => {
+      if (lastLocationRef.current) callbackRef.current(lastLocationRef.current);
+    }, LOCATION_UPDATE_INTERVAL);
+    return () => {
+      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
+      if (intervalRef.current != null) clearInterval(intervalRef.current);
+    };
+  }, [isOnline]);
+
+  return lastLocationRef;
+};
+
+// =============================================================================
+// DRIVER SMART MAP
+// =============================================================================
+const DriverSmartMap = ({ activeRide, driverLocation }) => {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
+  const routeRendererRef = useRef(null);
+  const directionsServiceRef = useRef(null);
+  const [isFollowing, setIsFollowing] = useState(true);
+  const [routeSteps, setRouteSteps] = useState([]);
+  const [stepIdx, setStepIdx] = useState(0);
+
+  const getSafe = v => { const n = parseFloat(v); return !isNaN(n) && n !== 0 ? n : null; };
+  const hvKm = (lat1, lo1, lat2, lo2) => {
+    const R = 6371, dL = (lat2-lat1)*Math.PI/180, dl = (lo2-lo1)*Math.PI/180;
+    const a = Math.sin(dL/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dl/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  };
+
+  useEffect(() => {
+    if (!mapRef.current || !window.google || mapInstanceRef.current) return;
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: { lat: 41.7151, lng: 44.8271 }, zoom: 17,
+      disableDefaultUI: true, gestureHandling: "greedy", backgroundColor: "#f5f5f5",
+      styles: [
+        { elementType: "geometry",           stylers: [{ color: "#f0f0f0" }] },
+        { elementType: "labels.icon",        stylers: [{ visibility: "off" }] },
+        { elementType: "labels.text.fill",   stylers: [{ color: "#666" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#f0f0f0" }] },
+        { featureType: "road",             elementType: "geometry", stylers: [{ color: "#fff" }] },
+        { featureType: "road.highway",     elementType: "geometry", stylers: [{ color: "#e8e8e8" }] },
+        { featureType: "road.arterial",    elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
+        { featureType: "water",            elementType: "geometry", stylers: [{ color: "#d0e8f0" }] },
+        { featureType: "poi",              stylers: [{ visibility: "off" }] },
+        { featureType: "transit",          stylers: [{ visibility: "off" }] },
+      ],
+    });
+    map.addListener("dragstart", () => setIsFollowing(false));
+    routeRendererRef.current = new window.google.maps.DirectionsRenderer({
+      map, suppressMarkers: false, preserveViewport: true,
+      polylineOptions: { strokeColor: "#00cc77", strokeWeight: 5, strokeOpacity: 0.9 },
+    });
+    directionsServiceRef.current = new window.google.maps.DirectionsService();
+    mapInstanceRef.current = map;
+  }, []);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google || !driverLocation) return;
+    const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
+    if (!lat || !lng) return;
+    const pos = { lat, lng };
+    const heading = parseFloat(driverLocation.heading) || 0;
+    if (!markerRef.current) {
+      markerRef.current = new window.google.maps.Marker({
+        position: pos, map: mapInstanceRef.current, zIndex: 1000,
+        icon: { path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 7, fillColor: "#00cc77", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, rotation: heading, anchor: new window.google.maps.Point(0, 2.5) },
+      });
+    } else {
+      markerRef.current.setPosition(pos);
+      markerRef.current.setIcon({ ...markerRef.current.getIcon(), rotation: heading });
+    }
+    if (isFollowing) mapInstanceRef.current.panTo(pos);
+    if (routeSteps.length > 0 && stepIdx < routeSteps.length) {
+      const step = routeSteps[stepIdx];
+      if (hvKm(lat, lng, step.end_location.lat(), step.end_location.lng()) < 0.04) setStepIdx(p => p + 1);
+    }
+  }, [driverLocation, isFollowing, routeSteps, stepIdx]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
+    if (!activeRide || !driverLocation) { routeRendererRef.current?.setDirections({ routes: [] }); setRouteSteps([]); return; }
+    const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
+    if (!dLat || !dLng) return;
+    let target = null;
+    if (["accepted", "arrived"].includes(activeRide.status)) {
+      const lat = getSafe(activeRide.pickup_lat), lng = getSafe(activeRide.pickup_lng);
+      if (lat && lng) target = { lat, lng };
+    } else if (activeRide.status === "in_progress") {
+      const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat), lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
+      if (lat && lng) target = { lat, lng };
+    }
+    if (!target) return;
+    directionsServiceRef.current.route(
+      { origin: { lat: dLat, lng: dLng }, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
+      (result, status) => {
+        if (status === "OK" && routeRendererRef.current) {
+          routeRendererRef.current.setDirections(result);
+          setRouteSteps(result.routes[0].legs[0].steps);
+          setStepIdx(0);
+        }
+      }
+    );
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat]);
+
+  const getTurnIcon = (m) => {
+    if (!m) return <Navigation className="w-7 h-7" />;
+    if (m.includes("left")) return <ArrowLeft className="w-7 h-7" />;
+    if (m.includes("right")) return <ArrowRight className="w-7 h-7" />;
+    return <Navigation className="w-7 h-7" />;
+  };
+
+  const handleNav = (app) => {
+    if (!activeRide) return;
+    const isPickup = ["accepted", "arrived"].includes(activeRide.status);
+    const destLat = isPickup ? activeRide.pickup_lat : (activeRide.dest_lat || activeRide.destination_lat);
+    const destLng = isPickup ? activeRide.pickup_lng : (activeRide.dest_lng || activeRide.destination_lng);
+    if (!destLat || !destLng) return toast.error("No coordinates available");
+    const url = app === "waze"
+      ? `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`
+      : `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`;
+    window.open(url, "_blank");
+  };
+
+  const curStep = routeSteps[stepIdx];
+
+  return (
+    <div className="fixed inset-0 w-full h-full z-0">
+      <div ref={mapRef} className="w-full h-full" />
+
+      {activeRide && curStep && (
+        <div className="absolute top-24 left-3 right-3 z-20 bg-white/95 backdrop-blur-xl rounded-2xl p-4 shadow-2xl flex items-center gap-4">
+          <div className="bg-[#00cc77]/15 p-3 rounded-xl text-[#00cc77] shrink-0">{getTurnIcon(curStep.maneuver)}</div>
+          <div className="flex-1 overflow-hidden">
+            <p className="text-2xl font-bold text-gray-900">{curStep.distance?.text}</p>
+            <p className="text-gray-600 text-sm leading-tight truncate">{curStep.instructions?.replace(/<[^>]*>?/gm, "")}</p>
           </div>
         </div>
       )}
 
-      {/* Info note */}
-      <div className="flex gap-2 bg-blue-500/10 border border-blue-500/30 rounded-xl p-3">
-        <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-        <p className="text-blue-300 text-xs leading-relaxed">
-          Withdrawals are processed by an admin within 1–2 business days. You must maintain a ₾5 reserve balance at all times.
-        </p>
+      {!isFollowing && driverLocation && (
+        <button onClick={() => { setIsFollowing(true); mapInstanceRef.current?.panTo({ lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) }); }}
+          className="absolute bottom-[52vh] left-4 bg-[#00cc77] text-white p-3 rounded-full shadow-xl z-10">
+          <Crosshair className="w-5 h-5 animate-pulse" />
+        </button>
+      )}
+
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-10">
+        <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)+1)}
+          className="w-11 h-11 bg-white/90 backdrop-blur rounded-xl shadow-lg flex items-center justify-center text-gray-800 text-xl font-bold">+</button>
+        <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)-1)}
+          className="w-11 h-11 bg-white/90 backdrop-blur rounded-xl shadow-lg flex items-center justify-center text-gray-800 text-xl font-bold">−</button>
       </div>
 
-      <Button
-        onClick={handleWithdraw}
-        disabled={!isValid || loading}
-        className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Banknote className="w-5 h-5 mr-2" />}
-        {loading ? "Processing..." : `Request ₾${requestedAmt > 0 ? requestedAmt.toFixed(2) : "0.00"} Withdrawal`}
-      </Button>
-
-      {/* Recent withdrawal history */}
-      {history.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Recent Withdrawals</p>
-          {history.slice(0, 5).map((w, i) => (
-            <div key={i} className="flex justify-between items-center bg-black/40 rounded-lg p-3 border border-white/5">
-              <div>
-                <p className="text-white text-sm font-mono">₾{w.amount?.toFixed(2)}</p>
-                <p className="text-gray-500 text-xs">{w.created_at ? new Date(w.created_at).toLocaleDateString() : "—"}</p>
-              </div>
-              <Badge className={
-                w.status === "approved" ? "bg-green-500/20 text-green-400 border-green-500/50" :
-                w.status === "rejected" ? "bg-red-500/20 text-red-400 border-red-500/50" :
-                "bg-yellow-500/20 text-yellow-400 border-yellow-500/50"
-              }>{w.status || "pending"}</Badge>
-            </div>
-          ))}
+      {activeRide && (
+        <div className="absolute top-1/2 -translate-y-1/2 right-4 mt-16 flex flex-col gap-2 z-10">
+          <button onClick={() => handleNav("waze")} className="w-11 h-11 bg-[#00d4ff]/90 rounded-xl shadow-lg flex items-center justify-center">
+            <Zap className="w-5 h-5 text-white" />
+          </button>
+          <button onClick={() => handleNav("google")} className="w-11 h-11 bg-[#00cc77]/90 rounded-xl shadow-lg flex items-center justify-center">
+            <MapPinned className="w-5 h-5 text-white" />
+          </button>
         </div>
       )}
     </div>
@@ -305,365 +1087,83 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
 // DRIVER AUTH
 // =============================================================================
 const DriverAuth = () => {
-  const { login }     = useAuth();
-  const navigate      = useNavigate();
-  const { t }         = useLanguage();
-  const [isLogin, setIsLogin]   = useState(true);
-  const [loading, setLoading]   = useState(false);
-  const [formData, setFormData] = useState({ name: "", surname: "", cellphone: "", password: "" });
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const { t } = useLanguage();
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({ name: "", surname: "", cellphone: "", password: "" });
 
-  const handleSubmit = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
       const endpoint = isLogin ? "/auth/login" : "/auth/register/driver";
-      const res = await api.post(endpoint, formData);
-      if (res.data?.token && res.data?.user) {
-        login(res.data.token, res.data.user);
+      const r = await api.post(endpoint, form);
+      if (r.data?.token && r.data?.user) {
+        login(r.data.token, r.data.user);
         toast.success(isLogin ? t("welcome_back") : t("success"));
         navigate("/driver/dashboard");
-      } else {
-        throw new Error("Invalid response");
       }
-    } catch (error) {
-      toast.error(error.response?.data?.detail || error.message || t("error"));
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.message || t("error"));
+    } finally { setLoading(false); }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-md glass-heavy">
-        <CardHeader className="text-center relative">
-          <div className="absolute right-4 top-4"><LanguageSelector variant="ghost" /></div>
-          <Button variant="ghost" className="absolute left-4 top-4 text-primary hover:text-white" onClick={() => navigate("/")}>
-            <ArrowLeft className="w-4 h-4 mr-2" /> {t("back")}
-          </Button>
-          <div className="w-20 h-20 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-4 mt-8">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#07070f" }}>
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8">
+          <div className="absolute top-4 right-4"><LanguageSelector variant="ghost" /></div>
+          <button onClick={() => navigate("/")} className="flex items-center gap-2 text-white/40 hover:text-white text-sm mb-8 mx-auto transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </button>
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#00ff88] to-[#00d4ff] flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_rgba(0,255,136,0.3)]">
             <Car className="w-10 h-10 text-black" />
           </div>
-          <h2 className="text-2xl font-bold text-primary">
-            {isLogin ? t("pilot_login") : t("become_pilot_title")}
-          </h2>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-primary">{t("first_name")}</Label>
-                  <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    className="bg-background-secondary border-border text-white" required />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-primary">{t("last_name")}</Label>
-                  <Input value={formData.surname} onChange={e => setFormData({ ...formData, surname: e.target.value })}
-                    className="bg-background-secondary border-border text-white" required />
-                </div>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label className="text-primary">{t("phone_number")}</Label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-3 h-4 w-4 text-primary/50" />
-                <Input type="tel" value={formData.cellphone}
-                  onChange={e => setFormData({ ...formData, cellphone: e.target.value })}
-                  className="pl-10 bg-background-secondary border-border text-white"
-                  placeholder="+995 XXX XXX XXX" required />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-primary">{t("password")}</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-primary/50" />
-                <Input type="password" value={formData.password}
-                  onChange={e => setFormData({ ...formData, password: e.target.value })}
-                  className="pl-10 bg-background-secondary border-border text-white" required />
-              </div>
-            </div>
-            <Button type="submit" disabled={loading}
-              className="w-full bg-gradient-to-r from-primary to-secondary text-black font-bold hover:shadow-neon-cyan transition-all">
-              {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              {isLogin ? t("sign_in") : t("register_driver")}
-            </Button>
-          </form>
-        </CardContent>
-        <CardFooter className="justify-center">
-          <Button variant="link" className="text-secondary" onClick={() => setIsLogin(!isLogin)}>
-            {isLogin ? t("need_account") : t("have_account")}
-          </Button>
-        </CardFooter>
-      </Card>
-    </div>
-  );
-};
-
-// =============================================================================
-// LOCATION TRACKER HOOK
-// BUG FIX: onLocationUpdate stabilised via ref so GPS watch never restarts
-// unnecessarily (was restarting on every activeRide status change)
-// =============================================================================
-const useLocationTracker = (isOnline, onLocationUpdate) => {
-  const watchIdRef      = useRef(null);
-  const intervalRef     = useRef(null);
-  const lastLocationRef = useRef(null);
-  // Stable ref — avoids the hook dep array needing the callback
-  const callbackRef     = useRef(onLocationUpdate);
-  useEffect(() => { callbackRef.current = onLocationUpdate; }, [onLocationUpdate]);
-
-  useEffect(() => {
-    if (!isOnline) {
-      if (watchIdRef.current  != null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
-      if (intervalRef.current != null) { clearInterval(intervalRef.current); intervalRef.current = null; }
-      return;
-    }
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        lastLocationRef.current = {
-          lat: pos.coords.latitude, lng: pos.coords.longitude,
-          heading: pos.coords.heading, speed: pos.coords.speed,
-        };
-      },
-      (err) => console.error("GPS error:", err),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-
-    intervalRef.current = setInterval(() => {
-      if (lastLocationRef.current) callbackRef.current(lastLocationRef.current);
-    }, LOCATION_UPDATE_INTERVAL);
-
-    return () => {
-      if (watchIdRef.current  != null) navigator.geolocation.clearWatch(watchIdRef.current);
-      if (intervalRef.current != null) clearInterval(intervalRef.current);
-    };
-  }, [isOnline]); // Only depends on isOnline — GPS never restarts on ride changes
-
-  return lastLocationRef;
-};
-
-// =============================================================================
-// DRIVER SMART MAP
-// BUG FIX: Route is NOT redrawn on every GPS ping — only when status/target changes
-// This prevents spamming the Google Directions API (each call is billed)
-// =============================================================================
-const DriverSmartMap = ({ activeRide, driverLocation }) => {
-  const mapRef              = useRef(null);
-  const mapInstanceRef      = useRef(null);
-  const markerRef           = useRef(null);
-  const routeRendererRef    = useRef(null);
-  const directionsServiceRef= useRef(null);
-  const [isFollowing, setIsFollowing]       = useState(true);
-  const [routeSteps, setRouteSteps]         = useState([]);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-
-  const getSafe = (v) => { const n = parseFloat(v); return !isNaN(n) && n !== 0 ? n : null; };
-
-  const haversineKm = (lat1, lon1, lat2, lon2) => {
-    const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  };
-
-  // Init map once
-  useEffect(() => {
-    if (!mapRef.current || !window.google || mapInstanceRef.current) return;
-
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 41.7151, lng: 44.8271 }, zoom: 17,
-      disableDefaultUI: true, zoomControl: false, gestureHandling: "greedy",
-      backgroundColor: "#ffffff",
-      styles: [
-        { elementType: "geometry",              stylers: [{ color: "#f5f5f5" }] },
-        { elementType: "labels.icon",           stylers: [{ visibility: "off" }] },
-        { elementType: "labels.text.fill",      stylers: [{ color: "#616161" }] },
-        { elementType: "labels.text.stroke",    stylers: [{ color: "#f5f5f5" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-        { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#e9e9e9" }] },
-      ],
-    });
-    map.addListener("dragstart", () => setIsFollowing(false));
-
-    routeRendererRef.current = new window.google.maps.DirectionsRenderer({
-      map, suppressMarkers: false,
-      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
-      preserveViewport: true,
-    });
-    directionsServiceRef.current = new window.google.maps.DirectionsService();
-    mapInstanceRef.current = map;
-  }, []);
-
-  // Update driver marker on every GPS tick — NO route redraw here
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !driverLocation) return;
-    const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
-    if (!lat || !lng) return;
-
-    const pos     = { lat, lng };
-    const heading = parseFloat(driverLocation.heading) || 0;
-
-    if (!markerRef.current) {
-      markerRef.current = new window.google.maps.Marker({
-        position: pos, map: mapInstanceRef.current, zIndex: 1000,
-        icon: {
-          path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 6, fillColor: "#00d4ff", fillOpacity: 1,
-          strokeColor: "white", strokeWeight: 2,
-          rotation: heading, anchor: new window.google.maps.Point(0, 2.5),
-        },
-      });
-    } else {
-      markerRef.current.setPosition(pos);
-      const icon = { ...markerRef.current.getIcon(), rotation: heading };
-      markerRef.current.setIcon(icon);
-    }
-    if (isFollowing) mapInstanceRef.current.panTo(pos);
-
-    // Advance turn-by-turn step if close to waypoint
-    if (routeSteps.length > 0 && currentStepIndex < routeSteps.length) {
-      const step = routeSteps[currentStepIndex];
-      const dist = haversineKm(lat, lng, step.end_location.lat(), step.end_location.lng());
-      if (dist < 0.04) setCurrentStepIndex(p => p + 1);
-    }
-  }, [driverLocation, isFollowing, routeSteps, currentStepIndex]);
-
-  // Redraw route ONLY when status or target destination changes
-  // BUG FIX: Removed driverLocation from deps — prevented billed API call every 2s
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
-    if (!activeRide || !driverLocation) {
-      if (routeRendererRef.current) routeRendererRef.current.setDirections({ routes: [] });
-      setRouteSteps([]);
-      return;
-    }
-
-    const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
-    if (!dLat || !dLng) return;
-
-    let target = null;
-    if (["accepted", "arrived"].includes(activeRide.status)) {
-      const lat = getSafe(activeRide.pickup_lat);
-      const lng = getSafe(activeRide.pickup_lng);
-      if (lat && lng) target = { lat, lng };
-    } else if (activeRide.status === "in_progress") {
-      const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat);
-      const lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
-      if (lat && lng) target = { lat, lng };
-    }
-
-    if (!target) return;
-
-    directionsServiceRef.current.route(
-      { origin: { lat: dLat, lng: dLng }, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
-      (result, status) => {
-        if (status === "OK" && routeRendererRef.current) {
-          routeRendererRef.current.setDirections(result);
-          const steps = result.routes[0].legs[0].steps;
-          setRouteSteps(steps);
-          setCurrentStepIndex(0);
-        }
-      }
-    );
-  }, [
-    // Only re-route when the actual navigation target changes, not every GPS ping
-    activeRide?.status,
-    activeRide?.pickup_lat,
-    activeRide?.dest_lat,
-    activeRide?.destination_lat,
-  ]);
-
-  const getTurnIcon = (maneuver) => {
-    if (!maneuver)                    return <Navigation className="w-8 h-8" />;
-    if (maneuver.includes("left"))    return <ArrowLeft className="w-8 h-8" />;
-    if (maneuver.includes("right"))   return <ArrowRight className="w-8 h-8" />; // FIX: was rotated ArrowLeft
-    return <Navigation className="w-8 h-8" />;
-  };
-
-  const handleZoomIn  = () => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom() || 15) + 1);
-  const handleZoomOut = () => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom() || 15) - 1);
-  const handleRecenter = () => {
-    setIsFollowing(true);
-    if (driverLocation && mapInstanceRef.current) {
-      mapInstanceRef.current.panTo({ lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) });
-    }
-  };
-
-  const handleNav = (app) => {
-    if (!activeRide) return;
-    let destLat, destLng, waypoints = "";
-    if (["accepted", "arrived"].includes(activeRide.status)) {
-      destLat = activeRide.pickup_lat; destLng = activeRide.pickup_lng;
-    } else {
-      destLat = activeRide.dest_lat || activeRide.destination_lat;
-      destLng = activeRide.dest_lng || activeRide.destination_lng;
-      if (activeRide.stops?.length && app === "google") {
-        const wStr = activeRide.stops.filter(s => s.lat && s.lng).map(s => `${s.lat},${s.lng}`).join("|");
-        if (wStr) waypoints = `&waypoints=${wStr}`;
-      }
-    }
-    if (!destLat || !destLng) return toast.error("No destination coordinates");
-    const url = app === "waze"
-      ? `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`
-      : `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
-    window.open(url, "_blank");
-  };
-
-  const currentStep = routeSteps[currentStepIndex];
-
-  return (
-    <div className="fixed inset-0 w-full h-full z-0">
-      <div ref={mapRef} className="w-full h-full" />
-
-      {/* Turn-by-turn */}
-      {activeRide && currentStep && (
-        <div className="absolute top-28 left-4 right-4 z-20 bg-[#1a1a2e]/95 backdrop-blur-xl border border-[#00ff88]/50 rounded-2xl p-4 shadow-[0_10px_30px_rgba(0,0,0,0.6)] flex items-center gap-4">
-          <div className="bg-[#00ff88]/20 p-3 rounded-xl text-[#00ff88] shrink-0">
-            {getTurnIcon(currentStep.maneuver)}
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <p className="text-2xl font-bold text-white mb-1">{currentStep.distance.text}</p>
-            <p className="text-[#00ff88] font-medium text-[15px] leading-tight truncate">
-              {currentStep.instructions.replace(/<[^>]*>?/gm, "")}
-            </p>
-          </div>
+          <h1 className="text-3xl font-bold text-white">{isLogin ? "Sign In" : "Register"}</h1>
+          <p className="text-white/40 text-sm mt-1">{isLogin ? "Welcome back, pilot" : "Join the T'aksi fleet"}</p>
         </div>
-      )}
 
-      {/* Recenter */}
-      {!isFollowing && driverLocation && (
-        <button onClick={handleRecenter}
-          className="absolute bottom-[48vh] left-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 border-2 border-white">
-          <Crosshair className="w-6 h-6 animate-pulse" />
-        </button>
-      )}
+        <form onSubmit={submit} className="space-y-3">
+          {!isLogin && (
+            <div className="grid grid-cols-2 gap-3">
+              {[["name","First Name"],["surname","Last Name"]].map(([k,l]) => (
+                <div key={k} className="space-y-1.5">
+                  <Label className="text-white/50 text-xs">{l}</Label>
+                  <Input value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })}
+                    className="bg-white/5 border-white/10 text-white h-11 placeholder:text-white/20" required />
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label className="text-white/50 text-xs">Phone Number</Label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+              <Input type="tel" value={form.cellphone} onChange={e => setForm({ ...form, cellphone: e.target.value })}
+                placeholder="+995 555 000 000" className="pl-9 bg-white/5 border-white/10 text-white h-11 placeholder:text-white/20" required />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-white/50 text-xs">Password</Label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+              <Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                className="pl-9 bg-white/5 border-white/10 text-white h-11" required />
+            </div>
+          </div>
+          <Button type="submit" disabled={loading}
+            className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-base mt-2">
+            {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+            {isLogin ? "Sign In" : "Create Account"}
+          </Button>
+        </form>
 
-      {/* Zoom controls */}
-      <div className="absolute top-1/2 right-4 -translate-y-1/2 flex flex-col gap-2 z-10">
-        <button onClick={handleZoomIn}
-          className="bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] w-12 h-12 rounded-xl flex items-center justify-center shadow-lg active:bg-[#00ff88]/30">
-          <Plus className="w-6 h-6" />
-        </button>
-        <button onClick={handleZoomOut}
-          className="bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] w-12 h-12 rounded-xl flex items-center justify-center shadow-lg active:bg-[#00ff88]/30">
-          <span className="text-2xl font-bold leading-none -mt-1">-</span>
+        <button onClick={() => setIsLogin(!isLogin)} className="w-full text-center text-white/40 hover:text-white text-sm mt-4 transition-colors">
+          {isLogin ? "Don't have an account? Register" : "Already have an account? Sign In"}
         </button>
       </div>
-
-      {/* External nav */}
-      {activeRide && (
-        <div className="absolute top-52 right-4 flex flex-col gap-3 z-10">
-          <Button size="icon" onClick={() => handleNav("waze")}
-            className="bg-black/80 border border-[#00d4ff]/50 text-[#00d4ff] w-12 h-12 rounded-full">
-            <Zap className="w-5 h-5" />
-          </Button>
-          <Button size="icon" onClick={() => handleNav("google")}
-            className="bg-black/80 border border-[#00ff88]/50 text-[#00ff88] w-12 h-12 rounded-full">
-            <MapPinned className="w-5 h-5" />
-          </Button>
-        </div>
-      )}
     </div>
   );
 };
@@ -674,92 +1174,76 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 const DriverDashboard = () => {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
-  const { t }    = useLanguage();
+  const { t } = useLanguage();
 
-  // ---- UI ----
-  const [activeTab,   setActiveTab]   = useState("rides");
-  const [loading,     setLoading]     = useState(false);
-  const [mapsLoaded,  setMapsLoaded]  = useState(false);
+  const [activeTab, setActiveTab] = useState("rides");
+  const [loading, setLoading] = useState(false);
+  const [mapsLoaded, setMapsLoaded] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const touchStartY = useRef(null);
 
-  // ---- Online / location ----
-  const [isOnline,      setIsOnline]      = useState(user?.is_online || false);
+  const [isOnline, setIsOnline] = useState(user?.is_online || false);
   const [driverLocation, setDriverLocation] = useState(null);
 
-  // ---- Rides ----
   const [availableRides, setAvailableRides] = useState([]);
-  const [nearbyRides,    setNearbyRides]    = useState([]);
-  const [activeRide,     setActiveRide]     = useState(null);
-  const [rideHistory,    setRideHistory]    = useState([]);
-  const [completedRide,  setCompletedRide]  = useState(null);
+  const [nearbyRides, setNearbyRides] = useState([]);
+  const [activeRide, setActiveRide] = useState(null);
+  const [rideHistory, setRideHistory] = useState([]);
+  const [completedRide, setCompletedRide] = useState(null);
 
-  // ---- Tracking ----
-  const [rideStartTime,    setRideStartTime]    = useState(null);
-  const [arrivedTime,      setArrivedTime]      = useState(null);
-  const [waitTimer,        setWaitTimer]        = useState(0);
+  const [rideStartTime, setRideStartTime] = useState(null);
+  const [arrivedTime, setArrivedTime] = useState(null);
+  const [waitTimer, setWaitTimer] = useState(0);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
-  const [isWaitingAtStop,  setIsWaitingAtStop]  = useState(false); // FIX: declared before handleRideAction
+  const [isWaitingAtStop, setIsWaitingAtStop] = useState(false);
   const lastPositionRef = useRef(null);
 
-  // ---- Cancel ----
-  const [showCancelModal,      setShowCancelModal]      = useState(false);
-  const [selectedCancelReason, setSelectedCancelReason] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
 
-  // ---- Vehicle ----
-  const [vehicleData, setVehicleData] = useState({
-    car_make: "", car_model: "", car_year: "", car_color: "", license_plate: "",
-    license_front: null, license_back: null, reg_front: null, reg_back: null,
-    car_photo_front: null, car_photo_back: null, car_photo_left: null, car_photo_right: null,
-  });
+  const [showRateModal, setShowRateModal] = useState(false);
+  const [rateRideId, setRateRideId] = useState(null);
+  const [rateRiderName, setRateRiderName] = useState("");
 
-  // ---- Wallet ----
-  const [showTopupModal, setShowTopupModal] = useState(false);
-  const [topupAmount,    setTopupAmount]    = useState("");
-  const [earningsTab,    setEarningsTab]    = useState("overview"); // "overview" | "topup" | "withdraw"
+  const [vehicleData, setVehicleData] = useState({ car_make:"",car_model:"",car_year:"",car_color:"",license_plate:"",license_front:null,license_back:null,reg_front:null,reg_back:null,car_photo_front:null,car_photo_back:null,car_photo_left:null,car_photo_right:null });
 
-  const balance            = user?.earnings?.balance ?? user?.wallet_balance ?? 0;
-  const totalEarned        = user?.earnings?.total_earned   ?? 0;
-  const totalWithdrawn     = user?.earnings?.total_withdrawn ?? 0;
+  const [earningsTab, setEarningsTab] = useState("overview");
+  const [topupAmount, setTopupAmount] = useState("");
+
+  const balance = user?.earnings?.balance ?? user?.wallet_balance ?? 0;
+  const totalEarned = user?.earnings?.total_earned ?? 0;
+  const totalWithdrawn = user?.earnings?.total_withdrawn ?? 0;
+  const commissionPaid = user?.earnings?.total_commission_paid ?? 0;
   const registrationStatus = user?.registration_status;
-  const hasVehicle         = !!(user?.driver_info?.vehicle);
+  const hasVehicle = !!(user?.driver_info?.vehicle);
 
-  // ==========================================================================
   // Maps
-  // ==========================================================================
   useEffect(() => {
     if (window.google) { setMapsLoaded(true); return; }
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
-    script.async = true;
-    script.onload = () => setMapsLoaded(true);
-    document.head.appendChild(script);
+    const s = document.createElement("script");
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
+    s.async = true;
+    s.onload = () => setMapsLoaded(true);
+    document.head.appendChild(s);
   }, []);
 
-  // ==========================================================================
-  // Auto-expand bottom sheet on status change
-  // ==========================================================================
   useEffect(() => { setIsMinimized(false); }, [activeRide?.status]);
 
-  const handleTouchStart = (e) => { touchStartY.current = e.touches[0].clientY; };
-  const handleTouchEnd   = (e) => {
+  const handleTouchStart = e => { touchStartY.current = e.touches[0].clientY; };
+  const handleTouchEnd = e => {
     if (touchStartY.current == null) return;
-    const delta = e.changedTouches[0].clientY - touchStartY.current;
-    if (delta > 40)       setIsMinimized(true);
-    else if (delta < -40) setIsMinimized(false);
+    const d = e.changedTouches[0].clientY - touchStartY.current;
+    if (d > 40) setIsMinimized(true);
+    else if (d < -40) setIsMinimized(false);
     touchStartY.current = null;
   };
 
-  // ==========================================================================
-  // Location update handler — stabilised via useRef in useLocationTracker
-  // ==========================================================================
-  const haversineKm = (lat1, lng1, lat2, lng2) => {
-    const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const hvKm = (lat1, lng1, lat2, lng2) => {
+    const R = 6371, dL = (lat2-lat1)*Math.PI/180, dl = (lng2-lng1)*Math.PI/180;
+    const a = Math.sin(dL/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dl/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   };
 
-  // Using useRef for activeRide inside the callback to avoid recreating it every status change
   const activeRideRef = useRef(activeRide);
   useEffect(() => { activeRideRef.current = activeRide; }, [activeRide]);
 
@@ -769,36 +1253,29 @@ const DriverDashboard = () => {
       await api.post("/driver/location", location);
       const ride = activeRideRef.current;
       if (ride?.status === "in_progress" && lastPositionRef.current) {
-        const dist = haversineKm(lastPositionRef.current.lat, lastPositionRef.current.lng, location.lat, location.lng);
-        setDistanceTraveled(prev => prev + dist);
+        const d = hvKm(lastPositionRef.current.lat, lastPositionRef.current.lng, location.lat, location.lng);
+        setDistanceTraveled(prev => prev + d);
         await api.post(`/rides/${ride.id}/update-tracking`, location);
       }
       lastPositionRef.current = location;
-    } catch (err) { console.error("Location update failed:", err); }
-  }, []); // Empty deps — callback is stable, reads activeRide via ref
+    } catch (_) {}
+  }, []);
 
   useLocationTracker(isOnline, handleLocationUpdate);
 
-  // ==========================================================================
   // Wait timer
-  // ==========================================================================
   useEffect(() => {
     if (activeRide?.status !== "arrived") return;
-    if (!arrivedTime && activeRide.arrived_at) {
-      setArrivedTime(new Date(activeRide.arrived_at).getTime());
-    }
-    const interval = setInterval(() => {
+    if (!arrivedTime && activeRide.arrived_at) setArrivedTime(new Date(activeRide.arrived_at).getTime());
+    const iv = setInterval(() => {
       const start = arrivedTime || Date.now();
       setWaitTimer(Math.max(0, Math.floor((Date.now() - start) / 60000)));
     }, 1000);
-    return () => clearInterval(interval);
+    return () => clearInterval(iv);
   }, [arrivedTime, activeRide?.status]);
 
-  // ==========================================================================
   // Polling
-  // ==========================================================================
   useEffect(() => { fetchActiveRide(); fetchRideHistory(); }, []);
-
   useEffect(() => {
     if (registrationStatus !== "approved" || !isOnline) return;
     fetchAvailableRides();
@@ -818,14 +1295,11 @@ const DriverDashboard = () => {
   const fetchNearbyRides = async () => {
     try { const r = await api.get("/driver/rides/nearby?radius=10"); setNearbyRides(r.data.rides || []); } catch (_) {}
   };
-
   const refreshUser = async () => {
     try { const r = await api.get("/auth/me"); updateUser(r.data); } catch (_) {}
   };
 
-  // ==========================================================================
   // Ride actions
-  // ==========================================================================
   const handleRideAction = async (action) => {
     if (!activeRide) return;
     setLoading(true);
@@ -834,74 +1308,51 @@ const DriverDashboard = () => {
         await api.post(`/rides/${activeRide.id}/arrived`);
         setArrivedTime(Date.now());
         toast.success("Marked as arrived");
-      }
-      else if (action === "start") {
+      } else if (action === "start") {
         await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: parseInt(waitTimer || 0) });
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
         lastPositionRef.current = driverLocation;
         toast.success("Ride started!");
-      }
-      else if (action === "complete") {
-        // Round distance to avoid floating-point noise accumulation
+      } else if (action === "complete") {
         const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled.toFixed(2));
-        const finalWait = isNaN(waitTimer)         ? 0 : parseInt(waitTimer);
-        const dLat      = driverLocation?.lat || "";
-        const dLng      = driverLocation?.lng || "";
-
-        const res = await api.post(
-          `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${dLat}&dropoff_lng=${dLng}`
-        );
-
-        const finalFare     = res.data.final_fare   > 0 ? res.data.final_fare   : (activeRide.estimated_fare || 0);
+        const finalWait = isNaN(waitTimer) ? 0 : parseInt(waitTimer);
+        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${driverLocation?.lat || ""}&dropoff_lng=${driverLocation?.lng || ""}`);
         const cashToCollect = res.data.cash_to_collect || 0;
+        toast.success(cashToCollect > 0 ? `Collect ₾${cashToCollect.toFixed(2)} cash from passenger` : "Ride complete! No cash needed.", { duration: 8000 });
 
-        if (cashToCollect > 0) {
-          toast.success(`Trip done! Collect exactly ₾${cashToCollect.toFixed(2)} CASH.`, { duration: 8000 });
-        } else {
-          toast.success("Trip done! No cash to collect.");
-        }
+        // Show rate passenger modal
+        const riderName = activeRide.rider_name || activeRide.driver_info?.rider_name || "Passenger";
+        setRateRideId(activeRide.id);
+        setRateRiderName(riderName);
+        setShowRateModal(true);
 
-        setCompletedRide({ ...res.data, final_fare: finalFare });
+        setCompletedRide({ ...res.data, final_fare: res.data.final_fare || activeRide.estimated_fare });
         setActiveRide(null);
-        setDistanceTraveled(0);
-        setWaitTimer(0);
-        setArrivedTime(null);
-        setRideStartTime(null);
-        setIsWaitingAtStop(false);
-
-        fetchRideHistory();
-        await refreshUser();
+        setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null); setIsWaitingAtStop(false);
+        fetchRideHistory(); await refreshUser();
         return;
       }
-
-      // For non-complete actions, refresh the ride state
       if (action !== "complete") {
         const r = await api.get(`/rides/${activeRide.id}`);
         setActiveRide(r.data);
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Action failed");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleCancelRide = async () => {
-    if (!activeRide || !selectedCancelReason) return;
+    if (!activeRide || !cancelReason) return;
     setLoading(true);
     try {
-      await api.post(`/rides/${activeRide.id}/cancel`, { reason: selectedCancelReason, stage: activeRide.status });
+      await api.post(`/rides/${activeRide.id}/cancel`, { reason: cancelReason });
       toast.success("Ride cancelled");
-      setActiveRide(null); setDistanceTraveled(0); setWaitTimer(0);
-      setArrivedTime(null); setRideStartTime(null);
-      setShowCancelModal(false); setSelectedCancelReason("");
+      setActiveRide(null); setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null);
+      setShowCancelModal(false); setCancelReason("");
       fetchRideHistory(); fetchAvailableRides();
-    } catch (_) {
-      toast.error("Failed to cancel ride");
-    } finally {
-      setLoading(false);
-    }
+    } catch (_) { toast.error("Failed to cancel"); }
+    finally { setLoading(false); }
   };
 
   const handleToggleOnline = async (online) => {
@@ -909,8 +1360,8 @@ const DriverDashboard = () => {
       await api.post(`/driver/status?is_online=${online}`);
       setIsOnline(online);
       updateUser({ ...user, is_online: online });
-      toast.success(online ? "You are now Online" : "You are now Offline");
-    } catch (_) { toast.error("Status update failed"); }
+      toast.success(online ? "You're online" : "You're offline");
+    } catch (_) { toast.error("Failed to update status"); }
   };
 
   const handleRegisterVehicle = async (e) => {
@@ -918,667 +1369,700 @@ const DriverDashboard = () => {
     setLoading(true);
     try {
       const fd = new FormData();
-      fd.append("car_make",      vehicleData.car_make);
-      fd.append("car_model",     vehicleData.car_model);
-      fd.append("car_year",      parseInt(vehicleData.car_year));
-      fd.append("car_color",     vehicleData.car_color);
-      fd.append("license_plate", vehicleData.license_plate);
+      ["car_make","car_model","car_year","car_color","license_plate"].forEach(k => fd.append(k, k === "car_year" ? parseInt(vehicleData[k]) : vehicleData[k]));
       ["license_front","license_back","reg_front","reg_back","car_photo_front","car_photo_back","car_photo_left","car_photo_right"]
         .forEach(k => { if (vehicleData[k]) fd.append(k, vehicleData[k]); });
-
-      const res = await api.post("/driver/vehicle", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("Documents submitted for review!");
+      await api.post("/driver/vehicle", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      toast.success("Documents submitted!");
       updateUser({ ...user, driver_info: { ...user.driver_info, vehicle: vehicleData }, registration_status: "pending_review" });
-    } catch (_) {
-      toast.error("Upload failed. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    } catch (_) { toast.error("Upload failed. Please try again."); }
+    finally { setLoading(false); }
   };
 
-  // BUG FIX: Added null/NaN guard on estimatedFare + use constant
   const handleAcceptRide = async (rideId, estimatedFare) => {
-    if (!estimatedFare || isNaN(estimatedFare)) {
-      toast.error("Invalid ride fare"); return;
-    }
+    if (!estimatedFare || isNaN(estimatedFare)) { toast.error("Invalid fare"); return; }
     const commission = estimatedFare * DRIVER_COMMISSION_RATE;
-    if (balance < commission) {
-      toast.error(`Insufficient balance. Need ₾${commission.toFixed(2)} for this ride.`); return;
-    }
+    if (balance < commission) { toast.error(`Need ₾${commission.toFixed(2)} balance to accept`); return; }
     setLoading(true);
     try {
       await api.post(`/rides/${rideId}/accept`);
       toast.success("Ride accepted!");
       const r = await api.get(`/rides/${rideId}`);
       setActiveRide(r.data);
-      setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
+      setAvailableRides(prev => prev.filter(r => r.id !== rideId));
       setDistanceTraveled(0);
-    } catch (_) { toast.error("Failed to accept ride"); }
+    } catch (_) { toast.error("Failed to accept"); }
     finally { setLoading(false); }
   };
 
   const handleDeclineRide = async (rideId) => {
-    try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(prev => prev.filter(r => r.id !== rideId)); toast.info("Declined"); }
+    try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(prev => prev.filter(r => r.id !== rideId)); }
     catch (_) {}
-  };
-
-  const handleRequestToJoin = async (rideId) => {
-    setLoading(true);
-    try { await api.post(`/rides/${rideId}/request-join`); toast.success("Join requested!"); fetchAvailableRides(); }
-    catch (_) {} finally { setLoading(false); }
   };
 
   const toggleStopWait = async () => {
     try {
-      const newStatus = !isWaitingAtStop;
-      await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=${newStatus}`);
-      setIsWaitingAtStop(newStatus);
-      toast.success(newStatus ? "Stop wait timer started" : "Stop wait timer paused");
-    } catch (_) { toast.error("Failed to update wait status"); }
+      const next = !isWaitingAtStop;
+      await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=${next}`);
+      setIsWaitingAtStop(next);
+      toast.success(next ? "Stop wait started" : "Stop wait paused");
+    } catch (_) {}
   };
 
-  // ==========================================================================
-  // Helpers
-  // ==========================================================================
-  const statusColors = {
-    pending_vehicle: "bg-yellow-500 text-black", pending_review: "bg-orange-500 text-black",
-    approved: "bg-[#00ff88] text-black", rejected: "bg-red-500 text-white",
-  };
-  const rideStatusColors = {
-    searching: "bg-yellow-500 text-black", accepted: "bg-blue-500 text-white",
-    arrived: "bg-purple-500 text-white",   in_progress: "bg-[#00ff88] text-black",
-    completed: "bg-green-600 text-white",  cancelled: "bg-red-500 text-white",
-  };
+  // Tab config
+  const tabs = [
+    { id: "rides",    icon: Activity,  label: "Rides"   },
+    { id: "nearby",   icon: Crosshair, label: "Nearby"  },
+    { id: "earnings", icon: Wallet,    label: "Wallet"  },
+    { id: "history",  icon: History,   label: "History" },
+    { id: "more",     icon: Settings,  label: "More"    },
+  ];
 
-  // ==========================================================================
-  // RENDER
-  // ==========================================================================
+  const rideStatusConfig = {
+    accepted:    { color: "#60a5fa", label: "Heading to Pickup" },
+    arrived:     { color: "#a78bfa", label: "Waiting for Passenger" },
+    in_progress: { color: "#00ff88", label: "Ride In Progress" },
+  };
+  const rsc = rideStatusConfig[activeRide?.status] || {};
+
   return (
-    <div className="fixed inset-0 w-full h-full bg-black font-sans text-white overflow-hidden flex flex-col">
-
-      {/* MAP BACKGROUND */}
+    <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden">
+      {/* MAP */}
       <div className="absolute inset-0 z-0">
         {mapsLoaded && <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />}
-      </div>
-
-      {/* HEADER */}
-      <div className="absolute top-0 left-0 right-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
-        <header className="bg-black/90 backdrop-blur-xl border-b border-[#00d4ff]/30 p-3 sm:p-4">
-          <div className="container mx-auto flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] flex items-center justify-center">
-                <Car className="w-5 h-5 text-black" />
-              </div>
-              <div>
-                <p className="text-[#00d4ff] font-semibold">{user?.name} {user?.surname}</p>
-                <div className="flex items-center space-x-2">
-                  <Badge className={statusColors[registrationStatus] || "bg-gray-500"}>
-                    {registrationStatus?.replace(/_/g, " ").toUpperCase()}
-                  </Badge>
-                  <span className="text-[#00ff88] text-sm font-bold">₾{balance.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              {registrationStatus === "approved" && (
-                <div className="flex items-center space-x-2">
-                  <span className={`text-xs sm:text-sm ${isOnline ? "text-[#00ff88]" : "text-gray-500"}`}>
-                    {isOnline ? "Online" : "Offline"}
-                  </span>
-                  <Button size="sm"
-                    className={isOnline ? "bg-[#00ff88] text-black" : "bg-gray-600 text-white"}
-                    onClick={() => handleToggleOnline(!isOnline)}>
-                    {isOnline ? "ON" : "OFF"}
-                  </Button>
-                </div>
-              )}
-              <Button variant="ghost" size="icon" className="text-[#00d4ff]" onClick={() => navigate("/")}>
-                <Home className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-red-400" onClick={logout}>
-                <LogOut className="w-5 h-5" />
-              </Button>
-            </div>
-          </div>
-        </header>
-
-        {isOnline && driverLocation && (
-          <div className="bg-black/80 backdrop-blur-md border-b border-[#00ff88]/20 px-4 py-2">
-            <div className="container mx-auto flex items-center text-xs text-[#00ff88]">
-              <Crosshair className="w-3 h-3 mr-2 animate-pulse" />
-              Tracking active • {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
-              {driverLocation.speed != null && (
-                <span className="ml-2">• {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>
-              )}
-            </div>
+        {!mapsLoaded && (
+          <div className="w-full h-full bg-gradient-to-b from-[#07070f] to-[#0e0e1c] flex items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-[#00ff88]/40" />
           </div>
         )}
       </div>
 
+      {/* HEADER */}
+      <header className="absolute top-0 left-0 right-0 z-50 bg-[#07070f]/85 backdrop-blur-2xl border-b border-white/6">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
+              <Car className="w-5 h-5 text-black" />
+            </div>
+            <div>
+              <p className="text-white font-semibold text-sm leading-tight">{user?.name} {user?.surname}</p>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={registrationStatus} />
+                {user?.rating && <span className="text-yellow-400 text-xs">⭐ {user.rating?.toFixed(1)}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <SurgeIndicator location={driverLocation} />
+
+            <div className="bg-[#00ff88]/10 border border-[#00ff88]/25 rounded-lg px-2.5 py-1.5">
+              <span className="text-[#00ff88] font-bold font-mono text-sm">₾{balance.toFixed(2)}</span>
+            </div>
+
+            {registrationStatus === "approved" && (
+              <button onClick={() => handleToggleOnline(!isOnline)}
+                className={`relative w-14 h-7 rounded-full transition-colors duration-300 border ${isOnline ? "bg-[#00ff88]/25 border-[#00ff88]/50" : "bg-white/8 border-white/15"}`}>
+                <div className={`absolute top-0.5 w-6 h-6 rounded-full transition-transform duration-300 shadow-lg ${isOnline ? "translate-x-7 bg-[#00ff88]" : "translate-x-0.5 bg-white/40"}`} />
+              </button>
+            )}
+
+            <button onClick={logout} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-red-400 transition-colors">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {isOnline && driverLocation && (
+          <div className="px-4 pb-2 flex items-center gap-2 text-[10px] text-[#00ff88]/50">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
+            GPS Active · {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
+            {driverLocation.speed != null && <span>· {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
+          </div>
+        )}
+      </header>
+
+      {/* ACTIVE RIDE PILL (minimized state) */}
+      {activeRide && isMinimized && (
+        <button onClick={() => setIsMinimized(false)}
+          className="absolute top-20 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full border backdrop-blur-xl shadow-2xl transition-all"
+          style={{ background: `${rsc.color}18`, borderColor: `${rsc.color}40` }}>
+          <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: rsc.color }} />
+          <span className="text-sm font-semibold" style={{ color: rsc.color }}>{rsc.label}</span>
+          <ChevronUp className="w-4 h-4" style={{ color: rsc.color }} />
+        </button>
+      )}
+
       {/* BOTTOM SHEET */}
-      <div className="absolute bottom-0 left-0 right-0 z-40 w-full flex justify-center pointer-events-none p-2 pb-4 sm:p-4 sm:pb-6">
-        <div
-          className={`pointer-events-auto w-full max-w-2xl bg-black/90 backdrop-blur-2xl border border-white/10 shadow-[0_-15px_40px_rgba(0,0,0,0.8)] rounded-3xl flex flex-col overflow-hidden transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-            isMinimized && activeRide ? "translate-y-[calc(100%-3rem)]" : "translate-y-0"
-          }`}
-          style={{ maxHeight: "75vh" }}
-        >
+      <div className={`absolute bottom-0 left-0 right-0 z-40 transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMinimized && activeRide ? "translate-y-[calc(100%-0px)]" : "translate-y-0"}`}>
+        <div className="bg-[#0a0a18]/95 backdrop-blur-3xl border-t border-white/8 rounded-t-3xl overflow-hidden shadow-[0_-20px_60px_rgba(0,0,0,0.8)]"
+          style={{ maxHeight: "72vh" }}>
+
           {/* Drag handle */}
-          {activeRide && (
-            <div
-              className="w-full flex justify-center items-center h-12 shrink-0 cursor-pointer bg-white/5 active:bg-white/10"
-              onClick={() => setIsMinimized(p => !p)}
-              onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}
-            >
-              <div className="w-16 h-1.5 bg-gray-500 rounded-full" />
+          <div className="flex justify-center pt-3 pb-1 cursor-pointer" onClick={() => setIsMinimized(p => !p)} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+            <div className="w-12 h-1 bg-white/15 rounded-full" />
+          </div>
+
+          {/* Tab bar */}
+          {!activeRide && (
+            <div className="flex items-center gap-1 px-3 pb-2 pt-1 border-b border-white/5">
+              {tabs.map(({ id, icon: Icon, label }) => (
+                <button key={id} onClick={() => { setActiveTab(id); if (id === "nearby") fetchNearbyRides(); }}
+                  className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl transition-all ${activeTab === id ? "bg-[#00ff88]/12 text-[#00ff88]" : "text-white/30 hover:text-white/60"}`}>
+                  <Icon className="w-4 h-4" />
+                  <span className="text-[9px] uppercase tracking-wider font-bold">{label}</span>
+                </button>
+              ))}
             </div>
           )}
 
-          <div className="overflow-y-auto p-3 pb-4 flex-1">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <div className="overflow-y-auto px-4 pb-6 pt-3" style={{ maxHeight: activeRide ? "65vh" : "calc(72vh - 80px)" }}>
 
-              {!activeRide && (
-                <TabsList className="grid grid-cols-5 bg-black/50 border border-[#00d4ff]/20 mb-4 rounded-xl">
-                  {[
-                    ["rides",   "Rides",   Activity],
-                    ["nearby",  "Nearby",  Crosshair],
-                    ["vehicle", "Vehicle", Car],
-                    ["earnings","Earn",    Wallet],
-                    ["history", "History", History],
-                  ].map(([val, label, Icon]) => (
-                    <TabsTrigger key={val} value={val}
-                      onClick={val === "nearby" ? fetchNearbyRides : undefined}
-                      className="text-xs sm:text-sm">
-                      <Icon className="w-4 h-4 sm:mr-2" /><span className="hidden sm:inline">{label}</span>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              )}
+            {/* ================================================================ */}
+            {/* ACTIVE RIDE VIEW                                                  */}
+            {/* ================================================================ */}
+            {activeRide && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-white font-bold text-lg">Active Ride</p>
+                    <p className="text-white/40 text-xs">{activeRide.carType || activeRide.car_type} · {PRICING_RULES[activeRide.carType?.toLowerCase() || "economy"]?.icon}</p>
+                  </div>
+                  <StatusBadge status={activeRide.status} />
+                </div>
 
-              {/* -------------------------------------------------------------- */}
-              {/* RIDES TAB                                                        */}
-              {/* -------------------------------------------------------------- */}
-              <TabsContent value="rides" className="m-0">
-                {activeRide ? (
-                  <Card className="bg-transparent border-none shadow-none">
-                    <CardHeader className="px-2 pt-0 pb-3">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-[#00ff88] font-bold text-lg">Active Ride</h3>
-                        <Badge className={rideStatusColors[activeRide.status]}>
-                          {activeRide.status?.replace(/_/g, " ").toUpperCase()}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4 text-white px-2 pb-2">
-                      {/* Trip addresses */}
-                      <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20 space-y-3">
-                        <div className="flex items-start">
-                          <MapPin className="w-5 h-5 text-[#00ff88] mr-2 mt-0.5" />
-                          <div><p className="text-[#00ff88]/60 text-xs">PICKUP</p><p className="font-medium">{activeRide.pickup}</p></div>
-                        </div>
-                        {activeRide.stops?.filter(s => s.lat && s.lng).length > 0 && (
-                          <div className="flex items-start">
-                            <MapPinned className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" />
-                            <div>
-                              <p className="text-yellow-400/60 text-xs">STOPS</p>
-                              {activeRide.stops.map((s, i) => <p key={i} className="text-sm">• {s.address}</p>)}
-                            </div>
-                          </div>
-                        )}
-                        <div className="flex items-start">
-                          <Navigation className="w-5 h-5 text-[#00d4ff] mr-2 mt-0.5" />
-                          <div><p className="text-[#00d4ff]/60 text-xs">DESTINATION</p><p className="font-medium">{activeRide.destination || "Open Trip"}</p></div>
-                        </div>
-                      </div>
-
-                      {/* Wait / distance indicators */}
-                      {(activeRide.status === "arrived" || activeRide.status === "in_progress") && (
-                        <div className="grid grid-cols-2 gap-4">
-                          {activeRide.status === "arrived" && (
-                            <DriverWaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType || activeRide.car_type} />
-                          )}
-                          {activeRide.status === "in_progress" && (
-                            <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center col-span-2">
-                              <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
-                              <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(2)} km</p>
-                              <p className="text-xs text-[#00ff88]/70">Traveled</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Fare */}
-                      <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
-                        <span className="text-[#00ff88]">Fare</span>
-                        <span className="text-2xl font-bold text-[#00ff88]">
-                          ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2) ?? "—"}
-                        </span>
-                      </div>
-
-                      {/* Communication */}
-                      <RideCommunication
-                        rideId={activeRide.id}
-                        otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone}
-                        otherPartyName={activeRide.rider_name || "Rider"}
-                        currentUserId={user?.id}
-                        isDriver={true}
-                      />
-
-                      {/* Action buttons */}
-                      <div className="flex flex-col gap-3 pt-2">
-                        {/* Stop wait toggle */}
-                        {activeRide.status === "in_progress" && activeRide.stops?.some(s => s.lat && s.lng) && (
-                          <Button
-                            onClick={toggleStopWait}
-                            variant={isWaitingAtStop ? "destructive" : "outline"}
-                            className="w-full h-12 font-bold bg-black border-white/20 text-white"
-                          >
-                            {isWaitingAtStop
-                              ? <><Timer className="mr-2 animate-spin" /> Finish Waiting at Stop</>
-                              : <><PauseCircle className="mr-2 text-yellow-400" /> Start Stop Wait</>}
-                          </Button>
-                        )}
-
-                        <div className="flex gap-3">
-                          <div className="flex-1">
-                            {activeRide.status === "accepted" && (
-                              <Button className="w-full bg-purple-500 text-white h-14 text-lg font-bold"
-                                onClick={() => handleRideAction("arrived")} disabled={loading}>
-                                <MapPin className="w-5 h-5 mr-2" /> I've Arrived
-                              </Button>
-                            )}
-                            {activeRide.status === "arrived" && (
-                              <Button className="w-full bg-blue-500 text-white h-14 text-lg font-bold"
-                                onClick={() => handleRideAction("start")} disabled={loading}>
-                                <Play className="w-5 h-5 mr-2" /> Start Trip
-                              </Button>
-                            )}
-                            {activeRide.status === "in_progress" && (
-                              <Button className="w-full bg-[#00ff88] text-black h-14 text-lg font-bold"
-                                onClick={() => handleRideAction("complete")} disabled={loading}>
-                                <CheckCircle2 className="w-5 h-5 mr-2" /> Complete Trip
-                              </Button>
-                            )}
-                          </div>
-                          <Button variant="destructive"
-                            className="h-14 w-14 bg-red-500/20 border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-                            onClick={() => setShowCancelModal(true)} disabled={loading}>
-                            <XCircle className="w-6 h-6" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  registrationStatus !== "approved" ? (
-                    <div className="text-center py-12">
-                      <AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
-                      <p className="text-yellow-400 font-semibold">Account Pending Review</p>
+                {/* Route */}
+                <GlassCard className="p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#00ff88] mt-1 shrink-0" />
+                    <div>
+                      <p className="text-white/40 text-[10px] uppercase tracking-wider">Pickup</p>
+                      <p className="text-white text-sm font-medium">{activeRide.pickup}</p>
                     </div>
-                  ) : !isOnline ? (
-                    <div className="text-center py-12">
-                      <Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" />
-                      <p className="text-gray-400 mb-4">You are offline</p>
-                      <Button className="bg-[#00ff88] text-black font-bold h-12 px-8" onClick={() => handleToggleOnline(true)}>
-                        Go Online
-                      </Button>
+                  </div>
+                  {activeRide.stops?.filter(s => s.lat).length > 0 && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 mt-1 shrink-0" />
+                      <div>
+                        <p className="text-yellow-400/60 text-[10px] uppercase tracking-wider">Stops ({activeRide.stops.length})</p>
+                        {activeRide.stops.filter(s => s.lat).map((s, i) => <p key={i} className="text-white/70 text-xs">· {s.address}</p>)}
+                      </div>
                     </div>
-                  ) : availableRides.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" />
-                      <p className="text-[#00d4ff]/70">Searching for rides...</p>
+                  )}
+                  <div className="flex items-start gap-3">
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#00d4ff] mt-1 shrink-0" />
+                    <div>
+                      <p className="text-[#00d4ff]/60 text-[10px] uppercase tracking-wider">Destination</p>
+                      <p className="text-white text-sm font-medium">{activeRide.destination || "Open Trip"}</p>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {availableRides.map(ride => {
-                        const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
-                        const canAccept  = balance >= commission && !!ride.estimated_fare;
-                        return (
-                          <Card key={ride.id} className="bg-black/60 border border-[#00ff88]/30">
-                            <CardContent className="p-4 text-white">
-                              <div className="flex justify-between items-start mb-3">
-                                <div className="flex-1 pr-2">
-                                  <p className="text-[#00ff88] font-semibold text-sm truncate">{ride.pickup}</p>
-                                  <p className="text-[#00d4ff]/70 text-xs truncate">→ {ride.destination || "Open"}</p>
-                                  {ride.car_type && (
-                                    <p className="text-gray-400 text-xs mt-1 capitalize">{ride.car_type} • {PRICING_RULES[ride.car_type]?.icon}</p>
-                                  )}
-                                </div>
-                                <div className="text-right shrink-0">
-                                  <p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
-                                  <p className="text-gray-400 text-xs">Your cut: ₾{((ride.estimated_fare || 0) * (1 - DRIVER_COMMISSION_RATE)).toFixed(2)}</p>
-                                </div>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button className="flex-1 bg-[#00ff88] text-black font-bold h-12"
-                                  onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}
-                                  disabled={loading || !canAccept}>
-                                  {canAccept ? "Accept" : `Need ₾${commission.toFixed(2)}`}
-                                </Button>
-                                <Button variant="outline" className="border-red-500 text-red-500 h-12 w-12"
-                                  onClick={() => handleDeclineRide(ride.id)}>
-                                  <XCircle className="w-5 h-5" />
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  )
+                  </div>
+                </GlassCard>
+
+                {/* Timers */}
+                {activeRide.status === "arrived" && (
+                  <DriverWaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType || activeRide.car_type} />
                 )}
-              </TabsContent>
+                {activeRide.status === "in_progress" && (
+                  <GlassCard accent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[#00ff88]">
+                      <Activity className="w-5 h-5 animate-pulse" />
+                      <span className="font-medium text-sm">Distance Traveled</span>
+                    </div>
+                    <span className="text-[#00ff88] font-bold font-mono text-2xl">{distanceTraveled.toFixed(2)} km</span>
+                  </GlassCard>
+                )}
 
-              {/* -------------------------------------------------------------- */}
-              {/* NEARBY TAB                                                       */}
-              {/* -------------------------------------------------------------- */}
-              <TabsContent value="nearby">
-                <div className="space-y-4">
-                  <div className="flex justify-end mb-2">
-                    <Button size="sm" variant="outline" onClick={fetchNearbyRides} className="text-white border-white/20 hover:bg-white/10">
-                      Refresh
+                {/* Fare */}
+                <div className="flex items-center justify-between bg-gradient-to-r from-[#00ff88]/10 to-[#00d4ff]/10 border border-[#00ff88]/20 rounded-xl px-4 py-3">
+                  <span className="text-white/60 text-sm">Estimated Fare</span>
+                  <span className="text-2xl font-bold text-[#00ff88] font-mono">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2) ?? "—"}</span>
+                </div>
+
+                {/* Communication */}
+                <RideCommunication
+                  rideId={activeRide.id}
+                  otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone}
+                  otherPartyName={activeRide.rider_name || "Rider"}
+                  currentUserId={user?.id}
+                  isDriver={true}
+                />
+
+                {/* Stop wait toggle */}
+                {activeRide.status === "in_progress" && activeRide.stops?.some(s => s.lat) && (
+                  <button onClick={toggleStopWait}
+                    className={`w-full h-11 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${isWaitingAtStop ? "bg-amber-500/15 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-white/60"}`}>
+                    {isWaitingAtStop ? <><Timer className="w-4 h-4 animate-pulse" /> Stop Waiting</> : <><PauseCircle className="w-4 h-4" /> Start Stop Wait</>}
+                  </button>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-3">
+                  {activeRide.status === "accepted" && (
+                    <Button className="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold h-14 text-base" onClick={() => handleRideAction("arrived")} disabled={loading}>
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <MapPin className="w-5 h-5 mr-2" />} I've Arrived
+                    </Button>
+                  )}
+                  {activeRide.status === "arrived" && (
+                    <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold h-14 text-base" onClick={() => handleRideAction("start")} disabled={loading}>
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Play className="w-5 h-5 mr-2" />} Start Ride
+                    </Button>
+                  )}
+                  {activeRide.status === "in_progress" && (
+                    <Button className="flex-1 bg-[#00ff88] hover:bg-[#00e070] text-black font-bold h-14 text-base" onClick={() => handleRideAction("complete")} disabled={loading}>
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />} Complete
+                    </Button>
+                  )}
+                  <button onClick={() => setShowCancelModal(true)}
+                    className="w-14 h-14 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ================================================================ */}
+            {/* RIDES TAB (no active ride)                                        */}
+            {/* ================================================================ */}
+            {!activeRide && activeTab === "rides" && (
+              <div>
+                {registrationStatus !== "approved" ? (
+                  <div className="text-center py-10">
+                    <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+                    <p className="text-white font-semibold">Account Pending Review</p>
+                    <p className="text-white/40 text-sm mt-1">We'll notify you once approved</p>
+                  </div>
+                ) : !isOnline ? (
+                  <div className="text-center py-10">
+                    <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-3">
+                      <Activity className="w-8 h-8 text-white/20" />
+                    </div>
+                    <p className="text-white font-semibold">You're Offline</p>
+                    <p className="text-white/40 text-sm mb-4 mt-1">Toggle online to receive rides</p>
+                    <Button className="bg-[#00ff88] text-black font-bold px-8 h-12" onClick={() => handleToggleOnline(true)}>
+                      Go Online
                     </Button>
                   </div>
-                  {nearbyRides.length === 0 && <p className="text-center text-gray-400 py-8">No nearby rides found</p>}
-                  {nearbyRides.map(ride => (
-                    <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30">
-                      <CardContent className="p-4 text-white">
-                        <p className="text-[#00ff88]">{ride.pickup}</p>
-                        <p className="text-[#00d4ff]">→ {ride.destination}</p>
-                        <Button className="w-full mt-2 bg-[#00d4ff] text-black font-bold"
-                          onClick={() => handleRequestToJoin(ride.id)}>
-                          Request to Accept
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </TabsContent>
-
-              {/* -------------------------------------------------------------- */}
-              {/* VEHICLE TAB                                                      */}
-              {/* -------------------------------------------------------------- */}
-              <TabsContent value="vehicle">
-                <div className="space-y-4">
-                  <h3 className="text-[#00d4ff] font-bold text-lg">Vehicle Registration</h3>
-                  {hasVehicle ? (
-                    <div className="p-6 bg-black/50 rounded-xl border border-[#00ff88]/30 text-center">
-                      <CheckCircle2 className="w-12 h-12 text-[#00ff88] mx-auto mb-2" />
-                      <p className="text-lg font-bold">Documents Under Review</p>
-                      <p className="text-xl font-mono text-[#00ff88] mt-2">
-                        {user?.driver_info?.vehicle?.license_plate || "—"}
-                      </p>
+                ) : availableRides.length === 0 ? (
+                  <div className="text-center py-10">
+                    <div className="w-16 h-16 rounded-2xl bg-[#00d4ff]/5 flex items-center justify-center mx-auto mb-3">
+                      <Navigation className="w-8 h-8 text-[#00d4ff]/40 animate-pulse" />
                     </div>
-                  ) : (
-                    <form onSubmit={handleRegisterVehicle} className="space-y-6">
-                      <div className="space-y-3">
-                        <h4 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Details</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                          {[["car_make","Make","text","Toyota"],["car_model","Model","text","Camry"],["car_year","Year","number","2018"],["car_color","Color","text","Silver"]].map(([key,label,type,placeholder]) => (
-                            <div key={key} className="space-y-1">
-                              <Label className="text-gray-400 text-xs">{label}</Label>
-                              <Input required type={type} placeholder={placeholder}
-                                value={vehicleData[key]} onChange={e => setVehicleData({ ...vehicleData, [key]: e.target.value })}
-                                className="bg-black/50 text-white border-[#00d4ff]/30" />
+                    <p className="text-white font-semibold">Searching for rides...</p>
+                    <p className="text-white/30 text-sm mt-1">New requests will appear automatically</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-white/30 text-[10px] uppercase tracking-widest">{availableRides.length} available {availableRides.length === 1 ? "ride" : "rides"}</p>
+                    {availableRides.map(ride => {
+                      const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
+                      const driverCut = (ride.estimated_fare || 0) * (1 - DRIVER_COMMISSION_RATE);
+                      const canAccept = balance >= commission && !!ride.estimated_fare;
+                      const tier = PRICING_RULES[ride.car_type?.toLowerCase()] || PRICING_RULES.economy;
+                      return (
+                        <GlassCard key={ride.id} className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1 pr-3">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span>{tier.icon}</span>
+                                <span className="text-white/40 text-xs uppercase tracking-wider">{tier.name}</span>
+                                {ride.surge_multiplier > 1 && (
+                                  <span className="text-orange-400 text-xs font-bold bg-orange-500/15 rounded px-1.5">{ride.surge_multiplier}x</span>
+                                )}
+                              </div>
+                              <p className="text-white font-medium text-sm leading-tight">{ride.pickup}</p>
+                              <p className="text-white/40 text-xs mt-0.5 flex items-center gap-1">
+                                <ArrowRight className="w-3 h-3" /> {ride.destination || "Open Trip"}
+                              </p>
+                              {ride.distance_to_pickup != null && (
+                                <p className="text-[#00d4ff] text-xs mt-1">📍 {ride.distance_to_pickup} km away</p>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-2xl font-bold font-mono text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
+                              <p className="text-white/40 text-xs">you get ₾{driverCut.toFixed(2)}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button className="flex-1 bg-[#00ff88] text-black font-bold h-11" disabled={loading || !canAccept}
+                              onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}>
+                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : canAccept ? "Accept Ride" : `Need ₾${commission.toFixed(2)}`}
+                            </Button>
+                            <button onClick={() => handleDeclineRide(ride.id)}
+                              className="w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </GlassCard>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ================================================================ */}
+            {/* NEARBY TAB                                                        */}
+            {/* ================================================================ */}
+            {!activeRide && activeTab === "nearby" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-white/30 text-[10px] uppercase tracking-widest">Within 10km</p>
+                  <button onClick={fetchNearbyRides} className="text-[#00d4ff] text-xs flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Refresh</button>
+                </div>
+                {nearbyRides.length === 0 ? (
+                  <div className="text-center py-8 text-white/30">
+                    <MapPinned className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p>No rides nearby</p>
+                  </div>
+                ) : nearbyRides.map(ride => (
+                  <GlassCard key={ride.id} className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="text-white font-medium text-sm">{ride.pickup}</p>
+                        <p className="text-white/40 text-xs">→ {ride.destination || "Open"}</p>
+                        <p className="text-[#00d4ff] text-xs mt-1">📍 {ride.distance_to_pickup?.toFixed(1)} km</p>
+                      </div>
+                      <p className="text-[#00ff88] font-bold font-mono">₾{ride.estimated_fare?.toFixed(2)}</p>
+                    </div>
+                    <Button className="w-full bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] font-bold h-10 text-sm"
+                      onClick={async () => {
+                        setLoading(true);
+                        try { await api.post(`/rides/${ride.id}/request-join`); toast.success("Requested!"); fetchNearbyRides(); }
+                        catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
+                        finally { setLoading(false); }
+                      }}>
+                      Request to Accept
+                    </Button>
+                  </GlassCard>
+                ))}
+              </div>
+            )}
+
+            {/* ================================================================ */}
+            {/* VEHICLE TAB (inside earnings if needed, but we show via history) */}
+            {/* Vehicle registration at start                                    */}
+            {/* ================================================================ */}
+            {!activeRide && activeTab === "vehicle" && (
+              <div className="space-y-4">
+                <SectionHeader icon={Car} title="Vehicle" subtitle="Your registered vehicle" />
+                {hasVehicle ? (
+                  <GlassCard accent className="p-5 text-center space-y-3">
+                    <CheckCircle2 className="w-12 h-12 text-[#00ff88] mx-auto" />
+                    <p className="text-white font-bold">Documents Submitted</p>
+                    <p className="text-white/50 text-sm">Your vehicle is under review</p>
+                    <p className="text-2xl font-mono font-bold text-white">{user?.driver_info?.vehicle?.license_plate || "—"}</p>
+                  </GlassCard>
+                ) : (
+                  <form onSubmit={handleRegisterVehicle} className="space-y-5">
+                    <GlassCard className="p-4 space-y-3">
+                      <p className="text-white/40 text-[10px] uppercase tracking-widest">Vehicle Details</p>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {[["car_make","Make","Toyota"],["car_model","Model","Camry"],["car_year","Year","2018","number"],["car_color","Color","Silver"]].map(([k,l,p,t="text"]) => (
+                          <div key={k} className="space-y-1">
+                            <Label className="text-white/40 text-[11px]">{l}</Label>
+                            <Input required type={t} placeholder={p} value={vehicleData[k]}
+                              onChange={e => setVehicleData({ ...vehicleData, [k]: e.target.value })}
+                              className="bg-white/4 border-white/10 text-white h-9 text-sm placeholder:text-white/20" />
+                          </div>
+                        ))}
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-white/40 text-[11px]">License Plate</Label>
+                          <Input required placeholder="AB-123-CD" value={vehicleData.license_plate}
+                            onChange={e => setVehicleData({ ...vehicleData, license_plate: e.target.value.toUpperCase() })}
+                            className="bg-white/4 border-white/10 text-white h-9 text-sm font-mono uppercase placeholder:normal-case placeholder:text-white/20" />
+                        </div>
+                      </div>
+                    </GlassCard>
+
+                    {[
+                      ["Driver's License", [["license_front","Front"],["license_back","Back"]]],
+                      ["Registration Card", [["reg_front","Front"],["reg_back","Back"]]],
+                      ["Car Photos", [["car_photo_front","Front"],["car_photo_back","Back"],["car_photo_left","Left Side"],["car_photo_right","Right Side"]]],
+                    ].map(([title, fields]) => (
+                      <GlassCard key={title} className="p-4 space-y-3">
+                        <p className="text-white/40 text-[10px] uppercase tracking-widest">{title}</p>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          {fields.map(([k, l]) => (
+                            <div key={k} className="space-y-1">
+                              <Label className="text-white/40 text-[11px]">
+                                {l} {vehicleData[k] && <span className="text-[#00ff88]">✓</span>}
+                              </Label>
+                              <input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, [k]: e.target.files[0] })}
+                                className="w-full bg-white/4 border border-white/10 text-white rounded-lg p-2 text-xs file:bg-[#00ff88]/15 file:text-[#00ff88] file:border-0 file:rounded file:px-2 file:py-0.5 file:text-xs file:font-bold file:mr-2" />
                             </div>
                           ))}
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-gray-400 text-xs">License Plate</Label>
-                          <Input required placeholder="AB-123-CD" value={vehicleData.license_plate}
-                            onChange={e => setVehicleData({ ...vehicleData, license_plate: e.target.value.toUpperCase() })}
-                            className="bg-black/50 text-white border-[#00d4ff]/30 uppercase font-mono" />
-                        </div>
-                      </div>
-
-                      {[
-                        ["Driver's License", [["license_front","Front"],["license_back","Back"]]],
-                        ["Vehicle Registration", [["reg_front","Front"],["reg_back","Back"]]],
-                        ["Car Photos", [["car_photo_front","Front"],["car_photo_back","Back"],["car_photo_left","Left"],["car_photo_right","Right"]]],
-                      ].map(([sectionTitle, fields]) => (
-                        <div key={sectionTitle} className="space-y-3">
-                          <h4 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">{sectionTitle}</h4>
-                          <div className="grid grid-cols-2 gap-3">
-                            {fields.map(([key, label]) => (
-                              <div key={key} className="space-y-1">
-                                <Label className="text-gray-400 text-xs">{label}</Label>
-                                <Input required type="file" accept="image/*"
-                                  onChange={e => setVehicleData({ ...vehicleData, [key]: e.target.files[0] })}
-                                  className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-
-                      <Button type="submit" disabled={loading}
-                        className="w-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold h-12 mt-4">
-                        {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
-                        Submit Documents
-                      </Button>
-                    </form>
-                  )}
-                </div>
-              </TabsContent>
-
-              {/* -------------------------------------------------------------- */}
-              {/* EARNINGS TAB — with Top Up + Withdraw sub-tabs                  */}
-              {/* -------------------------------------------------------------- */}
-              <TabsContent value="earnings">
-                <div className="space-y-4">
-                  {/* Stats overview */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-3 text-center">
-                      <p className="text-[#00ff88]/60 text-[10px] uppercase font-bold mb-1">Balance</p>
-                      <p className="text-xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
-                    </div>
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
-                      <p className="text-gray-400 text-[10px] uppercase font-bold mb-1">Total Earned</p>
-                      <p className="text-xl font-bold text-white">₾{totalEarned.toFixed(2)}</p>
-                    </div>
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
-                      <p className="text-gray-400 text-[10px] uppercase font-bold mb-1">Withdrawn</p>
-                      <p className="text-xl font-bold text-white">₾{totalWithdrawn.toFixed(2)}</p>
-                    </div>
-                  </div>
-
-                  {/* Sub-tab switcher */}
-                  <div className="flex gap-2">
-                    {[["overview","Overview"],["topup","Top Up"],["withdraw","Withdraw"]].map(([key, label]) => (
-                      <button key={key} onClick={() => setEarningsTab(key)}
-                        className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all border ${
-                          earningsTab === key
-                            ? "bg-[#00ff88]/20 border-[#00ff88] text-[#00ff88]"
-                            : "border-white/10 text-gray-400 hover:border-white/30"
-                        }`}>
-                        {label}
-                      </button>
+                      </GlassCard>
                     ))}
-                  </div>
 
-                  {/* Overview */}
-                  {earningsTab === "overview" && (
-                    <div className="space-y-3">
-                      <div className="bg-black/50 border border-white/10 rounded-xl p-4 space-y-3">
-                        <p className="text-gray-400 text-xs uppercase font-bold">Commission Rate</p>
-                        <div className="flex justify-between">
-                          <span className="text-white">Platform commission</span>
-                          <span className="text-red-400 font-mono">{(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-white">Your share</span>
-                          <span className="text-[#00ff88] font-mono">{((1 - DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button className="flex-1 bg-[#00ff88] text-black font-bold" onClick={() => setEarningsTab("topup")}>
-                          <Plus className="w-4 h-4 mr-2" /> Top Up
-                        </Button>
-                        <Button className="flex-1 bg-white/10 text-white border border-white/20 font-bold" onClick={() => setEarningsTab("withdraw")}>
-                          <Banknote className="w-4 h-4 mr-2" /> Withdraw
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                    <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold">
+                      {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />} Submit Documents
+                    </Button>
+                  </form>
+                )}
+              </div>
+            )}
 
-                  {/* Top Up via PayPal */}
-                  {earningsTab === "topup" && (
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label className="text-gray-300">Amount to Add (GEL)</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold text-lg">₾</span>
-                          <Input
-                            type="number" min="5" max="500" step="1"
-                            value={topupAmount} onChange={e => setTopupAmount(e.target.value)}
-                            placeholder="50" className="pl-8 bg-black/50 border-[#00ff88]/30 text-white text-lg h-12"
-                          />
-                        </div>
-                        <p className="text-gray-500 text-xs">Equivalent: ${topupAmount ? (parseFloat(topupAmount) * 0.37).toFixed(2) : "0.00"} USD</p>
-                      </div>
-
-                      {topupAmount && parseFloat(topupAmount) >= 5 ? (
-                        <PayPalButtons
-                          fundingSource="card"
-                          style={{ layout: "vertical", shape: "rect" }}
-                          createOrder={(data, actions) =>
-                            actions.order.create({
-                              purchase_units: [{
-                                amount: {
-                                  value: (parseFloat(topupAmount) * 0.37).toFixed(2),
-                                  currency_code: "USD",
-                                },
-                              }],
-                              application_context: { shipping_preference: "NO_SHIPPING" },
-                            })
-                          }
-                          onApprove={async (data, actions) => {
-                            try {
-                              setLoading(true);
-                              await actions.order.capture();
-                              await api.post("/driver/wallet/topup/paypal", {
-                                order_id: data.orderID,
-                                amount: parseFloat(topupAmount),
-                              });
-                              toast.success(`₾${topupAmount} added to your wallet!`);
-                              setTopupAmount("");
-                              setEarningsTab("overview");
-                              await refreshUser();
-                            } catch (_) {
-                              toast.error("Top-up failed. Contact support.");
-                            } finally {
-                              setLoading(false);
-                            }
-                          }}
-                          onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed."); }}
-                          onCancel={() => toast.info("Payment cancelled.")}
-                        />
-                      ) : (
-                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 text-center">
-                          <p className="text-yellow-400 text-sm">Enter ₾5 or more to show payment options</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Withdrawal — rendered from the WithdrawalPanel component */}
-                  {earningsTab === "withdraw" && (
-                    <WithdrawalPanel
-                      balance={balance}
-                      driverId={user?.id}
-                      onSuccess={async () => {
-                        setEarningsTab("overview");
-                        await refreshUser();
-                      }}
-                    />
-                  )}
+            {/* ================================================================ */}
+            {/* EARNINGS TAB                                                      */}
+            {/* ================================================================ */}
+            {!activeRide && activeTab === "earnings" && (
+              <div className="space-y-4">
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-3">
+                  <GlassCard accent className="p-4 text-center">
+                    <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
+                    <p className="text-3xl font-bold font-mono text-[#00ff88]">₾{balance.toFixed(2)}</p>
+                  </GlassCard>
+                  <GlassCard className="p-4 text-center">
+                    <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Total Earned</p>
+                    <p className="text-3xl font-bold font-mono text-white">₾{totalEarned.toFixed(2)}</p>
+                  </GlassCard>
+                  <StatPill label="Commission Paid" value={`₾${commissionPaid.toFixed(2)}`} color="text-red-400" />
+                  <StatPill label="Withdrawn" value={`₾${totalWithdrawn.toFixed(2)}`} color="text-white/60" />
                 </div>
-              </TabsContent>
 
-              {/* -------------------------------------------------------------- */}
-              {/* HISTORY TAB                                                      */}
-              {/* -------------------------------------------------------------- */}
-              <TabsContent value="history">
-                <ScrollArea className="h-[400px]">
-                  <div className="space-y-2 pr-4">
-                    {rideHistory.length === 0 && <p className="text-gray-400 text-center py-6">No rides yet.</p>}
-                    {rideHistory.map(r => (
-                      <div key={r.id} className="p-4 bg-black/50 border border-[#00d4ff]/20 rounded-xl">
-                        <div className="flex justify-between items-start mb-1">
-                          <p className="text-white text-sm truncate pr-2">{r.pickup}</p>
-                          <p className="text-[#00ff88] font-bold">
-                            ₾{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : "—"}
-                          </p>
+                {/* Sub-tab */}
+                <div className="flex gap-2">
+                  {[["overview","Overview"],["topup","Top Up"],["withdraw","Withdraw"]].map(([k,l]) => (
+                    <button key={k} onClick={() => setEarningsTab(k)}
+                      className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${earningsTab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/30 hover:text-white/60"}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+
+                {earningsTab === "overview" && (
+                  <GlassCard className="p-4 space-y-3">
+                    <p className="text-white/40 text-[10px] uppercase tracking-widest">Commission Breakdown</p>
+                    {[["Platform cut", `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
+                      ["Your share", `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
+                      ["Surge commission", "23–24%", "text-orange-400"],
+                    ].map(([l,v,c]) => (
+                      <div key={l} className="flex justify-between items-center">
+                        <span className="text-white/60 text-sm">{l}</span>
+                        <span className={`font-mono font-bold ${c}`}>{v}</span>
+                      </div>
+                    ))}
+                  </GlassCard>
+                )}
+
+                {earningsTab === "topup" && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-white/60 text-xs uppercase tracking-wider">Amount (GEL)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">₾</span>
+                        <Input type="number" min="5" max="500" value={topupAmount} onChange={e => setTopupAmount(e.target.value)}
+                          placeholder="50" className="pl-7 bg-white/4 border-white/10 text-white text-lg h-12 font-mono" />
+                      </div>
+                      <p className="text-white/30 text-xs">≈ ${topupAmount ? (parseFloat(topupAmount)*0.37).toFixed(2) : "0.00"} USD</p>
+                    </div>
+
+                    {topupAmount && parseFloat(topupAmount) >= 5 ? (
+                      <PayPalButtons
+                        fundingSource="card"
+                        style={{ layout: "vertical", shape: "rect", color: "black" }}
+                        createOrder={(data, actions) => actions.order.create({
+                          purchase_units: [{ amount: { value: (parseFloat(topupAmount) * 0.37).toFixed(2), currency_code: "USD" } }],
+                          application_context: { shipping_preference: "NO_SHIPPING" },
+                        })}
+                        onApprove={async (data, actions) => {
+                          try {
+                            setLoading(true);
+                            await actions.order.capture();
+                            await api.post("/driver/wallet/topup/paypal", { order_id: data.orderID, amount: parseFloat(topupAmount) });
+                            toast.success(`₾${topupAmount} added!`);
+                            setTopupAmount(""); setEarningsTab("overview");
+                            await refreshUser();
+                          } catch (_) { toast.error("Top-up failed. Contact support."); }
+                          finally { setLoading(false); }
+                        }}
+                        onError={() => toast.error("Payment failed.")}
+                        onCancel={() => toast.info("Payment cancelled.")}
+                      />
+                    ) : (
+                      <GlassCard className="p-4 text-center">
+                        <p className="text-white/30 text-sm">Enter ₾5 or more to show payment options</p>
+                      </GlassCard>
+                    )}
+
+                    <Separator className="bg-white/5" />
+
+                    <div className="space-y-2">
+                      <p className="text-white/30 text-[10px] uppercase tracking-widest">Manual Top-up via Bank Transfer</p>
+                      <GlassCard className="p-4">
+                        <p className="text-white/60 text-sm mb-3">Transfer to our BOG account, then submit your reference number below for manual processing.</p>
+                        <a href="https://egreve.bog.ge//Taksi" target="_blank" rel="noreferrer"
+                          className="flex items-center justify-center gap-2 w-full h-10 rounded-xl bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] font-bold text-sm">
+                          <ExternalLink className="w-4 h-4" /> Open BOG Payment Page
+                        </a>
+                      </GlassCard>
+                    </div>
+                  </div>
+                )}
+
+                {earningsTab === "withdraw" && (
+                  <WithdrawalPanel balance={balance} driverId={user?.id} onSuccess={async () => { setEarningsTab("overview"); await refreshUser(); }} />
+                )}
+              </div>
+            )}
+
+            {/* ================================================================ */}
+            {/* HISTORY TAB                                                       */}
+            {/* ================================================================ */}
+            {!activeRide && activeTab === "history" && (
+              <div className="space-y-3">
+                {rideHistory.length === 0 ? (
+                  <div className="text-center py-10 text-white/30">
+                    <History className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p>No completed rides yet</p>
+                  </div>
+                ) : rideHistory.map(r => (
+                  <GlassCard key={r.id} className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1 pr-3">
+                        <p className="text-white text-sm font-medium truncate">{r.pickup}</p>
+                        {r.destination && <p className="text-white/40 text-xs truncate">→ {r.destination}</p>}
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <StatusBadge status={r.status} />
+                          <span className="text-white/25 text-[10px]">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}</span>
                         </div>
-                        {r.destination && <p className="text-gray-500 text-xs truncate">→ {r.destination}</p>}
-                        <p className="text-gray-600 text-xs mt-1">
-                          {r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[#00ff88] font-bold font-mono">
+                          ₾{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "—")}
                         </p>
+                        <p className="text-white/30 text-xs capitalize">{r.carType || r.car_type || "—"}</p>
                       </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
+                    </div>
+                  </GlassCard>
+                ))}
+              </div>
+            )}
 
-            </Tabs>
+            {/* ================================================================ */}
+            {/* MORE TAB                                                          */}
+            {/* ================================================================ */}
+            {!activeRide && activeTab === "more" && (
+              <MorePanel
+                registrationStatus={registrationStatus}
+                driverRating={user?.rating}
+                activeRide={activeRide}
+                driverLocation={driverLocation}
+              />
+            )}
+
           </div>
         </div>
       </div>
 
-      {/* -------------------------------------------------------------------- */}
-      {/* CANCEL MODAL                                                          */}
-      {/* -------------------------------------------------------------------- */}
+      {/* Vehicle registration modal for new drivers */}
+      {registrationStatus === "pending_vehicle" && !hasVehicle && (
+        <div className="absolute inset-0 z-[60] bg-[#07070f]/96 backdrop-blur-2xl flex items-end">
+          <div className="w-full bg-[#0a0a18] border-t border-white/8 rounded-t-3xl p-5 max-h-[90vh] overflow-y-auto">
+            <div className="text-center mb-5">
+              <div className="w-14 h-14 rounded-2xl bg-[#00ff88]/10 flex items-center justify-center mx-auto mb-3">
+                <Car className="w-7 h-7 text-[#00ff88]" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Register Your Vehicle</h2>
+              <p className="text-white/40 text-sm mt-1">To start driving, submit your documents for review</p>
+            </div>
+            <form onSubmit={handleRegisterVehicle} className="space-y-4">
+              <GlassCard className="p-4 space-y-3">
+                <p className="text-white/40 text-[10px] uppercase tracking-widest">Vehicle Details</p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {[["car_make","Make","Toyota"],["car_model","Model","Camry"],["car_year","Year","2018","number"],["car_color","Color","Silver"]].map(([k,l,p,t="text"]) => (
+                    <div key={k} className="space-y-1">
+                      <Label className="text-white/40 text-[11px]">{l}</Label>
+                      <Input required type={t} placeholder={p} value={vehicleData[k]}
+                        onChange={e => setVehicleData({ ...vehicleData, [k]: e.target.value })}
+                        className="bg-white/4 border-white/10 text-white h-9 text-sm placeholder:text-white/20" />
+                    </div>
+                  ))}
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-white/40 text-[11px]">License Plate</Label>
+                    <Input required placeholder="AB-123-CD" value={vehicleData.license_plate}
+                      onChange={e => setVehicleData({ ...vehicleData, license_plate: e.target.value.toUpperCase() })}
+                      className="bg-white/4 border-white/10 text-white h-9 font-mono uppercase placeholder:normal-case placeholder:text-white/20" />
+                  </div>
+                </div>
+              </GlassCard>
+
+              {[
+                ["Driver's License", [["license_front","Front"],["license_back","Back"]]],
+                ["Registration Card", [["reg_front","Front"],["reg_back","Back"]]],
+                ["Car Photos", [["car_photo_front","Front"],["car_photo_back","Back"],["car_photo_left","Left"],["car_photo_right","Right"]]],
+              ].map(([title, fields]) => (
+                <GlassCard key={title} className="p-4 space-y-3">
+                  <p className="text-white/40 text-[10px] uppercase tracking-widest">{title}</p>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {fields.map(([k, l]) => (
+                      <div key={k} className="space-y-1">
+                        <Label className="text-white/40 text-[11px]">{l} {vehicleData[k] && <span className="text-[#00ff88]">✓</span>}</Label>
+                        <input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, [k]: e.target.files[0] })}
+                          className="w-full bg-white/4 border border-white/10 text-white rounded-lg p-2 text-xs file:bg-[#00ff88]/15 file:text-[#00ff88] file:border-0 file:rounded file:px-2 file:py-0.5 file:text-xs file:font-bold file:mr-2" />
+                      </div>
+                    ))}
+                  </div>
+                </GlassCard>
+              ))}
+
+              <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold text-base">
+                {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />} Submit Documents for Review
+              </Button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CANCEL MODAL */}
       <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
-        <DialogContent
-          aria-describedby="cancel-desc"
-          className="bg-[#1a1a2e] border border-red-500/50 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]"
-        >
+        <DialogContent className="bg-[#0e0e1c] border border-white/10 text-white max-w-sm w-[95vw] rounded-2xl z-[100]">
           <DialogHeader>
-            <DialogTitle className="text-red-500 flex items-center gap-2">
+            <DialogTitle className="text-red-400 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5" /> Cancel Ride
             </DialogTitle>
-            <DialogDescription id="cancel-desc" className="text-gray-400">
-              Select a reason.{" "}
-              <span className="text-red-400 font-bold block mt-1">
-                Warning: Unjustified cancellations may affect your score.
-              </span>
+            <DialogDescription className="text-white/50 text-sm">
+              Select a reason. Unjustified cancellations may affect your score.
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="max-h-[300px] pr-4">
-            <div className="grid gap-2 py-4">
-              {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map(reason => (
-                <div key={reason} onClick={() => setSelectedCancelReason(reason)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                    selectedCancelReason === reason
-                      ? "bg-red-500 text-white border-red-500"
-                      : "bg-black/40 border-gray-700 hover:border-red-500/50 hover:bg-red-500/10"
-                  }`}>
-                  <p className="font-medium text-sm">{reason}</p>
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-          <div className="flex gap-2 mt-2">
-            <Button variant="ghost" onClick={() => setShowCancelModal(false)}
-              className="flex-1 text-gray-400 border border-gray-700 h-12">Back</Button>
-            <Button variant="destructive" onClick={handleCancelRide}
-              disabled={!selectedCancelReason || loading}
-              className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-12">
+          <div className="space-y-2 my-2 max-h-64 overflow-y-auto">
+            {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map(reason => (
+              <div key={reason} onClick={() => setCancelReason(reason)}
+                className={`p-3 rounded-xl border cursor-pointer transition-all ${cancelReason === reason ? "bg-red-500/15 border-red-500/40 text-red-400" : "border-white/8 text-white/60 hover:border-white/20"}`}>
+                <p className="text-sm font-medium">{reason}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-3">
+            <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 border border-white/10 text-white/50 h-11">Back</Button>
+            <Button onClick={handleCancelRide} disabled={!cancelReason || loading} className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-11">
               Confirm Cancel
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* -------------------------------------------------------------------- */}
-      {/* TRIP COMPLETION MODAL                                                 */}
-      {/* -------------------------------------------------------------------- */}
+      {/* RATE PASSENGER MODAL */}
+      <Dialog open={showRateModal} onOpenChange={setShowRateModal}>
+        <DialogContent className="bg-[#0e0e1c] border border-white/10 text-white max-w-sm w-[95vw] rounded-2xl z-[100]">
+          <DialogHeader>
+            <DialogTitle className="text-[#00ff88] flex items-center gap-2">
+              <Star className="w-5 h-5" /> Rate Passenger
+            </DialogTitle>
+          </DialogHeader>
+          <RatePassengerModal rideId={rateRideId} riderName={rateRiderName} onDone={() => setShowRateModal(false)} />
+        </DialogContent>
+      </Dialog>
+
+      {/* TRIP COMPLETION MODAL */}
       <DriverTripCompletionModal
         isOpen={!!completedRide}
         onClose={() => setCompletedRide(null)}
         fareAmount={completedRide?.final_fare || completedRide?.estimated_fare}
         paymentMethod={completedRide?.payment_method || completedRide?.paymentMethod || "cash"}
-        riderName={completedRide?.rider_name || completedRide?.riderName || "Rider"}
+        riderName={completedRide?.rider_name || "Rider"}
         cashToCollect={completedRide?.cash_to_collect || 0}
         onConfirm={() => setCompletedRide(null)}
       />
@@ -1590,8 +2074,8 @@ const DriverDashboard = () => {
 // PORTAL ROUTER
 // =============================================================================
 const DriverPortal = () => {
-  const { user }   = useAuth();
-  const location   = useLocation();
+  const { user } = useAuth();
+  const location = useLocation();
 
   if (!user || user.user_type !== "driver") {
     if (location.pathname === "/driver" || location.pathname === "/driver/") return <DriverAuth />;

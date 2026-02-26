@@ -11,55 +11,72 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-// ✅ CORRECT
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+// BUG FIX: Added missing DialogDescription import (was causing a React crash)
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import api from "@/api";
 import { toast } from "sonner";
 
 const CAMPAIGN_ICONS = {
-  gift: { icon: Gift, emoji: "🎁" },
-  trophy: { icon: Trophy, emoji: "🏆" },
-  zap: { icon: Zap, emoji: "⚡" },
-  star: { icon: Star, emoji: "⭐" },
-  flame: { icon: Flame, emoji: "🔥" },
+  gift:     { icon: Gift,     emoji: "🎁" },
+  trophy:   { icon: Trophy,   emoji: "🏆" },
+  zap:      { icon: Zap,      emoji: "⚡" },
+  star:     { icon: Star,     emoji: "⭐" },
+  flame:    { icon: Flame,    emoji: "🔥" },
   banknote: { icon: Banknote, emoji: "💰" },
-  rocket: { icon: Rocket, emoji: "🚀" },
-  target: { icon: Target, emoji: "🎯" },
-  clock: { icon: Clock, emoji: "⏰" }
+  rocket:   { icon: Rocket,   emoji: "🚀" },
+  target:   { icon: Target,   emoji: "🎯" },
+  clock:    { icon: Clock,    emoji: "⏰" },
 };
 
 const CAMPAIGN_TYPES = [
-  { value: "rides_count", label: "Complete X Rides", description: "Driver completes target number of rides" },
-  { value: "earnings_target", label: "Earnings Target", description: "Driver earns target amount" },
-  { value: "peak_hours", label: "Peak Hour Rides", description: "Rides during specified peak hours" },
-  { value: "rating_bonus", label: "Rating Bonus", description: "Maintain rating while completing rides" },
-  { value: "streak", label: "Daily Streak", description: "Complete rides on consecutive days" },
-  { value: "new_driver", label: "New Driver Bonus", description: "Special bonus for new drivers" }
+  { value: "rides_count",    label: "Complete X Rides",    description: "Driver completes target number of rides" },
+  { value: "earnings_target",label: "Earnings Target",     description: "Driver earns target amount" },
+  { value: "peak_hours",     label: "Peak Hour Rides",     description: "Rides during specified peak hours" },
+  { value: "rating_bonus",   label: "Rating Bonus",        description: "Maintain rating while completing rides" },
+  { value: "streak",         label: "Daily Streak",        description: "Complete rides on consecutive days" },
+  { value: "new_driver",     label: "New Driver Bonus",    description: "Special bonus for new drivers" },
 ];
 
+// BUG FIX: Safe date formatter — Firestore can return Timestamps (objects with .seconds),
+// ISO strings, or already-Date objects. All three cases handled here.
+const safeFormatDate = (value) => {
+  if (!value) return "N/A";
+  try {
+    // Firestore Timestamp object (has .seconds)
+    if (value && typeof value === "object" && value.seconds != null) {
+      return new Date(value.seconds * 1000).toLocaleDateString();
+    }
+    // ISO string or number
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "N/A";
+    return d.toLocaleDateString();
+  } catch {
+    return "N/A";
+  }
+};
+
 const AdminCampaignsPanel = () => {
-  const [campaigns, setCampaigns] = useState([]);
-  const [templates, setTemplates] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
-  const [selectedCampaign, setSelectedCampaign] = useState(null);
-  const [filter, setFilter] = useState("active");
-  
-  // Form state
+  const [campaigns,          setCampaigns]          = useState([]);
+  const [templates,          setTemplates]          = useState({});
+  const [loading,            setLoading]            = useState(true);
+  const [showCreateModal,    setShowCreateModal]    = useState(false);
+  const [showTemplateModal,  setShowTemplateModal]  = useState(false);
+  const [selectedCampaign,   setSelectedCampaign]   = useState(null);
+  const [filter,             setFilter]             = useState("active");
+
   const [formData, setFormData] = useState({
-    title: "",
-    description: "",
+    title:         "",
+    description:   "",
     campaign_type: "rides_count",
-    target_value: 10,
-    bonus_amount: 20,
-    start_date: new Date().toISOString().split('T')[0],
-    end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    min_rating: null,
-    icon: "gift",
-    color: "#00d4ff"
+    target_value:  10,
+    bonus_amount:  20,
+    start_date:    new Date().toISOString().split("T")[0],
+    end_date:      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    min_rating:    null,
+    icon:          "gift",
+    color:         "#00d4ff",
   });
 
   useEffect(() => {
@@ -68,11 +85,13 @@ const AdminCampaignsPanel = () => {
   }, [filter]);
 
   const fetchCampaigns = async () => {
+    setLoading(true);
     try {
-      const res = await api.get(`/admin/campaigns${filter ? `?status=${filter}` : ''}`);
+      const res = await api.get(`/admin/campaigns${filter ? `?status=${filter}` : ""}`);
       setCampaigns(res.data.campaigns || []);
     } catch (error) {
       console.error("Failed to fetch campaigns:", error);
+      toast.error("Could not load campaigns");
     } finally {
       setLoading(false);
     }
@@ -92,7 +111,7 @@ const AdminCampaignsPanel = () => {
       await api.post("/admin/campaigns", {
         ...formData,
         start_date: new Date(formData.start_date).toISOString(),
-        end_date: new Date(formData.end_date).toISOString()
+        end_date:   new Date(formData.end_date).toISOString(),
       });
       toast.success("Campaign created successfully!");
       setShowCreateModal(false);
@@ -106,16 +125,15 @@ const AdminCampaignsPanel = () => {
   const handleCreateFromTemplate = async (templateId) => {
     try {
       const startDate = new Date().toISOString();
-      const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      
+      const endDate   = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       await api.post(`/admin/campaigns/from-template/${templateId}`, null, {
-        params: { start_date: startDate, end_date: endDate }
+        params: { start_date: startDate, end_date: endDate },
       });
       toast.success("Campaign created from template!");
       setShowTemplateModal(false);
       fetchCampaigns();
     } catch (error) {
-      toast.error("Failed to create campaign");
+      toast.error("Failed to create campaign from template");
     }
   };
 
@@ -130,7 +148,7 @@ const AdminCampaignsPanel = () => {
   };
 
   const handleDeleteCampaign = async (campaignId) => {
-    if (!confirm("Are you sure you want to cancel this campaign?")) return;
+    if (!window.confirm("Are you sure you want to cancel this campaign?")) return;
     try {
       await api.delete(`/admin/campaigns/${campaignId}`);
       toast.success("Campaign cancelled");
@@ -142,25 +160,25 @@ const AdminCampaignsPanel = () => {
 
   const resetForm = () => {
     setFormData({
-      title: "",
-      description: "",
+      title:         "",
+      description:   "",
       campaign_type: "rides_count",
-      target_value: 10,
-      bonus_amount: 20,
-      start_date: new Date().toISOString().split('T')[0],
-      end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      min_rating: null,
-      icon: "gift",
-      color: "#00d4ff"
+      target_value:  10,
+      bonus_amount:  20,
+      start_date:    new Date().toISOString().split("T")[0],
+      end_date:      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      min_rating:    null,
+      icon:          "gift",
+      color:         "#00d4ff",
     });
   };
 
   const getStatusBadge = (status) => {
     const styles = {
-      active: "bg-green-500/20 text-green-400 border-green-500/30",
-      paused: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+      active:    "bg-green-500/20 text-green-400 border-green-500/30",
+      paused:    "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
       completed: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-      cancelled: "bg-red-500/20 text-red-400 border-red-500/30"
+      cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
     };
     return styles[status] || styles.active;
   };
@@ -203,8 +221,8 @@ const AdminCampaignsPanel = () => {
             variant={filter === status ? "default" : "outline"}
             size="sm"
             onClick={() => setFilter(status)}
-            className={filter === status 
-              ? "bg-primary text-black" 
+            className={filter === status
+              ? "bg-primary text-black"
               : "border-primary/30 text-primary"}
           >
             {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -222,7 +240,7 @@ const AdminCampaignsPanel = () => {
           <CardContent className="py-12 text-center">
             <Gift className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">No {filter} campaigns</p>
-            <Button 
+            <Button
               className="mt-4 bg-primary text-black"
               onClick={() => setShowCreateModal(true)}
             >
@@ -233,16 +251,16 @@ const AdminCampaignsPanel = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {campaigns.map((campaign) => (
-            <Card 
-              key={campaign.id} 
+            <Card
+              key={campaign.id}
               className="glass-heavy border-primary/30 hover:border-primary/50 transition-colors cursor-pointer"
               onClick={() => setSelectedCampaign(campaign)}
             >
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
-                  <div 
+                  <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                    style={{ backgroundColor: `${campaign.color}20` }}
+                    style={{ backgroundColor: `${campaign.color || "#00d4ff"}20` }}
                   >
                     {campaign.emoji || "🎁"}
                   </div>
@@ -281,13 +299,13 @@ const AdminCampaignsPanel = () => {
                     </span>
                     <span className="text-primary">{campaign.completions_count || 0}</span>
                   </div>
-                  
-                  {/* Date Range */}
+
+                  {/* BUG FIX: safeFormatDate() handles Firestore Timestamps, ISO strings, and nulls */}
                   <div className="pt-2 border-t border-border text-xs text-muted-foreground">
                     <Calendar className="w-3 h-3 inline mr-1" />
-                    {new Date(campaign.start_date).toLocaleDateString()} - {new Date(campaign.end_date).toLocaleDateString()}
+                    {safeFormatDate(campaign.start_date)} – {safeFormatDate(campaign.end_date)}
                   </div>
-                  
+
                   {/* Actions */}
                   {campaign.status === "active" && (
                     <div className="flex gap-2 pt-2">
@@ -325,7 +343,9 @@ const AdminCampaignsPanel = () => {
         </div>
       )}
 
-      {/* Create Campaign Modal */}
+      {/* ------------------------------------------------------------------ */}
+      {/* CREATE CAMPAIGN MODAL                                               */}
+      {/* ------------------------------------------------------------------ */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
         <DialogContent className="glass-heavy border-primary/30 sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -363,7 +383,7 @@ const AdminCampaignsPanel = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Campaign Type</Label>
-                <Select 
+                <Select
                   value={formData.campaign_type}
                   onValueChange={(v) => setFormData({ ...formData, campaign_type: v })}
                 >
@@ -389,8 +409,8 @@ const AdminCampaignsPanel = () => {
                       type="button"
                       onClick={() => setFormData({ ...formData, icon: key })}
                       className={`w-10 h-10 rounded-lg text-xl flex items-center justify-center transition-colors ${
-                        formData.icon === key 
-                          ? "bg-primary/20 border-2 border-primary" 
+                        formData.icon === key
+                          ? "bg-primary/20 border-2 border-primary"
                           : "bg-background-secondary border border-border hover:border-muted-foreground"
                       }`}
                     >
@@ -411,9 +431,9 @@ const AdminCampaignsPanel = () => {
                   className="bg-background-secondary border-border text-white"
                 />
                 <p className="text-xs text-muted-foreground">
-                  {formData.campaign_type === "rides_count" && "Number of rides to complete"}
-                  {formData.campaign_type === "earnings_target" && "Amount in ₾ to earn"}
-                  {formData.campaign_type === "streak" && "Number of consecutive days"}
+                  {formData.campaign_type === "rides_count"    && "Number of rides to complete"}
+                  {formData.campaign_type === "earnings_target"&& "Amount in ₾ to earn"}
+                  {formData.campaign_type === "streak"         && "Number of consecutive days"}
                 </p>
               </div>
 
@@ -438,7 +458,6 @@ const AdminCampaignsPanel = () => {
                   className="bg-background-secondary border-border text-white"
                 />
               </div>
-
               <div className="space-y-2">
                 <Label>End Date</Label>
                 <Input
@@ -450,7 +469,7 @@ const AdminCampaignsPanel = () => {
               </div>
             </div>
 
-            {(formData.campaign_type === "rating_bonus") && (
+            {formData.campaign_type === "rating_bonus" && (
               <div className="space-y-2">
                 <Label>Minimum Rating Required</Label>
                 <Input
@@ -486,7 +505,9 @@ const AdminCampaignsPanel = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Template Selection Modal */}
+      {/* ------------------------------------------------------------------ */}
+      {/* TEMPLATE SELECTION MODAL                                            */}
+      {/* ------------------------------------------------------------------ */}
       <Dialog open={showTemplateModal} onOpenChange={setShowTemplateModal}>
         <DialogContent className="glass-heavy border-primary/30 sm:max-w-xl">
           <DialogHeader>
@@ -500,42 +521,48 @@ const AdminCampaignsPanel = () => {
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-3 py-4">
-            {Object.entries(templates).map(([id, template]) => (
-              <Card
-                key={id}
-                className="bg-background-secondary border-border hover:border-primary/50 cursor-pointer transition-colors"
-                onClick={() => handleCreateFromTemplate(id)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
-                      style={{ backgroundColor: `${template.color}20` }}
-                    >
-                      {CAMPAIGN_ICONS[template.icon]?.emoji || "🎁"}
+            {Object.entries(templates).length === 0 ? (
+              <p className="text-muted-foreground col-span-2 text-center py-4">No templates available</p>
+            ) : (
+              Object.entries(templates).map(([id, template]) => (
+                <Card
+                  key={id}
+                  className="bg-background-secondary border-border hover:border-primary/50 cursor-pointer transition-colors"
+                  onClick={() => handleCreateFromTemplate(id)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
+                        style={{ backgroundColor: `${template.color || "#00d4ff"}20` }}
+                      >
+                        {CAMPAIGN_ICONS[template.icon]?.emoji || "🎁"}
+                      </div>
+                      <div>
+                        <p className="font-medium text-white">{template.title}</p>
+                        <p className="text-xs text-muted-foreground">₾{template.bonus_amount} bonus</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-white">{template.title}</p>
-                      <p className="text-xs text-muted-foreground">₾{template.bonus_amount} bonus</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Campaign Detail Modal */}
+      {/* ------------------------------------------------------------------ */}
+      {/* CAMPAIGN DETAIL MODAL                                               */}
+      {/* ------------------------------------------------------------------ */}
       <Dialog open={!!selectedCampaign} onOpenChange={() => setSelectedCampaign(null)}>
         <DialogContent className="glass-heavy border-primary/30 sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           {selectedCampaign && (
             <>
               <DialogHeader>
                 <div className="flex items-center gap-3">
-                  <div 
+                  <div
                     className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl"
-                    style={{ backgroundColor: `${selectedCampaign.color}20` }}
+                    style={{ backgroundColor: `${selectedCampaign.color || "#00d4ff"}20` }}
                   >
                     {selectedCampaign.emoji || "🎁"}
                   </div>
@@ -547,48 +574,38 @@ const AdminCampaignsPanel = () => {
               </DialogHeader>
 
               <div className="space-y-6 py-4">
-                {/* Stats Grid */}
+                {/* Stats */}
                 <div className="grid grid-cols-4 gap-3">
-                  <Card className="bg-background-secondary border-border">
-                    <CardContent className="p-3 text-center">
-                      <p className="text-2xl font-bold text-white">{selectedCampaign.participants_count || 0}</p>
-                      <p className="text-xs text-muted-foreground">Participants</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-background-secondary border-border">
-                    <CardContent className="p-3 text-center">
-                      <p className="text-2xl font-bold text-primary">{selectedCampaign.completions_count || 0}</p>
-                      <p className="text-xs text-muted-foreground">Completed</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-background-secondary border-border">
-                    <CardContent className="p-3 text-center">
-                      <p className="text-2xl font-bold text-secondary">₾{selectedCampaign.bonus_amount}</p>
-                      <p className="text-xs text-muted-foreground">Per Driver</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-background-secondary border-border">
-                    <CardContent className="p-3 text-center">
-                      <p className="text-2xl font-bold text-yellow-400">₾{selectedCampaign.total_bonus_paid || 0}</p>
-                      <p className="text-xs text-muted-foreground">Total Paid</p>
-                    </CardContent>
-                  </Card>
+                  {[
+                    { label: "Participants",  value: selectedCampaign.participants_count  || 0, color: "text-white"    },
+                    { label: "Completed",     value: selectedCampaign.completions_count   || 0, color: "text-primary"  },
+                    { label: "Per Driver",    value: `₾${selectedCampaign.bonus_amount}`,       color: "text-secondary"},
+                    { label: "Total Paid",    value: `₾${selectedCampaign.total_bonus_paid || 0}`, color: "text-yellow-400"},
+                  ].map(({ label, value, color }) => (
+                    <Card key={label} className="bg-background-secondary border-border">
+                      <CardContent className="p-3 text-center">
+                        <p className={`text-2xl font-bold ${color}`}>{value}</p>
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
 
-                {/* Campaign Details */}
+                {/* Details */}
                 <div className="bg-background-secondary rounded-lg p-4 space-y-3">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Type</span>
-                    <span className="text-white capitalize">{selectedCampaign.campaign_type?.replace("_", " ")}</span>
+                    <span className="text-white capitalize">{selectedCampaign.campaign_type?.replace(/_/g, " ")}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Target</span>
                     <span className="text-white">{selectedCampaign.target_value}</span>
                   </div>
+                  {/* BUG FIX: safeFormatDate used here too */}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Duration</span>
                     <span className="text-white">
-                      {new Date(selectedCampaign.start_date).toLocaleDateString()} - {new Date(selectedCampaign.end_date).toLocaleDateString()}
+                      {safeFormatDate(selectedCampaign.start_date)} – {safeFormatDate(selectedCampaign.end_date)}
                     </span>
                   </div>
                   {selectedCampaign.min_rating && (
@@ -599,7 +616,7 @@ const AdminCampaignsPanel = () => {
                   )}
                 </div>
 
-                {/* Participants Preview */}
+                {/* Participants */}
                 {selectedCampaign.participants?.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">Recent Participants</p>
@@ -611,12 +628,12 @@ const AdminCampaignsPanel = () => {
                             <p className="text-xs text-muted-foreground">{p.driver_phone}</p>
                           </div>
                           <div className="text-right">
-                            <Progress 
-                              value={(p.current_progress / selectedCampaign.target_value) * 100} 
+                            <Progress
+                              value={Math.min(100, ((p.current_progress || 0) / (selectedCampaign.target_value || 1)) * 100)}
                               className="w-24 h-2"
                             />
                             <p className="text-xs text-muted-foreground mt-1">
-                              {p.current_progress}/{selectedCampaign.target_value}
+                              {p.current_progress || 0}/{selectedCampaign.target_value}
                             </p>
                           </div>
                         </div>

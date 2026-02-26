@@ -1,10 +1,8 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { auth } from "../lib/firebase";
 import { useAuth } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
-import LanguageSelector from "@/i18n/LanguageSelector";
 import AdminSupportPanel from "@/components/AdminSupportPanel";
 import AdminCampaignsPanel from "@/components/AdminCampaignsPanel";
 import { toast } from "sonner";
@@ -16,17 +14,373 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import DisputeManager from './DisputeManager';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, DialogTrigger
+} from "@/components/ui/dialog";
+import React from "react";
 import {
   Shield, Users, Car, Home, LogOut, Lock, ArrowLeft, Loader2,
-  CheckCircle2, XCircle, TrendingUp,
-  UserCheck, Banknote, BarChart3, PlusCircle, CreditCard, MessageSquare, ArrowRightLeft, FileWarning
+  CheckCircle2, XCircle, TrendingUp, UserCheck, Banknote, BarChart3,
+  PlusCircle, CreditCard, MessageSquare, ArrowRightLeft, FileWarning,
+  AlertTriangle, RefreshCw, Eye, ChevronRight, Siren,
 } from "lucide-react";
 
 const ADMIN_PASSWORD = "D'Ahl-Enterprise9409145169086";
 
-// Admin Login
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+const fmt = (n) => `₾${Number(n || 0).toFixed(2)}`;
+const timeAgo = (iso) => {
+  if (!iso) return "—";
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+};
+
+const StatusBadge = ({ status }) => {
+  const map = {
+    approved:        "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+    pending_review:  "bg-amber-500/20  text-amber-400  border-amber-500/30",
+    pending_vehicle: "bg-sky-500/20    text-sky-400    border-sky-500/30",
+    rejected:        "bg-red-500/20    text-red-400    border-red-500/30",
+    active:          "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+    pending:         "bg-amber-500/20  text-amber-400  border-amber-500/30",
+  };
+  const cls = map[status] || "bg-gray-500/20 text-gray-400 border-gray-500/30";
+  return (
+    <span className={`px-2 py-0.5 text-[11px] font-semibold rounded border ${cls} uppercase tracking-wide`}>
+      {status?.replace(/_/g, " ")}
+    </span>
+  );
+};
+
+const StatCard = ({ icon: Icon, label, value, color }) => (
+  <Card className={`bg-black/60 border ${color} p-5 flex flex-col gap-2`}>
+    <Icon className={`w-6 h-6 ${color.replace("border-", "text-").replace("/30", "")}`} />
+    <p className="text-3xl font-bold text-white">{value ?? 0}</p>
+    <p className="text-xs text-gray-500 uppercase tracking-widest">{label}</p>
+  </Card>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADD BALANCE DIALOG (reusable)
+// ─────────────────────────────────────────────────────────────────────────────
+const AddBalanceDialog = ({ user, userType, onSuccess, children }) => {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const accent = userType === "driver" ? "text-sky-400 border-sky-500/30" : "text-emerald-400 border-emerald-500/30";
+  const btnBg  = userType === "driver" ? "bg-sky-500 hover:bg-sky-600"    : "bg-emerald-500 hover:bg-emerald-600";
+
+  const handle = async () => {
+    if (!amount || isNaN(amount) || Number(amount) <= 0)
+      return toast.error("Enter a valid amount");
+    setLoading(true);
+    try {
+      await api.post(`/admin/add-balance/${user.id}`, {
+        amount: parseFloat(amount),
+        reason: reason || "Admin adjustment",
+      });
+      toast.success(`${fmt(amount)} added to ${user.name}`);
+      setAmount(""); setReason(""); setOpen(false);
+      onSuccess?.();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed");
+    } finally { setLoading(false); }
+  };
+
+  const balance = userType === "driver"
+    ? user?.earnings?.balance
+    : user?.wallet_balance;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent className={`bg-[#0a0a12] border ${accent.split(" ")[1]}`}>
+        <DialogHeader>
+          <DialogTitle className={accent.split(" ")[0]}>Add Balance</DialogTitle>
+          <DialogDescription className="text-gray-500">
+            {user?.name} {user?.surname} · {user?.cellphone}
+          </DialogDescription>
+        </DialogHeader>
+        <div className={`rounded-lg p-3 bg-black/40 border ${accent.split(" ")[1]} mb-2`}>
+          <p className="text-xs text-gray-500 uppercase">Current Balance</p>
+          <p className="text-2xl font-bold text-white">{fmt(balance)}</p>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <Label className={accent.split(" ")[0]}>Amount (₾)</Label>
+            <Input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+              className="bg-black/50 border-white/10 text-white mt-1" placeholder="0.00" />
+          </div>
+          <div>
+            <Label className={accent.split(" ")[0]}>Reason</Label>
+            <Input value={reason} onChange={e => setReason(e.target.value)}
+              className="bg-black/50 border-white/10 text-white mt-1" placeholder="e.g. Refund for cancelled ride" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)} className="text-gray-500">Cancel</Button>
+          <Button onClick={handle} disabled={loading} className={`${btnBg} text-white font-semibold`}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlusCircle className="w-4 h-4 mr-2" />}
+            Add Funds
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER DETAIL DRAWER (side panel)
+// ─────────────────────────────────────────────────────────────────────────────
+const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    const endpoint = userType === "driver" ? `/admin/drivers/${userId}` : `/admin/riders/${userId}`;
+    api.get(endpoint)
+      .then(r => setData(userType === "driver" ? r.data.driver : r.data.rider))
+      .catch(() => toast.error("Failed to load details"))
+      .finally(() => setLoading(false));
+  }, [userId, userType]);
+
+  if (!userId) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="w-[420px] bg-[#0a0a12] border-l border-white/10 flex flex-col overflow-hidden">
+        <div className="p-5 border-b border-white/10 flex items-center justify-between">
+          <h3 className="text-white font-semibold">User Details</h3>
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-500">
+            <XCircle className="w-5 h-5" />
+          </Button>
+        </div>
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+          </div>
+        ) : data ? (
+          <ScrollArea className="flex-1 p-5">
+            <div className="space-y-5">
+              {/* Identity */}
+              <div className="rounded-xl bg-white/5 p-4 space-y-1">
+                <p className="text-xl font-bold text-white">{data.name} {data.surname}</p>
+                <p className="text-gray-400 text-sm">{data.cellphone}</p>
+                {data.email && <p className="text-gray-500 text-xs">{data.email}</p>}
+                <div className="flex gap-2 mt-2">
+                  <StatusBadge status={data.registration_status || "active"} />
+                  {data.is_online !== undefined && (
+                    <span className={`px-2 py-0.5 text-[11px] font-semibold rounded border ${data.is_online ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-gray-500/20 text-gray-500 border-gray-600/30"}`}>
+                      {data.is_online ? "ONLINE" : "OFFLINE"}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Financials */}
+              <div className="rounded-xl bg-white/5 p-4">
+                <p className="text-xs uppercase text-gray-500 tracking-widest mb-3">Financials</p>
+                {userType === "driver" ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      ["Balance", data.earnings?.balance],
+                      ["Total Earned", data.earnings?.total_earned],
+                      ["Commission Paid", data.earnings?.total_commission_paid],
+                      ["Tips", data.earnings?.total_tips],
+                    ].map(([k, v]) => (
+                      <div key={k}>
+                        <p className="text-[11px] text-gray-600">{k}</p>
+                        <p className="text-white font-semibold">{fmt(v)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-[11px] text-gray-600">Wallet Balance</p>
+                    <p className="text-2xl font-bold text-emerald-400">{fmt(data.wallet_balance)}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Vehicle (driver only) */}
+              {userType === "driver" && data.driver_info?.vehicles?.length > 0 && (
+                <div className="rounded-xl bg-white/5 p-4">
+                  <p className="text-xs uppercase text-gray-500 tracking-widest mb-3">Vehicles</p>
+                  {data.driver_info.vehicles.map((v, i) => (
+                    <div key={i} className="border border-white/10 rounded-lg p-3 mb-2">
+                      <p className="text-white font-semibold">{v.car_year} {v.car_make} {v.car_model}</p>
+                      <p className="text-gray-400 text-sm">{v.car_color} · {v.license_plate}</p>
+                      <div className="flex gap-2 mt-1">
+                        <StatusBadge status={v.status || "pending"} />
+                        <span className="px-2 py-0.5 text-[11px] rounded border bg-purple-500/20 text-purple-400 border-purple-500/30 uppercase">
+                          {v.tier}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Stats */}
+              <div className="rounded-xl bg-white/5 p-4">
+                <p className="text-xs uppercase text-gray-500 tracking-widest mb-3">Stats</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[11px] text-gray-600">Total Rides</p>
+                    <p className="text-white font-semibold">{data.total_rides || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-gray-600">Rating</p>
+                    <p className="text-white font-semibold">⭐ {data.rating || 5.0}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2">
+                <AddBalanceDialog user={data} userType={userType} onSuccess={onRefresh}>
+                  <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white">
+                    <PlusCircle className="w-4 h-4 mr-2" /> Add Balance
+                  </Button>
+                </AddBalanceDialog>
+                {userType === "driver" && data.registration_status?.includes("pending") && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={() => { api.post(`/admin/drivers/${data.id}/approve`).then(() => { toast.success("Approved"); onRefresh?.(); onClose(); }).catch(() => toast.error("Failed")); }}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
+                    </Button>
+                    <Button variant="destructive"
+                      onClick={() => { api.post(`/admin/drivers/${data.id}/reject`).then(() => { toast.success("Rejected"); onRefresh?.(); onClose(); }).catch(() => toast.error("Failed")); }}
+                    >
+                      <XCircle className="w-4 h-4 mr-1" /> Reject
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </ScrollArea>
+        ) : <p className="p-5 text-gray-500">No data</p>}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOS ALERTS PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+const SOSPanel = () => {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [resolving, setResolving] = useState(null);
+
+  const fetch = useCallback(() => {
+    setLoading(true);
+    api.get("/admin/sos/active")
+      .then(r => setAlerts(r.data.alerts || []))
+      .catch(() => toast.error("Failed to load SOS alerts"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { fetch(); const i = setInterval(fetch, 30000); return () => clearInterval(i); }, [fetch]);
+
+  const resolve = async (id) => {
+    setResolving(id);
+    try {
+      await api.post(`/admin/sos/${id}/resolve`, null, { params: { notes: "Resolved by admin" } });
+      toast.success("SOS resolved");
+      fetch();
+    } catch { toast.error("Failed to resolve"); }
+    finally { setResolving(null); }
+  };
+
+  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-red-500" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <h2 className="text-red-400 font-bold text-lg">Active SOS Alerts</h2>
+          {alerts.length > 0 && (
+            <span className="px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-bold">
+              {alerts.length} ACTIVE
+            </span>
+          )}
+        </div>
+        <Button variant="ghost" size="sm" onClick={fetch} className="text-gray-500 hover:text-white">
+          <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+        </Button>
+      </div>
+
+      {alerts.length === 0 ? (
+        <Card className="bg-black/40 border border-white/10 py-16 text-center">
+          <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
+          <p className="text-gray-400">No active SOS alerts</p>
+          <p className="text-gray-600 text-sm mt-1">Auto-refreshes every 30 seconds</p>
+        </Card>
+      ) : (
+        alerts.map(alert => (
+          <Card key={alert.id} className="bg-red-950/30 border border-red-500/40">
+            <CardContent className="p-5">
+              <div className="flex justify-between items-start gap-4">
+                <div className="space-y-1 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Siren className="w-5 h-5 text-red-400" />
+                    <span className="text-white font-bold text-lg">{alert.user_name || "Unknown User"}</span>
+                    <span className="text-gray-500 text-sm">{alert.user_phone}</span>
+                  </div>
+                  <p className="text-red-300 font-medium">{alert.message}</p>
+                  {alert.lat && alert.lng && (
+                    <a
+                      href={`https://www.google.com/maps?q=${alert.lat},${alert.lng}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 text-sm underline"
+                    >
+                      📍 {Number(alert.lat).toFixed(5)}, {Number(alert.lng).toFixed(5)} — Open in Maps
+                    </a>
+                  )}
+                  {alert.ride_id && (
+                    <p className="text-gray-500 text-xs font-mono">Ride: {alert.ride_id}</p>
+                  )}
+                  <p className="text-gray-600 text-xs">{timeAgo(alert.created_at)}</p>
+                </div>
+                <Button
+                  onClick={() => resolve(alert.id)}
+                  disabled={resolving === alert.id}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                >
+                  {resolving === alert.id
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <><CheckCircle2 className="w-4 h-4 mr-1" /> Resolve</>
+                  }
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN LOGIN
+// ─────────────────────────────────────────────────────────────────────────────
 const AdminLogin = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -36,85 +390,59 @@ const AdminLogin = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       if (password === ADMIN_PASSWORD) {
-        const adminUser = {
-          id: "admin_local",
-          name: "System",
-          surname: "Admin",
-          user_type: "admin",
-          cellphone: "admin_master"
-        };
-
-        login("master_admin_token", adminUser);
-        toast.success("âš¡ Master Key Accepted. Command Center Unlocked.");
+        login("master_admin_token", {
+          id: "admin_local", name: "System", surname: "Admin",
+          user_type: "admin", cellphone: "admin_master",
+        });
+        toast.success("Command Center unlocked.");
         navigate("/admin/dashboard");
       } else {
-        const res = await api.post(`/auth/login`, {
-          cellphone: "admin",
-          password: password,
-        });
-
-        if (res.data.user.user_type === 'admin') {
+        const res = await api.post(`/auth/login`, { cellphone: "admin", password });
+        if (res.data.user.user_type === "admin") {
           login(res.data.token, res.data.user);
-          toast.success("Welcome to Command Center!");
+          toast.success("Welcome to Command Center");
           navigate("/admin/dashboard");
         } else {
-          toast.error("Access Denied: User is not an admin.");
+          toast.error("Access denied: not an admin account");
         }
       }
-    } catch (error) {
-      console.error("Login error", error);
-      toast.error("Invalid Master Key or Credentials");
-    } finally {
-      setLoading(false);
-    }
+    } catch {
+      toast.error("Invalid credentials");
+    } finally { setLoading(false); }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-black">
-      <Card className="w-full max-w-md bg-black/70 backdrop-blur-xl border border-purple-500/30">
-        <CardHeader className="text-center relative">
-          <Button
-            variant="ghost"
-            className="absolute left-4 top-4 text-purple-400 hover:text-white"
-            onClick={() => navigate("/")}
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back
+    <div className="min-h-screen flex items-center justify-center bg-[#050508] p-4">
+      {/* subtle grid bg */}
+      <div className="fixed inset-0 opacity-[0.03]"
+        style={{ backgroundImage: "linear-gradient(#a855f7 1px, transparent 1px), linear-gradient(90deg, #a855f7 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
+      <Card className="w-full max-w-sm bg-[#0a0a12]/90 backdrop-blur-xl border border-purple-500/20 relative z-10">
+        <CardHeader className="text-center pb-4">
+          <Button variant="ghost" className="absolute left-4 top-4 text-gray-500 hover:text-white" onClick={() => navigate("/")}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> Back
           </Button>
-          <div className="w-20 h-20 rounded-full bg-gradient-to-r from-purple-500 to-[#00d4ff] flex items-center justify-center mx-auto mb-4">
-            <Shield className="w-10 h-10 text-white" />
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-sky-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-purple-500/30">
+            <Shield className="w-8 h-8 text-white" />
           </div>
-          <CardTitle className="text-2xl text-purple-400">Admin Command Center</CardTitle>
-          <CardDescription className="text-[#00d4ff]/70">
-            Enter the master key to access
-          </CardDescription>
+          <CardTitle className="text-xl text-white">Command Center</CardTitle>
+          <CardDescription className="text-gray-500 text-sm">T'aksi Admin Portal</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-purple-400">Master Key</Label>
+            <div className="space-y-1.5">
+              <Label className="text-gray-400 text-sm">Master Key</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-purple-400/50" />
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="pl-10 bg-black/50 border-purple-500/30 text-white"
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
-                  required
-                />
-
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-600" />
+                <Input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                  className="pl-9 bg-black/50 border-white/10 text-white focus:border-purple-500/50"
+                  placeholder="Enter master key" required />
               </div>
             </div>
-            <Button
-              type="submit"
-              className="w-full bg-gradient-to-r from-purple-500 to-[#00d4ff] text-white font-bold"
-              disabled={loading}
-            >
+            <Button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-sky-600 text-white font-semibold" disabled={loading}>
               {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Shield className="w-4 h-4 mr-2" />}
-              Access Command Center
+              Unlock Access
             </Button>
           </form>
         </CardContent>
@@ -123,414 +451,264 @@ const AdminLogin = () => {
   );
 };
 
-// Admin Dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
+
+  // Data
   const [stats, setStats] = useState(null);
   const [riders, setRiders] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [pendingDrivers, setPendingDrivers] = useState([]);
   const [pendingWithdrawals, setPendingWithdrawals] = useState([]);
   const [pendingTopups, setPendingTopups] = useState([]);
-  const [selectedUserForTopUp, setSelectedUserForTopUp] = useState(null);
-const [topUpAmount, setTopUpAmount] = useState("");
-const [topUpReason, setTopUpReason] = useState("");
-const [isToppingUp, setIsToppingUp] = useState(false);
+  const [sosCount, setSosCount] = useState(0);
 
-  // Dispute State
-  const [disputeDriverId, setDisputeDriverId] = useState("");
-  const [disputeRiderId, setDisputeRiderId] = useState("");
-  const [disputeAmount, setDisputeAmount] = useState("");
-  const [disputeReason, setDisputeReason] = useState("");
+  // Detail panel
+  const [detailUserId, setDetailUserId] = useState(null);
+  const [detailUserType, setDetailUserType] = useState(null);
+
+  // Dispute form
+  const [dispute, setDispute] = useState({ driverId: "", riderId: "", amount: "", reason: "" });
   const [isRefunding, setIsRefunding] = useState(false);
 
-  // Selected user for details
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [fundAmount, setFundAmount] = useState("");
-  const [fundReason, setFundReason] = useState("");
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [dashRes, ridersRes, driversRes, pendingRes, withdrawalsRes, topupsRes] = await Promise.all([
-        api.get(`/admin/dashboard`).catch(() => ({ data: {} })),
-        api.get(`/admin/riders`).catch(() => ({ data: { riders: [] } })),
-        api.get(`/admin/drivers`).catch(() => ({ data: { drivers: [] } })),
-        api.get(`/admin/drivers/pending`).catch(() => ({ data: { pending_drivers: [] } })),
-        api.get(`/admin/withdrawals/pending`).catch(() => ({ data: { pending_withdrawals: [] } })),
-        api.get(`/admin/topups/pending`).catch(() => ({ data: { pending_topups: [] } }))
+      const [dash, ridersR, driversR, pendingR, wdR, topupsR, sosR] = await Promise.allSettled([
+        api.get("/admin/dashboard"),
+        api.get("/admin/riders"),
+        api.get("/admin/drivers"),
+        api.get("/admin/drivers/pending"),
+        api.get("/admin/withdrawals/pending"),
+        api.get("/admin/topups/pending"),
+        api.get("/admin/sos/active"),
       ]);
+      if (dash.status === "fulfilled")     setStats(dash.value.data);
+      if (ridersR.status === "fulfilled")  setRiders(ridersR.value.data.riders || []);
+      if (driversR.status === "fulfilled") setDrivers(driversR.value.data.drivers || []);
+      if (pendingR.status === "fulfilled") setPendingDrivers(pendingR.value.data.pending_drivers || []);
+      if (wdR.status === "fulfilled")      setPendingWithdrawals(wdR.value.data.pending_withdrawals || []);
+      if (topupsR.status === "fulfilled")  setPendingTopups(topupsR.value.data.pending_topups || []);
+      if (sosR.status === "fulfilled")     setSosCount(sosR.value.data.count || 0);
+    } catch {}
+    finally { setLoading(false); }
+  }, []);
 
-      setStats(dashRes.data);
-      setRiders(ridersRes.data.riders || []);
-      setDrivers(driversRes.data.drivers || []);
-      setPendingDrivers(pendingRes.data.pending_drivers || []);
-      setPendingWithdrawals(withdrawalsRes.data.pending_withdrawals || []);
-      setPendingTopups(topupsRes.data.pending_topups || []);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      // Don't show error toast on load to avoid spamming if backend is partial
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Quick approve/reject helpers
+  const quickAction = async (url, successMsg) => {
+    try { await api.post(url); toast.success(successMsg); fetchAll(); }
+    catch (e) { toast.error(e.response?.data?.detail || "Action failed"); }
   };
-
-const handleManualTopUp = async (e) => {
-  e.preventDefault();
-  if (!topUpAmount || isNaN(topUpAmount) || Number(topUpAmount) <= 0) {
-    return toast.error("Please enter a valid amount.");
-  }
-
-  setIsToppingUp(true);
-  try {
-    // Calls the existing backend route
-    await api.post(`/admin/add-balance/${selectedUserForTopUp.id}`, {
-      amount: parseFloat(topUpAmount),
-      reason: topUpReason || "Admin manual adjustment/refund"
-    });
-
-    toast.success(`Successfully added â‚¾${topUpAmount} to ${selectedUserForTopUp.name}'s wallet`);
-
-    // Reset and close
-    setSelectedUserForTopUp(null);
-    setTopUpAmount("");
-    setTopUpReason("");
-
-    fetchDashboardData();
-
-    // Optional: Call your fetch functions to refresh the tables
-    // fetchRiders(); 
-    // fetchDrivers();
-  } catch (error) {
-    toast.error(error.response?.data?.detail || "Failed to add funds");
-  } finally {
-    setIsToppingUp(false);
-  }
-};
 
   const handleDisputeRefund = async (e) => {
     e.preventDefault();
-    if (!disputeDriverId || !disputeRiderId || !disputeAmount || !disputeReason) {
-      return toast.error("Please fill in all fields.");
-    }
+    if (!dispute.driverId || !dispute.riderId || !dispute.amount || !dispute.reason)
+      return toast.error("Fill in all fields");
     setIsRefunding(true);
     try {
-      await api.post(`/admin/dispute/refund`, {
-        driver_id: disputeDriverId.trim(),
-        rider_id: disputeRiderId.trim(),
-        amount: parseFloat(disputeAmount),
-        reason: disputeReason
+      await api.post("/admin/dispute/refund", {
+        driver_id: dispute.driverId.trim(),
+        rider_id: dispute.riderId.trim(),
+        amount: parseFloat(dispute.amount),
+        reason: dispute.reason,
       });
-      toast.success(`Successfully transferred ₾${disputeAmount} from Driver to Rider!`);
-      setDisputeDriverId("");
-      setDisputeRiderId("");
-      setDisputeAmount("");
-      setDisputeReason("");
-      fetchDashboardData();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Refund failed");
-    } finally {
-      setIsRefunding(false);
-    }
+      toast.success(`${fmt(dispute.amount)} transferred from Driver → Rider`);
+      setDispute({ driverId: "", riderId: "", amount: "", reason: "" });
+      fetchAll();
+    } catch (e) { toast.error(e.response?.data?.detail || "Transfer failed"); }
+    finally { setIsRefunding(false); }
   };
 
-  const handleApproveDriver = async (driverId) => {
-    try {
-      await api.post(`/admin/drivers/${driverId}/approve`);
-      toast.success("Driver approved!");
-      fetchDashboardData();
-    } catch (error) {
-      toast.error("Failed to approve driver");
-    }
-  };
+  const alertCount = (pendingDrivers.length + pendingTopups.length);
+  const totalBadge = alertCount + pendingWithdrawals.length + sosCount;
 
-  const handleRejectDriver = async (driverId) => {
-    try {
-      await api.post(`/admin/drivers/${driverId}/reject`);
-      toast.success("Driver rejected");
-      fetchDashboardData();
-    } catch (error) {
-      toast.error("Failed to reject driver");
-    }
-  };
-
-  const handleApproveTopup = async (topupId) => {
-    try {
-      await api.post(`/admin/topups/${topupId}/approve`);
-      toast.success("Top-up approved! Balance added to driver.");
-      fetchDashboardData();
-    } catch (error) {
-      toast.error("Failed to approve top-up");
-    }
-  };
-
-  const handleRejectTopup = async (topupId) => {
-    try {
-      await api.post(`/admin/topups/${topupId}/reject`);
-      toast.success("Top-up rejected");
-      fetchDashboardData();
-    } catch (error) {
-      toast.error("Failed to reject top-up");
-    }
-  };
-
-  const handleApproveWithdrawal = async (withdrawalId) => {
-    try {
-      await api.post(`/admin/withdrawals/${withdrawalId}/approve`);
-      toast.success("Withdrawal approved!");
-      fetchDashboardData();
-    } catch (error) {
-      toast.error("Failed to approve withdrawal");
-    }
-  };
-
-  const handleRejectWithdrawal = async (withdrawalId) => {
-    try {
-      await api.post(`/admin/withdrawals/${withdrawalId}/reject`);
-      toast.success("Withdrawal rejected");
-      fetchDashboardData();
-    } catch (error) {
-      toast.error("Failed to reject withdrawal");
-    }
-  };
-
-  const handleAddBalance = async () => {
-  if (!selectedUser) return;
-  if (!fundAmount || isNaN(fundAmount) || Number(fundAmount) <= 0) {
-    return toast.error("Please enter a valid amount.");
-  }
-
-  try {
-    // Send the money to the backend route we verified in your server.py
-    await api.post(`/admin/add-balance/${selectedUser.id}`, {
-      amount: parseFloat(fundAmount),
-      reason: fundReason || "Admin manual refund/adjustment"
-    });
-
-    toast.success(`Successfully added â‚¾${fundAmount} to ${selectedUser.name}`);
-
-    // Clear the form
-    setFundAmount("");
-    setFundReason("");
-
-    // ðŸ”¥ Crucial: Refresh the riders list so the table updates instantly!
-    // (Replace 'fetchRiders' with whatever function you use to load the table)
-    fetchDashboardData();
-
-  } catch (error) {
-    console.error("Top-up Error:", error);
-    toast.error(error.response?.data?.detail || "Failed to add balance.");
-  }
-};
-
-  const fetchUserDetails = async (userId, userType) => {
-    try {
-      const endpoint = userType === "driver" ? `/admin/drivers/${userId}` : `/admin/riders/${userId}`;
-      const res = await api.get(endpoint);
-      setSelectedUser(userType === "driver" ? res.data.driver : res.data.rider);
-    } catch (error) {
-      toast.error("Failed to fetch user details");
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="text-center">
-          <Loader2 className="w-16 h-16 animate-spin text-purple-500 mx-auto mb-4" />
-          <p className="text-purple-400">Loading Command Center...</p>
-        </div>
+  if (loading) return (
+    <div className="min-h-screen bg-[#050508] flex items-center justify-center">
+      <div className="text-center space-y-3">
+        <Loader2 className="w-12 h-12 animate-spin text-purple-500 mx-auto" />
+        <p className="text-gray-500 text-sm">Loading Command Center…</p>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-[#050508]">
+      {/* Fixed grid background */}
+      <div className="fixed inset-0 opacity-[0.025] pointer-events-none"
+        style={{ backgroundImage: "linear-gradient(#a855f7 1px,transparent 1px),linear-gradient(90deg,#a855f7 1px,transparent 1px)", backgroundSize: "40px 40px" }} />
+
       {/* Header */}
-      <header className="bg-black/50 backdrop-blur-xl border-b border-purple-500/20 p-4 sticky top-0 z-50">
-        <div className="container mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-[#00d4ff] flex items-center justify-center">
-              <Shield className="w-5 h-5 text-white" />
+      <header className="sticky top-0 z-40 bg-[#050508]/90 backdrop-blur-xl border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-sky-500 flex items-center justify-center shadow-md shadow-purple-500/20">
+              <Shield className="w-4 h-4 text-white" />
             </div>
             <div>
-              <p className="text-purple-400 font-semibold">Command Center</p>
-              <p className="text-[#00d4ff]/60 text-sm">T'aksi Admin</p>
+              <span className="text-white font-semibold text-sm">T'aksi</span>
+              <span className="text-gray-600 text-sm"> / Command Center</span>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <Button variant="ghost" size="icon" className="text-purple-400" onClick={() => navigate("/")}>
-              <Home className="w-5 h-5" />
+          <div className="flex items-center gap-1">
+            {sosCount > 0 && (
+              <button onClick={() => setActiveTab("sos")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-bold animate-pulse mr-2">
+                <Siren className="w-3.5 h-3.5" /> {sosCount} SOS
+              </button>
+            )}
+            <Button variant="ghost" size="icon" className="text-gray-500 hover:text-white" onClick={() => navigate("/")}>
+              <Home className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="text-purple-400" onClick={logout}>
-              <LogOut className="w-5 h-5" />
+            <Button variant="ghost" size="icon" className="text-gray-500 hover:text-white" onClick={fetchAll}>
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="text-gray-500 hover:text-red-400" onClick={logout}>
+              <LogOut className="w-4 h-4" />
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto p-4 max-w-6xl">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-7 bg-black/50 border border-purple-500/20 mb-6">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
-              <BarChart3 className="w-4 h-4 mr-2" /> Overview
-            </TabsTrigger>
-            <TabsTrigger value="riders" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
-              <Users className="w-4 h-4 mr-2" /> Riders
-            </TabsTrigger>
-            <TabsTrigger value="drivers" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
-              <Car className="w-4 h-4 mr-2" /> Drivers
-            </TabsTrigger>
-            <TabsTrigger value="approvals" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
-              <UserCheck className="w-4 h-4 mr-2" /> Approvals
-              {(pendingDrivers.length + pendingTopups.length) > 0 && (
-                <Badge className="ml-2 bg-[#00ff88] text-black">{pendingDrivers.length + pendingTopups.length}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="withdrawals" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
-              <Banknote className="w-4 h-4 mr-2" /> Withdrawals
-              {pendingWithdrawals.length > 0 && (
-                <Badge className="ml-2 bg-[#00ff88] text-black">{pendingWithdrawals.length}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="campaigns" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
-              <PlusCircle className="w-4 h-4 mr-2" /> Campaigns
-            </TabsTrigger>
-            <TabsTrigger value="support" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-400">
-              <MessageSquare className="w-4 h-4 mr-2" /> Support
-            </TabsTrigger>
-            <TabsTrigger value="disputes" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-red-400">
-              <FileWarning className="w-4 h-4 mr-2" /> Disputes
-            </TabsTrigger>
-          </TabsList>
+      {/* Detail Panel */}
+      {detailUserId && (
+        <UserDetailPanel
+          userId={detailUserId}
+          userType={detailUserType}
+          onClose={() => { setDetailUserId(null); setDetailUserType(null); }}
+          onRefresh={fetchAll}
+        />
+      )}
 
-          {/* Overview Tab */}
+      <main className="max-w-7xl mx-auto px-4 py-6 relative z-10">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          {/* Tab bar */}
+          <div className="overflow-x-auto mb-6">
+            <TabsList className="bg-[#0a0a12] border border-white/8 p-1 gap-0.5 inline-flex w-auto min-w-full">
+              {[
+                { value: "overview",    icon: BarChart3,     label: "Overview" },
+                { value: "riders",      icon: Users,         label: "Riders",    count: riders.length },
+                { value: "drivers",     icon: Car,           label: "Drivers",   count: drivers.length },
+                { value: "approvals",   icon: UserCheck,     label: "Approvals", badge: alertCount },
+                { value: "withdrawals", icon: Banknote,      label: "Withdrawals", badge: pendingWithdrawals.length },
+                { value: "campaigns",   icon: PlusCircle,    label: "Campaigns" },
+                { value: "support",     icon: MessageSquare, label: "Support" },
+                { value: "disputes",    icon: ArrowRightLeft,label: "Disputes" },
+                { value: "sos",         icon: Siren,         label: "SOS", badge: sosCount, badgeColor: "bg-red-500" },
+              ].map(({ value, icon: Icon, label, count, badge, badgeColor }) => (
+                <TabsTrigger key={value} value={value}
+                  className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-gray-500 hover:text-gray-300 relative px-3 py-2 text-xs font-medium rounded-md transition-all gap-1.5">
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{label}</span>
+                  {count !== undefined && <span className="text-[10px] opacity-50">({count})</span>}
+                  {badge > 0 && (
+                    <span className={`absolute -top-1 -right-1 w-4 h-4 rounded-full ${badgeColor || "bg-amber-500"} text-black text-[9px] font-bold flex items-center justify-center`}>
+                      {badge > 9 ? "9+" : badge}
+                    </span>
+                  )}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+
+          {/* ── OVERVIEW ── */}
           <TabsContent value="overview">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-              <Card className="bg-black/60 border border-[#00ff88]/30 p-4 text-center">
-                <Users className="w-8 h-8 mx-auto text-[#00ff88] mb-2" />
-                <p className="text-3xl font-bold text-white">{stats?.total_riders || 0}</p>
-                <p className="text-xs text-gray-500 uppercase">Riders</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+              <StatCard icon={Users}       label="Riders"           value={stats?.total_riders}              color="border-emerald-500/30" />
+              <StatCard icon={Car}         label="Drivers"          value={stats?.total_drivers}             color="border-sky-500/30" />
+              <StatCard icon={TrendingUp}  label="Active Rides"     value={stats?.active_rides}              color="border-amber-500/30" />
+              <StatCard icon={UserCheck}   label="Pending Drivers"  value={stats?.pending_driver_approvals}  color="border-orange-500/30" />
+              <StatCard icon={CreditCard}  label="Pending Top-ups"  value={stats?.pending_topups}            color="border-purple-500/30" />
+              <StatCard icon={Banknote}    label="Withdrawals"      value={stats?.pending_withdrawals}       color="border-pink-500/30" />
+            </div>
+            {sosCount > 0 && (
+              <Card className="bg-red-950/40 border border-red-500/40 p-4 flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <Siren className="w-6 h-6 text-red-400 animate-pulse" />
+                  <div>
+                    <p className="text-red-300 font-semibold">{sosCount} Active SOS Alert{sosCount > 1 ? "s" : ""}</p>
+                    <p className="text-red-500/70 text-xs">Requires immediate attention</p>
+                  </div>
+                </div>
+                <Button onClick={() => setActiveTab("sos")} className="bg-red-600 hover:bg-red-700 text-white text-sm">
+                  View Now <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
               </Card>
-              <Card className="bg-black/60 border border-[#00d4ff]/30 p-4 text-center">
-                <Car className="w-8 h-8 mx-auto text-[#00d4ff] mb-2" />
-                <p className="text-3xl font-bold text-white">{stats?.total_drivers || 0}</p>
-                <p className="text-xs text-gray-500 uppercase">Drivers</p>
-              </Card>
-              <Card className="bg-black/60 border border-yellow-500/30 p-4 text-center">
-                <TrendingUp className="w-8 h-8 mx-auto text-yellow-500 mb-2" />
-                <p className="text-3xl font-bold text-white">{stats?.active_rides || 0}</p>
-                <p className="text-xs text-gray-500 uppercase">Active Rides</p>
-              </Card>
-              <Card className="bg-black/60 border border-orange-500/30 p-4 text-center">
-                <UserCheck className="w-8 h-8 mx-auto text-orange-500 mb-2" />
-                <p className="text-3xl font-bold text-white">{stats?.pending_driver_approvals || 0}</p>
-                <p className="text-xs text-gray-500 uppercase">Pending Drivers</p>
-              </Card>
-              <Card className="bg-black/60 border border-purple-500/30 p-4 text-center">
-                <CreditCard className="w-8 h-8 mx-auto text-purple-500 mb-2" />
-                <p className="text-3xl font-bold text-white">{stats?.pending_topups || 0}</p>
-                <p className="text-xs text-gray-500 uppercase">Pending Top-ups</p>
-              </Card>
-              <Card className="bg-black/60 border border-pink-500/30 p-4 text-center">
-                <Banknote className="w-8 h-8 mx-auto text-pink-500 mb-2" />
-                <p className="text-3xl font-bold text-white">{stats?.pending_withdrawals || 0}</p>
-                <p className="text-xs text-gray-500 uppercase">Pending Withdrawals</p>
-              </Card>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              {alertCount > 0 && (
+                <Card className="bg-amber-950/30 border border-amber-500/30 p-4 cursor-pointer hover:border-amber-500/60 transition-colors" onClick={() => setActiveTab("approvals")}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-amber-400 font-semibold">{alertCount} Pending Approvals</p>
+                      <p className="text-amber-700 text-xs mt-0.5">{pendingDrivers.length} drivers · {pendingTopups.length} top-ups</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-amber-600" />
+                  </div>
+                </Card>
+              )}
+              {pendingWithdrawals.length > 0 && (
+                <Card className="bg-pink-950/30 border border-pink-500/30 p-4 cursor-pointer hover:border-pink-500/60 transition-colors" onClick={() => setActiveTab("withdrawals")}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-pink-400 font-semibold">{pendingWithdrawals.length} Pending Withdrawals</p>
+                      <p className="text-pink-700 text-xs mt-0.5">Awaiting payout</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-pink-600" />
+                  </div>
+                </Card>
+              )}
             </div>
           </TabsContent>
 
-          {/* Riders Tab */}
+          {/* ── RIDERS ── */}
           <TabsContent value="riders">
-            <Card className="bg-black/60 border border-[#00ff88]/30">
-              <CardHeader>
-                <CardTitle className="text-[#00ff88]">All Riders ({riders.length})</CardTitle>
+            <Card className="bg-[#0a0a12] border border-white/8">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-emerald-400 text-base">All Riders <span className="text-gray-600 font-normal">({riders.length})</span></CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[500px]">
+                <ScrollArea className="h-[560px]">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-[#00ff88]">Name</TableHead>
-                        <TableHead className="text-[#00ff88]">Phone</TableHead>
-                        <TableHead className="text-[#00ff88]">Wallet</TableHead>
-                        <TableHead className="text-[#00ff88]">Rides</TableHead>
-                        <TableHead className="text-[#00ff88]">Actions</TableHead>
+                      <TableRow className="border-white/5 hover:bg-transparent">
+                        {["Name", "Phone", "Wallet", "Rides", "Rating", "Actions"].map(h => (
+                          <TableHead key={h} className="text-gray-500 text-xs uppercase tracking-wider">{h}</TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {riders.map(rider => (
-                        <TableRow key={rider.id} className="border-[#00ff88]/10">
-                          <TableCell className="text-white">{rider.name} {rider.surname}<div className="text-[10px] text-gray-500 font-mono mt-0.5 select-all">ID: {rider.id}</div></TableCell>
-                          <TableCell className="text-gray-400">{rider.cellphone}</TableCell>
-                          <TableCell className="text-[#00ff88] font-bold">â‚¾{rider.wallet_balance?.toFixed(2) || "0.00"}</TableCell>
-                          <TableCell className="text-gray-400">{rider.total_rides || 0}</TableCell>
+                        <TableRow key={rider.id} className="border-white/5 hover:bg-white/3 group">
                           <TableCell>
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-[#00ff88]/30 text-[#00ff88]"
-                                  onClick={() => fetchUserDetails(rider.id, "rider")}
-                                >
-                                  <PlusCircle className="w-4 h-4 mr-1" /> Add Balance
+                            <div>
+                              <p className="text-white text-sm font-medium">{rider.name} {rider.surname}</p>
+                              <p className="text-gray-600 text-[10px] font-mono">{rider.id}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-gray-400 text-sm">{rider.cellphone}</TableCell>
+                          <TableCell className="text-emerald-400 font-semibold text-sm">{fmt(rider.wallet_balance)}</TableCell>
+                          <TableCell className="text-gray-400 text-sm">{rider.total_rides || 0}</TableCell>
+                          <TableCell className="text-gray-400 text-sm">⭐ {rider.rating || 5.0}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-gray-500 hover:text-white"
+                                onClick={() => { setDetailUserId(rider.id); setDetailUserType("rider"); }}>
+                                <Eye className="w-3.5 h-3.5 mr-1" /> View
+                              </Button>
+                              <AddBalanceDialog user={rider} userType="rider" onSuccess={fetchAll}>
+                                <Button size="sm" variant="outline" className="h-7 px-2 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10">
+                                  <PlusCircle className="w-3.5 h-3.5 mr-1" /> Add
                                 </Button>
-                              </DialogTrigger>
-                              <DialogContent aria-describedby={undefined} className="bg-black border border-[#00ff88]/30">
-                                <DialogHeader>
-                                  <DialogTitle className="text-[#00ff88]">Add Balance to Rider</DialogTitle>
-                                  {/* ðŸ”¥ ADD THIS LINE to silence the warning */}
-                                  <div className="sr-only">
-                                    Specify the amount and reason to add balance to this rider.
-                                  </div>
-                                </DialogHeader>
-                                {selectedUser && (
-                                  <div className="space-y-4">
-                                    <div className="bg-black/50 p-4 rounded-xl border border-[#00ff88]/20">
-                                      <p className="text-white font-semibold">{selectedUser.name} {selectedUser.surname}</p>
-                                      <p className="text-gray-400 text-sm">{selectedUser.cellphone}</p>
-                                      <p className="text-[#00ff88] font-bold mt-2">
-                                        Current Balance: â‚¾{selectedUser.wallet_balance?.toFixed(2) || "0.00"}
-                                      </p>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label className="text-[#00ff88]">Amount (â‚¾)</Label>
-                                      <Input
-                                        type="number"
-                                        value={fundAmount}
-                                        onChange={e => setFundAmount(e.target.value)}
-                                        className="bg-black/50 border-[#00ff88]/30 text-white"
-                                        placeholder="50.00"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label className="text-[#00ff88]">Reason</Label>
-                                      <Input
-                                        value={fundReason}
-                                        onChange={e => setFundReason(e.target.value)}
-                                        className="bg-black/50 border-[#00ff88]/30 text-white"
-                                        placeholder="Refund for cancelled ride"
-                                      />
-                                    </div>
-                                    <Button
-                                      className="w-full bg-[#00ff88] text-black font-bold"
-                                      onClick={handleAddBalance}
-                                    >
-                                      Add Balance
-                                    </Button>
-                                  </div>
-                                )}
-                              </DialogContent>
-                            </Dialog>
+                              </AddBalanceDialog>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -541,224 +719,163 @@ const handleManualTopUp = async (e) => {
             </Card>
           </TabsContent>
 
-          {/* Drivers Tab */}
+          {/* ── DRIVERS ── */}
           <TabsContent value="drivers">
-            <Card className="bg-black/60 border border-[#00d4ff]/30">
-              <CardHeader>
-                <CardTitle className="text-[#00d4ff]">All Drivers ({drivers.length})</CardTitle>
+            <Card className="bg-[#0a0a12] border border-white/8">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sky-400 text-base">All Drivers <span className="text-gray-600 font-normal">({drivers.length})</span></CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[500px]">
+                <ScrollArea className="h-[560px]">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-[#00d4ff]">Name</TableHead>
-                        <TableHead className="text-[#00d4ff]">Phone</TableHead>
-                        <TableHead className="text-[#00d4ff]">Balance</TableHead>
-                        <TableHead className="text-[#00d4ff]">Status</TableHead>
-                        <TableHead className="text-[#00d4ff]">Vehicle</TableHead>
-                        <TableHead className="text-[#00d4ff]">Actions</TableHead>
+                      <TableRow className="border-white/5 hover:bg-transparent">
+                        {["Name", "Phone", "Balance", "Status", "Vehicle", "Rides", "Actions"].map(h => (
+                          <TableHead key={h} className="text-gray-500 text-xs uppercase tracking-wider">{h}</TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {drivers.map(driver => (
-                        <TableRow key={driver.id} className="border-[#00d4ff]/10">
-                          <TableCell className="text-white">{driver.name} {driver.surname}<div className="text-[10px] text-gray-500 font-mono mt-0.5 select-all">ID: {driver.id}</div></TableCell>
-                          <TableCell className="text-gray-400">{driver.cellphone}</TableCell>
-                          <TableCell className="text-[#00ff88] font-bold">â‚¾{driver.earnings?.balance?.toFixed(2) || "0.00"}</TableCell>
-                          <TableCell>
-                            <Badge className={
-  driver.registration_status === "approved" ? "bg-[#00ff88] text-black" :
-  driver.registration_status?.includes("pending") ? "bg-orange-500 text-black" :
-  "bg-gray-500 text-white"
-}>
-                              {driver.registration_status?.replace(/_/g, " ").toUpperCase()}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-gray-400">
-                          {driver.driver_info?.vehicle ? 
-                            `${driver.driver_info.vehicle.car_year} ${driver.driver_info.vehicle.car_make} ${driver.driver_info.vehicle.car_model}` : 
-                            "N/A"}
-                        </TableCell>
-
-                        {/* ðŸ”¥ FIXED ACTION CELL: BOTH BUTTONS SIDE BY SIDE */}
-                        <TableCell className="flex items-center gap-2">
-
-                          {/* QUICK APPROVE BUTTON */}
-                          {driver.registration_status?.includes("pending") && (
-                            <Button 
-                              size="sm"
-                              className="bg-[#00ff88] text-black font-bold hover:bg-[#00d4ff]" 
-                              onClick={() => handleApproveDriver(driver.id)} 
-                            >
-                              Approve
-                            </Button>
-                          )}
-
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-[#00d4ff]/30 text-[#00d4ff]"
-                                onClick={() => fetchUserDetails(driver.id, "driver")}
-                              >
-                                <PlusCircle className="w-4 h-4 mr-1" /> Add Balance
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent aria-describedby={undefined} className="bg-black border border-[#00d4ff]/30">
-                              <DialogHeader>
-                               <DialogTitle className ="text-[#00d4ff]">Add Balance to Driver</DialogTitle>
-                               {/* ðŸ”¥ ADD THIS LINE to silence the warning */}
-                               <div className="sr-only">
-                                  Specify the amount and reason to add balance to this driver.
-                               </div>
-                              </DialogHeader>
-                              {selectedUser && (
-                                <div className="space-y-4">
-                                  <div className="bg-black/50 p-4 rounded-xl border border-[#00d4ff]/20">
-                                    <p className="text-white font-semibold">{selectedUser.name} {selectedUser.surname}</p>
-                                    <p className="text-gray-400 text-sm">{selectedUser.cellphone}</p>
-                                    <p className="text-[#00ff88] font-bold mt-2">
-                                      Current Balance: â‚¾{selectedUser.earnings?.balance?.toFixed(2) || "0.00"}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label className="text-[#00d4ff]">Amount (â‚¾)</Label>
-                                    <Input
-                                      type="number"
-                                      value={fundAmount}
-                                      onChange={e => setFundAmount(e.target.value)}
-                                      className="bg-black/50 border-[#00d4ff]/30 text-white"
-                                      placeholder="50.00"
-                                    />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label className="text-[#00d4ff]">Reason</Label>
-                                    <Input
-                                      value={fundReason}
-                                      onChange={e => setFundReason(e.target.value)}
-                                      className="bg-black/50 border-[#00d4ff]/30 text-white"
-                                      placeholder="Bonus payment"
-                                    />
-                                  </div>
-                                  <Button
-                                    className="w-full bg-[#00d4ff] text-black font-bold"
-                                    onClick={handleAddBalance}
-                                  >
-                                    Add Balance
-                                  </Button>
+                      {drivers.map(driver => {
+                        const vehicles = driver.driver_info?.vehicles || [];
+                        const activeVehicle = vehicles.find(v => v.id === driver.driver_info?.active_vehicle_id) || vehicles[0];
+                        return (
+                          <TableRow key={driver.id} className="border-white/5 hover:bg-white/3">
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className={`w-1.5 h-1.5 rounded-full ${driver.is_online ? "bg-emerald-400" : "bg-gray-600"}`} />
+                                <div>
+                                  <p className="text-white text-sm font-medium">{driver.name} {driver.surname}</p>
+                                  <p className="text-gray-600 text-[10px] font-mono">{driver.id}</p>
                                 </div>
-                              )}
-                            </DialogContent>
-                          </Dialog>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Approvals Tab */}
-        <TabsContent value="approvals">
-          <div className="space-y-6">
-            {/* Pending Driver Approvals */}
-            <Card className="bg-black/60 border border-orange-500/30">
-              <CardHeader>
-                <CardTitle className="text-orange-400">Pending Driver Approvals ({pendingDrivers.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {pendingDrivers.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">No pending driver approvals</div>
-                ) : (
-                  <div className="space-y-4">
-                    {pendingDrivers.map(driver => (
-                      <div key={driver.id} className="bg-black/50 border border-[#00ff88]/20 rounded-xl p-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-white font-semibold">{driver.name} {driver.surname}</p>
-                            <p className="text-gray-400 text-sm">{driver.cellphone}</p>
-                            {driver.driver_info?.vehicle && (
-                              <div className="mt-2 text-sm">
-                                <p className="text-[#00d4ff]">
-                                  {driver.driver_info.vehicle.car_year} {driver.driver_info.vehicle.car_make} {driver.driver_info.vehicle.car_model}
-                                </p>
-                                <p className="text-gray-500">{driver.driver_info.vehicle.car_color} â€¢ {driver.driver_info.vehicle.license_plate}</p>
-                                <Badge className="mt-1 bg-purple-500/20 text-purple-400">
-                                  Tier: {driver.driver_info.vehicle_tier?.toUpperCase()}
-                                </Badge>
                               </div>
-                            )}
-                          </div>
-                          <div className="flex space-x-2">
-                            <Button
-                              className="bg-[#00ff88] text-black"
-                              onClick={() => handleApproveDriver(driver.id)}
-                            >
-                              <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              onClick={() => handleRejectDriver(driver.id)}
-                            >
-                              <XCircle className="w-4 h-4 mr-1" /> Reject
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                            </TableCell>
+                            <TableCell className="text-gray-400 text-sm">{driver.cellphone}</TableCell>
+                            <TableCell className="text-sky-400 font-semibold text-sm">{fmt(driver.earnings?.balance)}</TableCell>
+                            <TableCell><StatusBadge status={driver.registration_status} /></TableCell>
+                            <TableCell className="text-gray-400 text-xs">
+                              {activeVehicle ? `${activeVehicle.car_year} ${activeVehicle.car_make} ${activeVehicle.car_model}` : "—"}
+                            </TableCell>
+                            <TableCell className="text-gray-400 text-sm">{driver.total_rides || 0}</TableCell>
+                            <TableCell>
+                              <div className="flex gap-1.5 flex-wrap">
+                                {driver.registration_status?.includes("pending") && (
+                                  <Button size="sm" className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                                    onClick={() => quickAction(`/admin/drivers/${driver.id}/approve`, "Driver approved")}>
+                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Approve
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="ghost" className="h-7 px-2 text-gray-500 hover:text-white"
+                                  onClick={() => { setDetailUserId(driver.id); setDetailUserType("driver"); }}>
+                                  <Eye className="w-3.5 h-3.5 mr-1" /> View
+                                </Button>
+                                <AddBalanceDialog user={driver} userType="driver" onSuccess={fetchAll}>
+                                  <Button size="sm" variant="outline" className="h-7 px-2 border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
+                                    <PlusCircle className="w-3.5 h-3.5 mr-1" /> Add
+                                  </Button>
+                                </AddBalanceDialog>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
               </CardContent>
             </Card>
+          </TabsContent>
 
-              {/* Pending Top-up Requests */}
-              <Card className="bg-black/60 border border-purple-500/30">
-                <CardHeader>
-                  <CardTitle className="text-purple-400">Pending Top-up Requests ({pendingTopups.length})</CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Drivers who have requested to add balance to their accounts
-                  </CardDescription>
+          {/* ── APPROVALS ── */}
+          <TabsContent value="approvals">
+            <div className="space-y-5">
+              {/* Driver approvals */}
+              <Card className="bg-[#0a0a12] border border-amber-500/20">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-amber-400 text-base">
+                    Pending Driver Approvals
+                    {pendingDrivers.length > 0 && <span className="ml-2 px-2 py-0.5 text-xs rounded bg-amber-500/20 border border-amber-500/30">{pendingDrivers.length}</span>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {pendingDrivers.length === 0 ? (
+                    <p className="text-center text-gray-600 py-8 text-sm">No pending driver approvals ✓</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {pendingDrivers.map(driver => {
+                        const vehicles = driver.driver_info?.vehicles || [];
+                        const v = vehicles[0];
+                        return (
+                          <div key={driver.id} className="bg-black/40 border border-white/8 rounded-xl p-4 flex justify-between items-start gap-4">
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-white font-semibold">{driver.name} {driver.surname}</p>
+                                <p className="text-gray-500 text-sm">{driver.cellphone}</p>
+                              </div>
+                              <p className="text-gray-600 text-[10px] font-mono">{driver.id}</p>
+                              {v && (
+                                <div className="flex gap-2 flex-wrap mt-1">
+                                  <span className="text-sky-400 text-xs">{v.car_year} {v.car_make} {v.car_model}</span>
+                                  <span className="text-gray-500 text-xs">{v.car_color} · {v.license_plate}</span>
+                                  {v.tier && <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-500/20 border border-purple-500/30 text-purple-400 uppercase">{v.tier}</span>}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex gap-2 shrink-0">
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => quickAction(`/admin/drivers/${driver.id}/approve`, "Driver approved")}>
+                                <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
+                              </Button>
+                              <Button size="sm" variant="destructive"
+                                onClick={() => quickAction(`/admin/drivers/${driver.id}/reject`, "Driver rejected")}>
+                                <XCircle className="w-4 h-4 mr-1" /> Reject
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-gray-500"
+                                onClick={() => { setDetailUserId(driver.id); setDetailUserType("driver"); }}>
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Top-up approvals */}
+              <Card className="bg-[#0a0a12] border border-purple-500/20">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-purple-400 text-base">
+                    Pending Top-up Requests
+                    {pendingTopups.length > 0 && <span className="ml-2 px-2 py-0.5 text-xs rounded bg-purple-500/20 border border-purple-500/30">{pendingTopups.length}</span>}
+                  </CardTitle>
+                  <CardDescription className="text-gray-600 text-xs">Drivers requesting manual wallet top-ups</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {pendingTopups.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">No pending top-up requests</div>
+                    <p className="text-center text-gray-600 py-8 text-sm">No pending top-up requests ✓</p>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {pendingTopups.map(topup => (
-                        <div key={topup.id} className="bg-black/50 border border-purple-500/20 rounded-xl p-4">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <p className="text-white font-semibold">{topup.driver_name}</p>
-                              <p className="text-gray-400 text-sm">{topup.driver_cellphone}</p>
-                              {topup.payment_reference && (
-                                <p className="text-xs text-gray-500 mt-1">Ref: {topup.payment_reference}</p>
-                              )}
-                              <p className="text-xs text-gray-600">
-                                Requested: {topup.requested_at ? new Date(topup.requested_at).toLocaleString() : "N/A"}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-3xl font-bold text-purple-400">â‚¾{topup.amount?.toFixed(2)}</p>
-                              <div className="flex space-x-2 mt-2">
-                                <Button
-                                  size="sm"
-                                  className="bg-[#00ff88] text-black"
-                                  onClick={() => handleApproveTopup(topup.id)}
-                                >
-                                  <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => handleRejectTopup(topup.id)}
-                                >
-                                  <XCircle className="w-4 h-4" />
-                                </Button>
-                              </div>
+                        <div key={topup.id} className="bg-black/40 border border-white/8 rounded-xl p-4 flex justify-between items-center gap-4">
+                          <div className="space-y-1 flex-1">
+                            <p className="text-white font-semibold">{topup.driver_name}</p>
+                            <p className="text-gray-500 text-sm">{topup.driver_cellphone}</p>
+                            {topup.payment_reference && <p className="text-gray-600 text-xs">Ref: {topup.payment_reference}</p>}
+                            <p className="text-gray-700 text-xs">{timeAgo(topup.requested_at)}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-2xl font-bold text-purple-400">{fmt(topup.amount)}</p>
+                            <div className="flex gap-2 mt-2">
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => quickAction(`/admin/topups/${topup.id}/approve`, `Top-up of ${fmt(topup.amount)} approved`)}>
+                                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Approve
+                              </Button>
+                              <Button size="sm" variant="destructive"
+                                onClick={() => quickAction(`/admin/topups/${topup.id}/reject`, "Top-up rejected")}>
+                                <XCircle className="w-3.5 h-3.5" />
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -770,45 +887,39 @@ const handleManualTopUp = async (e) => {
             </div>
           </TabsContent>
 
-          {/* Withdrawals Tab */}
+          {/* ── WITHDRAWALS ── */}
           <TabsContent value="withdrawals">
-            <Card className="bg-black/60 border border-pink-500/30">
-              <CardHeader>
-                <CardTitle className="text-pink-400">Pending Withdrawals ({pendingWithdrawals.length})</CardTitle>
+            <Card className="bg-[#0a0a12] border border-pink-500/20">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-pink-400 text-base">
+                  Pending Withdrawals
+                  {pendingWithdrawals.length > 0 && <span className="ml-2 px-2 py-0.5 text-xs rounded bg-pink-500/20 border border-pink-500/30">{pendingWithdrawals.length}</span>}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {pendingWithdrawals.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">No pending withdrawals</div>
+                  <p className="text-center text-gray-600 py-8 text-sm">No pending withdrawals ✓</p>
                 ) : (
-                  <div className="space-y-4">
-                    {pendingWithdrawals.map(withdrawal => (
-                      <div key={withdrawal.id} className="bg-black/50 border border-pink-500/20 rounded-xl p-4">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="text-white font-semibold">{withdrawal.driver_name}</p>
-                            <p className="text-gray-400 text-sm">Bank: {withdrawal.bank_details}</p>
-                            <p className="text-xs text-gray-600">
-                              Requested: {withdrawal.requested_at ? new Date(withdrawal.requested_at).toLocaleString() : "N/A"}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-3xl font-bold text-pink-400">â‚¾{withdrawal.amount?.toFixed(2)}</p>
-                            <div className="flex space-x-2 mt-2">
-                              <Button
-                                size="sm"
-                                className="bg-[#00ff88] text-black"
-                                onClick={() => handleApproveWithdrawal(withdrawal.id)}
-                              >
-                                <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleRejectWithdrawal(withdrawal.id)}
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </Button>
-                            </div>
+                  <div className="space-y-3">
+                    {pendingWithdrawals.map(wd => (
+                      <div key={wd.id} className="bg-black/40 border border-white/8 rounded-xl p-4 flex justify-between items-center gap-4">
+                        <div className="space-y-1 flex-1">
+                          <p className="text-white font-semibold">{wd.driver_name || "Driver"}</p>
+                          <p className="text-gray-500 text-sm">Bank: {wd.bank_details}</p>
+                          {wd.fee > 0 && <p className="text-gray-600 text-xs">Fee: {fmt(wd.fee)} · Total deducted: {fmt(wd.total_deducted)}</p>}
+                          <p className="text-gray-700 text-xs">{timeAgo(wd.created_at || wd.requested_at)}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-2xl font-bold text-pink-400">{fmt(wd.amount)}</p>
+                          <div className="flex gap-2 mt-2">
+                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                              onClick={() => quickAction(`/admin/withdrawals/${wd.id}/approve`, `Withdrawal of ${fmt(wd.amount)} approved`)}>
+                              <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Approve
+                            </Button>
+                            <Button size="sm" variant="destructive"
+                              onClick={() => quickAction(`/admin/withdrawals/${wd.id}/reject`, "Withdrawal rejected & refunded")}>
+                              <XCircle className="w-3.5 h-3.5" />
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -819,110 +930,100 @@ const handleManualTopUp = async (e) => {
             </Card>
           </TabsContent>
 
-          {/* Campaigns Tab */}
+          {/* ── CAMPAIGNS ── */}
           <TabsContent value="campaigns">
-            <AdminCampaignsPanel />
+            <React.Suspense fallback={<div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-purple-500" /></div>}>
+              <AdminCampaignsPanel />
+            </React.Suspense>
           </TabsContent>
 
-          {/* Support Tab */}
+          {/* ── SUPPORT ── */}
           <TabsContent value="support">
             <AdminSupportPanel />
           </TabsContent>
 
-          {/* Disputes Tab */}
+          {/* ── DISPUTES ── */}
           <TabsContent value="disputes">
-            <Card className="bg-black/60 border border-red-500/50 max-w-2xl mx-auto mt-8">
-              <CardHeader>
-                <CardTitle className="text-red-500 flex items-center gap-2">
-                  <FileWarning className="w-6 h-6" />
-                  Dispute Resolution (God Mode)
-                </CardTitle>
-                <CardDescription className="text-gray-400">
-                  Forcibly deduct funds from a Driver's balance and credit them to a Rider's wallet. <strong className="text-red-400">This action is irreversible.</strong>
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleDisputeRefund} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-red-400">Driver ID (Take From)</Label>
-                      <Input 
-                        value={disputeDriverId} 
-                        onChange={e => setDisputeDriverId(e.target.value)} 
-                        placeholder="Paste Driver ID" 
-                        className="bg-black/50 border-red-500/30 text-white font-mono text-xs"
-                        required
-                      />
+            <div className="max-w-xl mx-auto">
+              <Card className="bg-[#0a0a12] border border-red-500/30">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
+                      <FileWarning className="w-5 h-5 text-red-400" />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-[#00ff88]">Rider ID (Give To)</Label>
-                      <Input 
-                        value={disputeRiderId} 
-                        onChange={e => setDisputeRiderId(e.target.value)} 
-                        placeholder="Paste Rider ID" 
-                        className="bg-black/50 border-[#00ff88]/30 text-white font-mono text-xs"
-                        required
-                      />
+                    <div>
+                      <CardTitle className="text-red-400 text-base">Dispute Resolution</CardTitle>
+                      <CardDescription className="text-gray-600 text-xs">Force-transfer funds from Driver → Rider wallet</CardDescription>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-white">Amount (₾)</Label>
-                      <Input 
-                        type="number" 
-                        step="0.01" 
-                        value={disputeAmount} 
-                        onChange={e => setDisputeAmount(e.target.value)} 
-                        placeholder="e.g. 15.50" 
-                        className="bg-black/50 border-gray-600 text-white"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-white">Reason for Audit Log</Label>
-                      <Input 
-                        value={disputeReason} 
-                        onChange={e => setDisputeReason(e.target.value)} 
-                        placeholder="e.g. Driver claimed false completion" 
-                        className="bg-black/50 border-gray-600 text-white"
-                        required
-                      />
-                    </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-red-950/30 border border-red-500/20 rounded-lg p-3 mb-5 text-xs text-red-400/80">
+                    ⚠️ This action is <strong>irreversible</strong> and logged for audit. Use only for verified disputes.
                   </div>
-
-                  <Button 
-                    type="submit" 
-                    disabled={isRefunding} 
-                    className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-bold text-lg mt-4 shadow-[0_0_15px_rgba(220,38,38,0.5)] transition-all"
-                  >
-                    {isRefunding ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <ArrowRightLeft className="w-5 h-5 mr-2" />}
-                    EXECUTE FORCED TRANSFER
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+                  <form onSubmit={handleDisputeRefund} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-red-400 text-xs">Driver ID <span className="text-gray-600">(take from)</span></Label>
+                        <Input value={dispute.driverId} onChange={e => setDispute(p => ({ ...p, driverId: e.target.value }))}
+                          placeholder="Paste Driver ID" className="bg-black/50 border-red-500/20 text-white font-mono text-xs mt-1" required />
+                      </div>
+                      <div>
+                        <Label className="text-emerald-400 text-xs">Rider ID <span className="text-gray-600">(give to)</span></Label>
+                        <Input value={dispute.riderId} onChange={e => setDispute(p => ({ ...p, riderId: e.target.value }))}
+                          placeholder="Paste Rider ID" className="bg-black/50 border-emerald-500/20 text-white font-mono text-xs mt-1" required />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-gray-400 text-xs">Amount (₾)</Label>
+                        <Input type="number" step="0.01" value={dispute.amount}
+                          onChange={e => setDispute(p => ({ ...p, amount: e.target.value }))}
+                          placeholder="e.g. 15.50" className="bg-black/50 border-white/10 text-white mt-1" required />
+                      </div>
+                      <div>
+                        <Label className="text-gray-400 text-xs">Reason (audit log)</Label>
+                        <Input value={dispute.reason} onChange={e => setDispute(p => ({ ...p, reason: e.target.value }))}
+                          placeholder="e.g. Driver overcharged" className="bg-black/50 border-white/10 text-white mt-1" required />
+                      </div>
+                    </div>
+                    <Button type="submit" disabled={isRefunding}
+                      className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg shadow-red-900/40">
+                      {isRefunding
+                        ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        : <ArrowRightLeft className="w-4 h-4 mr-2" />}
+                      Execute Transfer
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
+
+          {/* ── SOS ── */}
+          <TabsContent value="sos">
+            <SOSPanel />
+          </TabsContent>
+
         </Tabs>
       </main>
     </div>
   );
 };
 
-// Main Router
+// ─────────────────────────────────────────────────────────────────────────────
+// ROUTER
+// ─────────────────────────────────────────────────────────────────────────────
 const AdminPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
 
-  // Redirect Logic
   if (!user || user.user_type !== "admin") {
-    if (location.pathname === "/admin" || location.pathname === "/admin/") {
-      return <AdminLogin />;
-    }
-    return <Navigate to="/admin" replace />;
+    return location.pathname === "/admin" || location.pathname === "/admin/"
+      ? <AdminLogin />
+      : <Navigate to="/admin" replace />;
   }
 
-  // Admin Routes (Nested)
   return (
     <Routes>
       <Route path="/" element={<Navigate to="dashboard" replace />} />
@@ -933,5 +1034,3 @@ const AdminPortal = () => {
 };
 
 export default AdminPortal;
-
-
