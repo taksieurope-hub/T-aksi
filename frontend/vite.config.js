@@ -99,22 +99,51 @@ export default defineConfig({
   ],
 
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-      // Force ALL packages to share the exact same React instance.
-      // Must use path.resolve with __dirname so the path is absolute —
-      // relative strings like "node_modules/react" silently fail on Linux (Render).
-      "react":           path.resolve(__dirname, "./node_modules/react/index.js"),
-      "react-dom":       path.resolve(__dirname, "./node_modules/react-dom/index.js"),
-      "react-dom/client":path.resolve(__dirname, "./node_modules/react-dom/client.js"),
-      "react/jsx-runtime": path.resolve(__dirname, "./node_modules/react/jsx-runtime.js"),
-    },
-    // Vite module-graph level deduplication — belt AND suspenders
+    // ── WHY ARRAY FORM: When alias is an object, Vite matches by simple string
+    // prefix, so "react" matches "react/jsx-runtime" first → turns it into
+    // "<index.js>/jsx-runtime" → ENOTDIR crash on Linux (Render).
+    // Array form processes entries IN ORDER: specific subpaths matched before
+    // bare package names. This is the only correct way to alias React subpaths.
+    alias: [
+      // ① Subpath aliases — MUST come before bare package aliases
+      {
+        find: 'react/jsx-runtime',
+        replacement: path.resolve(__dirname, './node_modules/react/jsx-runtime.js'),
+      },
+      {
+        find: 'react/jsx-dev-runtime',
+        replacement: path.resolve(__dirname, './node_modules/react/jsx-dev-runtime.js'),
+      },
+      {
+        find: 'react-dom/client',
+        replacement: path.resolve(__dirname, './node_modules/react-dom/client.js'),
+      },
+      {
+        find: 'react-dom/server',
+        replacement: path.resolve(__dirname, './node_modules/react-dom/server.js'),
+      },
+      // ② Bare package aliases — must come AFTER subpath aliases above
+      {
+        find: 'react',
+        replacement: path.resolve(__dirname, './node_modules/react/index.js'),
+      },
+      {
+        find: 'react-dom',
+        replacement: path.resolve(__dirname, './node_modules/react-dom/index.js'),
+      },
+      // ③ App path alias
+      {
+        find: '@',
+        replacement: path.resolve(__dirname, './src'),
+      },
+    ],
+
+    // Belt-and-suspenders: catches nested node_modules with their own react copy
     dedupe: [
       'react',
       'react-dom',
-      'react-router-dom',
       'react-router',
+      'react-router-dom',
       'scheduler',
     ],
   },
@@ -124,53 +153,44 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // ── RULE: anything that imports React MUST share the same chunk
-          // as React itself, OR must resolve React via the alias above.
-          // The safest split strategy: keep ALL React-ecosystem packages together,
-          // only split truly independent heavy libs (Firebase, Maps).
-
           if (id.includes('node_modules')) {
-            // React core + everything that uses React context/hooks
-            // must all live in ONE chunk — never split these.
+            // ── React ecosystem: everything that calls createContext/useContext
+            // MUST land in the same chunk. Splitting any of these causes the
+            // "Cannot read properties of undefined (reading 'createContext')" crash.
             if (
               id.includes('/react/') ||
               id.includes('/react-dom/') ||
               id.includes('/scheduler/') ||
               id.includes('/react-router/') ||
               id.includes('/react-router-dom/') ||
-              id.includes('/@remix-run/') ||           // react-router v6 internals
-              id.includes('/react-is/') ||
-              id.includes('/prop-types/')
+              id.includes('/@remix-run/')     // react-router v6 internals
             ) {
               return 'vendor-react'
             }
 
-            // Heavy standalone libs — safe to split because they don't use React context
-            if (id.includes('/firebase/'))                               return 'vendor-firebase'
-            if (id.includes('/@googlemaps/') || id.includes('/google-maps/')) return 'vendor-maps'
-
-            // PayPal — keep separate but it WILL use the aliased React
-            if (id.includes('/paypal/') || id.includes('@paypal'))       return 'vendor-paypal'
-
-            // Radix + Sonner + all other React UI libs go in ONE chunk with React
-            // so their createContext calls all share the same React object.
-            // DO NOT split these into vendor-misc — that's what caused the crash.
+            // ── UI components: Radix, Sonner, Lucide all use React context
+            // and must NOT go into vendor-misc (separate chunk = separate React)
             if (
               id.includes('/@radix-ui/') ||
               id.includes('/sonner/') ||
-              id.includes('/lucide-react/') ||
-              id.includes('/class-variance-authority/') ||
-              id.includes('/clsx/') ||
-              id.includes('/tailwind-merge/')
+              id.includes('/lucide-react/')
             ) {
               return 'vendor-ui'
             }
 
-            // Everything else non-React
+            // ── Heavy independent libs (no React context usage)
+            if (id.includes('/firebase/'))   return 'vendor-firebase'
+            if (id.includes('/@googlemaps/') || id.includes('/google-maps/')) return 'vendor-maps'
+
+            // ── PayPal: separate chunk is fine because it resolves React
+            // via the alias above, not its own bundled copy
+            if (id.includes('/paypal/') || id.includes('@paypal')) return 'vendor-paypal'
+
+            // ── Everything else: pure utilities, non-React packages
             return 'vendor-misc'
           }
 
-          // App portal chunks — lazy loaded
+          // App portals — each downloads only when that portal is visited
           if (id.includes('/components/RiderPortal') || id.includes('/rider/'))   return 'portal-rider'
           if (id.includes('/components/DriverPortal') || id.includes('/driver/')) return 'portal-driver'
           if (id.includes('/components/AdminPortal') || id.includes('/admin/'))   return 'portal-admin'
