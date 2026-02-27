@@ -183,14 +183,18 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       ],
     });
     mapInstanceRef.current = map;
+    let geocodeTimer;
     map.addListener("idle", () => {
       setIsDragging(false);
       const c = map.getCenter();
       const lat = c.lat(), lng = c.lng();
       setCenter({ lat, lng });
-      new window.google.maps.Geocoder().geocode({ location: { lat, lng } }, (results, status) => {
-        setAddress(status === "OK" && results[0] ? results[0].formatted_address : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-      });
+      clearTimeout(geocodeTimer);
+      geocodeTimer = setTimeout(() => {
+        new window.google.maps.Geocoder().geocode({ location: { lat, lng } }, (results, status) => {
+          setAddress(status === "OK" && results[0] ? results[0].formatted_address : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        });
+      }, 100);
     });
     map.addListener("dragstart", () => setIsDragging(true));
   }, [isOpen]);
@@ -1037,11 +1041,13 @@ const RiderDashboard = () => {
   // ===========================================================================
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
-    loadGoogleMaps(GOOGLE_MAPS_API_KEY)
+    
+    // Explicitly use import.meta.env so Vite bakes the key in!
+    loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
       .then(() => setMapsLoaded(true))
       .catch(() => toast.error("Failed to load Google Maps"));
   }, []);
-
+  
   // ===========================================================================
   // Init
   // ===========================================================================

@@ -1269,9 +1269,12 @@ const DriverDashboard = () => {
   // ===========================================================================
   // FIX: Maps — use singleton loader, not a nested useEffect
   // ===========================================================================
+  
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
-    loadGoogleMaps(GOOGLE_MAPS_API_KEY)
+    
+    // Explicitly use import.meta.env so Vite bakes the key in!
+    loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
       .then(() => setMapsLoaded(true))
       .catch(() => toast.error("Failed to load Google Maps"));
   }, []);
@@ -1297,16 +1300,19 @@ const DriverDashboard = () => {
   const activeRideRef = useRef(activeRide);
   useEffect(() => { activeRideRef.current = activeRide; }, [activeRide]);
 
+  // 🛑 The Throttle Timer: Add this right above the function
+  const lastNetworkPingRef = useRef(0);
+
   const handleLocationUpdate = useCallback(async (location) => {
-    setDriverLocation(location);
+    setDriverLocation(location); // 1. Update the driver's local map instantly
+
+    // 2. THE SHIELD: Only send to the backend once every 10 seconds
+    const now = Date.now();
+    if (now - lastNetworkPingRef.current < 10000) return;
+    lastNetworkPingRef.current = now;
+
     try {
       await api.post("/driver/location", location);
-      const ride = activeRideRef.current;
-      if (ride?.status === "in_progress" && lastPositionRef.current) {
-        const d = hvKm(lastPositionRef.current.lat, lastPositionRef.current.lng, location.lat, location.lng);
-        setDistanceTraveled(prev => prev + d);
-        await api.post(`/rides/${ride.id}/update-tracking`, location);
-      }
       lastPositionRef.current = location;
     } catch (_) {}
   }, []);
