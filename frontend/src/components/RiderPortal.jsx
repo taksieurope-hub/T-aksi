@@ -68,11 +68,15 @@ const sanitiseAddress = (str = "") => str.trim().slice(0, 300);
 // =============================================================================
 // GOOGLE MAPS LOADER — singleton, never double-loads
 // =============================================================================
-let mapsLoadState = "idle"; // "idle" | "loading" | "loaded" | "error"
+let mapsLoadState = "idle";
 const mapsReadyCallbacks = [];
 
 const loadGoogleMaps = (apiKey) => {
-  if (mapsLoadState === "loaded") return Promise.resolve();
+  // Already loaded and verified
+  if (mapsLoadState === "loaded" && window.google?.maps) return Promise.resolve();
+  // State says loaded but google isn't there (e.g. script was removed) — reset
+  if (mapsLoadState === "loaded" && !window.google?.maps) mapsLoadState = "idle";
+
   if (mapsLoadState === "loading") return new Promise((res, rej) => mapsReadyCallbacks.push({ res, rej }));
 
   mapsLoadState = "loading";
@@ -144,7 +148,6 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
         if (inputRef.current) inputRef.current.blur();
       }
     });
-    // Cleanup: Google doesn't expose a destroy method but we can prevent re-attachment
     return () => { attachedRef.current = false; };
   }, [mapsLoaded]);
 };
@@ -408,7 +411,6 @@ const RiderAuth = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-[#050508]">
-      {/* Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-[#00ff88]/5 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-[#00d4ff]/5 rounded-full blur-3xl" />
@@ -420,7 +422,6 @@ const RiderAuth = () => {
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
         </Button>
 
-        {/* Logo */}
         <div className="mb-8">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#00ff88] to-[#00d4ff] flex items-center justify-center mb-4">
             <Rocket className="w-7 h-7 text-black" />
@@ -644,7 +645,7 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
 // SOS BUTTON
 // =============================================================================
 const SOSButton = ({ rideId, lat, lng }) => {
-  const [loading, setLoading]   = useState(false);
+  const [loading, setLoading]     = useState(false);
   const [triggered, setTriggered] = useState(false);
 
   const handleSOS = async () => {
@@ -778,6 +779,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
 
 // =============================================================================
 // WALLET TOP-UP MODAL
+// FIX: NaN guard + minimum ₾1 before rendering PayPal buttons
 // =============================================================================
 const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   const [amount, setAmount] = useState(20);
@@ -785,8 +787,11 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   const AMOUNTS = [5, 10, 20, 50];
 
   if (!isOpen) return null;
-  const finalAmount = custom ? parseFloat(custom) : amount;
+
+  // Guard: parseFloat("") → NaN, so fall back to 0
+  const finalAmount = custom ? (parseFloat(custom) || 0) : amount;
   const usdAmount   = (finalAmount * 0.37).toFixed(2);
+  const canPay      = finalAmount >= 1;
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
@@ -805,28 +810,36 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
         <Input type="number" placeholder="Custom amount (₾)" value={custom} min="1" max="1000"
           onChange={e => setCustom(e.target.value)}
           className="bg-white/5 border-white/10 text-white text-center h-11 rounded-xl mb-4" />
-        {finalAmount > 0 && (
-          <p className="text-gray-500 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD (PayPal)</p>
+        {canPay && (
+          <p className="text-gray-500 text-xs text-center mb-4">
+            ₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD (PayPal)
+          </p>
         )}
-        <PayPalButtons
-          fundingSource="card"
-          style={{ layout: "vertical", shape: "rect" }}
-          createOrder={(data, actions) => actions.order.create({
-            purchase_units: [{ amount: { value: usdAmount, currency_code: "USD" } }],
-            application_context: { shipping_preference: "NO_SHIPPING" },
-          })}
-          onApprove={async (data, actions) => {
-            await actions.order.capture();
-            try {
-              await api.post("/rider/wallet/topup", { amount: finalAmount, reference: data.orderID });
-              toast.success(`₾${finalAmount.toFixed(2)} added to your wallet!`);
-              onSuccess();
-              onClose();
-            } catch { toast.error("Payment captured but wallet not updated. Contact support."); }
-          }}
-          onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed"); }}
-          onCancel={() => toast.info("Payment cancelled")}
-        />
+        {canPay ? (
+          <PayPalButtons
+            fundingSource="card"
+            style={{ layout: "vertical", shape: "rect" }}
+            createOrder={(data, actions) => actions.order.create({
+              purchase_units: [{ amount: { value: usdAmount, currency_code: "USD" } }],
+              application_context: { shipping_preference: "NO_SHIPPING" },
+            })}
+            onApprove={async (data, actions) => {
+              await actions.order.capture();
+              try {
+                await api.post("/rider/wallet/topup", { amount: finalAmount, reference: data.orderID });
+                toast.success(`₾${finalAmount.toFixed(2)} added to your wallet!`);
+                onSuccess();
+                onClose();
+              } catch { toast.error("Payment captured but wallet not updated. Contact support."); }
+            }}
+            onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed"); }}
+            onCancel={() => toast.info("Payment cancelled")}
+          />
+        ) : (
+          <div className="bg-white/5 rounded-xl p-4 text-center mb-2">
+            <p className="text-white/30 text-sm">Enter ₾1 or more to show payment options</p>
+          </div>
+        )}
         <Button variant="ghost" className="w-full text-gray-500 mt-2 rounded-xl" onClick={onClose}>Cancel</Button>
       </div>
     </div>
@@ -991,7 +1004,7 @@ const RiderDashboard = () => {
   const [activeTab,       setActiveTab]       = useState("book");
   const [loading,         setLoading]         = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [mapsLoaded,      setMapsLoaded]      = useState(() => !!window.google);
+  const [mapsLoaded,      setMapsLoaded]      = useState(() => !!window.google?.maps);
 
   const [activeRide,        setActiveRide]       = useState(null);
   const [rideHistory,       setRideHistory]      = useState([]);
@@ -1009,25 +1022,25 @@ const RiderDashboard = () => {
   const [fareEstimate, setFareEstimate] = useState(null);
   const [surgeInfo,    setSurgeInfo]    = useState(null);
 
-  const [showPayPal,  setShowPayPal]  = useState(false);
-  const [showReceipt, setShowReceipt] = useState(null);
-  const [showTip,     setShowTip]     = useState(null);
-  const [showShare,   setShowShare]   = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [showTopUp,   setShowTopUp]   = useState(false);
-  const [showSaveFav, setShowSaveFav] = useState(null);
+  const [showPayPal,    setShowPayPal]    = useState(false);
+  const [showReceipt,   setShowReceipt]   = useState(null);
+  const [showTip,       setShowTip]       = useState(null);
+  const [showShare,     setShowShare]     = useState(false);
+  const [showSchedule,  setShowSchedule]  = useState(false);
+  const [showTopUp,     setShowTopUp]     = useState(false);
+  const [showSaveFav,   setShowSaveFav]   = useState(null);
   const [showFavorites, setShowFavorites] = useState(false);
-  const [showReferral, setShowReferral] = useState(false);
+  const [showReferral,  setShowReferral]  = useState(false);
 
   // ===========================================================================
   // Google Maps — load ONCE using the singleton loader
   // ===========================================================================
   useEffect(() => {
-    if (window.google) { setMapsLoaded(true); return; }
+    if (window.google?.maps) { setMapsLoaded(true); return; }
     loadGoogleMaps(GOOGLE_MAPS_API_KEY)
       .then(() => setMapsLoaded(true))
       .catch(() => toast.error("Failed to load Google Maps"));
-  }, []); // ← empty deps, runs once
+  }, []);
 
   // ===========================================================================
   // Init
@@ -1040,12 +1053,10 @@ const RiderDashboard = () => {
     api.get("/user/language").catch(() => {});
   }, []);
 
-  // Only re-fetch surge when pickup changes (not on every render)
   useEffect(() => {
     if (pickup.lat) fetchSurgeStatus();
   }, [pickup.lat, pickup.lng]); // eslint-disable-line
 
-  // Get location once maps loads
   useEffect(() => {
     if (mapsLoaded && !pickup.lat) getCurrentLocation();
   }, [mapsLoaded]); // eslint-disable-line
@@ -1061,8 +1072,7 @@ const RiderDashboard = () => {
         setActiveRide(res.data);
         handleRideStatusChange(res.data);
       } catch {}
-    }, 10000); // <--- MAKE SURE THIS IS 10000
-
+    }, 10000);
     return () => clearInterval(interval);
   }, [activeRide]);
 
@@ -1102,7 +1112,7 @@ const RiderDashboard = () => {
   const fetchScheduledRides = async () => { try { const res = await api.get("/rides/scheduled"); setScheduledRides(res.data.scheduled_rides || []); } catch {} };
 
   // ===========================================================================
-  // Route calculator — memoized deps to avoid spurious recalculations
+  // Route calculator
   // ===========================================================================
   const stopsSignature  = useMemo(() => stops.map(s => `${s.lat},${s.lng}`).join("|"), [stops]);
   const validStopsCount = useMemo(() => stops.filter(s => s.lat && s.lng).length, [stops]);
@@ -1250,13 +1260,13 @@ const RiderDashboard = () => {
   const carTypes = useMemo(() => Object.entries(PRICING_RULES).map(([key, val]) => ({ value: key, ...val })), []);
 
   const statusConfig = {
-    searching:   { color: "bg-amber-500/20 text-amber-400 border-amber-500/30",   label: "Searching" },
-    accepted:    { color: "bg-blue-500/20 text-blue-400 border-blue-500/30",       label: "Accepted" },
-    arrived:     { color: "bg-violet-500/20 text-violet-400 border-violet-500/30", label: "Arrived" },
-    in_progress: { color: "bg-[#00ff88]/15 text-[#00ff88] border-[#00ff88]/30",   label: "In Progress" },
+    searching:   { color: "bg-amber-500/20 text-amber-400 border-amber-500/30",       label: "Searching" },
+    accepted:    { color: "bg-blue-500/20 text-blue-400 border-blue-500/30",           label: "Accepted" },
+    arrived:     { color: "bg-violet-500/20 text-violet-400 border-violet-500/30",     label: "Arrived" },
+    in_progress: { color: "bg-[#00ff88]/15 text-[#00ff88] border-[#00ff88]/30",       label: "In Progress" },
     completed:   { color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30", label: "Completed" },
-    cancelled:   { color: "bg-red-500/20 text-red-400 border-red-500/30",         label: "Cancelled" },
-    no_drivers:  { color: "bg-gray-500/20 text-gray-400 border-gray-500/30",      label: "No Drivers" },
+    cancelled:   { color: "bg-red-500/20 text-red-400 border-red-500/30",             label: "Cancelled" },
+    no_drivers:  { color: "bg-gray-500/20 text-gray-400 border-gray-500/30",          label: "No Drivers" },
   };
 
   const rideCoord = (ride, field) => {
@@ -1453,9 +1463,9 @@ const RiderDashboard = () => {
               <p className="text-gray-500 text-xs font-medium mb-2">Payment</p>
               <div className="flex gap-2">
                 {[
-                  { val: "cash", label: "Cash" },
+                  { val: "cash",   label: "Cash" },
                   { val: "wallet", label: `Wallet ₾${user?.wallet_balance?.toFixed(2) || "0.00"}`, icon: Wallet },
-                  { val: "card",   label: "Card",   icon: CreditCard },
+                  { val: "card",   label: "Card", icon: CreditCard },
                 ].map(({ val, label, icon: Icon }) => (
                   <button key={val} onClick={() => {
                     if (val === "wallet" && (user?.wallet_balance || 0) <= 0) { toast.error("Wallet empty"); setShowTopUp(true); return; }
@@ -1476,28 +1486,46 @@ const RiderDashboard = () => {
               Request Ride
             </Button>
 
-            {/* PayPal inline for card payment */}
-            {showPayPal && paymentMethod === "card" && fareEstimate && (
-              <div className="bg-white/3 border border-white/10 rounded-2xl p-4">
-                <p className="text-center text-sm text-gray-400 mb-3">Pay ₾{fareEstimate.total.toFixed(2)} (${(fareEstimate.total * 0.37).toFixed(2)} USD)</p>
-                <PayPalButtons
-                  fundingSource="card"
-                  style={{ layout: "vertical", shape: "rect" }}
-                  createOrder={(data, actions) => actions.order.create({
-                    purchase_units: [{ amount: { value: (fareEstimate.total * 0.37).toFixed(2), currency_code: "USD" } }],
-                    application_context: { shipping_preference: "NO_SHIPPING" },
-                  })}
-                  onApprove={async (data, actions) => {
-                    await actions.order.capture();
-                    toast.success("Payment approved! Booking...");
-                    await processRideRequest(data.orderID);
-                  }}
-                  onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed."); setShowPayPal(false); }}
-                  onCancel={() => { toast.info("Payment cancelled."); setShowPayPal(false); }}
-                />
-                <button className="w-full text-center text-gray-600 text-xs mt-3 hover:text-gray-400 transition-colors" onClick={() => setShowPayPal(false)}>Cancel</button>
-              </div>
-            )}
+            {/* PayPal inline — card payment
+                FIX: fare fallback so PayPal renders even without a destination/routeInfo */}
+            {showPayPal && paymentMethod === "card" && (() => {
+              const amount = fareEstimate?.total ?? calculateFare(
+                carType,
+                routeInfo?.distance ?? 5,
+                0, 0,
+                validStopsCount,
+                surgeInfo?.multiplier ?? 1.0,
+                "card"
+              ).total;
+              const usd = (amount * 0.37).toFixed(2);
+              return (
+                <div className="bg-white/3 border border-white/10 rounded-2xl p-4">
+                  <p className="text-center text-sm text-gray-400 mb-3">
+                    Pay ₾{amount.toFixed(2)} (${usd} USD)
+                  </p>
+                  <PayPalButtons
+                    fundingSource="card"
+                    style={{ layout: "vertical", shape: "rect" }}
+                    createOrder={(data, actions) => actions.order.create({
+                      purchase_units: [{ amount: { value: usd, currency_code: "USD" } }],
+                      application_context: { shipping_preference: "NO_SHIPPING" },
+                    })}
+                    onApprove={async (data, actions) => {
+                      await actions.order.capture();
+                      toast.success("Payment approved! Booking...");
+                      await processRideRequest(data.orderID);
+                    }}
+                    onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed."); setShowPayPal(false); }}
+                    onCancel={() => { toast.info("Payment cancelled."); setShowPayPal(false); }}
+                  />
+                  <button
+                    className="w-full text-center text-gray-600 text-xs mt-3 hover:text-gray-400 transition-colors"
+                    onClick={() => setShowPayPal(false)}>
+                    Cancel
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* Scheduled rides preview */}
             {scheduledRides.length > 0 && (
@@ -1843,7 +1871,19 @@ const RiderDashboard = () => {
 
 // =============================================================================
 // PORTAL ROUTER
+// FIX: client-id guard — fallback to "sb" (sandbox) prevents SDK crash if
+//      VITE_PAYPAL_CLIENT_ID is momentarily undefined during hot-reload or
+//      a misconfigured build. In production on Render, the real key is used.
 // =============================================================================
+const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
+
+if (!PAYPAL_CLIENT_ID) {
+  console.error(
+    "❌ VITE_PAYPAL_CLIENT_ID is not set. " +
+    "Add it to your Render frontend service environment variables and redeploy."
+  );
+}
+
 const RiderPortal = () => {
   const { user }   = useAuth();
   const location   = useLocation();
@@ -1854,7 +1894,13 @@ const RiderPortal = () => {
   }
 
   return (
-    <PayPalScriptProvider options={{ "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID, currency: "USD" }}>
+    <PayPalScriptProvider
+      options={{
+        "client-id": PAYPAL_CLIENT_ID || "sb",
+        currency: "USD",
+        intent: "capture",
+      }}
+    >
       <Routes>
         <Route path="/"         element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<RiderDashboard />} />

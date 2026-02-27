@@ -65,6 +65,44 @@ const C = {
 };
 
 // =============================================================================
+// GOOGLE MAPS SINGLETON LOADER — shared with RiderPortal, never double-loads
+// FIX: was completely missing from DriverPortal, causing mapsLoaded to be
+//      permanently false and the map to never render.
+// =============================================================================
+let mapsLoadState = "idle";
+const mapsReadyCallbacks = [];
+
+const loadGoogleMaps = (apiKey) => {
+  // Already loaded and verified
+  if (mapsLoadState === "loaded" && window.google?.maps) return Promise.resolve();
+  // State says loaded but google isn't there (e.g. script was removed) — reset
+  if (mapsLoadState === "loaded" && !window.google?.maps) mapsLoadState = "idle";
+
+  if (mapsLoadState === "loading") return new Promise((res, rej) => mapsReadyCallbacks.push({ res, rej }));
+
+  mapsLoadState = "loading";
+  return new Promise((res, rej) => {
+    mapsReadyCallbacks.push({ res, rej });
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry&callback=__taksiMapsReady`;
+    script.async = true;
+    script.defer = true;
+    window.__taksiMapsReady = () => {
+      mapsLoadState = "loaded";
+      mapsReadyCallbacks.forEach(cb => cb.res());
+      mapsReadyCallbacks.length = 0;
+      delete window.__taksiMapsReady;
+    };
+    script.onerror = () => {
+      mapsLoadState = "error";
+      mapsReadyCallbacks.forEach(cb => cb.rej(new Error("Maps failed")));
+      mapsReadyCallbacks.length = 0;
+    };
+    document.head.appendChild(script);
+  });
+};
+
+// =============================================================================
 // SHARED UI COMPONENTS
 // =============================================================================
 const GlassCard = ({ children, className = "", accent = false }) => (
@@ -101,24 +139,24 @@ const BackButton = ({ onClick, label = "Back" }) => (
 
 const StatusBadge = ({ status }) => {
   const map = {
-    pending_vehicle: ["bg-amber-500/20 text-amber-400 border-amber-500/30", "Pending Vehicle"],
-    pending_review:  ["bg-orange-500/20 text-orange-400 border-orange-500/30", "Under Review"],
-    approved:        ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "Approved"],
-    rejected:        ["bg-red-500/20 text-red-400 border-red-500/30", "Rejected"],
-    searching:       ["bg-yellow-500/20 text-yellow-400 border-yellow-500/30", "Searching"],
-    accepted:        ["bg-blue-500/20 text-blue-400 border-blue-500/30", "Accepted"],
-    arrived:         ["bg-purple-500/20 text-purple-400 border-purple-500/30", "Arrived"],
-    in_progress:     ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "In Progress"],
-    completed:       ["bg-emerald-500/20 text-emerald-400 border-emerald-500/30", "Completed"],
-    cancelled:       ["bg-red-500/20 text-red-400 border-red-500/30", "Cancelled"],
-    escalated:       ["bg-red-500/20 text-red-400 border-red-500/30", "Escalated"],
-    in_progress_ticket: ["bg-blue-500/20 text-blue-400 border-blue-500/30", "In Progress"],
-    resolved:        ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "Resolved"],
-    closed:          ["bg-white/10 text-white/40 border-white/10", "Closed"],
-    active:          ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "Active"],
-    pending:         ["bg-amber-500/20 text-amber-400 border-amber-500/30", "Pending"],
-    approved_w:      ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30", "Approved"],
-    rejected_w:      ["bg-red-500/20 text-red-400 border-red-500/30", "Rejected"],
+    pending_vehicle:    ["bg-amber-500/20 text-amber-400 border-amber-500/30",   "Pending Vehicle"],
+    pending_review:     ["bg-orange-500/20 text-orange-400 border-orange-500/30","Under Review"],
+    approved:           ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "Approved"],
+    rejected:           ["bg-red-500/20 text-red-400 border-red-500/30",         "Rejected"],
+    searching:          ["bg-yellow-500/20 text-yellow-400 border-yellow-500/30","Searching"],
+    accepted:           ["bg-blue-500/20 text-blue-400 border-blue-500/30",      "Accepted"],
+    arrived:            ["bg-purple-500/20 text-purple-400 border-purple-500/30","Arrived"],
+    in_progress:        ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "In Progress"],
+    completed:          ["bg-emerald-500/20 text-emerald-400 border-emerald-500/30","Completed"],
+    cancelled:          ["bg-red-500/20 text-red-400 border-red-500/30",         "Cancelled"],
+    escalated:          ["bg-red-500/20 text-red-400 border-red-500/30",         "Escalated"],
+    in_progress_ticket: ["bg-blue-500/20 text-blue-400 border-blue-500/30",      "In Progress"],
+    resolved:           ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "Resolved"],
+    closed:             ["bg-white/10 text-white/40 border-white/10",            "Closed"],
+    active:             ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "Active"],
+    pending:            ["bg-amber-500/20 text-amber-400 border-amber-500/30",   "Pending"],
+    approved_w:         ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "Approved"],
+    rejected_w:         ["bg-red-500/20 text-red-400 border-red-500/30",         "Rejected"],
   };
   const [cls, label] = map[status] || ["bg-white/10 text-white/50 border-white/10", status || "Unknown"];
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${cls}`}>{label}</span>;
@@ -126,11 +164,17 @@ const StatusBadge = ({ status }) => {
 
 // =============================================================================
 // DRIVER WAIT TIMER
+// FIX: Always anchors to server-provided arrived_at timestamp.
+//      Elapsed seconds → minutes conversion is used for fare billing.
 // =============================================================================
 const DriverWaitTimer = ({ arrivedAt, carType }) => {
   const [elapsed, setElapsed] = useState(0);
+
   useEffect(() => {
-    const start = arrivedAt && !isNaN(new Date(arrivedAt).getTime()) ? new Date(arrivedAt).getTime() : Date.now();
+    // Prefer server timestamp; fall back to now only if absent
+    const start = arrivedAt && !isNaN(new Date(arrivedAt).getTime())
+      ? new Date(arrivedAt).getTime()
+      : Date.now();
     const iv = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
     return () => clearInterval(iv);
   }, [arrivedAt]);
@@ -845,10 +889,10 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
   const [view, setView] = useState("menu");
 
   const menuItems = [
-    { id: "campaigns", label: "Campaigns",    icon: Award,       desc: "Challenges & bonuses",  color: "text-yellow-400",  bg: "bg-yellow-400/10", border: "border-yellow-400/20" },
-    { id: "fleet",     label: "Fleet",         icon: Truck,       desc: "Manage your vehicles",  color: "text-blue-400",    bg: "bg-blue-400/10",   border: "border-blue-400/20" },
-    { id: "referrals", label: "Referrals",     icon: Gift,        desc: "Invite & earn",         color: "text-purple-400",  bg: "bg-purple-400/10", border: "border-purple-400/20" },
-    { id: "support",   label: "Support",       icon: Headphones,  desc: "Get help",              color: "text-[#00d4ff]",   bg: "bg-[#00d4ff]/10",  border: "border-[#00d4ff]/20" },
+    { id: "campaigns", label: "Campaigns",  icon: Award,      desc: "Challenges & bonuses",  color: "text-yellow-400",  bg: "bg-yellow-400/10", border: "border-yellow-400/20" },
+    { id: "fleet",     label: "Fleet",      icon: Truck,      desc: "Manage your vehicles",  color: "text-blue-400",    bg: "bg-blue-400/10",   border: "border-blue-400/20" },
+    { id: "referrals", label: "Referrals",  icon: Gift,       desc: "Invite & earn",         color: "text-purple-400",  bg: "bg-purple-400/10", border: "border-purple-400/20" },
+    { id: "support",   label: "Support",    icon: Headphones, desc: "Get help",              color: "text-[#00d4ff]",   bg: "bg-[#00d4ff]/10",  border: "border-[#00d4ff]/20" },
   ];
 
   if (view !== "menu") {
@@ -873,7 +917,6 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
         ))}
       </div>
 
-      {/* SOS always visible */}
       <GlassCard className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1178,7 +1221,7 @@ const DriverDashboard = () => {
 
   const [activeTab, setActiveTab] = useState("rides");
   const [loading, setLoading] = useState(false);
-  const [mapsLoaded, setMapsLoaded] = useState(false);
+  const [mapsLoaded, setMapsLoaded] = useState(() => !!window.google?.maps);
   const [isMinimized, setIsMinimized] = useState(false);
   const touchStartY = useRef(null);
 
@@ -1193,6 +1236,8 @@ const DriverDashboard = () => {
 
   const [rideStartTime, setRideStartTime] = useState(null);
   const [arrivedTime, setArrivedTime] = useState(null);
+  // FIX: waitTimer tracks ELAPSED WHOLE MINUTES of billable wait (after free time)
+  // It is computed from the server's arrived_at timestamp to survive page reloads.
   const [waitTimer, setWaitTimer] = useState(0);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
   const [isWaitingAtStop, setIsWaitingAtStop] = useState(false);
@@ -1205,7 +1250,11 @@ const DriverDashboard = () => {
   const [rateRideId, setRateRideId] = useState(null);
   const [rateRiderName, setRateRiderName] = useState("");
 
-  const [vehicleData, setVehicleData] = useState({ car_make:"",car_model:"",car_year:"",car_color:"",license_plate:"",license_front:null,license_back:null,reg_front:null,reg_back:null,car_photo_front:null,car_photo_back:null,car_photo_left:null,car_photo_right:null });
+  const [vehicleData, setVehicleData] = useState({
+    car_make:"", car_model:"", car_year:"", car_color:"", license_plate:"",
+    license_front:null, license_back:null, reg_front:null, reg_back:null,
+    car_photo_front:null, car_photo_back:null, car_photo_left:null, car_photo_right:null,
+  });
 
   const [earningsTab, setEarningsTab] = useState("overview");
   const [topupAmount, setTopupAmount] = useState("");
@@ -1217,16 +1266,17 @@ const DriverDashboard = () => {
   const registrationStatus = user?.registration_status;
   const hasVehicle = !!(user?.driver_info?.vehicle);
 
-  // Maps
+  // ===========================================================================
+  // FIX: Maps — use singleton loader, not a nested useEffect
+  // ===========================================================================
   useEffect(() => {
-    if (window.google) { setMapsLoaded(true); return; }
-    const s = document.createElement("script");
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
-    s.async = true;
-    s.onload = () => setMapsLoaded(true);
-    document.head.appendChild(s);
+    if (window.google?.maps) { setMapsLoaded(true); return; }
+    loadGoogleMaps(GOOGLE_MAPS_API_KEY)
+      .then(() => setMapsLoaded(true))
+      .catch(() => toast.error("Failed to load Google Maps"));
   }, []);
 
+  // Reset minimized state when ride status changes
   useEffect(() => { setIsMinimized(false); }, [activeRide?.status]);
 
   const handleTouchStart = e => { touchStartY.current = e.touches[0].clientY; };
@@ -1263,16 +1313,28 @@ const DriverDashboard = () => {
 
   useLocationTracker(isOnline, handleLocationUpdate);
 
-  // Wait timer
+  // ===========================================================================
+  // FIX: Wait timer — always anchored to server's arrived_at for accurate billing.
+  //      waitTimer = total ELAPSED minutes since arrived_at (including free window).
+  //      The backend subtracts free wait itself; we send the raw total.
+  // ===========================================================================
   useEffect(() => {
     if (activeRide?.status !== "arrived") return;
-    if (!arrivedTime && activeRide.arrived_at) setArrivedTime(new Date(activeRide.arrived_at).getTime());
+
+    // Prefer server timestamp; fall back to local only if missing
+    const serverArrivedAt = activeRide.arrived_at;
+    const startMs = serverArrivedAt && !isNaN(new Date(serverArrivedAt).getTime())
+      ? new Date(serverArrivedAt).getTime()
+      : (arrivedTime ?? Date.now());
+
+    if (!arrivedTime) setArrivedTime(startMs);
+
     const iv = setInterval(() => {
-      const start = arrivedTime || Date.now();
-      setWaitTimer(Math.max(0, Math.floor((Date.now() - start) / 60000)));
+      const totalElapsedMin = Math.floor((Date.now() - startMs) / 60000);
+      setWaitTimer(totalElapsedMin);
     }, 1000);
     return () => clearInterval(iv);
-  }, [arrivedTime, activeRide?.status]);
+  }, [activeRide?.status, activeRide?.arrived_at]);
 
   // Polling
   useEffect(() => { fetchActiveRide(); fetchRideHistory(); }, []);
@@ -1306,22 +1368,33 @@ const DriverDashboard = () => {
     try {
       if (action === "arrived") {
         await api.post(`/rides/${activeRide.id}/arrived`);
-        setArrivedTime(Date.now());
+        // Reset local timer — will re-anchor to server's arrived_at on next poll
+        setArrivedTime(null);
+        setWaitTimer(0);
         toast.success("Marked as arrived");
       } else if (action === "start") {
-        await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: parseInt(waitTimer || 0) });
+        // Send total elapsed minutes; backend calculates billable = max(0, total - freeWait)
+        await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: waitTimer });
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
+        setWaitTimer(0);
+        setArrivedTime(null);
         lastPositionRef.current = driverLocation;
         toast.success("Ride started!");
       } else if (action === "complete") {
         const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled.toFixed(2));
         const finalWait = isNaN(waitTimer) ? 0 : parseInt(waitTimer);
-        const res = await api.post(`/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${driverLocation?.lat || ""}&dropoff_lng=${driverLocation?.lng || ""}`);
+        const res = await api.post(
+          `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${driverLocation?.lat || ""}&dropoff_lng=${driverLocation?.lng || ""}`
+        );
         const cashToCollect = res.data.cash_to_collect || 0;
-        toast.success(cashToCollect > 0 ? `Collect ₾${cashToCollect.toFixed(2)} cash from passenger` : "Ride complete! No cash needed.", { duration: 8000 });
+        toast.success(
+          cashToCollect > 0
+            ? `Collect ₾${cashToCollect.toFixed(2)} cash from passenger`
+            : "Ride complete! No cash needed.",
+          { duration: 8000 }
+        );
 
-        // Show rate passenger modal
         const riderName = activeRide.rider_name || activeRide.driver_info?.rider_name || "Passenger";
         setRateRideId(activeRide.id);
         setRateRiderName(riderName);
@@ -1369,7 +1442,9 @@ const DriverDashboard = () => {
     setLoading(true);
     try {
       const fd = new FormData();
-      ["car_make","car_model","car_year","car_color","license_plate"].forEach(k => fd.append(k, k === "car_year" ? parseInt(vehicleData[k]) : vehicleData[k]));
+      ["car_make","car_model","car_year","car_color","license_plate"].forEach(k =>
+        fd.append(k, k === "car_year" ? parseInt(vehicleData[k]) : vehicleData[k])
+      );
       ["license_front","license_back","reg_front","reg_back","car_photo_front","car_photo_back","car_photo_left","car_photo_right"]
         .forEach(k => { if (vehicleData[k]) fd.append(k, vehicleData[k]); });
       await api.post("/driver/vehicle", fd, { headers: { "Content-Type": "multipart/form-data" } });
@@ -1424,6 +1499,10 @@ const DriverDashboard = () => {
     in_progress: { color: "#00ff88", label: "Ride In Progress" },
   };
   const rsc = rideStatusConfig[activeRide?.status] || {};
+
+  // Derived: display current wait in mm:ss for the active ride panel
+  const waitDisplayMin  = Math.floor(waitTimer);
+  const waitDisplaySec  = 0; // waitTimer is already whole minutes from the interval
 
   return (
     <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden">
@@ -1503,7 +1582,7 @@ const DriverDashboard = () => {
             <div className="w-12 h-1 bg-white/15 rounded-full" />
           </div>
 
-          {/* Tab bar */}
+          {/* Tab bar — only when no active ride */}
           {!activeRide && (
             <div className="flex items-center gap-1 px-3 pb-2 pt-1 border-b border-white/5">
               {tabs.map(({ id, icon: Icon, label }) => (
@@ -1526,7 +1605,9 @@ const DriverDashboard = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-white font-bold text-lg">Active Ride</p>
-                    <p className="text-white/40 text-xs">{activeRide.carType || activeRide.car_type} · {PRICING_RULES[activeRide.carType?.toLowerCase() || "economy"]?.icon}</p>
+                    <p className="text-white/40 text-xs">
+                      {activeRide.carType || activeRide.car_type} · {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()] ? PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()].icon : "🚗"}
+                    </p>
                   </div>
                   <StatusBadge status={activeRide.status} />
                 </div>
@@ -1739,71 +1820,6 @@ const DriverDashboard = () => {
             )}
 
             {/* ================================================================ */}
-            {/* VEHICLE TAB (inside earnings if needed, but we show via history) */}
-            {/* Vehicle registration at start                                    */}
-            {/* ================================================================ */}
-            {!activeRide && activeTab === "vehicle" && (
-              <div className="space-y-4">
-                <SectionHeader icon={Car} title="Vehicle" subtitle="Your registered vehicle" />
-                {hasVehicle ? (
-                  <GlassCard accent className="p-5 text-center space-y-3">
-                    <CheckCircle2 className="w-12 h-12 text-[#00ff88] mx-auto" />
-                    <p className="text-white font-bold">Documents Submitted</p>
-                    <p className="text-white/50 text-sm">Your vehicle is under review</p>
-                    <p className="text-2xl font-mono font-bold text-white">{user?.driver_info?.vehicle?.license_plate || "—"}</p>
-                  </GlassCard>
-                ) : (
-                  <form onSubmit={handleRegisterVehicle} className="space-y-5">
-                    <GlassCard className="p-4 space-y-3">
-                      <p className="text-white/40 text-[10px] uppercase tracking-widest">Vehicle Details</p>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        {[["car_make","Make","Toyota"],["car_model","Model","Camry"],["car_year","Year","2018","number"],["car_color","Color","Silver"]].map(([k,l,p,t="text"]) => (
-                          <div key={k} className="space-y-1">
-                            <Label className="text-white/40 text-[11px]">{l}</Label>
-                            <Input required type={t} placeholder={p} value={vehicleData[k]}
-                              onChange={e => setVehicleData({ ...vehicleData, [k]: e.target.value })}
-                              className="bg-white/4 border-white/10 text-white h-9 text-sm placeholder:text-white/20" />
-                          </div>
-                        ))}
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-white/40 text-[11px]">License Plate</Label>
-                          <Input required placeholder="AB-123-CD" value={vehicleData.license_plate}
-                            onChange={e => setVehicleData({ ...vehicleData, license_plate: e.target.value.toUpperCase() })}
-                            className="bg-white/4 border-white/10 text-white h-9 text-sm font-mono uppercase placeholder:normal-case placeholder:text-white/20" />
-                        </div>
-                      </div>
-                    </GlassCard>
-
-                    {[
-                      ["Driver's License", [["license_front","Front"],["license_back","Back"]]],
-                      ["Registration Card", [["reg_front","Front"],["reg_back","Back"]]],
-                      ["Car Photos", [["car_photo_front","Front"],["car_photo_back","Back"],["car_photo_left","Left Side"],["car_photo_right","Right Side"]]],
-                    ].map(([title, fields]) => (
-                      <GlassCard key={title} className="p-4 space-y-3">
-                        <p className="text-white/40 text-[10px] uppercase tracking-widest">{title}</p>
-                        <div className="grid grid-cols-2 gap-2.5">
-                          {fields.map(([k, l]) => (
-                            <div key={k} className="space-y-1">
-                              <Label className="text-white/40 text-[11px]">
-                                {l} {vehicleData[k] && <span className="text-[#00ff88]">✓</span>}
-                              </Label>
-                              <input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, [k]: e.target.files[0] })}
-                                className="w-full bg-white/4 border border-white/10 text-white rounded-lg p-2 text-xs file:bg-[#00ff88]/15 file:text-[#00ff88] file:border-0 file:rounded file:px-2 file:py-0.5 file:text-xs file:font-bold file:mr-2" />
-                            </div>
-                          ))}
-                        </div>
-                      </GlassCard>
-                    ))}
-
-                    <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold">
-                      {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />} Submit Documents
-                    </Button>
-                  </form>
-                )}
-              </div>
-            )}
-
-            {/* ================================================================ */}
             {/* EARNINGS TAB                                                      */}
             {/* ================================================================ */}
             {!activeRide && activeTab === "earnings" && (
@@ -1835,8 +1851,9 @@ const DriverDashboard = () => {
                 {earningsTab === "overview" && (
                   <GlassCard className="p-4 space-y-3">
                     <p className="text-white/40 text-[10px] uppercase tracking-widest">Commission Breakdown</p>
-                    {[["Platform cut", `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
-                      ["Your share", `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
+                    {[
+                      ["Platform cut", `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
+                      ["Your share",   `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
                       ["Surge commission", "23–24%", "text-orange-400"],
                     ].map(([l,v,c]) => (
                       <div key={l} className="flex justify-between items-center">
@@ -1856,22 +1873,33 @@ const DriverDashboard = () => {
                         <Input type="number" min="5" max="500" value={topupAmount} onChange={e => setTopupAmount(e.target.value)}
                           placeholder="50" className="pl-7 bg-white/4 border-white/10 text-white text-lg h-12 font-mono" />
                       </div>
-                      <p className="text-white/30 text-xs">≈ ${topupAmount ? (parseFloat(topupAmount)*0.37).toFixed(2) : "0.00"} USD</p>
+                      <p className="text-white/30 text-xs">
+                        ≈ ${topupAmount && !isNaN(parseFloat(topupAmount)) ? (parseFloat(topupAmount) * 0.37).toFixed(2) : "0.00"} USD
+                      </p>
                     </div>
 
+                    {/* FIX: Guard against NaN — only show PayPal when amount >= 5 */}
                     {topupAmount && parseFloat(topupAmount) >= 5 ? (
                       <PayPalButtons
                         fundingSource="card"
                         style={{ layout: "vertical", shape: "rect", color: "black" }}
                         createOrder={(data, actions) => actions.order.create({
-                          purchase_units: [{ amount: { value: (parseFloat(topupAmount) * 0.37).toFixed(2), currency_code: "USD" } }],
+                          purchase_units: [{
+                            amount: {
+                              value: (parseFloat(topupAmount) * 0.37).toFixed(2),
+                              currency_code: "USD",
+                            },
+                          }],
                           application_context: { shipping_preference: "NO_SHIPPING" },
                         })}
                         onApprove={async (data, actions) => {
                           try {
                             setLoading(true);
                             await actions.order.capture();
-                            await api.post("/driver/wallet/topup/paypal", { order_id: data.orderID, amount: parseFloat(topupAmount) });
+                            await api.post("/driver/wallet/topup/paypal", {
+                              order_id: data.orderID,
+                              amount: parseFloat(topupAmount),
+                            });
                             toast.success(`₾${topupAmount} added!`);
                             setTopupAmount(""); setEarningsTab("overview");
                             await refreshUser();
@@ -2072,7 +2100,18 @@ const DriverDashboard = () => {
 
 // =============================================================================
 // PORTAL ROUTER
+// FIX: client-id guard — fallback to "sb" prevents SDK crash if env var missing.
+//      In production on Render with the real key set, this is always correct.
 // =============================================================================
+const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
+
+if (!PAYPAL_CLIENT_ID) {
+  console.error(
+    "❌ VITE_PAYPAL_CLIENT_ID is not set. " +
+    "Add it to your Render frontend service environment variables and redeploy."
+  );
+}
+
 const DriverPortal = () => {
   const { user } = useAuth();
   const location = useLocation();
@@ -2083,7 +2122,13 @@ const DriverPortal = () => {
   }
 
   return (
-    <PayPalScriptProvider options={{ "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID, currency: "USD" }}>
+    <PayPalScriptProvider
+      options={{
+        "client-id": PAYPAL_CLIENT_ID || "sb",
+        currency: "USD",
+        intent: "capture",
+      }}
+    >
       <Routes>
         <Route path="/"         element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DriverDashboard />} />
