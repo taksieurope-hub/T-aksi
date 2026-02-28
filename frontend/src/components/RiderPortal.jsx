@@ -37,7 +37,7 @@ import {
   Plus, TrendingUp, Timer, CreditCard, Target, Route as RouteIcon, Wallet,
   Share2, Calendar, Heart, AlertCircle, Gift, Copy, ChevronRight,
   Receipt, DollarSign, Bell, Bookmark, Send, ChevronDown, ChevronUp, Map,
-  ArrowRight, MoreHorizontal, Sparkles,
+  ArrowRight, MoreHorizontal, Sparkles
 } from "lucide-react";
 
 // =============================================================================
