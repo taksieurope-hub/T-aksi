@@ -1058,21 +1058,23 @@ const NavHUD = ({ step, nextStep, speed }) => {
 // MAP STYLES — white roads, no blue lines, no transit clutter
 // =============================================================================
 const MAP_STYLES = [
-  { elementType: "geometry",           stylers: [{ color: "#ececec" }] },
-  { elementType: "labels.icon",        stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill",   stylers: [{ color: "#888888" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
-  { featureType: "road",               elementType: "geometry",        stylers: [{ color: "#ffffff" }] },
-  { featureType: "road",               elementType: "geometry.stroke", stylers: [{ color: "#e0e0e0" }] },
-  { featureType: "road.highway",       elementType: "geometry",        stylers: [{ color: "#f5f5f5" }] },
-  { featureType: "road.highway",       elementType: "geometry.stroke", stylers: [{ color: "#d8d8d8" }] },
-  { featureType: "road.arterial",      elementType: "geometry",        stylers: [{ color: "#fafafa" }] },
-  { featureType: "road.local",         elementType: "geometry",        stylers: [{ color: "#ffffff" }] },
-  { featureType: "water",              elementType: "geometry",        stylers: [{ color: "#c8dff0" }] },
-  { featureType: "landscape",          elementType: "geometry",        stylers: [{ color: "#f0f0f0" }] },
-  { featureType: "poi",                stylers: [{ visibility: "off" }] },
-  { featureType: "transit",            stylers: [{ visibility: "off" }] },
-  { featureType: "administrative",     elementType: "geometry",        stylers: [{ visibility: "off" }] },
+  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ visibility: "off" }] },
+  { featureType: "poi", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#2f3948" }] },
+  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] },
 ];
 
 // =============================================================================
@@ -1118,15 +1120,28 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   useEffect(() => {
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 41.7151, lng: 44.8271 }, zoom: 17,
-      tilt: 45, heading: 0,
-      disableDefaultUI: true, gestureHandling: "greedy",
-      backgroundColor: "#ececec", styles: MAP_STYLES,
+      center: { lat: 41.7151, lng: 44.8271 }, 
+      zoom: 17,
+      tilt: 45, 
+      heading: 0,
+      disableDefaultUI: true, 
+      gestureHandling: "greedy",
+      backgroundColor: "#07070f", // Match your app background to prevent white flashes
+      styles: MAP_STYLES,
+      // Push the visual center of the map up by 200 pixels
+      padding: { bottom: 200, left: 0, right: 0, top: 0 } 
     });
-    map.addListener("dragstart", () => setIsFollowing(false));
     routeRendererRef.current = new window.google.maps.DirectionsRenderer({
-      map, suppressMarkers: false, preserveViewport: true,
-      polylineOptions: { strokeColor: "#00cc77", strokeWeight: 6, strokeOpacity: 0.95 },
+      map, 
+      suppressMarkers: false, 
+      preserveViewport: true,
+      polylineOptions: { 
+        strokeColor: "#00ff88", // Matched to your UI accent
+        strokeWeight: 7, 
+        strokeOpacity: 0.8,
+        strokeLineCap: "round", // Makes the start/end of the line smooth
+        strokeLineJoin: "round" // Smooths the corners when turning
+      },
     });
     directionsServiceRef.current = new window.google.maps.DirectionsService();
     mapInstanceRef.current = map;
@@ -1145,10 +1160,15 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       markerRef.current = new window.google.maps.Marker({
         position: pos, map: mapInstanceRef.current, zIndex: 1000,
         icon: {
-          path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 7, fillColor: "#00cc77", fillOpacity: 1,
-          strokeColor: "#fff", strokeWeight: 2,
-          rotation: 0, anchor: new window.google.maps.Point(0, 2.5),
+          // A sharper, more aerodynamic arrow path
+          path: "M-2,0 L0,-5 L2,0 L0,-1.5 Z", 
+          scale: 8, 
+          fillColor: "#00ff88", 
+          fillOpacity: 1,
+          strokeColor: "#ffffff", 
+          strokeWeight: 2,
+          rotation: 0, 
+          anchor: new window.google.maps.Point(0, -2.5),
         },
       });
     } else {

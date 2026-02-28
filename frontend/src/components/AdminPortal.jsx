@@ -27,8 +27,6 @@ import {
   AlertTriangle, RefreshCw, Eye, ChevronRight, Siren,
 } from "lucide-react";
 
-const ADMIN_PASSWORD = "D'Ahl-Enterprise9409145169086";
-
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -381,6 +379,8 @@ const SOSPanel = () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN LOGIN
+// FIX: Removed ADMIN_PASSWORD constant and client-side password check.
+// All authentication now goes through the backend /api/admin/login endpoint.
 // ─────────────────────────────────────────────────────────────────────────────
 const AdminLogin = () => {
   const { login } = useAuth();
@@ -392,26 +392,16 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      if (password === ADMIN_PASSWORD) {
-        login("master_admin_token", {
-          id: "admin_local", name: "System", surname: "Admin",
-          user_type: "admin", cellphone: "admin_master",
-        });
-        toast.success("Command Center unlocked.");
-        navigate("/admin/dashboard");
-      } else {
-        const res = await api.post(`/auth/login`, { cellphone: "admin", password });
-        if (res.data.user.user_type === "admin") {
-          login(res.data.token, res.data.user);
-          toast.success("Welcome to Command Center");
-          navigate("/admin/dashboard");
-        } else {
-          toast.error("Access denied: not an admin account");
-        }
-      }
-    } catch {
-      toast.error("Invalid credentials");
-    } finally { setLoading(false); }
+      // All admin auth goes through the backend — never validated on the client
+      const res = await api.post("/admin/login", { password });
+      login(res.data.token, res.data.user);
+      toast.success("Welcome to Command Center");
+      navigate("/admin/dashboard");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid credentials");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -1004,7 +994,8 @@ const AdminDashboard = () => {
           {/* ── SOS ── */}
           <TabsContent value="sos">
             <SOSPanel />
-          </TabsContent>        </Tabs>
+          </TabsContent>
+        </Tabs>
 
         {/* ── DRIVER PENALTY MANAGER ── */}
         <div className="mt-12 mb-8 border-t border-purple-500/30 pt-6">

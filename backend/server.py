@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, storage
 
 from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form
 import shutil
@@ -32,9 +32,23 @@ load_dotenv(ROOT_DIR / ".env")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("taksi")
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "taksi_galactic_secret_2025_secure_key")
-JWT_ALGORITHM = "HS256"
+import os
+import sys
+
+# 1. Grab the variables
+JWT_SECRET = os.environ.get("JWT_SECRET")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+
+# 2. Force a fatal crash if they are missing
+if not JWT_SECRET or JWT_SECRET == "taksi_galactic_secret_2025_secure_key":
+    print("🚨 FATAL ERROR: JWT_SECRET is missing or insecure! Shutting down.")
+    sys.exit(1)
+
+if not ADMIN_PASSWORD:
+    print("🚨 FATAL ERROR: ADMIN_PASSWORD is missing! Shutting down.")
+    sys.exit(1)
+
+JWT_ALGORITHM = "HS256"
 
 if not ADMIN_PASSWORD:
     raise RuntimeError("ADMIN_PASSWORD environment variable is not set")
@@ -50,6 +64,9 @@ if PAYPAL_MODE == "sandbox":
 else:
     PAYPAL_API_BASE = "https://api-m.paypal.com"
     logger.info("PayPal is running in LIVE mode")
+
+# Firebase Storage bucket name (set FIREBASE_STORAGE_BUCKET in env, e.g. your-project.appspot.com)
+FIREBASE_STORAGE_BUCKET = os.environ.get("FIREBASE_STORAGE_BUCKET", "")
 
 # CORS
 ALLOW_ORIGINS = [
@@ -72,12 +89,12 @@ def init_firebase():
     try:
         if FIREBASE_SA_JSON:
             cred = credentials.Certificate(json.loads(FIREBASE_SA_JSON))
-            firebase_admin.initialize_app(cred)
+            firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
             logger.info("Firebase Admin initialized from FIREBASE_SERVICE_ACCOUNT_JSON")
             return
         if SERVICE_ACCOUNT_PATH.exists():
             cred = credentials.Certificate(str(SERVICE_ACCOUNT_PATH))
-            firebase_admin.initialize_app(cred)
+            firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
             logger.info(f"Firebase Admin initialized from file: {SERVICE_ACCOUNT_PATH}")
             return
         firebase_admin.initialize_app()
@@ -187,6 +204,28 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional
     return None
 
 
+# =========================
+# ADMIN AUTH DEPENDENCY
+# FIX #1: All /api/admin/* routes now require a valid JWT with user_type=admin
+# =========================
+
+def get_admin_user(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = authorization.replace("Bearer ", "")
+    decoded = decode_token(token)
+    if not decoded or "user_id" not in decoded:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    db = get_db()
+    user_doc = db.collection("users").document(decoded["user_id"]).get()
+    if not user_doc.exists:
+        raise HTTPException(status_code=401, detail="User not found")
+    user_data = user_doc.to_dict()
+    if user_data.get("user_type") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return decoded["user_id"]
+
+
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371
     dlat = math.radians(lat2 - lat1)
@@ -224,6 +263,29 @@ async def get_paypal_token() -> Optional[str]:
 
 
 # =========================
+# FIREBASE STORAGE HELPER
+# FIX #2: Upload driver documents to Firebase Storage (not local disk)
+# =========================
+
+async def upload_file_to_storage(file: UploadFile, path: str) -> Optional[str]:
+    """Upload a file to Firebase Storage and return its public URL."""
+    if not file:
+        return None
+    if not FIREBASE_STORAGE_BUCKET:
+        logger.warning("FIREBASE_STORAGE_BUCKET not set — file upload skipped")
+        return None
+    try:
+        bucket = storage.bucket()
+        blob = bucket.blob(path)
+        blob.upload_from_file(file.file, content_type=file.content_type or "application/octet-stream")
+        blob.make_public()
+        return blob.public_url
+    except Exception as e:
+        logger.error(f"Firebase Storage upload failed for {path}: {e}")
+        return None
+
+
+# =========================
 # FASTAPI APP
 # =========================
 
@@ -234,7 +296,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "https://t-aksi-frontend.onrender.com",
-        "https://taksi-admin.onrender.com", # 👈 Add this line!
+        "https://taksi-admin.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -259,7 +321,7 @@ AUTH_MAX_REQUESTS = 10
 ip_tracker: dict = defaultdict(list)
 auth_ip_tracker: dict = defaultdict(list)
 
-AUTH_PATHS = {"/api/auth/login", "/api/rider/login", "/api/driver/login", "/api/auth/register/rider", "/api/auth/register/driver", "/api/driver/register"}
+AUTH_PATHS = {"/api/auth/login", "/api/rider/login", "/api/driver/login", "/api/auth/register/rider", "/api/auth/register/driver", "/api/driver/register", "/api/admin/login"}
 
 
 @app.middleware("http")
@@ -808,6 +870,50 @@ async def login(data: UserLogin):
     return {"token": token, "user": serialize_firestore_data(safe_user)}
 
 
+# =========================
+# ADMIN LOGIN ENDPOINT
+# FIX #3: Dedicated admin login — validates against ADMIN_PASSWORD env var
+# then issues a proper JWT that admin routes can verify
+# =========================
+
+class AdminLoginRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
+
+@app.post("/api/admin/login", tags=["Admin"])
+async def admin_login(data: AdminLoginRequest):
+    if data.password != ADMIN_PASSWORD:
+        raise HTTPException(401, "Invalid admin credentials")
+    # Return a synthetic admin user token — no DB record needed
+    # The token encodes role=admin; get_admin_user validates user_type from DB.
+    # If you have a real admin user in Firestore, look it up by a dedicated admin phone/ID.
+    # For a simple single-admin setup we issue a special token tied to "admin_master".
+    db = get_db()
+    # Look for an existing admin user in Firestore
+    admins = list(db.collection("users").where("user_type", "==", "admin").limit(1).stream())
+    if admins:
+        admin_doc = admins[0]
+        token = create_token(admin_doc.id, "admin")
+        safe_user = {k: v for k, v in admin_doc.to_dict().items() if k != "password_hash"}
+        safe_user["id"] = admin_doc.id
+        return {"token": token, "user": serialize_firestore_data(safe_user)}
+    else:
+        # No admin user in DB yet — create one on first login
+        admin_ref = db.collection("users").document("admin_master")
+        admin_data = {
+            "id": "admin_master",
+            "name": "System",
+            "surname": "Admin",
+            "cellphone": "admin",
+            "cellphone_norm": "admin",
+            "user_type": "admin",
+            "created_at": firestore.SERVER_TIMESTAMP,
+        }
+        admin_ref.set(admin_data, merge=True)
+        token = create_token("admin_master", "admin")
+        return {"token": token, "user": {**admin_data, "created_at": now_iso()}}
+
+
 @app.post("/api/driver/login", tags=["Auth"])
 async def driver_login(data: UserLogin):
     db = get_db()
@@ -951,27 +1057,25 @@ async def register_vehicle(
     if not doc.exists:
         raise HTTPException(404, "Driver not found")
 
-    os.makedirs("uploads", exist_ok=True)
+    # FIX #2: Upload to Firebase Storage instead of local disk
+    uid_prefix = f"driver_docs/{user_id}"
 
-    def save_file(file: UploadFile, prefix: str):
+    async def upload(file: UploadFile, prefix: str) -> Optional[str]:
         if not file:
             return None
         ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "bin"
-        file_name = f"{user_id}_{prefix}_{uuid.uuid4().hex[:8]}.{ext}"
-        file_path = f"uploads/{file_name}"
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        return f"/uploads/{file_name}"
+        path = f"{uid_prefix}/{prefix}_{uuid.uuid4().hex[:8]}.{ext}"
+        return await upload_file_to_storage(file, path)
 
     document_urls = {
-        "license_front": save_file(license_front, "lic_front"),
-        "license_back": save_file(license_back, "lic_back"),
-        "reg_front": save_file(reg_front, "reg_front"),
-        "reg_back": save_file(reg_back, "reg_back"),
-        "car_photo_front": save_file(car_photo_front, "car_front"),
-        "car_photo_back": save_file(car_photo_back, "car_back"),
-        "car_photo_left": save_file(car_photo_left, "car_left"),
-        "car_photo_right": save_file(car_photo_right, "car_right"),
+        "license_front":   await upload(license_front,    "lic_front"),
+        "license_back":    await upload(license_back,     "lic_back"),
+        "reg_front":       await upload(reg_front,        "reg_front"),
+        "reg_back":        await upload(reg_back,         "reg_back"),
+        "car_photo_front": await upload(car_photo_front,  "car_front"),
+        "car_photo_back":  await upload(car_photo_back,   "car_back"),
+        "car_photo_left":  await upload(car_photo_left,   "car_left"),
+        "car_photo_right": await upload(car_photo_right,  "car_right"),
     }
 
     tier = await get_vehicle_tier_from_ai(car_make, car_model, car_year)
@@ -1109,7 +1213,6 @@ async def request_withdrawal(req: WithdrawRequest):
 
     driver_ref.update({update_field: firestore.Increment(-total_deduction)})
 
-    # ── CHANGE 1: Added driver_name and driver_phone ──────────────────────────
     db.collection("driver_withdrawals").add({
         "driver_id": req.driver_id,
         "driver_name": f"{data.get('name', '')} {data.get('surname', '')}".strip(),
@@ -2244,6 +2347,7 @@ async def get_rider_history(user_id: str = Depends(get_current_user_id)):
     return {"rides": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in rides]}
 
 
+# FIX #4: Removed duplicate /api/rider/active-ride — keeping only ONE definition
 @app.get("/api/rider/active-ride", tags=["Rider"])
 async def get_active_ride(user_id: str = Depends(get_current_user_id)):
     if not user_id:
@@ -2264,11 +2368,11 @@ async def get_active_ride(user_id: str = Depends(get_current_user_id)):
 
 
 # =========================
-# ADMIN ROUTES
+# ADMIN ROUTES — ALL PROTECTED with get_admin_user dependency
 # =========================
 
 @app.get("/api/admin/dashboard", tags=["Admin"])
-async def admin_dashboard():
+async def admin_dashboard(admin_id: str = Depends(get_admin_user)):
     db = get_db()
     riders = list(db.collection("users").where("user_type", "==", "rider").stream())
     drivers = list(db.collection("users").where("user_type", "==", "driver").stream())
@@ -2297,14 +2401,14 @@ async def admin_dashboard():
 
 
 @app.get("/api/admin/riders", tags=["Admin"])
-async def admin_riders():
+async def admin_riders(admin_id: str = Depends(get_admin_user)):
     db = get_db()
     riders = db.collection("users").where("user_type", "==", "rider").stream()
     return {"riders": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in riders]}
 
 
 @app.get("/api/admin/riders/{id}", tags=["Admin"])
-async def get_admin_rider_detail(id: str):
+async def get_admin_rider_detail(id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     doc = db.collection("users").document(id).get()
     if not doc.exists:
@@ -2317,14 +2421,14 @@ async def get_admin_rider_detail(id: str):
 
 
 @app.get("/api/admin/drivers", tags=["Admin"])
-async def admin_drivers():
+async def admin_drivers(admin_id: str = Depends(get_admin_user)):
     db = get_db()
     drivers = db.collection("users").where("user_type", "==", "driver").stream()
     return {"drivers": [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in drivers]}
 
 
 @app.get("/api/admin/drivers/pending", tags=["Admin"])
-async def get_pending_drivers():
+async def get_pending_drivers(admin_id: str = Depends(get_admin_user)):
     db = get_db()
     all_drivers = list(db.collection("users").where("user_type", "==", "driver").stream())
     pending = [d for d in all_drivers if d.to_dict().get("registration_status") == "pending_review"]
@@ -2332,7 +2436,7 @@ async def get_pending_drivers():
 
 
 @app.get("/api/admin/drivers/{id}", tags=["Admin"])
-async def get_admin_driver_detail(id: str):
+async def get_admin_driver_detail(id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     doc = db.collection("users").document(id).get()
     if not doc.exists:
@@ -2341,7 +2445,7 @@ async def get_admin_driver_detail(id: str):
 
 
 @app.post("/api/admin/drivers/{id}/approve", tags=["Admin"])
-async def admin_approve_driver(id: str):
+async def admin_approve_driver(id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     db.collection("users").document(id).update({
         "registration_status": "approved",
@@ -2351,7 +2455,7 @@ async def admin_approve_driver(id: str):
 
 
 @app.post("/api/admin/drivers/{id}/reject", tags=["Admin"])
-async def admin_reject_driver(id: str, reason: str = "Documents not satisfactory"):
+async def admin_reject_driver(id: str, reason: str = "Documents not satisfactory", admin_id: str = Depends(get_admin_user)):
     db = get_db()
     db.collection("users").document(id).update({
         "registration_status": "rejected",
@@ -2363,7 +2467,7 @@ async def admin_reject_driver(id: str, reason: str = "Documents not satisfactory
 
 @app.post("/api/admin/users/{id}/add-balance", tags=["Admin"])
 @app.post("/api/admin/add-balance/{id}", tags=["Admin"])
-async def admin_add_balance(id: str, req: AdminAddBalanceRequest):
+async def admin_add_balance(id: str, req: AdminAddBalanceRequest, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     ref = db.collection("users").document(id)
     doc = ref.get()
@@ -2387,6 +2491,7 @@ async def admin_add_balance(id: str, req: AdminAddBalanceRequest):
         "target_user_type": user_type,
         "amount": req.amount,
         "reason": req.reason,
+        "admin_id": admin_id,
         "admin_action": "add_balance",
         "timestamp": firestore.SERVER_TIMESTAMP,
     })
@@ -2395,14 +2500,14 @@ async def admin_add_balance(id: str, req: AdminAddBalanceRequest):
 
 
 @app.get("/api/admin/topups/pending", tags=["Admin"])
-async def get_pending_topups():
+async def get_pending_topups(admin_id: str = Depends(get_admin_user)):
     db = get_db()
     topups = db.collection("driver_topup_requests").where("status", "==", "pending").stream()
     return {"pending_topups": [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in topups]}
 
 
 @app.post("/api/admin/topups/{id}/approve", tags=["Admin"])
-async def approve_topup(id: str):
+async def approve_topup(id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     topup_doc = db.collection("driver_topup_requests").document(id).get()
     if not topup_doc.exists:
@@ -2419,23 +2524,25 @@ async def approve_topup(id: str):
     db.collection("driver_topup_requests").document(id).update({
         "status": "approved",
         "approved_at": firestore.SERVER_TIMESTAMP,
+        "approved_by": admin_id,
     })
     return {"message": f"Top-up of ₾{amount} approved"}
 
 
 @app.post("/api/admin/topups/{id}/reject", tags=["Admin"])
-async def reject_topup(id: str, reason: str = "Payment not verified"):
+async def reject_topup(id: str, reason: str = "Payment not verified", admin_id: str = Depends(get_admin_user)):
     db = get_db()
     db.collection("driver_topup_requests").document(id).update({
         "status": "rejected",
         "rejection_reason": reason,
         "rejected_at": firestore.SERVER_TIMESTAMP,
+        "rejected_by": admin_id,
     })
     return {"message": "Top-up request rejected"}
 
 
 @app.get("/api/admin/withdrawals/pending", tags=["Admin"])
-async def get_pending_withdrawals():
+async def get_pending_withdrawals(admin_id: str = Depends(get_admin_user)):
     db = get_db()
     withdrawals = db.collection("driver_withdrawals").where("status", "==", "pending").stream()
     return {"pending_withdrawals": [serialize_firestore_data({**w.to_dict(), "id": w.id}) for w in withdrawals]}
@@ -2443,7 +2550,7 @@ async def get_pending_withdrawals():
 
 @app.post("/api/admin/withdrawals/{id}/approve", tags=["Admin"])
 @app.post("/api/admin/withdrawal/{id}/approve", tags=["Admin"])
-async def approve_withdrawal(id: str):
+async def approve_withdrawal(id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     withdrawal_doc = db.collection("driver_withdrawals").document(id).get()
     if not withdrawal_doc.exists:
@@ -2456,12 +2563,14 @@ async def approve_withdrawal(id: str):
     db.collection("driver_withdrawals").document(id).update({
         "status": "approved",
         "approved_at": firestore.SERVER_TIMESTAMP,
+        "approved_by": admin_id,
     })
 
     db.collection("admin_balance_logs").add({
         "target_user_id": driver_id,
         "amount": -amount,
         "reason": f"Withdrawal approved (ID: {id})",
+        "admin_id": admin_id,
         "admin_action": "withdrawal_approved",
         "timestamp": firestore.SERVER_TIMESTAMP,
     })
@@ -2471,7 +2580,7 @@ async def approve_withdrawal(id: str):
 
 @app.post("/api/admin/withdrawals/{id}/reject", tags=["Admin"])
 @app.post("/api/admin/withdrawal/{id}/reject", tags=["Admin"])
-async def reject_withdrawal(id: str):
+async def reject_withdrawal(id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     withdrawal_doc = db.collection("driver_withdrawals").document(id).get()
     if not withdrawal_doc.exists:
@@ -2489,12 +2598,13 @@ async def reject_withdrawal(id: str):
     db.collection("driver_withdrawals").document(id).update({
         "status": "rejected",
         "rejected_at": firestore.SERVER_TIMESTAMP,
+        "rejected_by": admin_id,
     })
     return {"message": "Withdrawal rejected and funds returned to driver wallet"}
 
 
 @app.post("/api/admin/dispute/refund", tags=["Admin"])
-async def admin_refund_ride(req: AdminRefundRequest):
+async def admin_refund_ride(req: AdminRefundRequest, admin_id: str = Depends(get_admin_user)):
     db = get_db()
 
     driver_ref = db.collection("users").document(req.driver_id)
@@ -2515,6 +2625,7 @@ async def admin_refund_ride(req: AdminRefundRequest):
         "rider_id": req.rider_id,
         "amount": refund_amount,
         "reason": req.reason,
+        "admin_id": admin_id,
         "admin_action": "dispute_refund",
         "timestamp": firestore.SERVER_TIMESTAMP,
     })
@@ -2591,12 +2702,10 @@ async def send_translated_chat(
     }
 
 
-# ── CHANGE 2: AI-powered support endpoint ────────────────────────────────────
 @app.post("/api/support/message", tags=["Support"])
 async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(get_current_user_id)):
     db = get_db()
 
-    # ── Reply to existing ticket ──────────────────────────────────────────────
     if msg.ticket_id:
         ticket_ref = db.collection("support_tickets").document(msg.ticket_id)
         ticket_doc = ticket_ref.get()
@@ -2609,7 +2718,6 @@ async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(g
         new_user_msg = {"role": "user", "content": msg.message, "timestamp": now_iso()}
         chat_history.append(new_user_msg)
 
-        # Re-run AI processing on the follow-up message
         ai_result = await process_support_message(msg.message, user_context={}, chat_history=chat_history)
 
         new_ai_msg = {
@@ -2624,7 +2732,6 @@ async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(g
             "updated_at": firestore.SERVER_TIMESTAMP,
         }
 
-        # Re-escalate if follow-up triggers new keywords
         if ai_result.get("needs_escalation") and not ticket_data.get("needs_human"):
             update_data["needs_human"] = True
             update_data["priority"] = ai_result.get("priority", ticket_data.get("priority", "normal"))
@@ -2640,7 +2747,6 @@ async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(g
             "needs_escalation": ai_result.get("needs_escalation", False),
         }
 
-    # ── New ticket ────────────────────────────────────────────────────────────
     user_context = {}
     if user_id:
         user_doc = db.collection("users").document(user_id).get()
@@ -2672,7 +2778,6 @@ async def send_support_message(msg: TicketReplyRequest, user_id: str = Depends(g
         "ai_response": ai_response,
         "admin_response": None,
         "chat_history": chat_history,
-        # AI escalation metadata — used by AdminSupportPanel
         "needs_human": ai_result.get("needs_escalation", False),
         "ai_handled": not ai_result.get("needs_escalation", False),
         "priority": ai_result.get("priority", "normal"),
@@ -2739,7 +2844,7 @@ async def get_support_history(user_id: str = Depends(get_current_user_id)):
 
 
 @app.get("/api/admin/support/tickets", tags=["Admin"])
-async def get_support_tickets(status: str = None, priority: str = None):
+async def get_support_tickets(status: str = None, priority: str = None, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     query = db.collection("support_tickets")
     if status:
@@ -2758,7 +2863,7 @@ async def get_support_tickets(status: str = None, priority: str = None):
 
 
 @app.get("/api/admin/support/tickets/escalated", tags=["Admin"])
-async def get_escalated_tickets():
+async def get_escalated_tickets(admin_id: str = Depends(get_admin_user)):
     db = get_db()
     tickets = db.collection("support_tickets").where("status", "==", "escalated").limit(50).stream()
     result = [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in tickets]
@@ -2767,7 +2872,7 @@ async def get_escalated_tickets():
 
 
 @app.post("/api/admin/support/tickets/{ticket_id}/respond", tags=["Admin"])
-async def admin_respond_ticket(ticket_id: str, response: str, resolve: bool = False):
+async def admin_respond_ticket(ticket_id: str, response: str, resolve: bool = False, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     new_admin_msg = {"role": "admin", "content": response, "timestamp": now_iso()}
     db.collection("support_tickets").document(ticket_id).update({
@@ -2781,7 +2886,7 @@ async def admin_respond_ticket(ticket_id: str, response: str, resolve: bool = Fa
 
 
 @app.post("/api/admin/support/tickets/{ticket_id}/resolve", tags=["Admin"])
-async def resolve_ticket(ticket_id: str, notes: str = ""):
+async def resolve_ticket(ticket_id: str, notes: str = "", admin_id: str = Depends(get_admin_user)):
     db = get_db()
     db.collection("support_tickets").document(ticket_id).update({
         "status": "closed",
@@ -3019,28 +3124,9 @@ async def trigger_sos(sos: SOSRequest, user_id: str = Depends(get_current_user_i
         "message": "Emergency services have been notified. Help is on the way.",
     }
 
-@app.get("/api/rider/active-ride", tags=["Rides"])
-async def get_active_ride(user_id: str = Depends(get_current_user_id)):
-    db = get_db()
-    # Check for an active ride in the database
-    active_rides = list(
-        db.collection("rides")
-        .where("userId", "==", user_id) # Note: adjust to "rider_id" if that is what your DB uses
-        .where("status", "in", ["searching", "accepted", "arrived", "in_progress"])
-        .limit(1)
-        .stream()
-    )
-    
-    if not active_rides:
-        return None 
-        
-    ride_data = active_rides[0].to_dict()
-    ride_data["id"] = active_rides[0].id
-    return serialize_firestore_data(ride_data)
-
 
 @app.get("/api/admin/sos/active", tags=["Admin"])
-async def get_active_sos():
+async def get_active_sos(admin_id: str = Depends(get_admin_user)):
     db = get_db()
     alerts = db.collection("sos_alerts").where("status", "==", "active").limit(50).stream()
     result = [serialize_firestore_data({**a.to_dict(), "id": a.id}) for a in alerts]
@@ -3049,12 +3135,13 @@ async def get_active_sos():
 
 
 @app.post("/api/admin/sos/{alert_id}/resolve", tags=["Admin"])
-async def resolve_sos(alert_id: str, notes: str = ""):
+async def resolve_sos(alert_id: str, notes: str = "", admin_id: str = Depends(get_admin_user)):
     db = get_db()
     db.collection("sos_alerts").document(alert_id).update({
         "status": "resolved",
         "resolved_at": firestore.SERVER_TIMESTAMP,
         "resolution_notes": notes,
+        "resolved_by": admin_id,
     })
     return {"status": "resolved"}
 
@@ -3271,12 +3358,12 @@ from driver_campaigns import (
 
 
 @app.get("/api/admin/campaigns/templates", tags=["Campaigns"])
-async def get_campaign_templates():
+async def get_campaign_templates(admin_id: str = Depends(get_admin_user)):
     return {"templates": CAMPAIGN_TEMPLATES}
 
 
 @app.post("/api/admin/campaigns", tags=["Campaigns"])
-async def create_campaign(campaign: CreateCampaignRequest):
+async def create_campaign(campaign: CreateCampaignRequest, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     campaign_data = {
         "title": campaign.title,
@@ -3297,6 +3384,7 @@ async def create_campaign(campaign: CreateCampaignRequest):
         "participants_count": 0,
         "completions_count": 0,
         "total_bonus_paid": 0,
+        "created_by": admin_id,
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP,
     }
@@ -3305,7 +3393,7 @@ async def create_campaign(campaign: CreateCampaignRequest):
 
 
 @app.post("/api/admin/campaigns/from-template/{template_id}", tags=["Campaigns"])
-async def create_campaign_from_template(template_id: str, start_date: str, end_date: str):
+async def create_campaign_from_template(template_id: str, start_date: str, end_date: str, admin_id: str = Depends(get_admin_user)):
     if template_id not in CAMPAIGN_TEMPLATES:
         raise HTTPException(404, "Template not found")
     template = CAMPAIGN_TEMPLATES[template_id]
@@ -3318,6 +3406,7 @@ async def create_campaign_from_template(template_id: str, start_date: str, end_d
         "participants_count": 0,
         "completions_count": 0,
         "total_bonus_paid": 0,
+        "created_by": admin_id,
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP,
     }
@@ -3326,7 +3415,7 @@ async def create_campaign_from_template(template_id: str, start_date: str, end_d
 
 
 @app.get("/api/admin/campaigns", tags=["Campaigns"])
-async def get_all_campaigns(status: str = None):
+async def get_all_campaigns(status: str = None, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     query = db.collection("campaigns")
     if status:
@@ -3342,7 +3431,7 @@ async def get_all_campaigns(status: str = None):
 
 
 @app.get("/api/admin/campaigns/{campaign_id}", tags=["Campaigns"])
-async def get_campaign_details(campaign_id: str):
+async def get_campaign_details(campaign_id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     campaign = db.collection("campaigns").document(campaign_id).get()
     if not campaign.exists:
@@ -3368,7 +3457,7 @@ async def get_campaign_details(campaign_id: str):
 
 
 @app.put("/api/admin/campaigns/{campaign_id}", tags=["Campaigns"])
-async def update_campaign(campaign_id: str, update: UpdateCampaignRequest):
+async def update_campaign(campaign_id: str, update: UpdateCampaignRequest, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     update_data = {"updated_at": firestore.SERVER_TIMESTAMP}
     if update.title:
@@ -3386,7 +3475,7 @@ async def update_campaign(campaign_id: str, update: UpdateCampaignRequest):
 
 
 @app.delete("/api/admin/campaigns/{campaign_id}", tags=["Campaigns"])
-async def delete_campaign(campaign_id: str):
+async def delete_campaign(campaign_id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
     db.collection("campaigns").document(campaign_id).update({
         "status": "cancelled",
