@@ -598,21 +598,14 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
   );
 };
 
-import { useState, useEffect, useMemo } from "react"; // Merge all React hooks
+import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
-import { 
-  Star, 
-  DollarSign, 
-  Loader2, 
-  ShieldAlert, 
-  Wallet, 
-  Clock, 
-  ChevronRight 
-} from "lucide-react"; // Merge all icons into one block
+import { Star, DollarSign, Loader2, ChevronRight, Wallet, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PayPalButtons } from "@paypal/react-paypal-js";
 import { api } from "./config";
+
 
 const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
   const [tipAmount, setTipAmount] = useState(null);
