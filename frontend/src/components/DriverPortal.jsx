@@ -4,7 +4,6 @@ import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
 import LanguageSelector from "@/i18n/LanguageSelector";
 import { DriverTripCompletionModal } from "@/components/TripCompletionModal";
 import { toast } from "sonner";
@@ -1387,18 +1386,6 @@ const DriverDashboard = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
-  // Push notifications — requests permission on first visit, triggers immediate
-  // refetches instead of waiting for the 5-second polling interval
-  usePushNotifications(user, (payload) => {
-    const type = payload.data?.type;
-    if (type === 'ride_request') {
-      fetchAvailableRides?.();
-    }
-    if (type === 'withdrawal_approved' || type === 'campaign_completed') {
-      refreshUser?.();
-    }
-  });
-
   const [activeTab, setActiveTab] = useState("rides");
   const [loading, setLoading] = useState(false);
   const [mapsLoaded, setMapsLoaded] = useState(() => !!window.google?.maps);
@@ -1475,14 +1462,30 @@ const DriverDashboard = () => {
   useEffect(() => { activeRideRef.current = activeRide; }, [activeRide]);
 
   const lastNetworkPingRef = useRef(0);
+  const lastSentLocationRef = useRef(null);
 
   const handleLocationUpdate = useCallback(async (location) => {
     setDriverLocation(location);
     const now = Date.now();
-    if (now - lastNetworkPingRef.current < 10000) return;
+
+    // Skip network call if: (a) sent within last 10s AND (b) moved < 15m since last send.
+    // This cuts location POSTs by ~80% when stationary, preventing rate limit hits.
+    const last = lastSentLocationRef.current;
+    const movedEnough = !last || (() => {
+      const R = 6371000;
+      const dLat = (location.lat - last.lat) * Math.PI / 180;
+      const dLng = (location.lng - last.lng) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(last.lat * Math.PI/180) * Math.cos(location.lat * Math.PI/180) * Math.sin(dLng/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) > 15;  // > 15 metres
+    })();
+    const enoughTimePassed = now - lastNetworkPingRef.current >= 10000;
+
+    if (!movedEnough && !enoughTimePassed) return;
+
     lastNetworkPingRef.current = now;
     try {
       await api.post("/driver/location", location);
+      lastSentLocationRef.current = location;
       lastPositionRef.current = location;
     } catch (_) {}
   }, []);

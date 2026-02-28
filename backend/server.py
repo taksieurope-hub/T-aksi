@@ -288,198 +288,25 @@ async def upload_file_to_storage(file: UploadFile, path: str) -> Optional[str]:
 # =========================
 # FASTAPI APP
 # =========================
-# BACKGROUND WORKER — runs inside Uvicorn, no extra Render service needed
-# =========================
 
-# Tracks rides whose match_drivers_to_ride task was lost on restart
-_worker_started = False
-
-
-async def _recover_stuck_rides():
-    """
-    On startup: find any rides stuck in 'searching' that have no active
-    matching task running (i.e. server restarted mid-match) and re-launch them.
-    Runs once, 5 seconds after boot to let Firestore init settle.
-    """
-    await asyncio.sleep(5)
-    db = get_db()
-    try:
-        stuck = list(
-            db.collection("rides")
-            .where("status", "==", "searching")
-            .stream()
-        )
-        for ride in stuck:
-            ride_data = ride.to_dict()
-            # Only re-match if it's been searching for > 2 minutes (not brand new)
-            created = ride_data.get("created_at")
-            if created and hasattr(created, "timestamp"):
-                age_seconds = (datetime.now(timezone.utc) - created).total_seconds()
-                if age_seconds > 120:
-                    logger.info(f"Worker: recovering stuck ride {ride.id} (age {int(age_seconds)}s)")
-                    asyncio.create_task(match_drivers_to_ride(ride.id))
-    except Exception as e:
-        logger.warning(f"Worker: stuck ride recovery failed: {e}")
-
-
-async def _dispatch_scheduled_rides():
-    """
-    Every 60 seconds: find scheduled rides whose time has arrived and
-    convert them into live ride requests.
-    """
-    while True:
-        try:
-            await asyncio.sleep(60)
-            db = get_db()
-            now_iso_str = datetime.now(timezone.utc).isoformat()
-            scheduled = list(
-                db.collection("scheduled_rides")
-                .where("status", "==", "scheduled")
-                .stream()
-            )
-            for doc in scheduled:
-                data = doc.to_dict()
-                scheduled_time = data.get("scheduled_time", "")
-                if not scheduled_time:
-                    continue
-                # Fire if scheduled time is within the past 5 minutes (handles delays)
-                try:
-                    sched_dt = datetime.fromisoformat(scheduled_time.replace("Z", "+00:00"))
-                    now_dt = datetime.now(timezone.utc)
-                    delta = (now_dt - sched_dt).total_seconds()
-                    if 0 <= delta <= 300:   # within 0–5 min window
-                        logger.info(f"Worker: dispatching scheduled ride {doc.id}")
-                        # Mark as dispatching so we don't double-fire
-                        db.collection("scheduled_rides").document(doc.id).update({"status": "dispatching"})
-
-                        surge_info = get_surge_multiplier(data.get("pickup_lat"), data.get("pickup_lng"))
-                        fare = calculate_fare(
-                            data.get("car_type", "economy"),
-                            5, 0, 0, 0,
-                            surge_info["multiplier"],
-                        )
-                        ride_ref = db.collection("rides").document()
-                        ride_ref.set({
-                            "id": ride_ref.id,
-                            "userId": data.get("rider_id"),
-                            "rider_id": data.get("rider_id"),
-                            "carType": data.get("car_type", "economy"),
-                            "pickup": data.get("pickup_address", ""),
-                            "pickup_lat": data.get("pickup_lat"),
-                            "pickup_lng": data.get("pickup_lng"),
-                            "destination": data.get("destination_address", ""),
-                            "destination_lat": data.get("destination_lat"),
-                            "destination_lng": data.get("destination_lng"),
-                            "stops": data.get("stops", []),
-                            "payment_method": data.get("payment_method", "cash"),
-                            "estimated_distance": 5,
-                            "estimated_fare": fare["total"],
-                            "fare_breakdown": fare,
-                            "surge_multiplier": surge_info["multiplier"],
-                            "surge_info": surge_info,
-                            "commission_rate": surge_info["commission_rate"],
-                            "status": "searching",
-                            "matching_radius": 3,
-                            "notified_drivers": [],
-                            "declined_drivers": [],
-                            "from_scheduled": doc.id,
-                            "created_at": firestore.SERVER_TIMESTAMP,
-                        })
-                        db.collection("scheduled_rides").document(doc.id).update({
-                            "status": "dispatched",
-                            "dispatched_ride_id": ride_ref.id,
-                        })
-                        asyncio.create_task(match_drivers_to_ride(ride_ref.id))
-                except Exception as e:
-                    logger.warning(f"Worker: failed to dispatch scheduled ride {doc.id}: {e}")
-        except Exception as e:
-            logger.warning(f"Worker: scheduled ride loop error: {e}")
-
-
-async def _cleanup_stale_drivers():
-    """
-    Every 5 minutes: mark drivers as offline if their location hasn't been
-    updated in > 10 minutes. Prevents ghost-online drivers from soaking up
-    ride notifications.
-    """
-    while True:
-        try:
-            await asyncio.sleep(300)
-            db = get_db()
-            cutoff = datetime.now(timezone.utc).timestamp() - 600  # 10 min ago
-            online_drivers = list(
-                db.collection("users")
-                .where("user_type", "==", "driver")
-                .where("is_online", "==", True)
-                .stream()
-            )
-            cleaned = 0
-            for driver in online_drivers:
-                data = driver.to_dict()
-                loc_updated = data.get("location_updated_at")
-                if loc_updated and hasattr(loc_updated, "timestamp"):
-                    if loc_updated.timestamp() < cutoff:
-                        db.collection("users").document(driver.id).update({"is_online": False})
-                        cleaned += 1
-            if cleaned:
-                logger.info(f"Worker: marked {cleaned} stale driver(s) offline")
-        except Exception as e:
-            logger.warning(f"Worker: stale driver cleanup error: {e}")
-
-
-async def _expire_old_campaigns():
-    """
-    Every 6 hours: set campaigns whose end_date has passed to 'expired'.
-    """
-    while True:
-        try:
-            await asyncio.sleep(21600)
-            db = get_db()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            active = list(db.collection("campaigns").where("status", "==", "active").stream())
-            expired_count = 0
-            for c in active:
-                data = c.to_dict()
-                end_date = data.get("end_date", "")
-                if end_date and end_date < today:
-                    db.collection("campaigns").document(c.id).update({
-                        "status": "expired",
-                        "updated_at": firestore.SERVER_TIMESTAMP,
-                    })
-                    expired_count += 1
-            if expired_count:
-                logger.info(f"Worker: expired {expired_count} campaign(s)")
-        except Exception as e:
-            logger.warning(f"Worker: campaign expiry error: {e}")
-
-
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app):
-    """Start all background worker tasks when Uvicorn boots."""
-    global _worker_started
-    if not _worker_started:
-        _worker_started = True
-        logger.info("🟢 Background worker starting…")
-        asyncio.create_task(_recover_stuck_rides())
-        asyncio.create_task(_dispatch_scheduled_rides())
-        asyncio.create_task(_cleanup_stale_drivers())
-        asyncio.create_task(_expire_old_campaigns())
-        logger.info("🟢 Worker tasks launched: recovery, scheduler, cleanup, campaigns")
-    yield
-    logger.info("🔴 Worker shutting down")
-
-
-app = FastAPI(title="T'aksi API", lifespan=lifespan)
+app = FastAPI(title="T'aksi API")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        # Local dev
         "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        # Named production frontends
         "https://t-aksi-frontend.onrender.com",
         "https://taksi-admin.onrender.com",
+        # Custom domain
+        "https://taksi.ge",
+        "https://www.taksi.ge",
     ],
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -493,23 +320,70 @@ from starlette.responses import JSONResponse
 from fastapi import Request
 
 # General rate limit: 100 requests per 15 minutes per IP
-RATE_LIMIT_WINDOW = 900       # 15 minutes
-MAX_REQUESTS = 100
-
-# Strict rate limit for auth endpoints: 10 attempts per 15 minutes per IP
+# Auth rate limit: 10 attempts / 15 min
 AUTH_RATE_LIMIT_WINDOW = 900
 AUTH_MAX_REQUESTS = 10
+
+# General rate limit raised to 2000/15min.
+# A single online driver generates ~450 location POSTs + ~180 ride polls = 630/15min.
+# Old limit of 100 was hit in under 3 minutes, causing ERR_FAILED on all requests.
+RATE_LIMIT_WINDOW = 900
+MAX_REQUESTS = 2000
 
 ip_tracker: dict = defaultdict(list)
 auth_ip_tracker: dict = defaultdict(list)
 
 AUTH_PATHS = {"/api/auth/login", "/api/rider/login", "/api/driver/login", "/api/auth/register/rider", "/api/auth/register/driver", "/api/driver/register", "/api/admin/login"}
 
+# High-frequency driver endpoints — exempt from rate limiting entirely.
+# /api/driver/location fires every 2s per driver = 450 req/15min alone.
+# Counting these would block every active driver within minutes.
+RATE_LIMIT_EXEMPT = {
+    "/api/driver/location",
+    "/api/driver/rides/available",
+    "/api/surge/status",
+    "/api/health",
+    "/api/worker/ping",
+}
+
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    if request.url.path == "/api/health":
+    path = request.url.path
+
+    # Exempt high-frequency operational endpoints from all counting
+    if path in RATE_LIMIT_EXEMPT:
         return await call_next(request)
+
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    current_time = time.time()
+
+    # Strict limiter for auth endpoints
+    if path in AUTH_PATHS:
+        auth_ip_tracker[client_ip] = [
+            t for t in auth_ip_tracker[client_ip] if current_time - t < AUTH_RATE_LIMIT_WINDOW
+        ]
+        if len(auth_ip_tracker[client_ip]) >= AUTH_MAX_REQUESTS:
+            logger.warning(f"Auth rate limit exceeded for IP: {client_ip}")
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many login attempts. Please try again in 15 minutes."},
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        auth_ip_tracker[client_ip].append(current_time)
+
+    # General limiter
+    ip_tracker[client_ip] = [t for t in ip_tracker[client_ip] if current_time - t < RATE_LIMIT_WINDOW]
+    if len(ip_tracker[client_ip]) >= MAX_REQUESTS:
+        logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Please try again in 15 minutes."},
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    ip_tracker[client_ip].append(current_time)
+
+    return await call_next(request)
 
     client_ip = request.client.host if request.client else "127.0.0.1"
     current_time = time.time()
@@ -3949,44 +3823,7 @@ async def health_check():
         "status": "healthy",
         "timestamp": now_iso(),
         "paypal_mode": PAYPAL_MODE,
-        "worker": "running" if _worker_started else "not_started",
     }
-
-
-@app.get("/api/worker/ping", tags=["Health"])
-async def worker_ping():
-    """
-    Lightweight keepalive endpoint.
-    Point UptimeRobot (free) at this URL, every 14 minutes.
-    Prevents Render free tier from spinning down.
-    """
-    db = get_db()
-    try:
-        # Quick Firestore read to confirm DB is alive
-        searching = len(list(
-            db.collection("rides").where("status", "==", "searching").limit(5).stream()
-        ))
-        online_drivers = len(list(
-            db.collection("users")
-            .where("user_type", "==", "driver")
-            .where("is_online", "==", True)
-            .limit(10)
-            .stream()
-        ))
-    except Exception:
-        searching = -1
-        online_drivers = -1
-
-    return {
-        "alive": True,
-        "worker_running": _worker_started,
-        "timestamp": now_iso(),
-        "rides_searching": searching,
-        "drivers_online": online_drivers,
-    }
-
-
-
 
 
 @app.get("/api/", tags=["Health"])
