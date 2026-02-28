@@ -4,9 +4,15 @@ import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
+import api from "@/api"; // This is your main API handler
+import { useLanguage } from "@/i18n/LanguageContext";
+import LanguageSelector from "@/i18n/LanguageSelector";
 import { RiderTripCompletionModal } from "@/components/TripCompletionModal";
 import RatingModal from "@/components/RatingModal";
-import { toast } from "sonner";
+import { toast } from "sonner"; // Using 'sonner' for consistent styling
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,22 +20,8 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
-// --- THIS GOES AT LINE 1 ---
-import { useState, useEffect } from "react";
-import { toast } from "react-hot-toast";
-import { 
-  Star, 
-  DollarSign, 
-  Loader2, 
-  ChevronRight, 
-  Wallet, 
-  Clock 
-} from "lucide-react"; 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { PayPalButtons } from "@paypal/react-paypal-js";
-import { api } from "./config";
 
+// --- ALL ICONS CONSOLIDATED HERE ---
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
   Lock, Phone, MessageSquare, Star, Clock, Shield, AlertTriangle, Loader2,
