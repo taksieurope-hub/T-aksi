@@ -1,12 +1,6 @@
 ﻿import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
-import api from "@/api";
-import { useLanguage } from "@/i18n/LanguageContext";
-import LanguageSelector from "@/i18n/LanguageSelector";
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, GOOGLE_MAPS_API_KEY, API as api } from "@/config"; // Combined these
+import { useAuth, GOOGLE_MAPS_API_KEY, API as api } from "@/config"; 
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
 import { RiderTripCompletionModal } from "@/components/TripCompletionModal";
