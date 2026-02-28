@@ -14,6 +14,22 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
+// --- THIS GOES AT LINE 1 ---
+import { useState, useEffect } from "react";
+import { toast } from "react-hot-toast";
+import { 
+  Star, 
+  DollarSign, 
+  Loader2, 
+  ChevronRight, 
+  Wallet, 
+  Clock 
+} from "lucide-react"; 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PayPalButtons } from "@paypal/react-paypal-js";
+import { api } from "./config";
+
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
   Lock, Phone, MessageSquare, Star, Clock, Shield, AlertTriangle, Loader2,
@@ -597,15 +613,6 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
     </div>
   );
 };
-
-import { useState, useEffect } from "react";
-import { toast } from "react-hot-toast";
-import { Star, DollarSign, Loader2, ChevronRight, Wallet, Clock } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { PayPalButtons } from "@paypal/react-paypal-js";
-import { api } from "./config";
-
 
 const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
   const [tipAmount, setTipAmount] = useState(null);
