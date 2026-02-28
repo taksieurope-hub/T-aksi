@@ -267,57 +267,6 @@ async def get_paypal_token() -> Optional[str]:
 # FIX #2: Upload driver documents to Firebase Storage (not local disk)
 # =========================
 
-# =========================
-# FCM PUSH NOTIFICATIONS
-# =========================
-
-def send_push_notification(
-    user_id: str,
-    title: str,
-    body: str,
-    data: Optional[dict] = None,
-) -> bool:
-    """
-    Send an FCM push notification to a specific user.
-    Looks up the user's stored FCM token from Firestore, then calls
-    the Firebase Admin SDK messaging service.
-    Returns True on success, False on any failure (notifications are non-critical).
-    """
-    try:
-        from firebase_admin import messaging as fcm_messaging
-
-        db = get_db()
-        user_doc = db.collection("users").document(user_id).get()
-        if not user_doc.exists:
-            return False
-
-        fcm_token = user_doc.to_dict().get("fcm_token")
-        if not fcm_token:
-            return False  # User hasn't granted notification permission yet
-
-        message = fcm_messaging.Message(
-            notification=fcm_messaging.Notification(title=title, body=body),
-            data={k: str(v) for k, v in (data or {}).items()},
-            token=fcm_token,
-            android=fcm_messaging.AndroidConfig(priority="high"),
-            apns=fcm_messaging.APNSConfig(
-                payload=fcm_messaging.APNSPayload(
-                    aps=fcm_messaging.Aps(sound="default", badge=1)
-                )
-            ),
-        )
-        fcm_messaging.send(message)
-        return True
-
-    except Exception as e:
-        logger.warning(f"Push notification failed for user {user_id}: {e}")
-        return False
-
-
-class FCMTokenRequest(BaseModel):
-    fcm_token: str = Field(min_length=10, max_length=512)
-
-
 async def upload_file_to_storage(file: UploadFile, path: str) -> Optional[str]:
     """Upload a file to Firebase Storage and return its public URL."""
     if not file:
@@ -339,8 +288,190 @@ async def upload_file_to_storage(file: UploadFile, path: str) -> Optional[str]:
 # =========================
 # FASTAPI APP
 # =========================
+# BACKGROUND WORKER — runs inside Uvicorn, no extra Render service needed
+# =========================
 
-app = FastAPI(title="T'aksi API")
+# Tracks rides whose match_drivers_to_ride task was lost on restart
+_worker_started = False
+
+
+async def _recover_stuck_rides():
+    """
+    On startup: find any rides stuck in 'searching' that have no active
+    matching task running (i.e. server restarted mid-match) and re-launch them.
+    Runs once, 5 seconds after boot to let Firestore init settle.
+    """
+    await asyncio.sleep(5)
+    db = get_db()
+    try:
+        stuck = list(
+            db.collection("rides")
+            .where("status", "==", "searching")
+            .stream()
+        )
+        for ride in stuck:
+            ride_data = ride.to_dict()
+            # Only re-match if it's been searching for > 2 minutes (not brand new)
+            created = ride_data.get("created_at")
+            if created and hasattr(created, "timestamp"):
+                age_seconds = (datetime.now(timezone.utc) - created).total_seconds()
+                if age_seconds > 120:
+                    logger.info(f"Worker: recovering stuck ride {ride.id} (age {int(age_seconds)}s)")
+                    asyncio.create_task(match_drivers_to_ride(ride.id))
+    except Exception as e:
+        logger.warning(f"Worker: stuck ride recovery failed: {e}")
+
+
+async def _dispatch_scheduled_rides():
+    """
+    Every 60 seconds: find scheduled rides whose time has arrived and
+    convert them into live ride requests.
+    """
+    while True:
+        try:
+            await asyncio.sleep(60)
+            db = get_db()
+            now_iso_str = datetime.now(timezone.utc).isoformat()
+            scheduled = list(
+                db.collection("scheduled_rides")
+                .where("status", "==", "scheduled")
+                .stream()
+            )
+            for doc in scheduled:
+                data = doc.to_dict()
+                scheduled_time = data.get("scheduled_time", "")
+                if not scheduled_time:
+                    continue
+                # Fire if scheduled time is within the past 5 minutes (handles delays)
+                try:
+                    sched_dt = datetime.fromisoformat(scheduled_time.replace("Z", "+00:00"))
+                    now_dt = datetime.now(timezone.utc)
+                    delta = (now_dt - sched_dt).total_seconds()
+                    if 0 <= delta <= 300:   # within 0–5 min window
+                        logger.info(f"Worker: dispatching scheduled ride {doc.id}")
+                        # Mark as dispatching so we don't double-fire
+                        db.collection("scheduled_rides").document(doc.id).update({"status": "dispatching"})
+
+                        surge_info = get_surge_multiplier(data.get("pickup_lat"), data.get("pickup_lng"))
+                        fare = calculate_fare(
+                            data.get("car_type", "economy"),
+                            5, 0, 0, 0,
+                            surge_info["multiplier"],
+                        )
+                        ride_ref = db.collection("rides").document()
+                        ride_ref.set({
+                            "id": ride_ref.id,
+                            "userId": data.get("rider_id"),
+                            "rider_id": data.get("rider_id"),
+                            "carType": data.get("car_type", "economy"),
+                            "pickup": data.get("pickup_address", ""),
+                            "pickup_lat": data.get("pickup_lat"),
+                            "pickup_lng": data.get("pickup_lng"),
+                            "destination": data.get("destination_address", ""),
+                            "destination_lat": data.get("destination_lat"),
+                            "destination_lng": data.get("destination_lng"),
+                            "stops": data.get("stops", []),
+                            "payment_method": data.get("payment_method", "cash"),
+                            "estimated_distance": 5,
+                            "estimated_fare": fare["total"],
+                            "fare_breakdown": fare,
+                            "surge_multiplier": surge_info["multiplier"],
+                            "surge_info": surge_info,
+                            "commission_rate": surge_info["commission_rate"],
+                            "status": "searching",
+                            "matching_radius": 3,
+                            "notified_drivers": [],
+                            "declined_drivers": [],
+                            "from_scheduled": doc.id,
+                            "created_at": firestore.SERVER_TIMESTAMP,
+                        })
+                        db.collection("scheduled_rides").document(doc.id).update({
+                            "status": "dispatched",
+                            "dispatched_ride_id": ride_ref.id,
+                        })
+                        asyncio.create_task(match_drivers_to_ride(ride_ref.id))
+                except Exception as e:
+                    logger.warning(f"Worker: failed to dispatch scheduled ride {doc.id}: {e}")
+        except Exception as e:
+            logger.warning(f"Worker: scheduled ride loop error: {e}")
+
+
+async def _cleanup_stale_drivers():
+    """
+    Every 5 minutes: mark drivers as offline if their location hasn't been
+    updated in > 10 minutes. Prevents ghost-online drivers from soaking up
+    ride notifications.
+    """
+    while True:
+        try:
+            await asyncio.sleep(300)
+            db = get_db()
+            cutoff = datetime.now(timezone.utc).timestamp() - 600  # 10 min ago
+            online_drivers = list(
+                db.collection("users")
+                .where("user_type", "==", "driver")
+                .where("is_online", "==", True)
+                .stream()
+            )
+            cleaned = 0
+            for driver in online_drivers:
+                data = driver.to_dict()
+                loc_updated = data.get("location_updated_at")
+                if loc_updated and hasattr(loc_updated, "timestamp"):
+                    if loc_updated.timestamp() < cutoff:
+                        db.collection("users").document(driver.id).update({"is_online": False})
+                        cleaned += 1
+            if cleaned:
+                logger.info(f"Worker: marked {cleaned} stale driver(s) offline")
+        except Exception as e:
+            logger.warning(f"Worker: stale driver cleanup error: {e}")
+
+
+async def _expire_old_campaigns():
+    """
+    Every 6 hours: set campaigns whose end_date has passed to 'expired'.
+    """
+    while True:
+        try:
+            await asyncio.sleep(21600)
+            db = get_db()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            active = list(db.collection("campaigns").where("status", "==", "active").stream())
+            expired_count = 0
+            for c in active:
+                data = c.to_dict()
+                end_date = data.get("end_date", "")
+                if end_date and end_date < today:
+                    db.collection("campaigns").document(c.id).update({
+                        "status": "expired",
+                        "updated_at": firestore.SERVER_TIMESTAMP,
+                    })
+                    expired_count += 1
+            if expired_count:
+                logger.info(f"Worker: expired {expired_count} campaign(s)")
+        except Exception as e:
+            logger.warning(f"Worker: campaign expiry error: {e}")
+
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    """Start all background worker tasks when Uvicorn boots."""
+    global _worker_started
+    if not _worker_started:
+        _worker_started = True
+        logger.info("🟢 Background worker starting…")
+        asyncio.create_task(_recover_stuck_rides())
+        asyncio.create_task(_dispatch_scheduled_rides())
+        asyncio.create_task(_cleanup_stale_drivers())
+        asyncio.create_task(_expire_old_campaigns())
+        logger.info("🟢 Worker tasks launched: recovery, scheduler, cleanup, campaigns")
+    yield
+    logger.info("🔴 Worker shutting down")
+
+
+app = FastAPI(title="T'aksi API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -3446,19 +3577,6 @@ async def get_trip_receipt(ride_id: str, user_id: str = Depends(get_current_user
 # USER LANGUAGE PREFERENCE
 # =========================
 
-@app.post("/api/user/fcm-token", tags=["User"])
-async def register_fcm_token(req: FCMTokenRequest, user_id: str = Depends(get_current_user_id)):
-    """Store the user's FCM device token so push notifications can be sent to them."""
-    if not user_id:
-        raise HTTPException(401, "Not authenticated")
-    db = get_db()
-    db.collection("users").document(user_id).update({
-        "fcm_token": req.fcm_token,
-        "fcm_token_updated_at": firestore.SERVER_TIMESTAMP,
-    })
-    return {"message": "FCM token registered"}
-
-
 @app.post("/api/user/language", tags=["User"])
 async def set_language_preference(lang: str, user_id: str = Depends(get_current_user_id)):
     db = get_db()
@@ -3831,7 +3949,44 @@ async def health_check():
         "status": "healthy",
         "timestamp": now_iso(),
         "paypal_mode": PAYPAL_MODE,
+        "worker": "running" if _worker_started else "not_started",
     }
+
+
+@app.get("/api/worker/ping", tags=["Health"])
+async def worker_ping():
+    """
+    Lightweight keepalive endpoint.
+    Point UptimeRobot (free) at this URL, every 14 minutes.
+    Prevents Render free tier from spinning down.
+    """
+    db = get_db()
+    try:
+        # Quick Firestore read to confirm DB is alive
+        searching = len(list(
+            db.collection("rides").where("status", "==", "searching").limit(5).stream()
+        ))
+        online_drivers = len(list(
+            db.collection("users")
+            .where("user_type", "==", "driver")
+            .where("is_online", "==", True)
+            .limit(10)
+            .stream()
+        ))
+    except Exception:
+        searching = -1
+        online_drivers = -1
+
+    return {
+        "alive": True,
+        "worker_running": _worker_started,
+        "timestamp": now_iso(),
+        "rides_searching": searching,
+        "drivers_online": online_drivers,
+    }
+
+
+
 
 
 @app.get("/api/", tags=["Health"])
