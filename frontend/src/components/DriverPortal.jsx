@@ -1304,16 +1304,56 @@ const DriverAuth = () => {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ name: "", surname: "", cellphone: "", password: "" });
 
+  // OTP state
+  const [otpStep, setOtpStep]       = useState("form"); // "form" | "otp" | "done"
+  const [otpCode, setOtpCode]       = useState("");
+  const [phoneToken, setPhoneToken] = useState(null);
+
+  const handleSendOtp = async () => {
+    if (!form.cellphone) return toast.error("Enter your phone number first");
+    setLoading(true);
+    try {
+      await api.post("/auth/otp/send", { cellphone: form.cellphone });
+      toast.success("Verification code sent!");
+      setOtpStep("otp");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to send code");
+    } finally { setLoading(false); }
+  };
+
+  const handleVerifyOtp = async () => {
+    setLoading(true);
+    try {
+      const res = await api.post("/auth/otp/verify", { cellphone: form.cellphone, code: otpCode });
+      setPhoneToken(res.data.phone_token);
+      setOtpStep("done");
+      toast.success("Phone verified ✓");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Incorrect code");
+    } finally { setLoading(false); }
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const endpoint = isLogin ? "/auth/login" : "/auth/register/driver";
-      const r = await api.post(endpoint, form);
-      if (r.data?.token && r.data?.user) {
-        login(r.data.token, r.data.user);
-        toast.success(isLogin ? t("welcome_back") : t("success"));
-        navigate("/driver/dashboard");
+      if (isLogin) {
+        const r = await api.post("/auth/login", form);
+        if (r.data?.token && r.data?.user) {
+          login(r.data.token, r.data.user);
+          toast.success(t("welcome_back"));
+          navigate("/driver/dashboard");
+        }
+      } else {
+        if (!phoneToken) return toast.error("Please verify your phone number first");
+        const r = await api.post("/auth/register/driver", form, {
+          headers: { "X-Phone-Verified": phoneToken },
+        });
+        if (r.data?.token && r.data?.user) {
+          login(r.data.token, r.data.user);
+          toast.success(t("success"));
+          navigate("/driver/dashboard");
+        }
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || err.message || t("error"));
@@ -1349,12 +1389,46 @@ const DriverAuth = () => {
           )}
           <div className="space-y-1.5">
             <Label className="text-white/50 text-xs">Phone Number</Label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-              <Input type="tel" value={form.cellphone} onChange={e => setForm({ ...form, cellphone: e.target.value })}
-                placeholder="+995 555 000 000" className="pl-9 bg-white/5 border-white/10 text-white h-11 placeholder:text-white/20" required />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                <Input type="tel" value={form.cellphone}
+                  onChange={e => { setForm({ ...form, cellphone: e.target.value }); setOtpStep("form"); setPhoneToken(null); }}
+                  placeholder="+995 555 000 000"
+                  className="pl-9 bg-white/5 border-white/10 text-white h-11 placeholder:text-white/20"
+                  required disabled={otpStep === "otp" || otpStep === "done"} />
+              </div>
+              {!isLogin && otpStep === "form" && (
+                <Button type="button" onClick={handleSendOtp} disabled={loading || !form.cellphone}
+                  className="h-11 px-3 bg-white/10 text-white text-xs rounded-xl border border-white/10 hover:bg-white/15">
+                  Verify
+                </Button>
+              )}
+              {!isLogin && otpStep === "done" && (
+                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">✓ Verified</div>
+              )}
             </div>
           </div>
+
+          {/* OTP confirmation step */}
+          {!isLogin && otpStep === "otp" && (
+            <div className="space-y-1.5">
+              <Label className="text-white/50 text-xs">Enter 4-digit code</Label>
+              <div className="flex gap-2">
+                <Input value={otpCode} onChange={e => setOtpCode(e.target.value)} maxLength={4}
+                  placeholder="0000"
+                  className="bg-white/5 border-white/10 text-white h-11 text-center text-lg tracking-widest flex-1" />
+                <Button type="button" onClick={handleVerifyOtp} disabled={loading || otpCode.length < 4}
+                  className="h-11 px-4 bg-[#00d4ff] text-black font-bold rounded-xl text-sm">
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm"}
+                </Button>
+              </div>
+              <button type="button" onClick={handleSendOtp} className="text-white/30 text-xs hover:text-white/60">
+                Resend code
+              </button>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label className="text-white/50 text-xs">Password</Label>
             <div className="relative">
@@ -1363,7 +1437,7 @@ const DriverAuth = () => {
                 className="pl-9 bg-white/5 border-white/10 text-white h-11" required />
             </div>
           </div>
-          <Button type="submit" disabled={loading}
+          <Button type="submit" disabled={loading || (!isLogin ? otpStep !== "done" : false)}
             className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-base mt-2">
             {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
             {isLogin ? "Sign In" : "Create Account"}

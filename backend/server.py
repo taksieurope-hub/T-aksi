@@ -1,4 +1,5 @@
 ﻿import logging
+from contextlib import asynccontextmanager
 import math
 import os
 import asyncio
@@ -10,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import firebase_admin
-from firebase_admin import credentials, firestore, storage
+from firebase_admin import credentials, firestore, storage, messaging
 
 from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form
 import shutil
@@ -165,6 +166,73 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
 
+# =========================
+# PUSH NOTIFICATIONS (FCM)
+# =========================
+
+def send_push_notification(user_id: str, title: str, body: str, data: dict = None):
+    """
+    Send a Firebase Cloud Messaging push notification to a user.
+    Looks up the user's fcm_token from Firestore (stored in both 'users'
+    and 'riders' collections so it works for both riders and drivers).
+    Fails silently — a missing token or FCM error never crashes the caller.
+    """
+    try:
+        db = get_db()
+        token = None
+
+        # Try users collection first (drivers are stored here)
+        user_doc = db.collection("users").document(user_id).get()
+        if user_doc.exists:
+            token = user_doc.to_dict().get("fcm_token")
+
+        # Fall back to riders collection
+        if not token:
+            rider_doc = db.collection("riders").document(user_id).get()
+            if rider_doc.exists:
+                token = rider_doc.to_dict().get("fcm_token")
+
+        if not token:
+            logger.debug(f"No FCM token for user {user_id} — skipping push notification")
+            return
+
+        # Build the message — all data values must be strings for FCM
+        safe_data = {k: str(v) for k, v in (data or {}).items()}
+
+        message = messaging.Message(
+            notification=messaging.Notification(title=title, body=body),
+            data=safe_data,
+            token=token,
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    sound="default",
+                    default_vibrate_timings=True,
+                ),
+            ),
+            apns=messaging.APNSConfig(
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(sound="default", badge=1),
+                ),
+            ),
+        )
+
+        response = messaging.send(message)
+        logger.info(f"Push notification sent to {user_id}: {response}")
+
+    except messaging.UnregisteredError:
+        # Token is stale — clear it so we don't keep trying
+        logger.warning(f"FCM token for user {user_id} is no longer valid. Clearing.")
+        try:
+            db = get_db()
+            db.collection("users").document(user_id).update({"fcm_token": firestore.DELETE_FIELD})
+            db.collection("riders").document(user_id).update({"fcm_token": firestore.DELETE_FIELD})
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning(f"Push notification failed for user {user_id}: {e}")
+
+
 def create_token(user_id: str, role: str) -> str:
     payload = {
         "user_id": user_id,
@@ -285,11 +353,193 @@ async def upload_file_to_storage(file: UploadFile, path: str) -> Optional[str]:
         return None
 
 
+
+# =========================
+# OTP / PHONE VERIFICATION
+# =========================
+# Codes live in Firestore (collection: otp_codes) with a 10-minute TTL.
+# No SMS provider is required — the code is returned in the API response
+# so the frontend can display/relay it (swap for Twilio/Firebase Phone Auth
+# in production by replacing _send_otp_code below).
+
+import secrets
+
+OTP_TTL_SECONDS = 600  # 10 minutes
+
+def _generate_otp() -> str:
+    """4-digit numeric OTP."""
+    return str(secrets.randbelow(9000) + 1000)
+
+def _send_otp_code(phone: str, code: str):
+    """
+    Delivery stub. Replace with:
+      Twilio:  client.messages.create(to=phone, from_=TWILIO_FROM, body=f"T'aksi code: {code}")
+      Firebase Phone Auth: use the client-side SDK instead of this backend flow.
+    For now, the code is returned in the API response (development mode).
+    """
+    logger.info(f"[OTP] {phone} → {code}")
+
+
+# =========================
+# SCHEDULED RIDE DISPATCHER
+# =========================
+# Background asyncio loop that runs every 60 seconds.
+# Checks for scheduled rides whose time has come and dispatches them
+# as normal ride requests (re-uses the existing match_drivers_to_ride flow).
+
+DISPATCH_CHECK_INTERVAL = 60  # seconds
+
+async def _dispatch_scheduled_rides_loop():
+    """
+    Runs forever in the background. Every 60 s it:
+    1. Queries scheduled_rides where status=scheduled and scheduled_time <= now.
+    2. Converts each one into a live ride document.
+    3. Kicks off the normal driver-matching background task.
+    4. Sends a push notification to the rider confirming dispatch.
+    """
+    logger.info("Scheduled ride dispatcher started.")
+    while True:
+        try:
+            await _check_and_dispatch_scheduled_rides()
+        except Exception as e:
+            logger.error(f"Dispatcher loop error: {e}")
+        await asyncio.sleep(DISPATCH_CHECK_INTERVAL)
+
+
+async def _check_and_dispatch_scheduled_rides():
+    db = get_db()
+    now_iso_str = datetime.now(timezone.utc).isoformat()
+
+    pending = list(
+        db.collection("scheduled_rides")
+        .where("status", "==", "scheduled")
+        .stream()
+    )
+
+    for snap in pending:
+        data = snap.to_dict()
+        scheduled_time = data.get("scheduled_time", "")
+
+        # Parse scheduled_time — accepts ISO 8601 strings
+        try:
+            if scheduled_time.endswith("Z"):
+                scheduled_time = scheduled_time[:-1] + "+00:00"
+            sched_dt = datetime.fromisoformat(scheduled_time)
+            if sched_dt.tzinfo is None:
+                sched_dt = sched_dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            logger.warning(f"Skipping scheduled ride {snap.id}: bad scheduled_time '{scheduled_time}'")
+            continue
+
+        if datetime.now(timezone.utc) < sched_dt:
+            continue  # Not time yet
+
+        rider_id = data.get("rider_id")
+        logger.info(f"Dispatching scheduled ride {snap.id} for rider {rider_id}")
+
+        # Mark as dispatching immediately to avoid double-dispatch
+        snap.reference.update({"status": "dispatching", "dispatched_at": firestore.SERVER_TIMESTAMP})
+
+        try:
+            surge_info = get_surge_multiplier(
+                data.get("pickup_lat", 0), data.get("pickup_lng", 0)
+            )
+            surge_multiplier = surge_info["multiplier"]
+            commission_rate = surge_info["commission_rate"]
+
+            fare = calculate_fare(
+                data.get("car_type", "economy"),
+                5,  # default 5km for scheduled (no real-time distance yet)
+                0, 0, len(data.get("stops", [])),
+                surge_multiplier,
+            )
+
+            payment_method = data.get("payment_method", "cash")
+            service_fee = 2.0 if payment_method == "card" else 0.0
+            fare["service_fee"] = service_fee
+            fare["total"] += service_fee
+
+            ride_ref = db.collection("rides").document()
+            ride_doc = {
+                "id": ride_ref.id,
+                "userId": rider_id,
+                "rider_id": rider_id,
+                "carType": data.get("car_type", "economy"),
+                "pickup": data.get("pickup_address", ""),
+                "pickup_lat": data.get("pickup_lat", 0),
+                "pickup_lng": data.get("pickup_lng", 0),
+                "destination": data.get("destination_address", ""),
+                "destination_lat": data.get("destination_lat", 0),
+                "destination_lng": data.get("destination_lng", 0),
+                "stops": data.get("stops", []),
+                "num_stops": len(data.get("stops", [])),
+                "payment_method": payment_method,
+                "paymentMethod": payment_method,
+                "estimated_fare": fare["total"],
+                "fare_breakdown": fare,
+                "service_fee": service_fee,
+                "surge_multiplier": surge_multiplier,
+                "surge_info": surge_info,
+                "commission_rate": commission_rate,
+                "status": "searching",
+                "matching_radius": 3,
+                "notified_drivers": [],
+                "declined_drivers": [],
+                "scheduled_ride_id": snap.id,  # back-reference
+                "source": "scheduled",
+                "actual_distance": 0,
+                "pickup_wait_minutes": 0,
+                "stop_wait_minutes": 0,
+                "route_points": [],
+                "created_at": firestore.SERVER_TIMESTAMP,
+            }
+            ride_ref.set(ride_doc)
+
+            # Notify rider their ride is being matched now
+            send_push_notification(
+                rider_id,
+                title="Your Scheduled Ride is Starting 🚕",
+                body=f"We're finding you a driver now. Pickup: {data.get('pickup_address', '')}",
+                data={"type": "scheduled_ride_dispatched", "ride_id": ride_ref.id},
+            )
+
+            # Start the driver-matching loop
+            asyncio.create_task(match_drivers_to_ride(ride_ref.id))
+
+            # Update scheduled ride to dispatched
+            snap.reference.update({
+                "status": "dispatched",
+                "live_ride_id": ride_ref.id,
+                "dispatched_at": firestore.SERVER_TIMESTAMP,
+            })
+            logger.info(f"Scheduled ride {snap.id} dispatched as live ride {ride_ref.id}")
+
+        except Exception as e:
+            logger.error(f"Failed to dispatch scheduled ride {snap.id}: {e}")
+            # Roll back to scheduled so it gets retried next cycle
+            snap.reference.update({"status": "scheduled"})
+
+
 # =========================
 # FASTAPI APP
 # =========================
 
-app = FastAPI(title="T'aksi API")
+@asynccontextmanager
+async def lifespan(app_instance):
+    # Start the scheduled ride dispatcher in the background
+    dispatcher_task = asyncio.create_task(_dispatch_scheduled_rides_loop())
+    logger.info("Background dispatcher task started.")
+    yield
+    # Clean shutdown
+    dispatcher_task.cancel()
+    try:
+        await dispatcher_task
+    except asyncio.CancelledError:
+        pass
+    logger.info("Background dispatcher task stopped.")
+
+
+app = FastAPI(title="T'aksi API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -431,6 +681,15 @@ class UserLogin(BaseModel):
     cellphone: str = Field(min_length=6, max_length=20)
     password: str = Field(min_length=1, max_length=128)
 
+
+
+
+class OTPSendRequest(BaseModel):
+    cellphone: str = Field(min_length=6, max_length=20)
+
+class OTPVerifyRequest(BaseModel):
+    cellphone: str = Field(min_length=6, max_length=20)
+    code: str = Field(min_length=4, max_length=8)
 
 class VehicleInfo(BaseModel):
     car_make: str
@@ -792,9 +1051,27 @@ def calculate_fare(
 # =========================
 
 @app.post("/api/auth/register/rider", tags=["Auth"])
-async def register_rider(data: UserRegister):
+async def register_rider(data: UserRegister, x_phone_verified: Optional[str] = Header(None)):
+    """
+    Requires a valid phone verification token in the X-Phone-Verified header.
+    Token is issued by POST /api/auth/otp/verify.
+    """
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
+
+    # Verify phone token
+    if not x_phone_verified:
+        raise HTTPException(403, "Phone number must be verified before registering. Call /api/auth/otp/verify first.")
+    token_data = decode_token(x_phone_verified)
+    if not token_data or token_data.get("role") != "phone_verified":
+        raise HTTPException(403, "Invalid or expired phone verification token.")
+    if token_data.get("user_id") != phone_norm:
+        raise HTTPException(403, "Phone token does not match the phone number being registered.")
+
+    # Check OTP was verified in Firestore
+    otp_doc = db.collection("otp_codes").document(phone_norm).get()
+    if not otp_doc.exists or not otp_doc.to_dict().get("verified"):
+        raise HTTPException(403, "Phone number has not been verified via OTP.")
 
     existing = list(
         db.collection("users").where("cellphone_norm", "==", phone_norm).limit(1).stream()
@@ -839,9 +1116,27 @@ async def register_rider(data: UserRegister):
 
 @app.post("/api/auth/register/driver", tags=["Auth"])
 @app.post("/api/driver/register", tags=["Auth"])
-async def register_driver(data: UserRegister):
+async def register_driver(data: UserRegister, x_phone_verified: Optional[str] = Header(None)):
+    """
+    Requires a valid phone verification token in the X-Phone-Verified header.
+    Token is issued by POST /api/auth/otp/verify.
+    """
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
+
+    # Verify phone token
+    if not x_phone_verified:
+        raise HTTPException(403, "Phone number must be verified before registering. Call /api/auth/otp/verify first.")
+    token_data = decode_token(x_phone_verified)
+    if not token_data or token_data.get("role") != "phone_verified":
+        raise HTTPException(403, "Invalid or expired phone verification token.")
+    if token_data.get("user_id") != phone_norm:
+        raise HTTPException(403, "Phone token does not match the phone number being registered.")
+
+    # Check OTP was verified in Firestore
+    otp_doc = db.collection("otp_codes").document(phone_norm).get()
+    if not otp_doc.exists or not otp_doc.to_dict().get("verified"):
+        raise HTTPException(403, "Phone number has not been verified via OTP.")
 
     existing = list(
         db.collection("users").where("cellphone_norm", "==", phone_norm).limit(1).stream()
@@ -924,6 +1219,70 @@ async def login(data: UserLogin):
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_doc.id
     return {"token": token, "user": serialize_firestore_data(safe_user)}
+
+
+@app.post("/api/auth/otp/send", tags=["Auth"])
+async def send_otp(req: OTPSendRequest):
+    """
+    Step 1 of phone verification.
+    Generates a 4-digit code, stores it in Firestore with a 10-min TTL,
+    and (in production) sends it via SMS. In dev, returns the code directly.
+    """
+    db = get_db()
+    phone_norm = normalize_phone(req.cellphone)
+    if not phone_norm:
+        raise HTTPException(422, "Invalid phone number")
+
+    code = _generate_otp()
+    expires_at = datetime.now(timezone.utc).timestamp() + OTP_TTL_SECONDS
+
+    db.collection("otp_codes").document(phone_norm).set({
+        "phone": phone_norm,
+        "code": code,
+        "expires_at": expires_at,
+        "verified": False,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    _send_otp_code(phone_norm, code)
+
+    # In production remove `dev_code` from the response
+    return {"status": "sent", "dev_code": code, "expires_in": OTP_TTL_SECONDS}
+
+
+@app.post("/api/auth/otp/verify", tags=["Auth"])
+async def verify_otp(req: OTPVerifyRequest):
+    """
+    Step 2 of phone verification.
+    Checks the code is correct and not expired, then marks the phone as verified.
+    Returns a short-lived verification token the frontend must include in the
+    register request (X-Phone-Verified header).
+    """
+    db = get_db()
+    phone_norm = normalize_phone(req.cellphone)
+    doc = db.collection("otp_codes").document(phone_norm).get()
+
+    if not doc.exists:
+        raise HTTPException(400, "No OTP found for this number. Request a new code.")
+
+    data = doc.to_dict()
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    if now_ts > data.get("expires_at", 0):
+        raise HTTPException(400, "Code has expired. Please request a new one.")
+
+    if data.get("code") != req.code.strip():
+        raise HTTPException(400, "Incorrect code.")
+
+    # Mark verified and issue a short-lived phone token (5 min)
+    phone_token = create_token(phone_norm, "phone_verified")
+    db.collection("otp_codes").document(phone_norm).update({
+        "verified": True,
+        "verified_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    return {"status": "verified", "phone_token": phone_token}
+
 
 
 # =========================
@@ -3463,6 +3822,35 @@ async def get_language_preference(user_id: str = Depends(get_current_user_id)):
     db = get_db()
     user = db.collection("users").document(user_id).get().to_dict()
     return {"language": user.get("preferred_language", "en")}
+
+
+@app.post("/api/user/fcm-token", tags=["User"])
+async def save_fcm_token(
+    body: dict,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Save the device FCM token so the backend can send push notifications.
+    Called by the usePushNotifications hook on the frontend whenever a new
+    token is obtained from Firebase Messaging.
+    """
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    fcm_token = body.get("fcm_token", "").strip()
+    if not fcm_token:
+        raise HTTPException(status_code=422, detail="fcm_token is required")
+
+    db = get_db()
+    update_payload = {"fcm_token": fcm_token, "fcm_token_updated_at": firestore.SERVER_TIMESTAMP}
+
+    # Update whichever collection this user lives in
+    db.collection("users").document(user_id).set(update_payload, merge=True)
+    db.collection("riders").document(user_id).set(update_payload, merge=True)
+
+    logger.info(f"FCM token saved for user {user_id}")
+    return {"status": "ok"}
+
 
 
 # =========================
