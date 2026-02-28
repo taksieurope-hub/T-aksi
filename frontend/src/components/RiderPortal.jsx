@@ -598,37 +598,36 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
   );
 };
 
-// =============================================================================
-// TIP MODAL — improved UX, works during AND after trips
-// =============================================================================
+import { useState, useEffect } from "react";
+import { toast } from "react-hot-toast";
+import { Star, DollarSign, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PayPalButtons } from "@paypal/react-paypal-js"; // Ensure this is imported!
+import { api } from "./config"; // Adjust your API import
+
 const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
   const [tipAmount, setTipAmount] = useState(null);
   const [custom, setCustom]       = useState("");
-  const [loading, setLoading]     = useState(false);
   const TIPS = [1, 2, 3, 5];
 
-  const handleTip = async () => {
-    const amount = tipAmount || parseFloat(custom);
-    if (!amount || amount <= 0) { toast.error("Please select a tip amount"); return; }
-    setLoading(true);
-    try {
-      await api.post(`/rides/${rideId}/tip`, { amount });
-      toast.success(`₾${amount.toFixed(2)} tip sent to ${driverName}! 🙏`);
-      onTipped?.();
-      onClose();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to send tip");
-    } finally { setLoading(false); }
-  };
-
   // Reset when reopened
-  useEffect(() => { if (isOpen) { setTipAmount(null); setCustom(""); } }, [isOpen]);
+  useEffect(() => { 
+    if (isOpen) { setTipAmount(null); setCustom(""); } 
+  }, [isOpen]);
 
   if (!isOpen) return null;
+
+  // Calculate the final amount in GEL and convert to USD for PayPal
+  const finalAmount = custom ? parseFloat(custom) : tipAmount;
+  const isValidTip = finalAmount && finalAmount > 0;
+  const usdAmount = isValidTip ? (finalAmount * 0.37).toFixed(2) : "0.00";
+
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
       <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/15 rounded-full mx-auto mb-5" />
+        
         <div className="text-center mb-5">
           <div className="w-14 h-14 rounded-2xl bg-yellow-500/15 border border-yellow-500/25 flex items-center justify-center mx-auto mb-3">
             <Star className="w-7 h-7 text-yellow-400" />
@@ -636,24 +635,75 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
           <h2 className="text-white text-xl font-bold">Tip Your Driver</h2>
           <p className="text-white/40 text-sm mt-1">{driverName} deserves recognition!</p>
         </div>
+
+        {/* Tip Selection Buttons */}
         <div className="grid grid-cols-4 gap-2 mb-4">
           {TIPS.map(amt => (
             <button key={amt} onClick={() => { setTipAmount(amt); setCustom(""); }}
-              className={`py-4 rounded-2xl border-2 font-bold text-base transition-all active:scale-95 ${tipAmount === amt ? "border-[#00ff88] bg-[#00ff88]/12 text-[#00ff88]" : "border-white/10 text-white bg-white/4 hover:border-white/25"}`}>
+              className={`py-4 rounded-2xl border-2 font-bold text-base transition-all active:scale-95 ${tipAmount === amt && !custom ? "border-[#00ff88] bg-[#00ff88]/12 text-[#00ff88]" : "border-white/10 text-white bg-white/4 hover:border-white/25"}`}>
               ₾{amt}
             </button>
           ))}
         </div>
-        <Input type="number" placeholder="Custom amount" value={custom}
+
+        <Input 
+          type="number" 
+          placeholder="Custom amount (₾)" 
+          value={custom}
           onChange={e => { setCustom(e.target.value); setTipAmount(null); }}
-          className="bg-white/5 border-white/10 text-white text-center h-12 rounded-xl mb-4 placeholder:text-white/25" />
-        <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-12 text-sm" onClick={onClose}>Maybe Later</Button>
-          <Button className="flex-1 bg-[#00ff88] text-black font-bold rounded-xl h-12" onClick={handleTip} disabled={loading || (!tipAmount && !custom)}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <DollarSign className="w-4 h-4 mr-2" />}
-            Send Tip
-          </Button>
-        </div>
+          className="bg-white/5 border-white/10 text-white text-center h-12 rounded-xl mb-4 placeholder:text-white/25" 
+        />
+
+        {isValidTip && (
+          <p className="text-white/30 text-xs text-center mb-4">
+            ₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD
+          </p>
+        )}
+
+        {/* The Magic: Only show PayPal if a valid amount is selected */}
+        {isValidTip ? (
+          <div className="mb-4">
+            <PayPalButtons
+              fundingSource="card"
+              style={{ layout: "vertical", shape: "rect" }}
+              createOrder={(data, actions) => actions.order.create({
+                purchase_units: [{ 
+                  amount: { value: usdAmount, currency_code: "USD" },
+                  description: `Tip for ride ${rideId}` 
+                }],
+                application_context: { shipping_preference: "NO_SHIPPING" },
+              })}
+              onApprove={async (data, actions) => {
+                await actions.order.capture();
+                // ONLY tell the backend the tip happened AFTER the card is successfully charged
+                try {
+                  await api.post(`/rides/${rideId}/tip`, { 
+                    amount: finalAmount,
+                    tip_amount: finalAmount,
+                    reference_id: data.orderID // Send the PayPal receipt ID for the records
+                  });
+                  toast.success(`₾${finalAmount.toFixed(2)} tip successfully charged and sent! 🙏`);
+                  onTipped?.();
+                  onClose();
+                } catch (err) {
+                  toast.error("Payment went through, but failed to update ride. Please contact support.");
+                }
+              }}
+              onError={() => toast.error("Card payment failed. Please try again.")}
+              onCancel={() => toast.info("Tip cancelled.")}
+            />
+          </div>
+        ) : (
+          <div className="bg-white/4 rounded-xl p-4 text-center mb-4 border border-white/5">
+            <p className="text-white/25 text-sm flex items-center justify-center gap-2">
+              <DollarSign className="w-4 h-4" /> Select an amount to pay securely
+            </p>
+          </div>
+        )}
+
+        <Button variant="ghost" className="w-full border border-white/10 text-white/40 rounded-xl h-12 text-sm hover:bg-white/5" onClick={onClose}>
+          Maybe Later
+        </Button>
       </div>
     </div>
   );
@@ -1135,6 +1185,8 @@ const RiderDashboard = () => {
   const { user, logout, refreshUser } = useAuth();
   const navigate  = useNavigate();
   const { t }     = useLanguage();
+
+  const [showSaveCard, setShowSaveCard] = useState(false);
 
   const notifiedArrived  = useRef(false);
   const notifiedAccepted = useRef(false);

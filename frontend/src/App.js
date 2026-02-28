@@ -45,7 +45,8 @@ function App() {
         "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
         currency: "USD",
         components: "buttons,card-fields",
-        intent: "capture"
+        intent: "capture",
+        vault: true // 👈 The magic key that enables background card saving
       }}
     >
       <div className="App">
