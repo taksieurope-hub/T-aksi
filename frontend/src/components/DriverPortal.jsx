@@ -27,6 +27,7 @@ import {
   Shield, Users, Gift, LifeBuoy, Copy, Share2, ChevronDown, ChevronUp,
   ChevronRight, Bell, Flame, Calendar, Truck, Settings, RefreshCw,
   Award, BarChart3, FileText, Heart, Headphones, AlertCircle,
+  CornerUpLeft, CornerUpRight, RotateCcw, Merge, ArrowUp,
 } from "lucide-react";
 
 // =============================================================================
@@ -65,19 +66,14 @@ const C = {
 };
 
 // =============================================================================
-// GOOGLE MAPS SINGLETON LOADER — shared with RiderPortal, never double-loads
-// FIX: was completely missing from DriverPortal, causing mapsLoaded to be
-//      permanently false and the map to never render.
+// GOOGLE MAPS SINGLETON LOADER
 // =============================================================================
 let mapsLoadState = "idle";
 const mapsReadyCallbacks = [];
 
 const loadGoogleMaps = (apiKey) => {
-  // Already loaded and verified
   if (mapsLoadState === "loaded" && window.google?.maps) return Promise.resolve();
-  // State says loaded but google isn't there (e.g. script was removed) — reset
   if (mapsLoadState === "loaded" && !window.google?.maps) mapsLoadState = "idle";
-
   if (mapsLoadState === "loading") return new Promise((res, rej) => mapsReadyCallbacks.push({ res, rej }));
 
   mapsLoadState = "loading";
@@ -164,14 +160,11 @@ const StatusBadge = ({ status }) => {
 
 // =============================================================================
 // DRIVER WAIT TIMER
-// FIX: Always anchors to server-provided arrived_at timestamp.
-//      Elapsed seconds → minutes conversion is used for fare billing.
 // =============================================================================
 const DriverWaitTimer = ({ arrivedAt, carType }) => {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    // Prefer server timestamp; fall back to now only if absent
     const start = arrivedAt && !isNaN(new Date(arrivedAt).getTime())
       ? new Date(arrivedAt).getTime()
       : Date.now();
@@ -883,7 +876,7 @@ const ReferralPanel = () => {
 };
 
 // =============================================================================
-// MORE PANEL — hub for campaigns, fleet, support, referrals
+// MORE PANEL
 // =============================================================================
 const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocation }) => {
   const [view, setView] = useState("menu");
@@ -969,88 +962,238 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
 };
 
 // =============================================================================
-// DRIVER SMART MAP
+// NAV HUD HELPERS (for DriverSmartMap)
+// =============================================================================
+const stripHtml = (html) => (html || "").replace(/<[^>]*>/g, "");
+
+const getManeuverInfo = (maneuver = "", instruction = "") => {
+  const m = (maneuver + " " + instruction).toLowerCase();
+  if (m.includes("sharp-left") || m.includes("uturn-left"))
+    return { Icon: RotateCcw, color: "#f97316", flip: false };
+  if (m.includes("sharp-right") || m.includes("uturn-right"))
+    return { Icon: RotateCcw, color: "#f97316", flip: true };
+  if (m.includes("turn-left") || (m.includes("left") && !m.includes("right")))
+    return { Icon: CornerUpLeft, color: "#60a5fa", flip: false };
+  if (m.includes("turn-right") || m.includes("right"))
+    return { Icon: CornerUpRight, color: "#60a5fa", flip: false };
+  if (m.includes("merge") || m.includes("ramp"))
+    return { Icon: Merge, color: "#a78bfa", flip: false };
+  if (m.includes("roundabout"))
+    return { Icon: RotateCcw, color: "#facc15", flip: false };
+  if (m.includes("destination") || m.includes("arrive"))
+    return { Icon: MapPinned, color: "#00ff88", flip: false };
+  return { Icon: ArrowUp, color: "#00ff88", flip: false };
+};
+
+const lerpAngle = (from, to, t) => {
+  const diff = ((to - from + 540) % 360) - 180;
+  return (from + diff * t + 360) % 360;
+};
+
+const LaneIndicator = ({ lanes }) => {
+  if (!lanes?.length) return null;
+  return (
+    <div className="flex items-center justify-center gap-1 mt-2 pb-1">
+      {lanes.map((lane, i) => {
+        const active = lane.indications?.some((ind) =>
+          ["straight", "slight left", "slight right", "left", "right"].includes(ind)
+        );
+        const ind = lane.indications?.[0];
+        return (
+          <div key={i} className={`flex flex-col items-center justify-center w-8 h-8 rounded-lg transition-all ${active ? "bg-[#00ff88]/25 border border-[#00ff88]/60" : "bg-white/8 border border-white/15 opacity-40"}`}>
+            <ArrowUp className={`w-4 h-4 ${active ? "text-[#00ff88]" : "text-white/50"}`}
+              style={{ transform: ind === "left" ? "rotate(-45deg)" : ind === "right" ? "rotate(45deg)" : "none" }} />
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const NavHUD = ({ step, nextStep, speed }) => {
+  if (!step) return null;
+  const { Icon, color, flip } = getManeuverInfo(step.maneuver || "", step.instructions || "");
+  const nextInfo = nextStep ? getManeuverInfo(nextStep.maneuver || "", nextStep.instructions || "") : null;
+  return (
+    <div className="absolute top-[72px] left-3 right-3 z-30" style={{ pointerEvents: "none" }}>
+      <div className="rounded-2xl overflow-hidden shadow-2xl"
+        style={{ background: "rgba(7,7,15,0.93)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(20px)" }}>
+        <div className="flex items-center gap-4 px-4 py-3">
+          <div className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: `${color}18`, border: `2px solid ${color}50` }}>
+            <Icon className="w-9 h-9" style={{ color, transform: flip ? "scaleX(-1)" : "none" }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black leading-none tracking-tight" style={{ color, fontSize: "2rem", fontVariantNumeric: "tabular-nums" }}>
+              {step.distance?.text || ""}
+            </p>
+            <p className="text-white text-sm font-semibold mt-1 leading-tight line-clamp-2">
+              {stripHtml(step.instructions)}
+            </p>
+          </div>
+        </div>
+        {step.lane_restrictions?.length > 0 && <div className="px-4"><LaneIndicator lanes={step.lane_restrictions} /></div>}
+        {nextStep && nextInfo && (
+          <div className="flex items-center gap-2 px-4 py-2"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)" }}>
+            <span className="text-white/35 text-xs uppercase tracking-widest shrink-0">Then</span>
+            <nextInfo.Icon className="w-3.5 h-3.5 shrink-0" style={{ color: nextInfo.color }} />
+            <span className="text-white/60 text-xs truncate">{stripHtml(nextStep.instructions)}</span>
+            <span className="text-white/35 text-xs ml-auto shrink-0">{nextStep.distance?.text}</span>
+          </div>
+        )}
+      </div>
+      {speed != null && (
+        <div className="absolute right-0 flex flex-col items-center justify-center w-14 h-14 rounded-2xl shadow-lg"
+          style={{ top: "calc(100% + 8px)", background: "rgba(7,7,15,0.9)", border: "1.5px solid rgba(255,255,255,0.12)", backdropFilter: "blur(16px)" }}>
+          <span className="text-white font-black text-lg leading-none">{Math.round(speed * 3.6)}</span>
+          <span className="text-white/35 text-[9px] uppercase tracking-wider">km/h</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// MAP STYLES — white roads, no blue lines, no transit clutter
+// =============================================================================
+const MAP_STYLES = [
+  { elementType: "geometry",           stylers: [{ color: "#ececec" }] },
+  { elementType: "labels.icon",        stylers: [{ visibility: "off" }] },
+  { elementType: "labels.text.fill",   stylers: [{ color: "#888888" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
+  { featureType: "road",               elementType: "geometry",        stylers: [{ color: "#ffffff" }] },
+  { featureType: "road",               elementType: "geometry.stroke", stylers: [{ color: "#e0e0e0" }] },
+  { featureType: "road.highway",       elementType: "geometry",        stylers: [{ color: "#f5f5f5" }] },
+  { featureType: "road.highway",       elementType: "geometry.stroke", stylers: [{ color: "#d8d8d8" }] },
+  { featureType: "road.arterial",      elementType: "geometry",        stylers: [{ color: "#fafafa" }] },
+  { featureType: "road.local",         elementType: "geometry",        stylers: [{ color: "#ffffff" }] },
+  { featureType: "water",              elementType: "geometry",        stylers: [{ color: "#c8dff0" }] },
+  { featureType: "landscape",          elementType: "geometry",        stylers: [{ color: "#f0f0f0" }] },
+  { featureType: "poi",                stylers: [{ visibility: "off" }] },
+  { featureType: "transit",            stylers: [{ visibility: "off" }] },
+  { featureType: "administrative",     elementType: "geometry",        stylers: [{ visibility: "off" }] },
+];
+
+// =============================================================================
+// DRIVER SMART MAP — all original logic + tilt/rotation/HUD on top
 // =============================================================================
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const markerRef = useRef(null);
-  const routeRendererRef = useRef(null);
+  const mapRef               = useRef(null);
+  const mapInstanceRef       = useRef(null);
+  const markerRef            = useRef(null);
+  const routeRendererRef     = useRef(null);
   const directionsServiceRef = useRef(null);
-  const [isFollowing, setIsFollowing] = useState(true);
-  const [routeSteps, setRouteSteps] = useState([]);
-  const [stepIdx, setStepIdx] = useState(0);
+  const headingRef           = useRef(0);
+  const rafRef               = useRef(null);
 
-  const getSafe = v => { const n = parseFloat(v); return !isNaN(n) && n !== 0 ? n : null; };
+  const [isFollowing, setIsFollowing] = useState(true);
+  const [routeSteps,  setRouteSteps]  = useState([]);
+  const [stepIdx,     setStepIdx]     = useState(0);
+  const [speed,       setSpeed]       = useState(null);
+
+  const getSafe = (v) => { const n = parseFloat(v); return !isNaN(n) && n !== 0 ? n : null; };
   const hvKm = (lat1, lo1, lat2, lo2) => {
     const R = 6371, dL = (lat2-lat1)*Math.PI/180, dl = (lo2-lo1)*Math.PI/180;
     const a = Math.sin(dL/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dl/2)**2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   };
 
+  const animateHeading = useCallback((targetHeading) => {
+    if (!mapInstanceRef.current) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    const tick = () => {
+      const current = headingRef.current;
+      const next = lerpAngle(current, targetHeading, 0.12);
+      headingRef.current = next;
+      mapInstanceRef.current.setHeading(next);
+      if (Math.abs(((next - targetHeading + 540) % 360) - 180) > 0.5) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  // Map init — same guards as original
   useEffect(() => {
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 41.7151, lng: 44.8271 }, zoom: 17,
-      disableDefaultUI: true, gestureHandling: "greedy", backgroundColor: "#f5f5f5",
-      styles: [
-        { elementType: "geometry",           stylers: [{ color: "#f0f0f0" }] },
-        { elementType: "labels.icon",        stylers: [{ visibility: "off" }] },
-        { elementType: "labels.text.fill",   stylers: [{ color: "#666" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#f0f0f0" }] },
-        { featureType: "road",             elementType: "geometry", stylers: [{ color: "#fff" }] },
-        { featureType: "road.highway",     elementType: "geometry", stylers: [{ color: "#e8e8e8" }] },
-        { featureType: "road.arterial",    elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
-        { featureType: "water",            elementType: "geometry", stylers: [{ color: "#d0e8f0" }] },
-        { featureType: "poi",              stylers: [{ visibility: "off" }] },
-        { featureType: "transit",          stylers: [{ visibility: "off" }] },
-      ],
+      tilt: 45, heading: 0,
+      disableDefaultUI: true, gestureHandling: "greedy",
+      backgroundColor: "#ececec", styles: MAP_STYLES,
     });
     map.addListener("dragstart", () => setIsFollowing(false));
     routeRendererRef.current = new window.google.maps.DirectionsRenderer({
       map, suppressMarkers: false, preserveViewport: true,
-      polylineOptions: { strokeColor: "#00cc77", strokeWeight: 5, strokeOpacity: 0.9 },
+      polylineOptions: { strokeColor: "#00cc77", strokeWeight: 6, strokeOpacity: 0.95 },
     });
     directionsServiceRef.current = new window.google.maps.DirectionsService();
     mapInstanceRef.current = map;
   }, []);
 
+  // Driver position — same logic as original + heading rotation
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
     const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
     if (!lat || !lng) return;
     const pos = { lat, lng };
     const heading = parseFloat(driverLocation.heading) || 0;
+    setSpeed(driverLocation.speed ?? null);
+
     if (!markerRef.current) {
       markerRef.current = new window.google.maps.Marker({
         position: pos, map: mapInstanceRef.current, zIndex: 1000,
-        icon: { path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 7, fillColor: "#00cc77", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, rotation: heading, anchor: new window.google.maps.Point(0, 2.5) },
+        icon: {
+          path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 7, fillColor: "#00cc77", fillOpacity: 1,
+          strokeColor: "#fff", strokeWeight: 2,
+          rotation: 0, anchor: new window.google.maps.Point(0, 2.5),
+        },
       });
     } else {
       markerRef.current.setPosition(pos);
-      markerRef.current.setIcon({ ...markerRef.current.getIcon(), rotation: heading });
+      const icon = markerRef.current.getIcon();
+      markerRef.current.setIcon({ ...icon, rotation: 0 });
     }
-    if (isFollowing) mapInstanceRef.current.panTo(pos);
+
+    if (isFollowing) {
+      mapInstanceRef.current.panTo(pos);
+      animateHeading(heading);
+      if (mapInstanceRef.current.getTilt() !== 45) mapInstanceRef.current.setTilt(45);
+    }
+
+    // Step advance — same threshold as original (0.04 km)
     if (routeSteps.length > 0 && stepIdx < routeSteps.length) {
       const step = routeSteps[stepIdx];
-      if (hvKm(lat, lng, step.end_location.lat(), step.end_location.lng()) < 0.04) setStepIdx(p => p + 1);
+      if (step.end_location && hvKm(lat, lng, step.end_location.lat(), step.end_location.lng()) < 0.04) {
+        setStepIdx(p => p + 1);
+      }
     }
-  }, [driverLocation, isFollowing, routeSteps, stepIdx]);
+  }, [driverLocation, isFollowing, routeSteps, stepIdx, animateHeading]);
 
+  // Directions — same logic + same deps as original, no drivingOptions
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
-    if (!activeRide || !driverLocation) { routeRendererRef.current?.setDirections({ routes: [] }); setRouteSteps([]); return; }
+    if (!activeRide || !driverLocation) {
+      routeRendererRef.current?.setDirections({ routes: [] });
+      setRouteSteps([]);
+      return;
+    }
     const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
     if (!dLat || !dLng) return;
+
     let target = null;
     if (["accepted", "arrived"].includes(activeRide.status)) {
       const lat = getSafe(activeRide.pickup_lat), lng = getSafe(activeRide.pickup_lng);
       if (lat && lng) target = { lat, lng };
     } else if (activeRide.status === "in_progress") {
-      const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat), lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
+      const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat);
+      const lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
       if (lat && lng) target = { lat, lng };
     }
     if (!target) return;
+
     directionsServiceRef.current.route(
       { origin: { lat: dLat, lng: dLng }, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
       (result, status) => {
@@ -1062,13 +1205,6 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       }
     );
   }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat]);
-
-  const getTurnIcon = (m) => {
-    if (!m) return <Navigation className="w-7 h-7" />;
-    if (m.includes("left")) return <ArrowLeft className="w-7 h-7" />;
-    if (m.includes("right")) return <ArrowRight className="w-7 h-7" />;
-    return <Navigation className="w-7 h-7" />;
-  };
 
   const handleNav = (app) => {
     if (!activeRide) return;
@@ -1082,46 +1218,57 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     window.open(url, "_blank");
   };
 
-  const curStep = routeSteps[stepIdx];
+  const curStep  = routeSteps[stepIdx];
+  const nextStep = routeSteps[stepIdx + 1];
 
   return (
     <div className="fixed inset-0 w-full h-full z-0">
       <div ref={mapRef} className="w-full h-full" />
 
-      {activeRide && curStep && (
-        <div className="absolute top-24 left-3 right-3 z-20 bg-white/95 backdrop-blur-xl rounded-2xl p-4 shadow-2xl flex items-center gap-4">
-          <div className="bg-[#00cc77]/15 p-3 rounded-xl text-[#00cc77] shrink-0">{getTurnIcon(curStep.maneuver)}</div>
-          <div className="flex-1 overflow-hidden">
-            <p className="text-2xl font-bold text-gray-900">{curStep.distance?.text}</p>
-            <p className="text-gray-600 text-sm leading-tight truncate">{curStep.instructions?.replace(/<[^>]*>?/gm, "")}</p>
-          </div>
-        </div>
-      )}
+      {activeRide && <NavHUD step={curStep} nextStep={nextStep} speed={speed} />}
 
       {!isFollowing && driverLocation && (
-        <button onClick={() => { setIsFollowing(true); mapInstanceRef.current?.panTo({ lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) }); }}
-          className="absolute bottom-[52vh] left-4 bg-[#00cc77] text-white p-3 rounded-full shadow-xl z-10">
-          <Crosshair className="w-5 h-5 animate-pulse" />
+        <button onClick={() => {
+            setIsFollowing(true);
+            const lat = parseFloat(driverLocation.lat), lng = parseFloat(driverLocation.lng);
+            if (!isNaN(lat) && !isNaN(lng)) { mapInstanceRef.current?.panTo({ lat, lng }); mapInstanceRef.current?.setTilt(45); }
+          }}
+          className="absolute z-20 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-2xl transition-all active:scale-95"
+          style={{ bottom: "calc(72vh + 16px)", left: "50%", transform: "translateX(-50%)", background: "rgba(0,204,119,0.95)" }}>
+          <Crosshair className="w-4 h-4 text-white animate-pulse" />
+          <span className="text-white text-sm font-bold">Re-centre</span>
         </button>
       )}
 
-      <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-10">
+      {/* ONE column — zoom, north, waze, google. No overlap. */}
+      <div className="absolute flex flex-col gap-2 z-10" style={{ right: 16, top: "50%", transform: "translateY(-50%)" }}>
         <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)+1)}
-          className="w-11 h-11 bg-white/90 backdrop-blur rounded-xl shadow-lg flex items-center justify-center text-gray-800 text-xl font-bold">+</button>
+          className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-800 text-xl font-bold shadow-lg active:scale-95 transition-transform"
+          style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>+</button>
         <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)-1)}
-          className="w-11 h-11 bg-white/90 backdrop-blur rounded-xl shadow-lg flex items-center justify-center text-gray-800 text-xl font-bold">−</button>
-      </div>
-
-      {activeRide && (
-        <div className="absolute top-1/2 -translate-y-1/2 right-4 mt-16 flex flex-col gap-2 z-10">
-          <button onClick={() => handleNav("waze")} className="w-11 h-11 bg-[#00d4ff]/90 rounded-xl shadow-lg flex items-center justify-center">
+          className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-800 text-xl font-bold shadow-lg active:scale-95 transition-transform"
+          style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>−</button>
+        <button onClick={() => { mapInstanceRef.current?.setHeading(0); headingRef.current = 0; }}
+          className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+          style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }} title="Reset north">
+          <Navigation className="w-4 h-4 text-gray-700" />
+        </button>
+        {activeRide && <div style={{ height: 1, background: "rgba(200,200,200,0.4)", margin: "2px 4px" }} />}
+        {activeRide && (
+          <button onClick={() => handleNav("waze")}
+            className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+            style={{ background: "rgba(0,212,255,0.9)", backdropFilter: "blur(8px)" }} title="Open in Waze">
             <Zap className="w-5 h-5 text-white" />
           </button>
-          <button onClick={() => handleNav("google")} className="w-11 h-11 bg-[#00cc77]/90 rounded-xl shadow-lg flex items-center justify-center">
+        )}
+        {activeRide && (
+          <button onClick={() => handleNav("google")}
+            className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+            style={{ background: "rgba(0,204,119,0.9)", backdropFilter: "blur(8px)" }} title="Open in Google Maps">
             <MapPinned className="w-5 h-5 text-white" />
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
@@ -1236,8 +1383,6 @@ const DriverDashboard = () => {
 
   const [rideStartTime, setRideStartTime] = useState(null);
   const [arrivedTime, setArrivedTime] = useState(null);
-  // FIX: waitTimer tracks ELAPSED WHOLE MINUTES of billable wait (after free time)
-  // It is computed from the server's arrived_at timestamp to survive page reloads.
   const [waitTimer, setWaitTimer] = useState(0);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
   const [isWaitingAtStop, setIsWaitingAtStop] = useState(false);
@@ -1269,17 +1414,13 @@ const DriverDashboard = () => {
   // ===========================================================================
   // FIX: Maps — use singleton loader, not a nested useEffect
   // ===========================================================================
-  
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
-    
-    // Explicitly use import.meta.env so Vite bakes the key in!
     loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
       .then(() => setMapsLoaded(true))
       .catch(() => toast.error("Failed to load Google Maps"));
   }, []);
 
-  // Reset minimized state when ride status changes
   useEffect(() => { setIsMinimized(false); }, [activeRide?.status]);
 
   const handleTouchStart = e => { touchStartY.current = e.touches[0].clientY; };
@@ -1300,17 +1441,13 @@ const DriverDashboard = () => {
   const activeRideRef = useRef(activeRide);
   useEffect(() => { activeRideRef.current = activeRide; }, [activeRide]);
 
-  // 🛑 The Throttle Timer: Add this right above the function
   const lastNetworkPingRef = useRef(0);
 
   const handleLocationUpdate = useCallback(async (location) => {
-    setDriverLocation(location); // 1. Update the driver's local map instantly
-
-    // 2. THE SHIELD: Only send to the backend once every 10 seconds
+    setDriverLocation(location);
     const now = Date.now();
     if (now - lastNetworkPingRef.current < 10000) return;
     lastNetworkPingRef.current = now;
-
     try {
       await api.post("/driver/location", location);
       lastPositionRef.current = location;
@@ -1320,21 +1457,15 @@ const DriverDashboard = () => {
   useLocationTracker(isOnline, handleLocationUpdate);
 
   // ===========================================================================
-  // FIX: Wait timer — always anchored to server's arrived_at for accurate billing.
-  //      waitTimer = total ELAPSED minutes since arrived_at (including free window).
-  //      The backend subtracts free wait itself; we send the raw total.
+  // Wait timer — anchored to server's arrived_at
   // ===========================================================================
   useEffect(() => {
     if (activeRide?.status !== "arrived") return;
-
-    // Prefer server timestamp; fall back to local only if missing
     const serverArrivedAt = activeRide.arrived_at;
     const startMs = serverArrivedAt && !isNaN(new Date(serverArrivedAt).getTime())
       ? new Date(serverArrivedAt).getTime()
       : (arrivedTime ?? Date.now());
-
     if (!arrivedTime) setArrivedTime(startMs);
-
     const iv = setInterval(() => {
       const totalElapsedMin = Math.floor((Date.now() - startMs) / 60000);
       setWaitTimer(totalElapsedMin);
@@ -1342,7 +1473,6 @@ const DriverDashboard = () => {
     return () => clearInterval(iv);
   }, [activeRide?.status, activeRide?.arrived_at]);
 
-  // Polling
   useEffect(() => { fetchActiveRide(); fetchRideHistory(); }, []);
   useEffect(() => {
     if (registrationStatus !== "approved" || !isOnline) return;
@@ -1367,19 +1497,16 @@ const DriverDashboard = () => {
     try { const r = await api.get("/auth/me"); updateUser(r.data); } catch (_) {}
   };
 
-  // Ride actions
   const handleRideAction = async (action) => {
     if (!activeRide) return;
     setLoading(true);
     try {
       if (action === "arrived") {
         await api.post(`/rides/${activeRide.id}/arrived`);
-        // Reset local timer — will re-anchor to server's arrived_at on next poll
         setArrivedTime(null);
         setWaitTimer(0);
         toast.success("Marked as arrived");
       } else if (action === "start") {
-        // Send total elapsed minutes; backend calculates billable = max(0, total - freeWait)
         await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: waitTimer });
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
@@ -1400,12 +1527,10 @@ const DriverDashboard = () => {
             : "Ride complete! No cash needed.",
           { duration: 8000 }
         );
-
         const riderName = activeRide.rider_name || activeRide.driver_info?.rider_name || "Passenger";
         setRateRideId(activeRide.id);
         setRateRiderName(riderName);
         setShowRateModal(true);
-
         setCompletedRide({ ...res.data, final_fare: res.data.final_fare || activeRide.estimated_fare });
         setActiveRide(null);
         setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null); setIsWaitingAtStop(false);
@@ -1490,7 +1615,6 @@ const DriverDashboard = () => {
     } catch (_) {}
   };
 
-  // Tab config
   const tabs = [
     { id: "rides",    icon: Activity,  label: "Rides"   },
     { id: "nearby",   icon: Crosshair, label: "Nearby"  },
@@ -1506,9 +1630,8 @@ const DriverDashboard = () => {
   };
   const rsc = rideStatusConfig[activeRide?.status] || {};
 
-  // Derived: display current wait in mm:ss for the active ride panel
-  const waitDisplayMin  = Math.floor(waitTimer);
-  const waitDisplaySec  = 0; // waitTimer is already whole minutes from the interval
+  const waitDisplayMin = Math.floor(waitTimer);
+  const waitDisplaySec = 0;
 
   return (
     <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden">
@@ -1540,18 +1663,15 @@ const DriverDashboard = () => {
 
           <div className="flex items-center gap-2">
             <SurgeIndicator location={driverLocation} />
-
             <div className="bg-[#00ff88]/10 border border-[#00ff88]/25 rounded-lg px-2.5 py-1.5">
               <span className="text-[#00ff88] font-bold font-mono text-sm">₾{balance.toFixed(2)}</span>
             </div>
-
             {registrationStatus === "approved" && (
               <button onClick={() => handleToggleOnline(!isOnline)}
                 className={`relative w-14 h-7 rounded-full transition-colors duration-300 border ${isOnline ? "bg-[#00ff88]/25 border-[#00ff88]/50" : "bg-white/8 border-white/15"}`}>
                 <div className={`absolute top-0.5 w-6 h-6 rounded-full transition-transform duration-300 shadow-lg ${isOnline ? "translate-x-7 bg-[#00ff88]" : "translate-x-0.5 bg-white/40"}`} />
               </button>
             )}
-
             <button onClick={logout} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-red-400 transition-colors">
               <LogOut className="w-4 h-4" />
             </button>
@@ -1567,7 +1687,7 @@ const DriverDashboard = () => {
         )}
       </header>
 
-      {/* ACTIVE RIDE PILL (minimized state) */}
+      {/* ACTIVE RIDE PILL (minimized) */}
       {activeRide && isMinimized && (
         <button onClick={() => setIsMinimized(false)}
           className="absolute top-20 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full border backdrop-blur-xl shadow-2xl transition-all"
@@ -1583,12 +1703,10 @@ const DriverDashboard = () => {
         <div className="bg-[#0a0a18]/95 backdrop-blur-3xl border-t border-white/8 rounded-t-3xl overflow-hidden shadow-[0_-20px_60px_rgba(0,0,0,0.8)]"
           style={{ maxHeight: "72vh" }}>
 
-          {/* Drag handle */}
           <div className="flex justify-center pt-3 pb-1 cursor-pointer" onClick={() => setIsMinimized(p => !p)} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
             <div className="w-12 h-1 bg-white/15 rounded-full" />
           </div>
 
-          {/* Tab bar — only when no active ride */}
           {!activeRide && (
             <div className="flex items-center gap-1 px-3 pb-2 pt-1 border-b border-white/5">
               {tabs.map(({ id, icon: Icon, label }) => (
@@ -1603,22 +1721,19 @@ const DriverDashboard = () => {
 
           <div className="overflow-y-auto px-4 pb-6 pt-3" style={{ maxHeight: activeRide ? "65vh" : "calc(72vh - 80px)" }}>
 
-            {/* ================================================================ */}
-            {/* ACTIVE RIDE VIEW                                                  */}
-            {/* ================================================================ */}
+            {/* ACTIVE RIDE */}
             {activeRide && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-white font-bold text-lg">Active Ride</p>
                     <p className="text-white/40 text-xs">
-                      {activeRide.carType || activeRide.car_type} · {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()] ? PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()].icon : "🚗"}
+                      {activeRide.carType || activeRide.car_type} · {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()]?.icon || "🚗"}
                     </p>
                   </div>
                   <StatusBadge status={activeRide.status} />
                 </div>
 
-                {/* Route */}
                 <GlassCard className="p-4 space-y-3">
                   <div className="flex items-start gap-3">
                     <div className="w-2.5 h-2.5 rounded-full bg-[#00ff88] mt-1 shrink-0" />
@@ -1645,7 +1760,6 @@ const DriverDashboard = () => {
                   </div>
                 </GlassCard>
 
-                {/* Timers */}
                 {activeRide.status === "arrived" && (
                   <DriverWaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType || activeRide.car_type} />
                 )}
@@ -1659,13 +1773,11 @@ const DriverDashboard = () => {
                   </GlassCard>
                 )}
 
-                {/* Fare */}
                 <div className="flex items-center justify-between bg-gradient-to-r from-[#00ff88]/10 to-[#00d4ff]/10 border border-[#00ff88]/20 rounded-xl px-4 py-3">
                   <span className="text-white/60 text-sm">Estimated Fare</span>
                   <span className="text-2xl font-bold text-[#00ff88] font-mono">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2) ?? "—"}</span>
                 </div>
 
-                {/* Communication */}
                 <RideCommunication
                   rideId={activeRide.id}
                   otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone}
@@ -1674,7 +1786,6 @@ const DriverDashboard = () => {
                   isDriver={true}
                 />
 
-                {/* Stop wait toggle */}
                 {activeRide.status === "in_progress" && activeRide.stops?.some(s => s.lat) && (
                   <button onClick={toggleStopWait}
                     className={`w-full h-11 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${isWaitingAtStop ? "bg-amber-500/15 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-white/60"}`}>
@@ -1682,7 +1793,6 @@ const DriverDashboard = () => {
                   </button>
                 )}
 
-                {/* Action buttons */}
                 <div className="flex gap-3">
                   {activeRide.status === "accepted" && (
                     <Button className="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold h-14 text-base" onClick={() => handleRideAction("arrived")} disabled={loading}>
@@ -1707,9 +1817,7 @@ const DriverDashboard = () => {
               </div>
             )}
 
-            {/* ================================================================ */}
-            {/* RIDES TAB (no active ride)                                        */}
-            {/* ================================================================ */}
+            {/* RIDES TAB */}
             {!activeRide && activeTab === "rides" && (
               <div>
                 {registrationStatus !== "approved" ? (
@@ -1787,9 +1895,7 @@ const DriverDashboard = () => {
               </div>
             )}
 
-            {/* ================================================================ */}
-            {/* NEARBY TAB                                                        */}
-            {/* ================================================================ */}
+            {/* NEARBY TAB */}
             {!activeRide && activeTab === "nearby" && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -1825,12 +1931,9 @@ const DriverDashboard = () => {
               </div>
             )}
 
-            {/* ================================================================ */}
-            {/* EARNINGS TAB                                                      */}
-            {/* ================================================================ */}
+            {/* EARNINGS TAB */}
             {!activeRide && activeTab === "earnings" && (
               <div className="space-y-4">
-                {/* Stats */}
                 <div className="grid grid-cols-2 gap-3">
                   <GlassCard accent className="p-4 text-center">
                     <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
@@ -1844,7 +1947,6 @@ const DriverDashboard = () => {
                   <StatPill label="Withdrawn" value={`₾${totalWithdrawn.toFixed(2)}`} color="text-white/60" />
                 </div>
 
-                {/* Sub-tab */}
                 <div className="flex gap-2">
                   {[["overview","Overview"],["topup","Top Up"],["withdraw","Withdraw"]].map(([k,l]) => (
                     <button key={k} onClick={() => setEarningsTab(k)}
@@ -1884,28 +1986,19 @@ const DriverDashboard = () => {
                       </p>
                     </div>
 
-                    {/* FIX: Guard against NaN — only show PayPal when amount >= 5 */}
                     {topupAmount && parseFloat(topupAmount) >= 5 ? (
                       <PayPalButtons
                         fundingSource="card"
                         style={{ layout: "vertical", shape: "rect", color: "black" }}
                         createOrder={(data, actions) => actions.order.create({
-                          purchase_units: [{
-                            amount: {
-                              value: (parseFloat(topupAmount) * 0.37).toFixed(2),
-                              currency_code: "USD",
-                            },
-                          }],
+                          purchase_units: [{ amount: { value: (parseFloat(topupAmount) * 0.37).toFixed(2), currency_code: "USD" } }],
                           application_context: { shipping_preference: "NO_SHIPPING" },
                         })}
                         onApprove={async (data, actions) => {
                           try {
                             setLoading(true);
                             await actions.order.capture();
-                            await api.post("/driver/wallet/topup/paypal", {
-                              order_id: data.orderID,
-                              amount: parseFloat(topupAmount),
-                            });
+                            await api.post("/driver/wallet/topup/paypal", { order_id: data.orderID, amount: parseFloat(topupAmount) });
                             toast.success(`₾${topupAmount} added!`);
                             setTopupAmount(""); setEarningsTab("overview");
                             await refreshUser();
@@ -1942,9 +2035,7 @@ const DriverDashboard = () => {
               </div>
             )}
 
-            {/* ================================================================ */}
-            {/* HISTORY TAB                                                       */}
-            {/* ================================================================ */}
+            {/* HISTORY TAB */}
             {!activeRide && activeTab === "history" && (
               <div className="space-y-3">
                 {rideHistory.length === 0 ? (
@@ -1975,9 +2066,7 @@ const DriverDashboard = () => {
               </div>
             )}
 
-            {/* ================================================================ */}
-            {/* MORE TAB                                                          */}
-            {/* ================================================================ */}
+            {/* MORE TAB */}
             {!activeRide && activeTab === "more" && (
               <MorePanel
                 registrationStatus={registrationStatus}
@@ -1991,7 +2080,7 @@ const DriverDashboard = () => {
         </div>
       </div>
 
-      {/* Vehicle registration modal for new drivers */}
+      {/* Vehicle registration modal */}
       {registrationStatus === "pending_vehicle" && !hasVehicle && (
         <div className="absolute inset-0 z-[60] bg-[#07070f]/96 backdrop-blur-2xl flex items-end">
           <div className="w-full bg-[#0a0a18] border-t border-white/8 rounded-t-3xl p-5 max-h-[90vh] overflow-y-auto">
@@ -2106,8 +2195,6 @@ const DriverDashboard = () => {
 
 // =============================================================================
 // PORTAL ROUTER
-// FIX: client-id guard — fallback to "sb" prevents SDK crash if env var missing.
-//      In production on Render with the real key set, this is always correct.
 // =============================================================================
 const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
 

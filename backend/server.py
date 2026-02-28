@@ -234,7 +234,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "https://t-aksi-frontend.onrender.com",
-        "https://taksi-admin.onrender.com", # <--- Just add the URL inside the brackets
+        "https://taksi-admin.onrender.com", # 👈 Add this line!
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -3018,6 +3018,25 @@ async def trigger_sos(sos: SOSRequest, user_id: str = Depends(get_current_user_i
         "alert_id": ref[1].id,
         "message": "Emergency services have been notified. Help is on the way.",
     }
+
+@app.get("/api/rider/active-ride", tags=["Rides"])
+async def get_active_ride(user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    # Check for an active ride in the database
+    active_rides = list(
+        db.collection("rides")
+        .where("userId", "==", user_id) # Note: adjust to "rider_id" if that is what your DB uses
+        .where("status", "in", ["searching", "accepted", "arrived", "in_progress"])
+        .limit(1)
+        .stream()
+    )
+    
+    if not active_rides:
+        return None 
+        
+    ride_data = active_rides[0].to_dict()
+    ride_data["id"] = active_rides[0].id
+    return serialize_firestore_data(ride_data)
 
 
 @app.get("/api/admin/sos/active", tags=["Admin"])
