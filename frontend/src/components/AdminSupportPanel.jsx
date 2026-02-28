@@ -1,480 +1,414 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import api from "@/api";
+import { toast } from "sonner";
 
-const PRIORITY_CONFIG = {
-  urgent: { color: "#ff2d2d", bg: "#1a0000", border: "#ff2d2d", label: "URGENT", dot: "🔴" },
-  high:   { color: "#ff7a00", bg: "#1a0800", border: "#ff7a00", label: "HIGH",   dot: "🟠" },
-  medium: { color: "#ffd700", bg: "#1a1400", border: "#ffd700", label: "MEDIUM", dot: "🟡" },
-  low:    { color: "#00cc88", bg: "#001a10", border: "#00cc88", label: "LOW",    dot: "🟢" },
+// ─── Design tokens ───────────────────────────────────────────────────────────
+const C = {
+  bg:        "#09090d",
+  surface:   "#0f0f16",
+  surfaceEl: "#141420",
+  border:    "#1c1c28",
+  borderEl:  "#252535",
+  text:      "#e8e8f0",
+  textMid:   "#8888a0",
+  textDim:   "#44445a",
+
+  urgent:  { fg: "#ff3b3b", bg: "#1a0505", border: "#ff3b3b33" },
+  high:    { fg: "#ff8c00", bg: "#130900", border: "#ff8c0033" },
+  medium:  { fg: "#f5c800", bg: "#131000", border: "#f5c80033" },
+  low:     { fg: "#22d98a", bg: "#021510", border: "#22d98a33" },
+
+  accent:   "#635bff",
+  accentLo: "#635bff22",
+  success:  "#22d98a",
+  danger:   "#ff3b3b",
+  warn:     "#ff8c00",
 };
 
-const STATUS_CONFIG = {
-  escalated:  { color: "#ff2d2d", label: "Needs Human" },
-  ai_handled: { color: "#00cc88", label: "AI Resolved" },
-  in_progress:{ color: "#ffd700", label: "In Progress" },
-  resolved:   { color: "#4488ff", label: "Resolved" },
-  closed:     { color: "#888",    label: "Closed" },
+const PRIORITY = {
+  urgent: { label: "URGENT", order: 0, ...C.urgent },
+  high:   { label: "HIGH",   order: 1, ...C.high },
+  medium: { label: "MEDIUM", order: 2, ...C.medium },
+  low:    { label: "LOW",    order: 3, ...C.low },
 };
 
-// ── Mock data for demo ───────────────────────────────────────────────────────
-const MOCK_TICKETS = [
-  {
-    id: "TKT001",
-    user_name: "Giorgi Beridze",
-    user_phone: "+995 599 123 456",
-    user_type: "rider",
-    message: "The driver was very rude and made inappropriate comments during my ride. I feel unsafe.",
-    ai_response: "We take this very seriously. Your report has been escalated to our team and a human agent will review it and contact you as soon as possible.",
-    status: "escalated",
-    priority: "high",
-    category: "complaint",
-    admin_tag: "⚠️ HARASSMENT",
-    escalation_reason: "Escalation triggered: harassment",
-    matched_keywords: ["rude", "inappropriate"],
-    needs_human: true,
-    created_at: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
-    chat_history: [
-      { role: "user", content: "The driver was very rude and made inappropriate comments during my ride. I feel unsafe.", timestamp: new Date(Date.now() - 1000 * 60 * 8).toISOString() },
-      { role: "assistant", content: "We take this very seriously. Your report has been escalated to our team.", timestamp: new Date(Date.now() - 1000 * 60 * 7).toISOString(), escalated: true },
-    ],
-  },
-  {
-    id: "TKT002",
-    user_name: "Nino Kvaratskhelia",
-    user_phone: "+995 577 987 654",
-    user_type: "rider",
-    message: "Emergency! I'm in the car and the driver is taking a completely wrong route and won't stop. I'm scared.",
-    ai_response: "⚠️ This looks like an emergency. Your case has been immediately escalated to our safety team. A T'aksi agent will contact you right away. If you are in immediate danger, please call emergency services (112).",
-    status: "escalated",
-    priority: "urgent",
-    category: "safety",
-    admin_tag: "🚨 SAFETY",
-    escalation_reason: "Escalation triggered: safety",
-    matched_keywords: ["emergency", "scared"],
-    needs_human: true,
-    created_at: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-    chat_history: [
-      { role: "user", content: "Emergency! I'm in the car and the driver is taking a completely wrong route and won't stop. I'm scared.", timestamp: new Date(Date.now() - 1000 * 60 * 2).toISOString() },
-      { role: "assistant", content: "⚠️ This looks like an emergency. Your case has been immediately escalated to our safety team.", timestamp: new Date(Date.now() - 1000 * 60 * 1).toISOString(), escalated: true },
-    ],
-  },
-  {
-    id: "TKT003",
-    user_name: "David Tabatadze",
-    user_phone: "+995 598 456 789",
-    user_type: "driver",
-    message: "My documents were submitted 5 days ago and I still haven't been approved. I need to start working.",
-    ai_response: "Your request has been received and forwarded to our support team. A T'aksi agent will review your case and get back to you shortly.",
-    status: "escalated",
-    priority: "medium",
-    category: "driver_docs",
-    admin_tag: "📋 DRIVER DOCS",
-    escalation_reason: "Escalation triggered: driver_approval",
-    matched_keywords: ["documents", "approval"],
-    needs_human: true,
-    created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    chat_history: [
-      { role: "user", content: "My documents were submitted 5 days ago and I still haven't been approved.", timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString() },
-      { role: "assistant", content: "Your request has been forwarded to our support team.", timestamp: new Date(Date.now() - 1000 * 60 * 44).toISOString(), escalated: true },
-    ],
-  },
-  {
-    id: "TKT004",
-    user_name: "Ana Lomidze",
-    user_phone: "+995 591 234 567",
-    user_type: "rider",
-    message: "How do I add a stop to my ride? I need to pick someone up on the way.",
-    ai_response: "You can add stops while booking your ride! After entering your pickup and destination, tap the '+' button to add a waypoint. You can add up to 3 stops per ride. Each stop can have a short wait time which is billed at ₾0.50/min after the first 2 minutes. Hope that helps!",
-    status: "ai_handled",
-    priority: "low",
-    category: "trip",
-    admin_tag: null,
-    needs_human: false,
-    created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    chat_history: [
-      { role: "user", content: "How do I add a stop to my ride?", timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString() },
-      { role: "assistant", content: "You can add stops while booking your ride! After entering your pickup and destination, tap the '+' button...", timestamp: new Date(Date.now() - 1000 * 60 * 119).toISOString(), escalated: false },
-    ],
-  },
-  {
-    id: "TKT005",
-    user_name: "Levan Mikiashvili",
-    user_phone: "+995 593 876 543",
-    user_type: "rider",
-    message: "I was charged ₾78 for a ride that should have been ₾15. This is fraud!",
-    ai_response: "We take this very seriously. Your report has been escalated to our team and a human agent will review it and contact you as soon as possible.",
-    status: "escalated",
-    priority: "high",
-    category: "payment",
-    admin_tag: "💳 FRAUD",
-    escalation_reason: "Escalation triggered: fraud",
-    matched_keywords: ["fraud"],
-    needs_human: true,
-    created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    chat_history: [
-      { role: "user", content: "I was charged ₾78 for a ride that should have been ₾15. This is fraud!", timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString() },
-      { role: "assistant", content: "We take this very seriously. Your report has been escalated.", timestamp: new Date(Date.now() - 1000 * 60 * 29).toISOString(), escalated: true },
-    ],
-  },
-];
+const STATUS = {
+  escalated:   { label: "Needs Human",  color: C.danger },
+  open:        { label: "Open",         color: C.warn },
+  in_progress: { label: "In Progress",  color: C.medium.fg },
+  ai_handled:  { label: "AI Handled",   color: C.success },
+  resolved:    { label: "Resolved",     color: "#4488ff" },
+  closed:      { label: "Closed",       color: C.textDim },
+};
+
+const CATEGORY_ICON = {
+  safety: "🚨", payment: "💳", complaint: "⚠️",
+  trip: "🚕", technical: "🔧", driver_docs: "📋", general: "💬",
+};
 
 function timeAgo(iso) {
+  if (!iso) return "—";
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
+  if (m < 1)  return "just now";
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export default function AdminSupportPortal() {
-  const [tickets, setTickets] = useState(MOCK_TICKETS);
-  const [selected, setSelected] = useState(null);
-  const [filter, setFilter] = useState("escalated");
+function fmtTime(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+const btnBase = {
+  borderRadius: 6, cursor: "pointer",
+  fontFamily: "'IBM Plex Mono','Fira Code',monospace",
+  transition: "all 0.15s", whiteSpace: "nowrap",
+};
+
+function PriorityBadge({ priority }) {
+  const p = PRIORITY[priority] || PRIORITY.low;
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.8, padding: "2px 6px", borderRadius: 3, background: p.bg, border: `1px solid ${p.border}`, color: p.fg }}>
+      {p.label}
+    </span>
+  );
+}
+
+function StatusBadge({ status }) {
+  const s = STATUS[status] || STATUS.closed;
+  return (
+    <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.5, padding: "2px 6px", borderRadius: 3, background: s.color + "18", border: `1px solid ${s.color}30`, color: s.color }}>
+      {s.label}
+    </span>
+  );
+}
+
+function StatPill({ label, value, color, pulse }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 6, background: color + "12", border: `1px solid ${color}28`, animation: pulse ? "pulse-badge 2s ease-in-out infinite" : "none" }}>
+      {pulse && <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, display: "block" }} />}
+      <span style={{ fontSize: 11, color, fontWeight: 700 }}>{value}</span>
+      <span style={{ fontSize: 11, color: color + "88" }}>{label}</span>
+    </div>
+  );
+}
+
+export default function AdminSupportPanel() {
+  const [tickets, setTickets]     = useState([]);
+  const [selected, setSelected]   = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [viewMode, setViewMode]   = useState("queue");
+  const [filterStatus, setFilter] = useState("all");
+  const [search, setSearch]       = useState("");
   const [replyText, setReplyText] = useState("");
+  const [sending, setSending]     = useState(false);
   const [resolving, setResolving] = useState(false);
-  const [tab, setTab] = useState("queue"); // queue | all
+  const chatEndRef = useRef(null);
 
-  const escalated = tickets.filter(t => t.needs_human && t.status === "escalated");
-  const filtered = tab === "queue"
-    ? escalated
-    : (filter === "all" ? tickets : tickets.filter(t => t.status === filter || t.priority === filter));
+  const fetchTickets = useCallback(async () => {
+    try {
+      const [escalR, allR] = await Promise.allSettled([
+        api.get("/admin/support/tickets/escalated"),
+        api.get("/admin/support/tickets"),
+      ]);
+      const escalated = escalR.status === "fulfilled" ? escalR.value.data.tickets || [] : [];
+      const all       = allR.status === "fulfilled"   ? allR.value.data.tickets   || [] : [];
+      const allIds = new Set(all.map(t => t.id));
+      const merged = [...all, ...escalated.filter(t => !allIds.has(t.id))];
+      setTickets(merged);
+    } catch {
+      toast.error("Failed to load support tickets");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const sorted = [...filtered].sort((a, b) => {
-    const pOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
-    return (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
-  });
+  useEffect(() => {
+    fetchTickets();
+    const iv = setInterval(fetchTickets, 30000);
+    return () => clearInterval(iv);
+  }, [fetchTickets]);
 
-  function handleReply() {
+  useEffect(() => {
+    if (selected) {
+      const updated = tickets.find(t => t.id === selected.id);
+      if (updated) setSelected(updated);
+    }
+  }, [tickets]); // eslint-disable-line
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [selected?.chat_history?.length]);
+
+  const openTicket = async (ticket) => {
+    setSelected(ticket);
+    try {
+      const r = await api.get(`/support/tickets/${ticket.id}`);
+      const msgs = r.data.messages || [];
+      if (msgs.length > 0) {
+        setSelected(prev => prev ? { ...prev, chat_history: msgs } : null);
+        setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, chat_history: msgs } : t));
+      }
+    } catch { /* use existing */ }
+  };
+
+  const handleReply = async () => {
     if (!replyText.trim() || !selected) return;
-    setResolving(true);
-    setTimeout(() => {
-      const adminMsg = { role: "admin", content: replyText, timestamp: new Date().toISOString() };
-      setTickets(prev => prev.map(t => t.id === selected.id
-        ? { ...t, chat_history: [...t.chat_history, adminMsg], status: "in_progress" }
-        : t
-      ));
-      setSelected(prev => ({ ...prev, chat_history: [...prev.chat_history, adminMsg], status: "in_progress" }));
+    setSending(true);
+    try {
+      await api.post(`/admin/support/tickets/${selected.id}/respond`, null, {
+        params: { response: replyText, resolve: false },
+      });
+      const newMsg = { role: "admin", content: replyText, timestamp: new Date().toISOString() };
+      const upd = t => t.id === selected.id
+        ? { ...t, status: "in_progress", chat_history: [...(t.chat_history || []), newMsg] }
+        : t;
+      setTickets(prev => prev.map(upd));
+      setSelected(prev => prev ? upd(prev) : null);
       setReplyText("");
-      setResolving(false);
-    }, 600);
-  }
+      toast.success("Reply sent");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to send reply");
+    } finally { setSending(false); }
+  };
 
-  function handleResolve() {
+  const handleResolve = async () => {
     if (!selected) return;
     setResolving(true);
-    setTimeout(() => {
-      setTickets(prev => prev.map(t => t.id === selected.id ? { ...t, status: "resolved", needs_human: false } : t));
-      setSelected(prev => ({ ...prev, status: "resolved", needs_human: false }));
-      setResolving(false);
-    }, 600);
-  }
+    try {
+      await api.post(`/admin/support/tickets/${selected.id}/resolve`, null, {
+        params: { notes: "Resolved by admin" },
+      });
+      const upd = t => t.id === selected.id ? { ...t, status: "closed", needs_human: false } : t;
+      setTickets(prev => prev.map(upd));
+      setSelected(prev => prev ? upd(prev) : null);
+      toast.success("Ticket resolved");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to resolve");
+    } finally { setResolving(false); }
+  };
 
-  const urgentCount = escalated.filter(t => t.priority === "urgent").length;
-  const highCount = escalated.filter(t => t.priority === "high").length;
+  const escalated = tickets.filter(t => t.needs_human && t.status === "escalated");
+  const urgentCnt = escalated.filter(t => t.priority === "urgent").length;
+  const highCnt   = escalated.filter(t => t.priority === "high").length;
+
+  const displayList = (() => {
+    let list = viewMode === "queue" ? escalated : tickets;
+    if (filterStatus !== "all") list = list.filter(t => t.status === filterStatus || t.priority === filterStatus);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(t =>
+        t.user_name?.toLowerCase().includes(q) ||
+        t.message?.toLowerCase().includes(q) ||
+        t.user_phone?.includes(q) ||
+        t.admin_tag?.toLowerCase().includes(q)
+      );
+    }
+    return [...list].sort((a, b) => {
+      const po = { urgent: 0, high: 1, medium: 2, low: 3 };
+      return (po[a.priority] ?? 3) - (po[b.priority] ?? 3);
+    });
+  })();
+
+  const isDone = selected?.status === "closed" || selected?.status === "resolved";
 
   return (
-    <div style={{
-      fontFamily: "'DM Mono', 'Courier New', monospace",
-      background: "#0a0a0f",
-      color: "#e0e0e8",
-      minHeight: "100vh",
-      display: "flex",
-      flexDirection: "column",
-    }}>
-      {/* Header */}
-      <div style={{
-        background: "#0f0f18",
-        borderBottom: "1px solid #1e1e2e",
-        padding: "16px 24px",
-        display: "flex",
-        alignItems: "center",
-        gap: 16,
-      }}>
-        <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: 2, color: "#fff" }}>
-          T'AKSI
-        </div>
-        <div style={{ color: "#444", fontSize: 18 }}>|</div>
-        <div style={{ color: "#aaa", fontSize: 13, letterSpacing: 1 }}>SUPPORT PORTAL</div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
-          {urgentCount > 0 && (
-            <div style={{
-              background: "#1a0000", border: "1px solid #ff2d2d", color: "#ff2d2d",
-              borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 700,
-              animation: "pulse 1.5s infinite",
-            }}>
-              🚨 {urgentCount} URGENT
-            </div>
-          )}
-          {highCount > 0 && (
-            <div style={{
-              background: "#1a0800", border: "1px solid #ff7a00", color: "#ff7a00",
-              borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 700,
-            }}>
-              ⚠️ {highCount} HIGH
-            </div>
-          )}
-          <div style={{
-            background: "#111", border: "1px solid #1e1e2e", color: "#888",
-            borderRadius: 6, padding: "4px 10px", fontSize: 12,
-          }}>
-            {escalated.length} in queue
-          </div>
+    <div style={{ fontFamily: "'IBM Plex Mono','Fira Code','Courier New',monospace", background: C.bg, color: C.text, display: "flex", flexDirection: "column", height: "calc(100vh - 140px)", minHeight: 540, borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}` }}>
+
+      {/* Top bar */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "10px 18px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 2, color: C.text }}>SUPPORT OPS</span>
+        <span style={{ color: C.textDim }}>·</span>
+        <span style={{ fontSize: 11, color: C.textMid }}>{tickets.length} total</span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {loading && <span style={{ fontSize: 11, color: C.textDim }}>syncing…</span>}
+          {urgentCnt > 0 && <StatPill label="URGENT" value={urgentCnt} color={C.danger} pulse />}
+          {highCnt > 0   && <StatPill label="HIGH"   value={highCnt}   color={C.warn} />}
+          <StatPill label="in queue" value={escalated.length} color={C.accent} />
+          <button onClick={fetchTickets} style={{ ...btnBase, padding: "5px 10px", fontSize: 11, color: C.textMid, background: C.surfaceEl, border: `1px solid ${C.border}` }}>
+            ↻ Refresh
+          </button>
         </div>
       </div>
 
-      <div style={{ display: "flex", flex: 1, overflow: "hidden", height: "calc(100vh - 57px)" }}>
-        {/* Left panel — ticket list */}
-        <div style={{
-          width: 320, borderRight: "1px solid #1e1e2e", display: "flex",
-          flexDirection: "column", overflow: "hidden",
-        }}>
-          {/* Tabs */}
-          <div style={{ display: "flex", borderBottom: "1px solid #1e1e2e" }}>
-            {[["queue", `Queue (${escalated.length})`], ["all", "All Tickets"]].map(([key, label]) => (
-              <button key={key} onClick={() => { setTab(key); setSelected(null); }} style={{
-                flex: 1, padding: "12px 8px", fontSize: 12, letterSpacing: 1,
-                background: tab === key ? "#141420" : "transparent",
-                color: tab === key ? "#fff" : "#555",
-                border: "none", borderBottom: tab === key ? "2px solid #7c6dfa" : "2px solid transparent",
-                cursor: "pointer", fontFamily: "inherit",
-              }}>{label.toUpperCase()}</button>
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+
+        {/* LEFT: Ticket list */}
+        <div style={{ width: 300, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+
+          {/* View toggle */}
+          <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+            {[["queue", `Queue (${escalated.length})`], ["all", "All"]].map(([key, lbl]) => (
+              <button key={key} onClick={() => { setViewMode(key); setFilter("all"); setSearch(""); }}
+                style={{ flex: 1, padding: "10px 6px", fontSize: 11, letterSpacing: 1, background: viewMode === key ? C.surfaceEl : "transparent", color: viewMode === key ? C.text : C.textDim, border: "none", borderBottom: `2px solid ${viewMode === key ? C.accent : "transparent"}`, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
+                {lbl.toUpperCase()}
+              </button>
             ))}
           </div>
 
-          {/* Filter (all tab only) */}
-          {tab === "all" && (
-            <div style={{ padding: "8px 12px", borderBottom: "1px solid #1e1e2e", display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {["all", "escalated", "ai_handled", "resolved"].map(f => (
-                <button key={f} onClick={() => setFilter(f)} style={{
-                  padding: "3px 8px", fontSize: 11, borderRadius: 4,
-                  background: filter === f ? "#7c6dfa" : "#1a1a2e",
-                  color: filter === f ? "#fff" : "#777",
-                  border: "1px solid " + (filter === f ? "#7c6dfa" : "#2a2a3e"),
-                  cursor: "pointer", fontFamily: "inherit",
-                }}>{f.toUpperCase()}</button>
+          {/* Search */}
+          <div style={{ padding: "8px 10px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, tag…"
+              style={{ width: "100%", background: C.surfaceEl, border: `1px solid ${C.borderEl}`, borderRadius: 5, padding: "6px 10px", fontSize: 11, color: C.text, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+          </div>
+
+          {/* Status filters */}
+          {viewMode === "all" && (
+            <div style={{ padding: "6px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", gap: 4, flexWrap: "wrap", flexShrink: 0 }}>
+              {["all", "escalated", "in_progress", "ai_handled", "resolved", "closed"].map(f => (
+                <button key={f} onClick={() => setFilter(f)}
+                  style={{ padding: "3px 7px", fontSize: 10, borderRadius: 3, background: filterStatus === f ? C.accent : C.surfaceEl, color: filterStatus === f ? "#fff" : C.textDim, border: `1px solid ${filterStatus === f ? C.accent : C.borderEl}`, cursor: "pointer", fontFamily: "inherit", letterSpacing: 0.5 }}>
+                  {f.toUpperCase()}
+                </button>
               ))}
             </div>
           )}
 
-          {/* Ticket list */}
+          {/* List */}
           <div style={{ overflow: "auto", flex: 1 }}>
-            {sorted.length === 0 ? (
-              <div style={{ padding: 32, textAlign: "center", color: "#444", fontSize: 13 }}>
-                No tickets in this view
+            {loading && displayList.length === 0 ? (
+              <div style={{ padding: 24, textAlign: "center", color: C.textDim, fontSize: 12 }}>Loading…</div>
+            ) : displayList.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center" }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>✓</div>
+                <div style={{ color: C.textDim, fontSize: 12 }}>{viewMode === "queue" ? "Queue is clear" : "No tickets match"}</div>
               </div>
-            ) : sorted.map(ticket => {
-              const p = PRIORITY_CONFIG[ticket.priority] || PRIORITY_CONFIG.low;
-              const s = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.closed;
+            ) : displayList.map(ticket => {
+              const p = PRIORITY[ticket.priority] || PRIORITY.low;
               const isSelected = selected?.id === ticket.id;
+              const needsAction = ticket.needs_human && ticket.status === "escalated";
               return (
-                <div key={ticket.id} onClick={() => setSelected(ticket)} style={{
-                  padding: "14px 16px",
-                  borderBottom: "1px solid #1a1a28",
-                  borderLeft: `3px solid ${isSelected ? "#7c6dfa" : p.border}`,
-                  background: isSelected ? "#141420" : "transparent",
-                  cursor: "pointer",
-                  transition: "background 0.15s",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#ddd" }}>{ticket.user_name}</div>
-                    <div style={{ fontSize: 11, color: "#555" }}>{timeAgo(ticket.created_at)}</div>
+                <div key={ticket.id} onClick={() => openTicket(ticket)} style={{ padding: "12px 14px", borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${isSelected ? C.accent : needsAction ? p.fg : C.border}`, background: isSelected ? C.surfaceEl : "transparent", cursor: "pointer", transition: "background 0.12s" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 13 }}>{CATEGORY_ICON[ticket.category] || "💬"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{ticket.user_name || "Unknown"}</span>
+                      {needsAction && <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.danger, display: "inline-block" }} />}
+                    </div>
+                    <span style={{ fontSize: 10, color: C.textDim }}>{timeAgo(ticket.created_at)}</span>
                   </div>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-                    {ticket.admin_tag && (
-                      <span style={{
-                        fontSize: 10, padding: "2px 6px", borderRadius: 3,
-                        background: p.bg, border: `1px solid ${p.border}`, color: p.color, fontWeight: 700,
-                      }}>{ticket.admin_tag}</span>
-                    )}
-                    <span style={{
-                      fontSize: 10, padding: "2px 6px", borderRadius: 3,
-                      background: "#111", border: "1px solid #1e1e2e", color: s.color,
-                    }}>{s.label}</span>
-                    <span style={{
-                      fontSize: 10, padding: "2px 6px", borderRadius: 3,
-                      background: "#111", border: "1px solid #1e1e2e", color: "#666",
-                    }}>{ticket.user_type.toUpperCase()}</span>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 5, flexWrap: "wrap" }}>
+                    <PriorityBadge priority={ticket.priority} />
+                    <StatusBadge status={ticket.status} />
+                    {ticket.user_type && <span style={{ fontSize: 10, padding: "2px 5px", borderRadius: 3, background: C.surfaceEl, border: `1px solid ${C.borderEl}`, color: C.textDim }}>{ticket.user_type.toUpperCase()}</span>}
                   </div>
-                  <div style={{
-                    fontSize: 12, color: "#666", whiteSpace: "nowrap",
-                    overflow: "hidden", textOverflow: "ellipsis",
-                  }}>{ticket.message}</div>
+                  {ticket.admin_tag && <div style={{ fontSize: 11, color: p.fg, fontWeight: 600, marginBottom: 4 }}>{ticket.admin_tag}</div>}
+                  <div style={{ fontSize: 11, color: C.textMid, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.5 }}>{ticket.message}</div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Right panel — ticket detail */}
+        {/* RIGHT: Detail */}
         {selected ? (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            {/* Ticket header */}
-            <div style={{
-              padding: "16px 24px", borderBottom: "1px solid #1e1e2e",
-              background: "#0f0f18", display: "flex", alignItems: "flex-start", gap: 16,
-            }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{selected.user_name}</span>
-                  <span style={{ fontSize: 12, color: "#555" }}>{selected.user_phone}</span>
-                  <span style={{
-                    fontSize: 11, padding: "2px 7px", borderRadius: 3,
-                    background: "#1a1a2e", border: "1px solid #2a2a3e", color: "#888",
-                  }}>{selected.user_type.toUpperCase()}</span>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+
+            {/* Header */}
+            <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{selected.user_name}</span>
+                    <span style={{ fontSize: 12, color: C.textMid }}>{selected.user_phone}</span>
+                    {selected.user_type && <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.surfaceEl, border: `1px solid ${C.borderEl}`, color: C.textDim }}>{selected.user_type.toUpperCase()}</span>}
+                    <StatusBadge status={selected.status} />
+                    <span style={{ fontSize: 10, color: C.textDim, marginLeft: "auto" }}>#{selected.id?.slice(-8)}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <PriorityBadge priority={selected.priority} />
+                    {selected.admin_tag && <span style={{ fontSize: 11, color: (PRIORITY[selected.priority] || PRIORITY.low).fg, fontWeight: 700 }}>{selected.admin_tag}</span>}
+                    {selected.matched_keywords?.length > 0 && <span style={{ fontSize: 10, color: C.textDim }}>triggered: {selected.matched_keywords.join(", ")}</span>}
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {selected.admin_tag && (() => {
-                    const p = PRIORITY_CONFIG[selected.priority] || PRIORITY_CONFIG.low;
-                    return (
-                      <span style={{
-                        fontSize: 12, padding: "3px 9px", borderRadius: 4,
-                        background: p.bg, border: `1px solid ${p.border}`, color: p.color, fontWeight: 700,
-                      }}>{selected.admin_tag}</span>
-                    );
-                  })()}
-                  {selected.matched_keywords?.length > 0 && (
-                    <span style={{ fontSize: 11, color: "#555", padding: "3px 0" }}>
-                      Triggered by: {selected.matched_keywords.join(", ")}
-                    </span>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  {!isDone && (
+                    <button onClick={handleResolve} disabled={resolving} style={{ ...btnBase, padding: "7px 14px", fontSize: 11, fontWeight: 700, background: C.success + "18", border: `1px solid ${C.success}40`, color: C.success }}>
+                      {resolving ? "…" : "✓ Resolve"}
+                    </button>
                   )}
+                  {isDone && <span style={{ fontSize: 11, color: C.success, padding: "7px 14px" }}>✓ Resolved</span>}
                 </div>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                {selected.status !== "resolved" && (
-                  <button onClick={handleResolve} disabled={resolving} style={{
-                    padding: "8px 16px", borderRadius: 6, fontSize: 12,
-                    background: "#002a1a", border: "1px solid #00cc88", color: "#00cc88",
-                    cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
-                    opacity: resolving ? 0.6 : 1,
-                  }}>
-                    {resolving ? "..." : "✓ Resolve"}
-                  </button>
-                )}
-                {selected.status === "resolved" && (
-                  <span style={{
-                    padding: "8px 16px", borderRadius: 6, fontSize: 12,
-                    background: "#001a10", border: "1px solid #00cc88", color: "#00cc88",
-                  }}>✓ Resolved</span>
-                )}
               </div>
             </div>
 
-            {/* Chat history */}
-            <div style={{ flex: 1, overflow: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
-              {selected.chat_history.map((msg, i) => {
-                const isUser = msg.role === "user";
-                const isAI = msg.role === "assistant";
+            {/* Chat */}
+            <div style={{ flex: 1, overflow: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+              {(selected.chat_history || []).map((msg, i) => {
+                const isUser  = msg.role === "user";
+                const isAI    = msg.role === "assistant";
                 const isAdmin = msg.role === "admin";
+                const p = PRIORITY[selected.priority] || PRIORITY.low;
                 return (
-                  <div key={i} style={{
-                    display: "flex",
-                    justifyContent: isUser ? "flex-start" : "flex-end",
-                    gap: 10,
-                    alignItems: "flex-end",
-                  }}>
+                  <div key={i} style={{ display: "flex", justifyContent: isUser ? "flex-start" : "flex-end", gap: 8, alignItems: "flex-end" }}>
                     {isUser && (
-                      <div style={{
-                        width: 30, height: 30, borderRadius: "50%",
-                        background: "#1a1a2e", border: "1px solid #2a2a3e",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 14, flexShrink: 0,
-                      }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.surfaceEl, border: `1px solid ${C.borderEl}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>
                         {selected.user_type === "driver" ? "🚗" : "👤"}
                       </div>
                     )}
-                    <div style={{ maxWidth: "70%" }}>
-                      <div style={{
-                        fontSize: 10, color: "#444", marginBottom: 3,
-                        textAlign: isUser ? "left" : "right",
-                      }}>
-                        {isUser ? selected.user_name : isAI ? "T'aksi AI" : "Admin"} · {timeAgo(msg.timestamp)}
+                    <div style={{ maxWidth: "72%", minWidth: 80 }}>
+                      <div style={{ fontSize: 10, color: C.textDim, marginBottom: 3, textAlign: isUser ? "left" : "right" }}>
+                        {isUser ? selected.user_name : isAI ? "T'aksi AI" : "Admin"} · {fmtTime(msg.timestamp) || timeAgo(msg.timestamp)}
                       </div>
-                      <div style={{
-                        padding: "10px 14px", borderRadius: 10,
-                        background: isUser ? "#141420" : isAI ? (msg.escalated ? "#1a0800" : "#0f1a24") : "#141a2e",
-                        border: `1px solid ${isUser ? "#1e1e2e" : isAI ? (msg.escalated ? "#ff7a0044" : "#4488ff44") : "#7c6dfa44"}`,
-                        fontSize: 13, lineHeight: 1.6,
-                        color: isUser ? "#ccc" : isAI ? (msg.escalated ? "#ffaa77" : "#88bbff") : "#bbb",
-                      }}>
-                        {isAI && msg.escalated && (
-                          <div style={{ fontSize: 10, color: "#ff7a00", marginBottom: 4, fontWeight: 700 }}>
-                            ⚡ ESCALATED TO HUMAN
-                          </div>
-                        )}
+                      <div style={{ padding: "9px 13px", borderRadius: 8, lineHeight: 1.6, fontSize: 12, background: isUser ? C.surfaceEl : isAdmin ? C.accentLo : (msg.escalated ? p.bg : "#0e1929"), border: `1px solid ${isUser ? C.borderEl : isAdmin ? C.accent + "44" : (msg.escalated ? p.border : "#4488ff22")}`, color: isUser ? C.text : isAdmin ? "#c0bbff" : (msg.escalated ? p.fg : "#88b8ff") }}>
+                        {isAI && msg.escalated && <div style={{ fontSize: 9, fontWeight: 700, color: C.warn, marginBottom: 4, letterSpacing: 1 }}>⚡ ESCALATED TO HUMAN</div>}
                         {msg.content}
                       </div>
                     </div>
                     {(isAI || isAdmin) && (
-                      <div style={{
-                        width: 30, height: 30, borderRadius: "50%",
-                        background: isAdmin ? "#1a1a35" : "#0f1a24",
-                        border: `1px solid ${isAdmin ? "#7c6dfa" : "#4488ff"}`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 14, flexShrink: 0,
-                      }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: isAdmin ? "#1a1a35" : "#0e1929", border: `1px solid ${isAdmin ? C.accent : "#4488ff"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>
                         {isAdmin ? "🛡️" : "🤖"}
                       </div>
                     )}
                   </div>
                 );
               })}
+              <div ref={chatEndRef} />
             </div>
 
-            {/* Reply box */}
-            {selected.needs_human && selected.status !== "resolved" && (
-              <div style={{
-                padding: "16px 24px", borderTop: "1px solid #1e1e2e", background: "#0f0f18",
-              }}>
+            {/* Reply / status footer */}
+            {selected.needs_human && !isDone ? (
+              <div style={{ padding: "12px 20px", borderTop: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <textarea
-                    value={replyText}
-                    onChange={e => setReplyText(e.target.value)}
-                    placeholder="Type your reply to the user..."
-                    rows={3}
-                    style={{
-                      flex: 1, background: "#141420", border: "1px solid #2a2a3e",
-                      borderRadius: 8, color: "#ddd", fontSize: 13, padding: "10px 14px",
-                      fontFamily: "inherit", resize: "none", outline: "none",
-                      lineHeight: 1.6,
-                    }}
-                    onKeyDown={e => { if (e.key === "Enter" && e.metaKey) handleReply(); }}
-                  />
-                  <button onClick={handleReply} disabled={!replyText.trim() || resolving} style={{
-                    padding: "0 20px", borderRadius: 8, background: "#7c6dfa",
-                    border: "none", color: "#fff", fontSize: 13, fontWeight: 600,
-                    cursor: "pointer", fontFamily: "inherit", opacity: !replyText.trim() ? 0.4 : 1,
-                  }}>
-                    Send<br/><span style={{ fontSize: 10, fontWeight: 400, opacity: 0.7 }}>⌘↩</span>
-                  </button>
+                  <textarea value={replyText} onChange={e => setReplyText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleReply(); }} placeholder="Type reply… (⌘↵ to send)" rows={3}
+                    style={{ flex: 1, background: C.surfaceEl, border: `1px solid ${C.borderEl}`, borderRadius: 7, color: C.text, fontSize: 12, padding: "9px 12px", fontFamily: "inherit", resize: "none", outline: "none", lineHeight: 1.6 }} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <button onClick={handleReply} disabled={!replyText.trim() || sending} style={{ ...btnBase, padding: "9px 16px", fontSize: 11, fontWeight: 700, background: replyText.trim() ? C.accent : C.surfaceEl, border: `1px solid ${replyText.trim() ? C.accent : C.borderEl}`, color: replyText.trim() ? "#fff" : C.textDim, flex: 1 }}>
+                      {sending ? "…" : "Send"}
+                    </button>
+                    <button onClick={handleResolve} disabled={resolving} style={{ ...btnBase, padding: "9px 16px", fontSize: 11, fontWeight: 700, background: C.success + "18", border: `1px solid ${C.success}40`, color: C.success }}>
+                      {resolving ? "…" : "Resolve"}
+                    </button>
+                  </div>
                 </div>
+                <div style={{ fontSize: 10, color: C.textDim, marginTop: 5 }}>Reply stored on ticket · visible in user's support history · ⌘↵ to send</div>
+              </div>
+            ) : (
+              <div style={{ padding: "10px 20px", borderTop: `1px solid ${C.border}`, background: C.surface, textAlign: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 11, color: isDone ? C.success : C.textDim }}>
+                  {isDone ? "✓ Ticket resolved" : "AI-handled — no human reply needed"}
+                </span>
               </div>
             )}
           </div>
         ) : (
-          <div style={{
-            flex: 1, display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center", gap: 16,
-          }}>
-            <div style={{ fontSize: 48 }}>🎯</div>
-            <div style={{ color: "#555", fontSize: 14, letterSpacing: 1 }}>SELECT A TICKET TO REVIEW</div>
-            {escalated.length > 0 && (
-              <div style={{ color: "#444", fontSize: 12 }}>
-                {escalated.length} tickets need human attention
-              </div>
-            )}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+            <div style={{ fontSize: 36 }}>🎯</div>
+            <div style={{ color: C.textDim, fontSize: 12, letterSpacing: 1 }}>SELECT A TICKET</div>
+            {escalated.length > 0 && <div style={{ fontSize: 11, color: C.danger }}>{escalated.length} ticket{escalated.length > 1 ? "s" : ""} need human attention</div>}
           </div>
         )}
       </div>
 
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.6; }
-        }
-        ::-webkit-scrollbar { width: 6px; }
+        @keyframes pulse-badge { 0%,100% { opacity:1; } 50% { opacity:0.55; } }
+        ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: ${C.borderEl}; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: ${C.textDim}; }
       `}</style>
     </div>
   );

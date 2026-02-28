@@ -267,6 +267,57 @@ async def get_paypal_token() -> Optional[str]:
 # FIX #2: Upload driver documents to Firebase Storage (not local disk)
 # =========================
 
+# =========================
+# FCM PUSH NOTIFICATIONS
+# =========================
+
+def send_push_notification(
+    user_id: str,
+    title: str,
+    body: str,
+    data: Optional[dict] = None,
+) -> bool:
+    """
+    Send an FCM push notification to a specific user.
+    Looks up the user's stored FCM token from Firestore, then calls
+    the Firebase Admin SDK messaging service.
+    Returns True on success, False on any failure (notifications are non-critical).
+    """
+    try:
+        from firebase_admin import messaging as fcm_messaging
+
+        db = get_db()
+        user_doc = db.collection("users").document(user_id).get()
+        if not user_doc.exists:
+            return False
+
+        fcm_token = user_doc.to_dict().get("fcm_token")
+        if not fcm_token:
+            return False  # User hasn't granted notification permission yet
+
+        message = fcm_messaging.Message(
+            notification=fcm_messaging.Notification(title=title, body=body),
+            data={k: str(v) for k, v in (data or {}).items()},
+            token=fcm_token,
+            android=fcm_messaging.AndroidConfig(priority="high"),
+            apns=fcm_messaging.APNSConfig(
+                payload=fcm_messaging.APNSPayload(
+                    aps=fcm_messaging.Aps(sound="default", badge=1)
+                )
+            ),
+        )
+        fcm_messaging.send(message)
+        return True
+
+    except Exception as e:
+        logger.warning(f"Push notification failed for user {user_id}: {e}")
+        return False
+
+
+class FCMTokenRequest(BaseModel):
+    fcm_token: str = Field(min_length=10, max_length=512)
+
+
 async def upload_file_to_storage(file: UploadFile, path: str) -> Optional[str]:
     """Upload a file to Firebase Storage and return its public URL."""
     if not file:
@@ -1772,6 +1823,21 @@ async def match_drivers_to_ride(ride_id: str):
                 "current_batch_drivers": len(selected_drivers),
             })
 
+            # Push notify each driver about the new ride request
+            for driver in selected_drivers:
+                send_push_notification(
+                    driver["id"],
+                    title="New Ride Request 🚕",
+                    body=f"Pickup {round(driver['distance'], 1)}km away — ₾{ride_data.get('estimated_fare', 0):.0f}",
+                    data={
+                        "type": "ride_request",
+                        "ride_id": ride_id,
+                        "pickup_address": ride_data.get("pickup", ""),
+                        "estimated_fare": str(ride_data.get("estimated_fare", 0)),
+                        "distance": str(round(driver["distance"], 1)),
+                    },
+                )
+
             await asyncio.sleep(wait_time_per_round[idx])
 
             updated_ride = db.collection("rides").document(ride_id).get()
@@ -1886,6 +1952,17 @@ async def accept_ride(ride_id: str, user_id: str = Depends(get_current_user_id))
         "accepted_at": firestore.SERVER_TIMESTAMP,
     })
 
+    # Notify the rider their driver is on the way
+    rider_id = ride_data.get("userId") or ride_data.get("rider_id") or ride_data.get("user_id")
+    if rider_id:
+        driver_name = f"{driver_data.get('name', '')} {driver_data.get('surname', '')}".strip()
+        send_push_notification(
+            rider_id,
+            title="Driver Found! 🚗",
+            body=f"{driver_name} is on the way to pick you up.",
+            data={"type": "ride_accepted", "ride_id": ride_id},
+        )
+
     return {
         "message": "Ride accepted!",
         "commission_deducted": round(held_commission, 2),
@@ -1913,6 +1990,20 @@ async def driver_arrived(ride_id: str, user_id: str = Depends(get_current_user_i
         "status": "arrived",
         "arrived_at": firestore.SERVER_TIMESTAMP,
     })
+
+    # Notify the rider their driver is outside
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if ride_doc.exists:
+        ride_data = ride_doc.to_dict()
+        rider_id = ride_data.get("userId") or ride_data.get("rider_id") or ride_data.get("user_id")
+        if rider_id:
+            send_push_notification(
+                rider_id,
+                title="Your Driver Has Arrived 📍",
+                body="Your driver is waiting outside. Please come down.",
+                data={"type": "driver_arrived", "ride_id": ride_id},
+            )
+
     return {"message": "Marked as arrived - wait timer started"}
 
 
@@ -2082,6 +2173,19 @@ async def complete_ride(
 
     if rider_id and rider_ref:
         rider_ref.update({"total_rides": firestore.Increment(1)})
+
+    # Update driver campaign progress
+    if driver_id:
+        await update_driver_campaign_progress(driver_id, {"driver_earnings": driver_share if driver_id else 0})
+
+    # Notify rider the trip is done
+    if rider_id:
+        send_push_notification(
+            rider_id,
+            title="Ride Complete ✅",
+            body=f"Your trip has ended. Total: ₾{total_with_fee:.2f}",
+            data={"type": "ride_completed", "ride_id": ride_id},
+        )
 
     return {
         "message": "Ride completed",
@@ -2574,6 +2678,15 @@ async def approve_withdrawal(id: str, admin_id: str = Depends(get_admin_user)):
         "admin_action": "withdrawal_approved",
         "timestamp": firestore.SERVER_TIMESTAMP,
     })
+
+    # Notify driver their withdrawal was approved
+    if driver_id:
+        send_push_notification(
+            driver_id,
+            title="Withdrawal Approved 💰",
+            body=f"Your withdrawal of ₾{amount:.2f} has been approved.",
+            data={"type": "withdrawal_approved", "amount": str(amount)},
+        )
 
     return {"message": f"Withdrawal of ₾{amount} approved"}
 
@@ -3333,6 +3446,19 @@ async def get_trip_receipt(ride_id: str, user_id: str = Depends(get_current_user
 # USER LANGUAGE PREFERENCE
 # =========================
 
+@app.post("/api/user/fcm-token", tags=["User"])
+async def register_fcm_token(req: FCMTokenRequest, user_id: str = Depends(get_current_user_id)):
+    """Store the user's FCM device token so push notifications can be sent to them."""
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+    db = get_db()
+    db.collection("users").document(user_id).update({
+        "fcm_token": req.fcm_token,
+        "fcm_token_updated_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"message": "FCM token registered"}
+
+
 @app.post("/api/user/language", tags=["User"])
 async def set_language_preference(lang: str, user_id: str = Depends(get_current_user_id)):
     db = get_db()
@@ -3650,6 +3776,14 @@ async def update_driver_campaign_progress(driver_id: str, ride_data: dict):
                     "completions_count": firestore.Increment(1),
                     "total_bonus_paid": firestore.Increment(bonus_amount),
                 })
+
+                # Notify driver they completed the campaign and earned a bonus
+                send_push_notification(
+                    driver_id,
+                    title="🎉 Campaign Complete!",
+                    body=f"You earned ₾{bonus_amount:.2f} for completing '{c_data.get('title')}'!",
+                    data={"type": "campaign_completed", "campaign_id": campaign_id, "bonus": str(bonus_amount)},
+                )
 
             db.collection("campaign_progress").document(p.id).update(update_data)
 

@@ -2,6 +2,7 @@
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth, GOOGLE_MAPS_API_KEY, API as api } from "@/config"; 
 import { useLanguage } from "@/i18n/LanguageContext";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import LanguageSelector from "@/i18n/LanguageSelector";
 import { RiderTripCompletionModal } from "@/components/TripCompletionModal";
 import RatingModal from "@/components/RatingModal";
@@ -1177,6 +1178,15 @@ const RiderDashboard = () => {
   const { user, logout, refreshUser } = useAuth();
   const navigate  = useNavigate();
   const { t }     = useLanguage();
+
+  // Push notifications — requests permission on first visit, triggers immediate
+  // refetches instead of waiting for the polling interval
+  usePushNotifications(user, (payload) => {
+    const type = payload.data?.type;
+    if (type === 'ride_accepted' || type === 'driver_arrived' || type === 'ride_completed') {
+      fetchActiveRide?.();
+    }
+  });
 
   const [showSaveCard, setShowSaveCard] = useState(false);
 

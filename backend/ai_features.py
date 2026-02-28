@@ -345,7 +345,8 @@ async def process_support_message(message: str, user_context: dict = None, chat_
         ai_response = await get_ai_response(message, user_context, chat_history)
 
     return {
-        "ai_response": ai_response,
+        "response": ai_response,        # used by server.py ticket creation
+        "ai_response": ai_response,     # legacy alias kept for compatibility
         "needs_escalation": escalation["needs_escalation"],
         "priority": escalation["priority"],
         "category": escalation["category"],
