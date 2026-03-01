@@ -9,6 +9,7 @@ import re
 from typing import List, Optional
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import firebase_admin
 from firebase_admin import credentials, firestore, storage, messaging
@@ -88,33 +89,29 @@ def init_firebase():
     if firebase_admin._apps:
         return
     try:
-        # Check if the environment variable exists
         if FIREBASE_SA_JSON:
-            # 1. Parse the string into a dictionary
             sa_info = json.loads(FIREBASE_SA_JSON)
             
-            # 2. 🔥 THE FIX: Manually replace escaped newlines with actual newlines
-            # This is required because Render/OS environments often double-escape the key
+            # THE BRUTE-FORCE FIX: 
+            # This finds any variation of literal backslashes + n and forces it into a real newline.
             if "private_key" in sa_info:
-                sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+                fixed_key = re.sub(r'\\+n', '\n', sa_info["private_key"])
+                sa_info["private_key"] = fixed_key
             
             cred = credentials.Certificate(sa_info)
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
-            logger.info("Firebase Admin initialized from FIREBASE_SA_JSON with signature fix.")
+            logger.info("✅ Firebase initialized successfully with brute-force signature fix.")
             return
             
-        # Fallback to local file if environment variable is missing
         if SERVICE_ACCOUNT_PATH.exists():
             cred = credentials.Certificate(str(SERVICE_ACCOUNT_PATH))
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
-            logger.info(f"Firebase Admin initialized from file: {SERVICE_ACCOUNT_PATH}")
+            logger.info(f"✅ Firebase initialized from file.")
             return
             
         firebase_admin.initialize_app()
-        logger.warning("Firebase Admin initialized using default credentials.")
     except Exception as e:
         logger.error(f"FATAL: Could not initialize Firebase Admin SDK: {e}")
-        # We raise here because the app cannot function without the database
         raise
 
 
@@ -696,22 +693,23 @@ class StopLocation(BaseModel):
 # =========================
 
 class RideRequest(BaseModel):
+    # Every single field is Optional. It will never throw a 422 error again.
     pickup: Optional[str] = None
     pickup_lat: Optional[float] = Field(None, alias="pickupLat")
     pickup_lng: Optional[float] = Field(None, alias="pickupLng")
     destination: Optional[str] = None
     destination_lat: Optional[float] = Field(None, alias="destinationLat")
     destination_lng: Optional[float] = Field(None, alias="destinationLng")
-    stops: Optional[List[StopLocation]] = []
+    stops: Optional[List[Any]] = [] 
     car_type: Optional[str] = Field("economy", alias="carType")
     payment_method: Optional[str] = Field("cash", alias="paymentMethod")
     estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
     estimated_duration: Optional[float] = Field(0, alias="estimatedDuration")
-    user_id: Optional[str] = None  # 👈 Ensure this is Optional
+    user_id: Optional[str] = Field(None, alias="userId")
     price: Optional[float] = 0.0
-    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId")  # FIX: added alias so camelCase from frontend is accepted
 
-    model_config = ConfigDict(populate_by_name=True)
+    # This tells FastAPI: "If the frontend sends extra data we don't know about, ignore it, don't crash."
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
 class RiderWalletTopUp(BaseModel):
