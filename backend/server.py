@@ -709,6 +709,7 @@ class RideRequest(BaseModel):
     estimated_duration: Optional[float] = Field(0, alias="estimatedDuration")
     user_id: Optional[str] = None  # 👈 Ensure this is Optional
     price: Optional[float] = 0.0
+    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId")  # FIX: added alias so camelCase from frontend is accepted
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1993,6 +1994,11 @@ async def request_ride(
     db = get_db()
 
     surge_info = get_surge_multiplier(ride_data.pickup_lat, ride_data.pickup_lng)
+
+    # FIX: Validate pickup coordinates — missing coords cause a silent hang
+    if not ride_data.pickup_lat or not ride_data.pickup_lng:
+        raise HTTPException(status_code=422, detail="Pickup coordinates are required. Ensure pickup location is selected on the map.")
+
     surge_multiplier = surge_info["multiplier"]
     commission_rate = surge_info["commission_rate"]
 
@@ -2172,7 +2178,7 @@ async def match_drivers_to_ride(ride_id: str):
             all_drivers = db.collection("users").where("user_type", "==", "driver").stream()
             drivers = [
                 d for d in all_drivers
-                if d.to_dict().get("is_online") and d.to_dict().get("registration_status") == "approved"
+                if d.to_dict().get("is_online") and str(d.to_dict().get("registration_status", "")).lower() == "approved"
             ]
 
         nearby_drivers = []

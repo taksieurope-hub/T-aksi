@@ -1502,7 +1502,7 @@ const DriverDashboard = () => {
   const totalEarned = user?.earnings?.total_earned ?? 0;
   const totalWithdrawn = user?.earnings?.total_withdrawn ?? 0;
   const commissionPaid = user?.earnings?.total_commission_paid ?? 0;
-  const registrationStatus = user?.registration_status;
+  const registrationStatus = user?.registration_status?.toLowerCase();
   const hasVehicle = !!(user?.driver_info?.vehicle);
 
   // ===========================================================================
