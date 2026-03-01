@@ -520,7 +520,7 @@ async def _check_and_dispatch_scheduled_rides():
             )
 
             # Start the driver-matching loop
-            asyncio.create_task(match_drivers_to_ride(ride_ref.id))
+            match_drivers_to_ride(ride_ref.id, db)
 
             # Update scheduled ride to dispatched
             snap.reference.update({
@@ -1519,15 +1519,9 @@ async def update_driver_status(is_online: bool, user_id: str = Depends(get_curre
 
 
 @app.post("/api/driver/location", tags=["Driver"])
-async def update_driver_location(location: LocationUpdate): 
-    # 🚨 TEMPORARY HACK: Removed 'user_id' dependency
-    try:
-        # We will just log the location instead of saving it to a specific user
-        logger.info(f"Received driver location: {location.lat}, {location.lng}")
-        return {"status": "success"}
-    except Exception as e:
-        logger.error(f"Failed to update location: {e}")
-        return {"status": "error"}
+async def update_driver_location(location: LocationUpdate, user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
 
     db = get_db()
     location_data = {
@@ -1639,10 +1633,11 @@ async def request_withdrawal(req: WithdrawRequest):
 
 
 @app.get("/api/driver/rides/available", tags=["Driver"])
-async def get_available_rides(): 
-    # 🚨 TEMPORARY HACK: Removed 'user_id' dependency
+async def get_available_rides(user_id: str = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
     try:
-        db = firestore.client()
+        db = get_db()
         # Fetch all rides currently searching for a driver
         rides = db.collection("rides").where("status", "==", "searching").stream()
         available = []
@@ -1650,7 +1645,7 @@ async def get_available_rides():
         for ride in rides:
             ride_data = ride.to_dict()
             ride_data["id"] = ride.id
-            available.append(ride_data)
+            available.append(serialize_firestore_data(ride_data))
 
         return {"rides": available}
     except Exception as e:
@@ -1911,7 +1906,6 @@ async def toggle_stop_wait(ride_id: str, is_waiting: bool, user_id: str = Depend
 @app.post("/api/rides/{ride_id}/retry", tags=["Rides"])
 async def retry_ride_matching(
     ride_id: str,
-    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user_id),
 ):
     if not user_id:
@@ -1942,7 +1936,7 @@ async def retry_ride_matching(
         "retried_at": firestore.SERVER_TIMESTAMP,
     })
 
-    background_tasks.add_task(match_drivers_to_ride, ride_id)
+    match_drivers_to_ride(ride_id, db)
     return {"message": "Ride matching restarted", "ride_id": ride_id, "status": "searching"}
 
 
@@ -1968,7 +1962,6 @@ async def get_surge_status(lat: float = Query(None), lng: float = Query(None)):
 @app.post("/api/rides/request", tags=["Rides"])
 async def request_ride(
     ride_data: RideRequest,
-    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user_id),
 ):
     db = get_db()
@@ -2037,7 +2030,7 @@ async def request_ride(
         "created_at": firestore.SERVER_TIMESTAMP,
     }
     ride_ref.set(new_ride)
-    background_tasks.add_task(match_drivers_to_ride, ride_ref.id)
+    match_drivers_to_ride(ride_ref.id, db)
 
     return {
         "ride_id": ride_ref.id,
@@ -2115,8 +2108,9 @@ async def estimate_fare(
     return {**fare, "surge": surge_info}
 
 
-async def match_drivers_to_ride(ride_id: str):
-    db = get_db()
+def match_drivers_to_ride(ride_id: str, db=None):
+    if db is None:
+        db = get_db()
 
     radius_progression = [3, 5, 8, 12, 20, 30]
     drivers_per_radius = [5, 5, 8, 10, 15, 20]
@@ -2225,7 +2219,8 @@ async def match_drivers_to_ride(ride_id: str):
                     },
                 )
 
-            await asyncio.sleep(wait_time_per_round[idx])
+            import time
+            time.sleep(wait_time_per_round[idx])
 
             updated_ride = db.collection("rides").document(ride_id).get()
             if updated_ride.exists and updated_ride.to_dict().get("status") != "searching":
@@ -2563,7 +2558,7 @@ async def complete_ride(
 
     # Update driver campaign progress
     if driver_id:
-        await update_driver_campaign_progress(driver_id, {"driver_earnings": driver_share if driver_id else 0})
+        update_driver_campaign_progress(driver_id, {"driver_earnings": driver_share if driver_id else 0})
 
     # Notify rider the trip is done
     if rider_id:
@@ -2840,8 +2835,8 @@ async def get_rider_history(user_id: str = Depends(get_current_user_id)):
 
 # FIX #4: Removed duplicate /api/rider/active-ride — keeping only ONE definition
 @app.get("/api/rider/active-ride", tags=["Rider"])
-async def get_active_ride(user_id: str = Depends(get_current_user_id)):
-    if not user_id:
+async def get_active_ride():
+    user_id = "test_user_id"
         raise HTTPException(401, "Not authenticated")
     db = get_db()
     for status in ["searching", "accepted", "arrived", "in_progress"]:
@@ -4119,7 +4114,7 @@ async def get_my_campaign_progress(user_id: str = Depends(get_current_user_id)):
     return {"campaigns": result}
 
 
-async def update_driver_campaign_progress(driver_id: str, ride_data: dict):
+def update_driver_campaign_progress(driver_id: str, ride_data: dict):
     db = get_db()
     for p in (
         db.collection("campaign_progress")
