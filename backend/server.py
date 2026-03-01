@@ -88,20 +88,22 @@ def init_firebase():
     if firebase_admin._apps:
         return
     try:
+        # Check if the environment variable exists
         if FIREBASE_SA_JSON:
-            # 1. Parse the JSON string from the environment variable
+            # 1. Parse the string into a dictionary
             sa_info = json.loads(FIREBASE_SA_JSON)
             
-            # 2. 🔥 THE CRITICAL FIX: Render/Env vars often escape backslashes.
-            # We must force the private_key to use REAL newlines (\n) instead of the text "\n"
+            # 2. 🔥 THE FIX: Manually replace escaped newlines with actual newlines
+            # This is required because Render/OS environments often double-escape the key
             if "private_key" in sa_info:
                 sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
             
             cred = credentials.Certificate(sa_info)
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
-            logger.info("Firebase Admin initialized from FIREBASE_SA_JSON (with newline fix)")
+            logger.info("Firebase Admin initialized from FIREBASE_SA_JSON with signature fix.")
             return
             
+        # Fallback to local file if environment variable is missing
         if SERVICE_ACCOUNT_PATH.exists():
             cred = credentials.Certificate(str(SERVICE_ACCOUNT_PATH))
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
@@ -109,10 +111,10 @@ def init_firebase():
             return
             
         firebase_admin.initialize_app()
-        logger.warning("Firebase Admin initialized using default credentials (ADC).")
+        logger.warning("Firebase Admin initialized using default credentials.")
     except Exception as e:
-        logger.error(f"Could not initialize Firebase Admin SDK: {e}")
-        # If we fail here, the whole app is dead, so we raise
+        logger.error(f"FATAL: Could not initialize Firebase Admin SDK: {e}")
+        # We raise here because the app cannot function without the database
         raise
 
 
