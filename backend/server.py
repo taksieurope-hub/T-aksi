@@ -717,22 +717,59 @@ class StopLocation(BaseModel):
     order: int = 0
 
 
-class RideRequest(BaseModel):
-    user_id: Optional[str] = Field(None, alias="userId")
-    car_type: Optional[str] = Field("economy", alias="carType")
-    pickup: str
-    pickup_lat: float = Field(alias="pickupLat")
-    pickup_lng: float = Field(alias="pickupLng")
-    destination: Optional[str] = None
-    destination_lat: Optional[float] = Field(None, alias="destinationLat")
-    destination_lng: Optional[float] = Field(None, alias="destinationLng")
-    stops: List[StopLocation] = []
-    payment_method: Optional[str] = Field("cash", alias="paymentMethod")
-    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId")
-    estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
-    estimated_duration: Optional[int] = Field(0, alias="estimatedDuration")
+# =========================
+# RIDE BOOKING
+# =========================
 
-    model_config = ConfigDict(populate_by_name=True)
+class RideRequest(BaseModel):
+    riderId: str
+    riderName: str
+    riderPhone: str
+    pickup: dict # {address, lat, lng}
+    destination: dict # {address, lat, lng}
+    distance: float
+    duration: float
+    price: float
+    paymentMethod: str = "cash"
+
+@app.post("/api/rides", tags=["Rides"])
+async def create_ride(request: RideRequest):
+    try:
+        db = firestore.client()
+        
+        # 1. Create the ride object
+        ride_id = f"ride_{int(datetime.now().timestamp())}"
+        ride_data = {
+            "id": ride_id,
+            "riderId": request.riderId,
+            "riderName": request.riderName,
+            "riderPhone": request.riderPhone,
+            "pickup": request.pickup,
+            "destination": request.destination,
+            "distance": request.distance,
+            "duration": request.duration,
+            "price": request.price,
+            "paymentMethod": request.paymentMethod,
+            "status": "searching", # 👈 Drivers look for "searching" status
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+            "driverId": None,
+            "type": "standard"
+        }
+
+        # 2. Save to Firestore
+        db.collection("rides").document(ride_id).set(ride_data)
+        
+        logger.info(f"✅ New ride created: {ride_id} for {request.riderName}")
+        
+        return {
+            "status": "success",
+            "rideId": ride_id,
+            "message": "Searching for nearby drivers..."
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to create ride: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class RiderWalletTopUp(BaseModel):
