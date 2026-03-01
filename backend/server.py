@@ -92,11 +92,9 @@ def init_firebase():
         if FIREBASE_SA_JSON:
             sa_info = json.loads(FIREBASE_SA_JSON)
             
-            # THE BRUTE-FORCE FIX: 
-            # This finds any variation of literal backslashes + n and forces it into a real newline.
+            # This forces the mangled Render string back into a valid key
             if "private_key" in sa_info:
-                fixed_key = re.sub(r'\\+n', '\n', sa_info["private_key"])
-                sa_info["private_key"] = fixed_key
+                sa_info["private_key"] = re.sub(r'\\+n', '\n', sa_info["private_key"])
             
             cred = credentials.Certificate(sa_info)
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
@@ -693,22 +691,22 @@ class StopLocation(BaseModel):
 # =========================
 
 class RideRequest(BaseModel):
-    # Every single field is Optional. It will never throw a 422 error again.
+    user_id: Optional[str] = Field(None, alias="userId")
+    car_type: Optional[str] = Field("economy", alias="carType")
     pickup: Optional[str] = None
     pickup_lat: Optional[float] = Field(None, alias="pickupLat")
     pickup_lng: Optional[float] = Field(None, alias="pickupLng")
     destination: Optional[str] = None
     destination_lat: Optional[float] = Field(None, alias="destinationLat")
     destination_lng: Optional[float] = Field(None, alias="destinationLng")
-    stops: Optional[List[Any]] = [] 
-    car_type: Optional[str] = Field("economy", alias="carType")
+    stops: Optional[List[dict]] = []
     payment_method: Optional[str] = Field("cash", alias="paymentMethod")
+    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId")
     estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
-    estimated_duration: Optional[float] = Field(0, alias="estimatedDuration")
-    user_id: Optional[str] = Field(None, alias="userId")
+    estimated_duration: Optional[int] = Field(0, alias="estimatedDuration")
     price: Optional[float] = 0.0
 
-    # This tells FastAPI: "If the frontend sends extra data we don't know about, ignore it, don't crash."
+    # This prevents the 422 error by allowing extra data from the frontend
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
