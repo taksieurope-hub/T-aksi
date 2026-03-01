@@ -84,20 +84,30 @@ SERVICE_ACCOUNT_PATH = Path(os.environ.get(
 FIREBASE_SA_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
 
 
-def init_firebase():
+ddef init_firebase():
     if firebase_admin._apps:
         return
     try:
         if FIREBASE_SA_JSON:
-            cred = credentials.Certificate(json.loads(FIREBASE_SA_JSON))
+            # Load the JSON string
+            sa_info = json.loads(FIREBASE_SA_JSON)
+            
+            # 🔥 CRITICAL FIX: Ensure \n characters are actual newlines
+            # Render/Env vars often mangle these during the 'json.loads' process
+            if "private_key" in sa_info:
+                sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+            
+            cred = credentials.Certificate(sa_info)
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
-            logger.info("Firebase Admin initialized from FIREBASE_SERVICE_ACCOUNT_JSON")
+            logger.info("Firebase Admin initialized from FIREBASE_SA_JSON (with newline fix)")
             return
+            
         if SERVICE_ACCOUNT_PATH.exists():
             cred = credentials.Certificate(str(SERVICE_ACCOUNT_PATH))
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
             logger.info(f"Firebase Admin initialized from file: {SERVICE_ACCOUNT_PATH}")
             return
+            
         firebase_admin.initialize_app()
         logger.warning("Firebase Admin initialized using default credentials (ADC).")
     except Exception as e:
