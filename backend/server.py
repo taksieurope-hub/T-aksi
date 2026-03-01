@@ -562,17 +562,11 @@ app = FastAPI(title="T'aksi API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        # Local dev
         "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        # Named production frontends
         "https://t-aksi-frontend.onrender.com",
-        "https://taksi-admin.onrender.com",
-        # Custom domain
+        "https://t-aksi-driver.onrender.com",
+        "https://taksi-admin.onrender.com",  # 👈 Add this specifically
         "https://taksi.ge",
-        "https://www.taksi.ge",
     ],
     allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
@@ -700,21 +694,19 @@ class StopLocation(BaseModel):
 # =========================
 
 class RideRequest(BaseModel):
-    # Fields sent by RiderPortal.jsx → processRideRequest()
-    pickup: Optional[str] = None           # sanitised pickup address string
+    pickup: Optional[str] = None
     pickup_lat: Optional[float] = Field(None, alias="pickupLat")
     pickup_lng: Optional[float] = Field(None, alias="pickupLng")
-    destination: Optional[str] = None      # sanitised destination address string
+    destination: Optional[str] = None
     destination_lat: Optional[float] = Field(None, alias="destinationLat")
     destination_lng: Optional[float] = Field(None, alias="destinationLng")
     stops: Optional[List[StopLocation]] = []
     car_type: Optional[str] = Field("economy", alias="carType")
     payment_method: Optional[str] = Field("cash", alias="paymentMethod")
-    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId")
     estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
     estimated_duration: Optional[float] = Field(0, alias="estimatedDuration")
-    # Legacy / fallback fields
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None  # 👈 Ensure this is Optional
+    price: Optional[float] = 0.0
 
     model_config = ConfigDict(populate_by_name=True)
 
