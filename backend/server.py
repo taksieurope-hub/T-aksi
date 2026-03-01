@@ -84,7 +84,7 @@ SERVICE_ACCOUNT_PATH = Path(os.environ.get(
 FIREBASE_SA_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
 
 
-ddef init_firebase():
+def init_firebase():
     if firebase_admin._apps:
         return
     try:
