@@ -89,25 +89,26 @@ def init_firebase():
     if firebase_admin._apps:
         return
     try:
-        if FIREBASE_SA_JSON:
-            sa_info = json.loads(FIREBASE_SA_JSON)
-            
-            # This forces the mangled Render string back into a valid key
-            if "private_key" in sa_info:
-                sa_info["private_key"] = re.sub(r'\\+n', '\n', sa_info["private_key"])
-            
-            cred = credentials.Certificate(sa_info)
+        # 1. 🔥 Look for Render's Secure Secret File FIRST
+        render_secret_path = "/etc/secrets/serviceAccountKey.json"
+        
+        if os.path.exists(render_secret_path):
+            cred = credentials.Certificate(render_secret_path)
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
-            logger.info("✅ Firebase initialized successfully with brute-force signature fix.")
+            logger.info("✅ Firebase initialized securely from Render Secret File.")
             return
-            
+
+        # 2. Fallback to local file for testing on your own computer
         if SERVICE_ACCOUNT_PATH.exists():
             cred = credentials.Certificate(str(SERVICE_ACCOUNT_PATH))
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
-            logger.info(f"✅ Firebase initialized from file.")
+            logger.info(f"✅ Firebase initialized from local file: {SERVICE_ACCOUNT_PATH}")
             return
             
+        # 3. Last resort fallback
         firebase_admin.initialize_app()
+        logger.warning("Firebase Admin initialized using default credentials.")
+        
     except Exception as e:
         logger.error(f"FATAL: Could not initialize Firebase Admin SDK: {e}")
         raise
