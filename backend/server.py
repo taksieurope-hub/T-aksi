@@ -89,11 +89,11 @@ ddef init_firebase():
         return
     try:
         if FIREBASE_SA_JSON:
-            # Load the JSON string
+            # 1. Parse the JSON string from the environment variable
             sa_info = json.loads(FIREBASE_SA_JSON)
             
-            # 🔥 CRITICAL FIX: Ensure \n characters are actual newlines
-            # Render/Env vars often mangle these during the 'json.loads' process
+            # 2. 🔥 THE CRITICAL FIX: Render/Env vars often escape backslashes.
+            # We must force the private_key to use REAL newlines (\n) instead of the text "\n"
             if "private_key" in sa_info:
                 sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
             
@@ -112,6 +112,7 @@ ddef init_firebase():
         logger.warning("Firebase Admin initialized using default credentials (ADC).")
     except Exception as e:
         logger.error(f"Could not initialize Firebase Admin SDK: {e}")
+        # If we fail here, the whole app is dead, so we raise
         raise
 
 
