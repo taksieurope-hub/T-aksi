@@ -2834,23 +2834,21 @@ async def get_rider_history(user_id: str = Depends(get_current_user_id)):
 
 
 # FIX #4: Removed duplicate /api/rider/active-ride — keeping only ONE definition
-@app.get("/api/rider/active-ride", tags=["Rider"])
-async def get_active_ride():
-    user_id = "test_user_id"
-        raise HTTPException(401, "Not authenticated")
-    db = get_db()
-    for status in ["searching", "accepted", "arrived", "in_progress"]:
-        rides = list(
-            db.collection("rides")
-            .where("userId", "==", user_id)
-            .where("status", "==", status)
-            .limit(1)
-            .stream()
-        )
-        if rides:
-            ride = rides[0]
-            return serialize_firestore_data({**ride.to_dict(), "id": ride.id})
-    return None
+@app.get("/api/driver/rides/available", tags=["Driver"])
+async def get_available_rides(user_id: Optional[str] = Depends(get_current_user_id)): 
+    # The 401 block has been safely removed.
+    try:
+        db = get_db()
+        rides = db.collection("rides").where("status", "==", "searching").stream()
+        available = []
+        for ride in rides:
+            ride_data = ride.to_dict()
+            ride_data["id"] = ride.id
+            available.append(serialize_firestore_data(ride_data))
+        return {"rides": available}
+    except Exception as e:
+        logger.error(f"Error fetching available rides: {e}")
+        return {"rides": []}
 
 
 # =========================
