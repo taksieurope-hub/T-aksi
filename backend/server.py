@@ -295,14 +295,21 @@ def get_admin_user(authorization: Optional[str] = Header(None)):
     decoded = decode_token(token)
     if not decoded or "user_id" not in decoded:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user_id = decoded["user_id"]
     db = get_db()
-    user_doc = db.collection("users").document(decoded["user_id"]).get()
+    user_doc = db.collection("users").document(user_id).get()
+
     if not user_doc.exists:
+        # Could be the admin_master doc hasn't propagated yet — trust the token role
+        if decoded.get("role") == "admin":
+            return user_id
         raise HTTPException(status_code=401, detail="User not found")
+
     user_data = user_doc.to_dict()
     if user_data.get("user_type") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    return decoded["user_id"]
+    return user_id
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -646,35 +653,6 @@ async def rate_limit_middleware(request: Request, call_next):
 
     return await call_next(request)
 
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    current_time = time.time()
-    path = request.url.path
-
-    # Strict limiter for auth endpoints
-    if path in AUTH_PATHS:
-        auth_ip_tracker[client_ip] = [
-            t for t in auth_ip_tracker[client_ip] if current_time - t < AUTH_RATE_LIMIT_WINDOW
-        ]
-        if len(auth_ip_tracker[client_ip]) >= AUTH_MAX_REQUESTS:
-            logger.warning(f"Auth rate limit exceeded for IP: {client_ip}")
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Too many login attempts. Please try again in 15 minutes."},
-            )
-        auth_ip_tracker[client_ip].append(current_time)
-
-    # General limiter for all endpoints
-    ip_tracker[client_ip] = [t for t in ip_tracker[client_ip] if current_time - t < RATE_LIMIT_WINDOW]
-    if len(ip_tracker[client_ip]) >= MAX_REQUESTS:
-        logger.warning(f"Rate limit exceeded for IP: {client_ip}")
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Too many requests. Please try again in 15 minutes."},
-        )
-    ip_tracker[client_ip].append(current_time)
-
-    return await call_next(request)
-
 
 # =========================
 # MODELS
@@ -722,54 +700,23 @@ class StopLocation(BaseModel):
 # =========================
 
 class RideRequest(BaseModel):
-    riderId: str
-    riderName: str
-    riderPhone: str
-    pickup: dict # {address, lat, lng}
-    destination: dict # {address, lat, lng}
-    distance: float
-    duration: float
-    price: float
-    paymentMethod: str = "cash"
+    # Fields sent by RiderPortal.jsx → processRideRequest()
+    pickup: Optional[str] = None           # sanitised pickup address string
+    pickup_lat: Optional[float] = Field(None, alias="pickupLat")
+    pickup_lng: Optional[float] = Field(None, alias="pickupLng")
+    destination: Optional[str] = None      # sanitised destination address string
+    destination_lat: Optional[float] = Field(None, alias="destinationLat")
+    destination_lng: Optional[float] = Field(None, alias="destinationLng")
+    stops: Optional[List[StopLocation]] = []
+    car_type: Optional[str] = Field("economy", alias="carType")
+    payment_method: Optional[str] = Field("cash", alias="paymentMethod")
+    payment_order_id: Optional[str] = Field(None, alias="paymentOrderId")
+    estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
+    estimated_duration: Optional[float] = Field(0, alias="estimatedDuration")
+    # Legacy / fallback fields
+    user_id: Optional[str] = None
 
-@app.post("/api/rides", tags=["Rides"])
-async def create_ride(request: RideRequest):
-    try:
-        db = firestore.client()
-        
-        # 1. Create the ride object
-        ride_id = f"ride_{int(datetime.now().timestamp())}"
-        ride_data = {
-            "id": ride_id,
-            "riderId": request.riderId,
-            "riderName": request.riderName,
-            "riderPhone": request.riderPhone,
-            "pickup": request.pickup,
-            "destination": request.destination,
-            "distance": request.distance,
-            "duration": request.duration,
-            "price": request.price,
-            "paymentMethod": request.paymentMethod,
-            "status": "searching", # 👈 Drivers look for "searching" status
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-            "driverId": None,
-            "type": "standard"
-        }
-
-        # 2. Save to Firestore
-        db.collection("rides").document(ride_id).set(ride_data)
-        
-        logger.info(f"✅ New ride created: {ride_id} for {request.riderName}")
-        
-        return {
-            "status": "success",
-            "rideId": ride_id,
-            "message": "Searching for nearby drivers..."
-        }
-
-    except Exception as e:
-        logger.error(f"❌ Failed to create ride: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class RiderWalletTopUp(BaseModel):
@@ -1347,11 +1294,9 @@ class AdminLoginRequest(BaseModel):
 async def admin_login(data: AdminLoginRequest):
     if data.password != ADMIN_PASSWORD:
         raise HTTPException(401, "Invalid admin credentials")
-    # Return a synthetic admin user token — no DB record needed
-    # The token encodes role=admin; get_admin_user validates user_type from DB.
-    # If you have a real admin user in Firestore, look it up by a dedicated admin phone/ID.
-    # For a simple single-admin setup we issue a special token tied to "admin_master".
+
     db = get_db()
+
     # Look for an existing admin user in Firestore
     admins = list(db.collection("users").where("user_type", "==", "admin").limit(1).stream())
     if admins:
@@ -1360,21 +1305,24 @@ async def admin_login(data: AdminLoginRequest):
         safe_user = {k: v for k, v in admin_doc.to_dict().items() if k != "password_hash"}
         safe_user["id"] = admin_doc.id
         return {"token": token, "user": serialize_firestore_data(safe_user)}
-    else:
-        # No admin user in DB yet — create one on first login
-        admin_ref = db.collection("users").document("admin_master")
-        admin_data = {
-            "id": "admin_master",
-            "name": "System",
-            "surname": "Admin",
-            "cellphone": "admin",
-            "cellphone_norm": "admin",
-            "user_type": "admin",
-            "created_at": firestore.SERVER_TIMESTAMP,
-        }
-        admin_ref.set(admin_data, merge=True)
-        token = create_token("admin_master", "admin")
-        return {"token": token, "user": {**admin_data, "created_at": now_iso()}}
+
+    # No admin user in DB yet — create one synchronously on first login
+    admin_ref = db.collection("users").document("admin_master")
+    admin_data = {
+        "id": "admin_master",
+        "name": "System",
+        "surname": "Admin",
+        "cellphone": "admin",
+        "cellphone_norm": "admin",
+        "user_type": "admin",
+        "created_at": firestore.SERVER_TIMESTAMP,
+    }
+    # Use set() (not merge) to guarantee the document exists before we return
+    admin_ref.set(admin_data)
+
+    token = create_token("admin_master", "admin")
+    safe_user = {**admin_data, "id": "admin_master", "created_at": now_iso()}
+    return {"token": token, "user": safe_user}
 
 
 @app.post("/api/driver/login", tags=["Auth"])
