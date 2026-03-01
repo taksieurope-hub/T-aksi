@@ -2067,6 +2067,53 @@ async def request_ride(
         "status": "searching",
     }
 
+@app.post("/api/rides", tags=["Rides"])
+async def create_ride(request: RideRequest):
+    try:
+        db = firestore.client()
+        
+        # 1. Create a unique ID for the ride
+        ride_id = f"ride_{int(datetime.now().timestamp())}"
+        
+        # 2. Build the document using your model fields
+        ride_data = {
+            "id": ride_id,
+            "riderId": request.user_id,
+            "pickup": {
+                "address": request.pickup,
+                "lat": request.pickup_lat,
+                "lng": request.pickup_lng
+            },
+            "destination": {
+                "address": request.destination,
+                "lat": request.destination_lat,
+                "lng": request.destination_lng
+            },
+            "carType": request.car_type,
+            "paymentMethod": request.payment_method,
+            "price": request.price if hasattr(request, 'price') else 0, # Fallback if price is missing
+            "status": "searching",  # 👈 This is what the Driver app looks for
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+            "driverId": None,
+            "distance": request.estimated_distance,
+            "duration": request.estimated_duration
+        }
+
+        # 3. Save to Firestore
+        db.collection("rides").document(ride_id).set(ride_data)
+        
+        logger.info(f"✅ New ride created: {ride_id}")
+        
+        # 4. Return success to stop the loading spinner on the phone
+        return {
+            "status": "success",
+            "rideId": ride_id,
+            "message": "Searching for drivers..."
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to create ride: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/surge/estimate", tags=["Rides"])
 async def estimate_fare(
