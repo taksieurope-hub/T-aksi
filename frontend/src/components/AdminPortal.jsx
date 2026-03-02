@@ -1010,22 +1010,32 @@ const AdminDashboard = () => {
 // ROUTER
 // ─────────────────────────────────────────────────────────────────────────────
 const AdminPortal = () => {
-  const { user } = useAuth();
-  const location = useLocation();
+    const { user, token } = useAuth();   // ← also grab token
+    const location = useLocation();
 
-  if (!user || user.user_type !== "admin") {
-    return location.pathname === "/admin" || location.pathname === "/admin/"
-      ? <AdminLogin />
-      : <Navigate to="/admin" replace />;
-  }
+    // If we have a token, decode it to check role without waiting for user object
+    const isAdmin = (() => {
+      if (user?.user_type === "admin") return true;
+      if (!token) return false;
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        return payload.role === "admin";
+      } catch { return false; }
+    })();
 
-  return (
-    <Routes>
-      <Route path="/" element={<Navigate to="dashboard" replace />} />
-      <Route path="dashboard" element={<AdminDashboard />} />
-      <Route path="*" element={<Navigate to="dashboard" replace />} />
-    </Routes>
-  );
-};
+    if (!isAdmin) {
+      return location.pathname === "/admin" || location.pathname === "/admin/"
+        ? <AdminLogin />
+        : <Navigate to="/admin" replace />;
+    }
+
+    return (
+      <Routes>
+        <Route path="/" element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="*" element={<Navigate to="dashboard" replace />} />
+      </Routes>
+    );
+  };
 
 export default AdminPortal;
