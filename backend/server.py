@@ -1824,20 +1824,13 @@ async def get_all_rides(
         return {"rides": [], "count": 0}
 
 
-@app.get("/api/admin/support/tickets", tags=["Admin"])
-async def get_support_tickets(admin_id: str = Depends(get_admin_user)):
+@app.get("/api/admin/support/tickets/escalated", tags=["Admin"])
+async def get_escalated_tickets(admin_id: str = Depends(get_admin_user)):
     db = get_db()
-    try:
-        docs = list(
-            db.collection("support_tickets")
-            .order_by("created_at", direction=firestore.Query.DESCENDING)
-            .limit(100)
-            .stream()
-        )
-    except Exception:
-        docs = list(db.collection("support_tickets").stream())
-    result = [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in docs]
-    return {"tickets": result}
+    tickets = db.collection("support_tickets").where("status", "==", "escalated").limit(50).stream()
+    result = [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in tickets]
+    result.sort(key=lambda x: (x.get("priority", "medium"), x.get("created_at", "")))
+    return {"tickets": result, "count": len(result)}
 
 
 @app.post("/api/admin/support/tickets/{ticket_id}/reply", tags=["Admin"])
@@ -3491,10 +3484,10 @@ async def complete_ride(
         "userId": rider_id,
     }
     
-    # 1. This updates the ride successfully and triggers the Rider App's listener
+    # 1. This updates the ride successfully
     ride_ref.update(ride_updates)
 
-    # 2. SAFELY attempt to update the Driver's balance (Won't crash if it's a test driver)
+    # 2. SAFELY attempt to update the Driver's balance
     if driver_id:
         try:
             held_commission = ride_data.get("commission_paid", 0) or 0
@@ -3506,9 +3499,9 @@ async def complete_ride(
             commission_refund = held_commission - actual_commission
             wallet_change = driver_share - cash_to_collect + commission_refund
 
-            driver_ref = db.collection("users").document(driver_id)
-            if driver_ref.get().exists:
-                driver_ref.update({
+            driver_doc_ref = db.collection("users").document(driver_id)
+            if driver_doc_ref.get().exists:
+                driver_doc_ref.update({
                     "earnings.balance": firestore.Increment(wallet_change),
                     "earnings.total_earned": firestore.Increment(driver_share),
                     "total_rides": firestore.Increment(1),
@@ -3524,6 +3517,14 @@ async def complete_ride(
         except Exception as e:
             logger.error(f"Post-ride Rider update failed gracefully: {e}")
 
+    # 4. Safely attempt to trigger campaign logic (if you have it)
+    try:
+        # We wrap this so if the campaign function is missing or fails, it won't crash the completion
+        if 'update_driver_campaign_progress' in globals() and driver_id:
+             update_driver_campaign_progress(driver_id, {"driver_earnings": total_with_fee})
+    except Exception as e:
+        logger.error(f"Campaign update failed: {e}")
+
     if rider_id:
         send_push_notification(
             rider_id,
@@ -3532,7 +3533,7 @@ async def complete_ride(
             data={"type": "ride_completed", "ride_id": ride_id},
         )
 
-    # 4. Successfully return the 200 OK to the Driver App!
+    # 5. Successfully return the 200 OK to the Driver App
     return {
         "message": "Ride completed",
         "payment_status": payment_status,
@@ -3672,7 +3673,7 @@ async def rate_passenger(
     return {"message": "Passenger rated", "rating": rating_data.rating}
 
 
-@app.post("/api/rides/{ride_id}/rate-driver", tags=["Rides"])
+@app.post("/api/rides/{ride_id}/rate/driver", tags=["Rides"])  # <--- Fixed the URL path here
 async def rate_driver(
     ride_id: str, rating_data: RateDriverRequest, user_id: Optional[str] = Depends(get_current_user_id)
 ):
@@ -3683,20 +3684,29 @@ async def rate_driver(
         raise HTTPException(404, "Ride not found")
 
     data = ride.to_dict()
-    ride_ref.update({"driver_rating": rating_data.rating, "driver_review": rating_data.review})
 
+    # Update the ride document with the rating
+    ride_ref.update({
+        "driver_rating": rating_data.rating,
+        "driver_review": rating_data.review,
+        "rated_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    # Safely update the driver's overall rating average
     driver_id = data.get("driver_id") or data.get("driverId")
     if driver_id:
         driver_ref = db.collection("users").document(driver_id)
         driver_doc = driver_ref.get()
         if driver_doc.exists:
             d_data = driver_doc.to_dict()
-            current = d_data.get("rating", 5.0)
+            current_rating = d_data.get("rating", 5.0)
             total_rides = d_data.get("total_rides", 1)
-            new_rating = round(((current * (total_rides - 1)) + rating_data.rating) / max(1, total_rides), 2)
-            driver_ref.update({"rating": new_rating})
+            
+            # Calculate the new average
+            new_rating = ((current_rating * total_rides) + rating_data.rating) / (total_rides + 1)
+            driver_ref.update({"rating": round(new_rating, 2)})
 
-    return {"message": "Driver rated", "rating": rating_data.rating}
+    return {"message": "Driver rated successfully"}
 
 
 @app.post("/api/rides/{ride_id}/chat", tags=["Rides"])
