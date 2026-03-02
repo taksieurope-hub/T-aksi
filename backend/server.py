@@ -2238,6 +2238,7 @@ async def get_driver_withdrawal_history(user_id: Optional[str] = Depends(get_cur
         return {"withdrawals": []}
     db = get_db()
     try:
+        # Try asking Firebase to sort it
         docs = list(
             db.collection("driver_withdrawals")
             .where("driver_id", "==", user_id)
@@ -2246,8 +2247,11 @@ async def get_driver_withdrawal_history(user_id: Optional[str] = Depends(get_cur
             .stream()
         )
     except Exception:
+        # If Firebase fails (missing index), do it manually in Python safely
         docs = list(db.collection("driver_withdrawals").where("driver_id", "==", user_id).stream())
-        docs.sort(key=lambda d: d.to_dict().get("created_at", ""), reverse=True)
+        # FIX: Cast the timestamp to a string to prevent the TypeError crash
+        docs.sort(key=lambda d: str(d.to_dict().get("created_at", "")), reverse=True)
+        
     return {"withdrawals": [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in docs]}
 
 

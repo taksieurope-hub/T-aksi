@@ -1640,7 +1640,6 @@ const DriverDashboard = () => {
         const riderName = activeRide.rider_name || activeRide.driver_info?.rider_name || "Passenger";
         setRateRideId(activeRide.id);
         setRateRiderName(riderName);
-        setShowRateModal(true);
         setCompletedRide({ ...res.data, final_fare: res.data.final_fare || activeRide.estimated_fare });
         setActiveRide(null);
         setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null); setIsWaitingAtStop(false);
@@ -2292,16 +2291,23 @@ const DriverDashboard = () => {
       {/* TRIP COMPLETION MODAL */}
       <DriverTripCompletionModal
         isOpen={!!completedRide}
-        onClose={() => setCompletedRide(null)}
+        onClose={() => {
+          setCompletedRide(null);
+          setShowRateModal(true); // ✅ ADD THIS: Opens rating after closing fare
+        }}
         fareAmount={completedRide?.final_fare || completedRide?.estimated_fare}
         paymentMethod={completedRide?.payment_method || completedRide?.paymentMethod || "cash"}
         riderName={completedRide?.rider_name || "Rider"}
         cashToCollect={completedRide?.cash_to_collect || 0}
-        onConfirm={() => setCompletedRide(null)}
+        onConfirm={() => {
+          setCompletedRide(null);
+          setShowRateModal(true); // ✅ ADD THIS: Opens rating after confirming fare
+        }}
       />
-    </div>
-  );
-};
+
+    </div>   
+  );         
+};           
 
 // =============================================================================
 // PORTAL ROUTER
