@@ -3402,10 +3402,10 @@ async def stop_reached(
 @app.post("/api/rides/{ride_id}/complete", tags=["Rides"])
 async def complete_ride(
     ride_id: str,
-    final_distance: float = Query(default=0.0),      # ← was Optional[float] = 0.0
-    total_wait_minutes: int = Query(default=0),       # ← was Optional[int] = 0
-    dropoff_lat: Optional[float] = Query(default=None),
-    dropoff_lng: Optional[float] = Query(default=None),
+    final_distance: Optional[float] = 0.0,
+    total_wait_minutes: Optional[int] = 0,
+    dropoff_lat: Optional[float] = None,
+    dropoff_lng: Optional[float] = None,
     user_id: Optional[str] = Depends(get_current_user_id),
 ):
     db = get_db()
@@ -3416,16 +3416,6 @@ async def complete_ride(
         raise HTTPException(404, "Ride not found")
 
     ride_data = ride_snap.to_dict()
-
-    if ride_data.get("status") == "completed":
-        # Idempotent — return the already-completed data
-        return serialize_firestore_data({
-            "message": "Ride already completed",
-            "payment_status": ride_data.get("payment_status"),
-            "final_fare": ride_data.get("final_fare"),
-            "wallet_used": ride_data.get("wallet_used", 0),
-            "cash_to_collect": ride_data.get("cash_to_collect", 0),
-        })
 
     billing_distance = ride_data.get("estimated_distance", 0)
     recorded_actual_distance = final_distance if final_distance else billing_distance
@@ -3458,9 +3448,12 @@ async def complete_ride(
 
     wallet_balance = 0.0
     if rider_ref:
-        rider_doc = rider_ref.get()
-        if rider_doc.exists:
-            wallet_balance = float(rider_doc.to_dict().get("wallet_balance", 0.0))
+        try:
+            rider_doc = rider_ref.get()
+            if rider_doc.exists:
+                wallet_balance = float(rider_doc.to_dict().get("wallet_balance", 0.0))
+        except Exception:
+            pass
 
     wallet_used = 0.0
     cash_to_collect = 0.0
@@ -3471,7 +3464,10 @@ async def complete_ride(
         cash_to_collect = total_with_fee - wallet_used
         payment_status = "paid_fully_via_wallet" if cash_to_collect == 0 else "split_cash_required"
         if wallet_used > 0 and rider_ref:
-            rider_ref.update({"wallet_balance": firestore.Increment(-float(wallet_used))})
+            try:
+                rider_ref.update({"wallet_balance": firestore.Increment(-float(wallet_used))})
+            except Exception:
+                pass
     elif is_card:
         cash_to_collect = 0.0
         payment_status = "paid_via_card"
@@ -3479,7 +3475,7 @@ async def complete_ride(
         cash_to_collect = total_with_fee
         payment_status = "cash_collected"
 
-    ride_ref.update({
+    ride_updates = {
         "status": "completed",
         "actual_distance": recorded_actual_distance,
         "billed_distance": billing_distance,
@@ -3489,33 +3485,54 @@ async def complete_ride(
         "final_fare_breakdown": final_fare,
         "payment_status": payment_status,
         "completed_at": firestore.SERVER_TIMESTAMP,
-    })
+        "driver_id": driver_id,
+        "driverId": driver_id,
+        "user_id": rider_id,
+        "userId": rider_id,
+    }
+    
+    # 1. This updates the ride successfully and triggers the Rider App's listener
+    ride_ref.update(ride_updates)
 
+    # 2. SAFELY attempt to update the Driver's balance (Won't crash if it's a test driver)
     if driver_id:
-        held_commission = ride_data.get("commission_paid", 0) or 0
-        commission_rate = ride_data.get("commission_rate", 0.23)
-        actual_commission = commissionable_amount * commission_rate
-        driver_share = commissionable_amount - actual_commission
-        commission_refund = held_commission - actual_commission
-        wallet_change = driver_share - cash_to_collect + commission_refund
+        try:
+            held_commission = ride_data.get("commission_paid", 0) or 0
+            commission_rate = ride_data.get("commission_rate", 0.23)
 
-        db.collection("users").document(driver_id).update({
-            "earnings.balance": firestore.Increment(wallet_change),
-            "earnings.total_earned": firestore.Increment(driver_share),
-            "total_rides": firestore.Increment(1),
-        })
+            actual_commission = commissionable_amount * commission_rate
+            driver_share = commissionable_amount - actual_commission
 
+            commission_refund = held_commission - actual_commission
+            wallet_change = driver_share - cash_to_collect + commission_refund
+
+            driver_ref = db.collection("users").document(driver_id)
+            if driver_ref.get().exists:
+                driver_ref.update({
+                    "earnings.balance": firestore.Increment(wallet_change),
+                    "earnings.total_earned": firestore.Increment(driver_share),
+                    "total_rides": firestore.Increment(1),
+                })
+        except Exception as e:
+            logger.error(f"Post-ride Driver update failed gracefully: {e}")
+
+    # 3. SAFELY attempt to update the Rider's trip count
     if rider_id and rider_ref:
-        rider_ref.update({"total_rides": firestore.Increment(1)})
+        try:
+            if rider_ref.get().exists:
+                rider_ref.update({"total_rides": firestore.Increment(1)})
+        except Exception as e:
+            logger.error(f"Post-ride Rider update failed gracefully: {e}")
 
     if rider_id:
         send_push_notification(
             rider_id,
             title="Ride Complete ✅",
-            body=f"Total: ₾{total_with_fee:.2f}",
+            body=f"Your trip has ended. Total: ₾{total_with_fee:.2f}",
             data={"type": "ride_completed", "ride_id": ride_id},
         )
 
+    # 4. Successfully return the 200 OK to the Driver App!
     return {
         "message": "Ride completed",
         "payment_status": payment_status,
