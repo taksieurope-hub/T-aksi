@@ -26,6 +26,39 @@ import httpx
 import sys
 import secrets
 
+from fastapi import Response, Cookie, Header, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from typing import Optional
+ # Assuming you already have this imported
+
+# ─── SECURE COOKIE SETTINGS (UPDATED FOR RENDER CROSS-ORIGIN) ───
+COOKIE_NAME = "token"
+COOKIE_MAX_AGE = 7 * 24 * 3600      # 7 days
+COOKIE_SECURE = True                # MUST be True for cross-origin
+COOKIE_SAMESITE = "none"            # MUST be "none" because frontend and backend are different Render subdomains
+COOKIE_HTTPONLY = True              # Protects against XSS
+COOKIE_PATH = "/"
+
+def set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        max_age=COOKIE_MAX_AGE,
+        path=COOKIE_PATH,
+        secure=COOKIE_SECURE,
+        httponly=COOKIE_HTTPONLY,
+        samesite=COOKIE_SAMESITE,
+    )
+
+def clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path=COOKIE_PATH,
+        secure=COOKIE_SECURE,
+        httponly=COOKIE_HTTPONLY,
+        samesite=COOKIE_SAMESITE,
+    )
+
 # =========================
 # ENV + INITIALIZATION
 # =========================
@@ -230,24 +263,42 @@ def normalize_phone(phone: str) -> str:
     return p
 
 
-def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional[str]:
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-    token = authorization.replace("Bearer ", "")
-    try:
-        decoded = decode_token(token)
-        if decoded and "user_id" in decoded:
-            return decoded.get("user_id")
-    except Exception:
-        return None
+def get_current_user_id(
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Cookie(None),
+) -> Optional[str]:
+    # 1. Bearer header first (supports existing localStorage clients during transition)
+    if authorization and authorization.startswith("Bearer "):
+        raw = authorization.replace("Bearer ", "")
+        try:
+            decoded = decode_token(raw)
+            if decoded and "user_id" in decoded:
+                return decoded["user_id"]
+        except Exception:
+            pass
+    # 2. Fall back to httpOnly cookie
+    if token:
+        try:
+            decoded = decode_token(token)
+            if decoded and "user_id" in decoded:
+                return decoded["user_id"]
+        except Exception:
+            pass
     return None
 
 
-def get_admin_user(authorization: Optional[str] = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
+def get_admin_user(
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Cookie(None),
+):
+    raw_token = None
+    if authorization and authorization.startswith("Bearer "):
+        raw_token = authorization.replace("Bearer ", "")
+    elif token:
+        raw_token = token
+    if not raw_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    token = authorization.replace("Bearer ", "")
-    decoded = decode_token(token)
+    decoded = decode_token(raw_token)
     if not decoded or "user_id" not in decoded:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -679,7 +730,6 @@ class UpdateRideFare(BaseModel):
 
 
 class WithdrawRequest(BaseModel):
-    driver_id: str
     amount: float = Field(gt=0)
     bank_details: str
 
@@ -973,7 +1023,7 @@ async def worker_ping():
 # =========================
 
 @app.post("/api/auth/register/rider", tags=["Auth"])
-async def register_rider(data: UserRegister, x_phone_verified: Optional[str] = Header(None)):
+async def register_rider(data: UserRegister, response: Response, x_phone_verified: Optional[str] = Header(None)):
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
 
@@ -1012,6 +1062,7 @@ async def register_rider(data: UserRegister, x_phone_verified: Optional[str] = H
     user_ref.set(user_data)
 
     token = create_token(user_ref.id, "rider")
+    set_auth_cookie(response, token)
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
@@ -1020,7 +1071,7 @@ async def register_rider(data: UserRegister, x_phone_verified: Optional[str] = H
 
 @app.post("/api/auth/register/driver", tags=["Auth"])
 @app.post("/api/driver/register", tags=["Auth"])
-async def register_driver(data: UserRegister, x_phone_verified: Optional[str] = Header(None)):
+async def register_driver(data: UserRegister, response: Response, x_phone_verified: Optional[str] = Header(None)):
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
 
@@ -1069,6 +1120,7 @@ async def register_driver(data: UserRegister, x_phone_verified: Optional[str] = 
     user_ref.set(user_data)
 
     token = create_token(user_ref.id, "driver")
+    set_auth_cookie(response, token)
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
@@ -1077,7 +1129,7 @@ async def register_driver(data: UserRegister, x_phone_verified: Optional[str] = 
 
 @app.post("/api/auth/login", tags=["Auth"])
 @app.post("/api/rider/login", tags=["Auth"])
-async def login(data: UserLogin):
+async def login(data: UserLogin, response: Response):
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
 
@@ -1094,6 +1146,7 @@ async def login(data: UserLogin):
         raise HTTPException(401, "Invalid credentials")
 
     token = create_token(user_doc.id, user_data.get("user_type", "rider"))
+    set_auth_cookie(response, token)
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_doc.id
     return {"token": token, "user": serialize_firestore_data(safe_user)}
@@ -1149,7 +1202,7 @@ async def verify_otp(req: OTPVerifyRequest):
 
 
 @app.post("/api/admin/login", tags=["Admin"])
-async def admin_login(data: AdminLoginRequest):
+async def admin_login(data: AdminLoginRequest, response: Response):
     if data.password != ADMIN_PASSWORD:
         raise HTTPException(401, "Invalid admin credentials")
 
@@ -1158,6 +1211,7 @@ async def admin_login(data: AdminLoginRequest):
     if admins:
         admin_doc = admins[0]
         token = create_token(admin_doc.id, "admin")
+        set_auth_cookie(response, token)
         safe_user = {k: v for k, v in admin_doc.to_dict().items() if k != "password_hash"}
         safe_user["id"] = admin_doc.id
         return {"token": token, "user": serialize_firestore_data(safe_user)}
@@ -1174,11 +1228,12 @@ async def admin_login(data: AdminLoginRequest):
     }
     admin_ref.set(admin_data)
     token = create_token("admin_master", "admin")
+    set_auth_cookie(response, token)
     return {"token": token, "user": {**admin_data, "created_at": now_iso()}}
 
 
 @app.post("/api/driver/login", tags=["Auth"])
-async def driver_login(data: UserLogin):
+async def driver_login(data: UserLogin, response: Response):
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
 
@@ -1207,9 +1262,16 @@ async def driver_login(data: UserLogin):
         raise HTTPException(401, "Invalid credentials")
 
     token = create_token(user_doc.id, "driver")
+    set_auth_cookie(response, token)
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_doc.id
     return {"token": token, "user": serialize_firestore_data(safe_user)}
+
+
+@app.post("/api/auth/logout", tags=["Auth"])
+async def logout(response: Response):
+    clear_auth_cookie(response)
+    return {"message": "Logged out successfully"}
 
 
 @app.get("/api/auth/me", tags=["Auth"])
@@ -2140,15 +2202,21 @@ async def request_topup(request: TopUpRequest, user_id: Optional[str] = Depends(
 
 
 @app.post("/api/driver/withdraw", tags=["Driver"])
-async def request_withdrawal(req: WithdrawRequest):
+async def request_withdrawal(req: WithdrawRequest, user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
     db = get_db()
-    driver_ref = db.collection("users").document(req.driver_id)
+    driver_ref = db.collection("users").document(user_id)
     doc = driver_ref.get()
 
     if not doc.exists:
         raise HTTPException(404, "Driver not found")
 
     data = doc.to_dict()
+
+    if data.get("user_type") != "driver":
+        raise HTTPException(403, "Only drivers can request withdrawals")
+
     earnings = data.get("earnings", {}).get("balance")
     if earnings is None:
         earnings = data.get("wallet_balance", 0.0)
@@ -2171,7 +2239,7 @@ async def request_withdrawal(req: WithdrawRequest):
     driver_ref.update({update_field: firestore.Increment(-total_deduction)})
 
     db.collection("driver_withdrawals").add({
-        "driver_id": req.driver_id,
+        "driver_id": user_id,
         "driver_name": f"{data.get('name', '')} {data.get('surname', '')}".strip(),
         "driver_phone": data.get("cellphone", ""),
         "amount": req.amount,

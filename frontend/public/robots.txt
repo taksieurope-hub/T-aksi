@@ -1,0 +1,20 @@
+# robots.txt for T'aksi (https://t-aksi-frontend.onrender.com)
+# FIX 2.7: Placed in /public/ so Vite copies it to dist/.
+
+User-agent: *
+
+# Allow public marketing pages
+Allow: /
+Allow: /track/
+
+# ⚠️ REQUIRED FOR VITE/REACT: 
+# Do NOT block /assets/ or /src/. Search engines must be able to 
+# download your JS and CSS to render and read your application.
+
+# Block app portals from search indexing (login-gated, no SEO value)
+Disallow: /rider/
+Disallow: /driver/
+Disallow: /admin/
+Disallow: /api/
+
+Sitemap: https://t-aksi-frontend.onrender.com/sitemap.xml

@@ -9,12 +9,14 @@ const containerStyle = {
 // Default center (if no data)
 const defaultCenter = { lat: 41.7151, lng: 44.8271 };
 
+import { GOOGLE_MAPS_API_KEY } from '@/config'; // Adjust path if needed
+
 const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   // 1. Load the Google Maps API
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: "YOUR_GOOGLE_MAPS_API_KEY", // ⚠️ PASTE YOUR API KEY HERE
-    libraries: ['places'] // Ensure 'places' or 'geometry' is included if needed
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY, // ✅ Much cleaner!
+    libraries: ['places'] 
   });
 
   const [map, setMap] = useState(null);

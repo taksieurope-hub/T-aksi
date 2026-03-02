@@ -1,0 +1,52 @@
+# ============================================================
+# Render static site _headers
+# Place this file in your project root (same level as index.html)
+# Render will auto-detect and apply these headers on deploy.
+# ============================================================
+
+# ── Hashed assets: immutable forever ────────────────────────
+# Vite content-hashes these filenames, so they NEVER change.
+# Aggressive caching saves re-downloads on every visit.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# ── PWA assets: cache for 1 year ────────────────────────────
+/pwa-192x192.png
+  Cache-Control: public, max-age=31536000, immutable
+/pwa-512x512.png
+  Cache-Control: public, max-age=31536000, immutable
+/logo.png
+  Cache-Control: public, max-age=31536000, immutable
+
+# ── Service workers: NEVER cache (must always be fresh) ─────
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+/firebase-messaging-sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# ── All routes: security headers ────────────────────────────
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(self "https://www.paypal.com")
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+# ── HTML entry: full Content-Security-Policy ────────────────
+# Apply to /index.html only (the SPA shell served for all routes).
+# The CSP covers every third-party the app actually uses.
+#
+# HOW IT WORKS:
+#   default-src 'self'        — block anything not explicitly allowed
+#   script-src                — React app + Google Maps + PayPal
+#   style-src 'unsafe-inline' — required by Tailwind/shadcn (inline styles)
+#   img-src                   — app icons + Google Maps tiles + gstatic avatars
+#   connect-src               — API, Firebase Auth, Firestore, PostHog analytics
+#   font-src                  — Google Fonts (gstatic delivery)
+#   frame-src                 — PayPal checkout iframe
+#   worker-src                — Workbox service worker + Firebase messaging SW
+#
+# NOTE: If you add BOG iPay or TBC Pay, add their domains to
+#       frame-src and connect-src here.
+/index.html
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://www.paypal.com https://www.paypalobjects.com https://app.posthog.com 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.paypal.com https://*.paypalobjects.com; connect-src 'self' https://t-aksi.onrender.com https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://app.posthog.com https://*.paypal.com wss://*.firebaseio.com; font-src 'self' https://fonts.gstatic.com; frame-src https://www.paypal.com https://www.sandbox.paypal.com; worker-src 'self' blob:; manifest-src 'self';

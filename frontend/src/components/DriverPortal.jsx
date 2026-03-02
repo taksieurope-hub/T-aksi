@@ -360,7 +360,7 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
     setLoading(true);
     try {
       const r = await api.post("/driver/withdraw", {
-        driver_id: driverId, amount: amt,
+        get_current_user_id: driverId, amount: amt,
         bank_details: `[${bankType.toUpperCase()}] ${bankDetails.trim()}`,
       });
       toast.success(r.data.message || `Withdrawal of ₾${amt.toFixed(2)} requested!`);
