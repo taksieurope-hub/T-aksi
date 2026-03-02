@@ -1427,6 +1427,27 @@ async def get_driver_detail(driver_id: str, admin_id: str = Depends(get_admin_us
     data["id"] = doc.id
     return {"driver": serialize_firestore_data(data)}
 
+@app.get("/api/rides/{ride_id}/receipt", tags=["Rides"])
+async def get_ride_receipt(ride_id: str, user_id: Optional[str] = Depends(get_current_user_id)):
+    db = get_db()
+    doc = db.collection("rides").document(ride_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Ride not found")
+    data = doc.to_dict()
+    driver_info = data.get("driver_info", {}) or {}
+    return serialize_firestore_data({
+        "ride_id": ride_id,
+        "driver_name": driver_info.get("name", "Driver"),
+        "car_type": data.get("carType") or data.get("car_type") or "economy",
+        "distance_km": data.get("actual_distance") or data.get("estimated_distance") or 0,
+        "payment_method": data.get("payment_method") or data.get("paymentMethod") or "cash",
+        "fare_breakdown": data.get("final_fare_breakdown") or data.get("fare_breakdown") or {},
+        "total": data.get("final_fare") or data.get("estimated_fare") or 0,
+        "tip": data.get("tip_amount") or 0,
+        "created_at": data.get("created_at"),
+        "completed_at": data.get("completed_at"),
+    })
+
 
 @app.get("/api/admin/riders/{rider_id}", tags=["Admin"])
 async def get_rider_detail(rider_id: str, admin_id: str = Depends(get_admin_user)):
@@ -2977,6 +2998,26 @@ async def estimate_fare(
     fare["total"] += service_fee
     return {**fare, "surge": surge_info}
 
+@app.get("/api/rider/active-ride", tags=["Rider"])
+async def get_rider_active_ride(user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        return None
+    db = get_db()
+    active_statuses = ["searching", "accepted", "arrived", "in_progress"]
+    # Check both userId and rider_id fields (legacy + new)
+    for field in ["userId", "rider_id"]:
+        for status in active_statuses:
+            rides = list(
+                db.collection("rides")
+                .where(field, "==", user_id)
+                .where("status", "==", status)
+                .limit(1)
+                .stream()
+            )
+            if rides:
+                ride = rides[0]
+                return serialize_firestore_data({**ride.to_dict(), "id": ride.id})
+    return None
 
 # =========================
 # SCHEDULED RIDES
@@ -3361,10 +3402,10 @@ async def stop_reached(
 @app.post("/api/rides/{ride_id}/complete", tags=["Rides"])
 async def complete_ride(
     ride_id: str,
-    final_distance: Optional[float] = 0.0,
-    total_wait_minutes: Optional[int] = 0,
-    dropoff_lat: Optional[float] = None,
-    dropoff_lng: Optional[float] = None,
+    final_distance: float = Query(default=0.0),      # ← was Optional[float] = 0.0
+    total_wait_minutes: int = Query(default=0),       # ← was Optional[int] = 0
+    dropoff_lat: Optional[float] = Query(default=None),
+    dropoff_lng: Optional[float] = Query(default=None),
     user_id: Optional[str] = Depends(get_current_user_id),
 ):
     db = get_db()
@@ -3375,6 +3416,16 @@ async def complete_ride(
         raise HTTPException(404, "Ride not found")
 
     ride_data = ride_snap.to_dict()
+
+    if ride_data.get("status") == "completed":
+        # Idempotent — return the already-completed data
+        return serialize_firestore_data({
+            "message": "Ride already completed",
+            "payment_status": ride_data.get("payment_status"),
+            "final_fare": ride_data.get("final_fare"),
+            "wallet_used": ride_data.get("wallet_used", 0),
+            "cash_to_collect": ride_data.get("cash_to_collect", 0),
+        })
 
     billing_distance = ride_data.get("estimated_distance", 0)
     recorded_actual_distance = final_distance if final_distance else billing_distance
@@ -3428,7 +3479,7 @@ async def complete_ride(
         cash_to_collect = total_with_fee
         payment_status = "cash_collected"
 
-    ride_updates = {
+    ride_ref.update({
         "status": "completed",
         "actual_distance": recorded_actual_distance,
         "billed_distance": billing_distance,
@@ -3438,12 +3489,7 @@ async def complete_ride(
         "final_fare_breakdown": final_fare,
         "payment_status": payment_status,
         "completed_at": firestore.SERVER_TIMESTAMP,
-        "driver_id": driver_id,
-        "driverId": driver_id,
-        "user_id": rider_id,
-        "userId": rider_id,
-    }
-    ride_ref.update(ride_updates)
+    })
 
     if driver_id:
         held_commission = ride_data.get("commission_paid", 0) or 0
@@ -3547,6 +3593,24 @@ async def get_ride(ride_id: str, user_id: Optional[str] = Depends(get_current_us
 
 @app.get("/api/rides/history/rider", tags=["Rides"])
 async def get_rider_history(user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        return {"rides": []}
+    db = get_db()
+    try:
+        rides = list(
+            db.collection("rides")
+            .where("userId", "==", user_id)
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(50)
+            .stream()
+        )
+    except Exception:
+        rides = list(db.collection("rides").where("userId", "==", user_id).limit(50).stream())
+        rides.sort(key=lambda r: r.to_dict().get("created_at", ""), reverse=True)
+    return {"rides": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in rides]}
+
+@app.get("/api/rider/history", tags=["Rider"])
+async def get_rider_history_v2(user_id: Optional[str] = Depends(get_current_user_id)):
     if not user_id:
         return {"rides": []}
     db = get_db()
