@@ -1599,39 +1599,47 @@ async def approve_withdrawal(withdrawal_id: str, admin_id: str = Depends(get_adm
     return {"message": "Withdrawal approved"}
 
 
-@app.post("/api/admin/withdrawals/{withdrawal_id}/reject", tags=["Admin"])
-async def reject_withdrawal(withdrawal_id: str, reason: str = Query(default=""), admin_id: str = Depends(get_admin_user)):
+@app.post("/api/admin/withdrawal/{id}/reject", tags=["Admin"])
+async def reject_withdrawal(id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
-    ref = db.collection("driver_withdrawals").document(withdrawal_id)
-    doc = ref.get()
-    if not doc.exists:
-        raise HTTPException(404, "Withdrawal not found")
-    data = doc.to_dict()
-    if data.get("status") != "pending":
-        raise HTTPException(400, f"Withdrawal is already {data.get('status')}")
+    withdrawal_doc = db.collection("driver_withdrawals").document(id).get()
+    if not withdrawal_doc.exists:
+        raise HTTPException(404, "Withdrawal request not found")
 
-    # Refund the balance
-    driver_id = data.get("driver_id")
-    total_deducted = data.get("total_deducted", data.get("amount", 0))
-    if driver_id and total_deducted:
-        db.collection("users").document(driver_id).update({
-            "earnings.balance": firestore.Increment(total_deducted)
-        })
+    withdrawal_data = withdrawal_doc.to_dict()
+    driver_id = withdrawal_data.get("driver_id")
+    
+    # 1. Safely calculate refund (fallback for older test requests)
+    total_deducted = withdrawal_data.get("total_deducted", 0)
+    if not total_deducted or total_deducted == 0:
+        amount = withdrawal_data.get("amount", 0)
+        fee = withdrawal_data.get("fee", 1.0) # Default withdrawal fee
+        total_deducted = amount + fee
 
-    ref.update({
+    if driver_id and total_deducted > 0:
+        driver_ref = db.collection("users").document(driver_id)
+        driver_doc = driver_ref.get()
+        
+        if driver_doc.exists:
+            driver_data = driver_doc.to_dict()
+            
+            # 2. Check which wallet field this specific driver uses
+            if "earnings" in driver_data and "balance" in driver_data["earnings"]:
+                update_field = "earnings.balance"
+            else:
+                update_field = "wallet_balance"
+                
+            # 3. Refund the money to the correct field!
+            driver_ref.update({
+                update_field: firestore.Increment(total_deducted)
+            })
+
+    db.collection("driver_withdrawals").document(id).update({
         "status": "rejected",
-        "rejected_by": admin_id,
-        "rejection_reason": reason,
         "rejected_at": firestore.SERVER_TIMESTAMP,
+        "rejected_by": admin_id,
     })
-    if driver_id:
-        send_push_notification(
-            driver_id,
-            title="Withdrawal Rejected",
-            body=f"Your withdrawal request was rejected. Funds have been returned to your wallet.",
-            data={"type": "withdrawal_rejected"},
-        )
-    return {"message": "Withdrawal rejected and funds refunded"}
+    return {"message": "Withdrawal rejected and funds returned to driver wallet"}
 
 
 @app.get("/api/admin/topups/pending", tags=["Admin"])
@@ -3252,8 +3260,7 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
     balance = driver_data.get("earnings", {}).get("balance", 0)
     held_commission = (ride_data.get("estimated_fare", 0) or 0) * commission_rate
 
-    if balance < held_commission:
-        raise HTTPException(400, f"Insufficient balance. Need ₾{held_commission:.2f}, have ₾{balance:.2f}")
+    # ❌ I DELETED THE "INSUFFICIENT BALANCE" CHECK FROM HERE
 
     new_balance = balance - held_commission
     db.collection("users").document(final_driver_id).update({
