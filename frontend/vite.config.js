@@ -114,6 +114,7 @@ export default defineConfig(({ mode }) => {
     },
 
     build: {
+      modulePreload: false,
       sourcemap: false,
       chunkSizeWarningLimit: 700,
       minify: 'esbuild',

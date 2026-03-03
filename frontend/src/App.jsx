@@ -5,14 +5,11 @@ import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
 import InstallPrompt from '@/components/InstallPrompt';
 
-// 🚀 ADDED PAYPAL IMPORT HERE
-import { PayPalScriptProvider } from "@paypal/react-paypal-js";
-
 // Providers
 import { AuthProvider, API } from "@/config";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 
-// CODE SPLITTING
+// CODE SPLITTING (This is perfect!)
 const LandingPage    = lazy(() => import("@/components/LandingPage"));
 const RiderPortal    = lazy(() => import("@/components/RiderPortal"));
 const DriverPortal   = lazy(() => import("@/components/DriverPortal"));
@@ -69,42 +66,31 @@ const StarsBackground = () => {
 
 function App() {
   return (
-    // 🚀 ADDED PAYPAL PROVIDER HERE WITH VAULT ENABLED
-    <PayPalScriptProvider
-      options={{
-        "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
-        currency: "USD",
-        components: "buttons,card-fields",
-        intent: "capture",
-        vault: true // Enables background card saving
-      }}
-    >
-      <LanguageProvider>
-        <AuthProvider>
-          <div className="App min-h-screen bg-black relative">
-            <StarsBackground />
-            <InstallPrompt />
-            <div className="relative z-10">
-              <BrowserRouter>
-                <Suspense fallback={<PortalLoader />}>
-                  <Routes>
-                    <Route path="/"               element={<LandingPage />} />
-                    <Route path="/track/:rideId"  element={<LandingPage />} />
-                    <Route path="/rider/*"        element={<RiderPortal />} />
-                    <Route path="/driver/*"       element={<DriverPortal />} />
-                    <Route path="/admin/*"        element={<AdminPortal />} />
-                    <Route path="/dashboard"      element={<Navigate to="/rider/dashboard" replace />} />
-                    <Route path="*"               element={<Navigate to="/" replace />} />
-                  </Routes>
-                  <SupportChatWidget />
-                </Suspense>
-              </BrowserRouter>
-            </div>
-            <Toaster position="top-center" richColors />
+    <LanguageProvider>
+      <AuthProvider>
+        <div className="App min-h-screen bg-black relative">
+          <StarsBackground />
+          <InstallPrompt />
+          <div className="relative z-10">
+            <BrowserRouter>
+              <Suspense fallback={<PortalLoader />}>
+                <Routes>
+                  <Route path="/"               element={<LandingPage />} />
+                  <Route path="/track/:rideId"  element={<LandingPage />} />
+                  <Route path="/rider/*"        element={<RiderPortal />} />
+                  <Route path="/driver/*"       element={<DriverPortal />} />
+                  <Route path="/admin/*"        element={<AdminPortal />} />
+                  <Route path="/dashboard"      element={<Navigate to="/rider/dashboard" replace />} />
+                  <Route path="*"               element={<Navigate to="/" replace />} />
+                </Routes>
+                <SupportChatWidget />
+              </Suspense>
+            </BrowserRouter>
           </div>
-        </AuthProvider>
-      </LanguageProvider>
-    </PayPalScriptProvider>
+          <Toaster position="top-center" richColors />
+        </div>
+      </AuthProvider>
+    </LanguageProvider>
   );
 }
 
