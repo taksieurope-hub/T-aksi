@@ -35,40 +35,33 @@ const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
   }, []);
 
   // 2. 🔥 CALCULATE THE NAVIGATION LINE (ROUTE)
-  useEffect(() => {
-    if (isLoaded && pickup && destination) {
-      // Check if coordinates actually changed to avoid flickering
-      if (
-        prevPickup.current?.lat === pickup.lat &&
-        prevPickup.current?.lng === pickup.lng &&
-        prevDest.current?.lat === destination.lat &&
-        prevDest.current?.lng === destination.lng
-      ) {
-        return;
-      }
+  // Inside your LiveTrackingMap.jsx useEffect:
+useEffect(() => {
+  if (isLoaded && pickup && destination) {
+    const directionsService = new window.google.maps.DirectionsService();
 
-      // Save current coords
-      prevPickup.current = pickup;
-      prevDest.current = destination;
+    // 🚀 NEW: Convert your stops array into Google Waypoints
+    const waypoints = (stops || []).map(stop => ({
+      location: { lat: stop.lat, lng: stop.lng },
+      stopover: true,
+    }));
 
-      const directionsService = new window.google.maps.DirectionsService();
-
-      directionsService.route(
-        {
-          origin: pickup,
-          destination: destination,
-          travelMode: window.google.maps.TravelMode.DRIVING,
-        },
-        (result, status) => {
-          if (status === window.google.maps.DirectionsStatus.OK) {
-            setDirectionsResponse(result);
-          } else {
-            console.error(`Directions request failed due to ${status}`);
-          }
+    directionsService.route(
+      {
+        origin: pickup,
+        destination: destination,
+        waypoints: waypoints, // 🚀 ADD THIS
+        optimizeWaypoints: false, // Keep them in the order the driver added them
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (status === window.google.maps.DirectionsStatus.OK) {
+          setDirectionsResponse(result);
         }
-      );
-    }
-  }, [isLoaded, pickup, destination]);
+      }
+    );
+  }
+}, [isLoaded, pickup, destination, stops]); // 🚀 Add 'stops' to dependency array
 
   if (!isLoaded) return <div className="w-full h-full bg-gray-900 animate-pulse" />;
 
