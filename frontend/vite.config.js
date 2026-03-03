@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
-    base: '/', 
+    base: '/', // FORCES absolute paths so /rider/dashboard finds the CSS
     define: {
       'import.meta.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(env.VITE_GOOGLE_MAPS_API_KEY),
     },
@@ -24,19 +24,17 @@ export default defineConfig(({ mode }) => {
           driver: 'driver/index.html',
           admin:  'admin/index.html',
         },
-        output: { // ONLY ONE OUTPUT OBJECT HERE
+        output: {
           chunkFileNames: 'assets/[name]-[hash].js',
           entryFileNames: 'assets/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash].[ext]',
 
           manualChunks(id) {
-            // 1. ALL node_modules → ONE single vendor chunk. 
-            // This prevents React from losing track of its scheduler.
+            // Put all React/Firebase/Libraries into ONE bucket to stop the scheduler crash
             if (id.includes('node_modules')) {
               return 'vendor';
             }
-
-            // 2. ALL shared Context/Config → ONE core chunk.
+            // Put all Context/Config into ONE bucket to stop "Multiple Context" errors
             if (
               id.includes('/src/i18n/') || 
               id.includes('/src/config/') || 
