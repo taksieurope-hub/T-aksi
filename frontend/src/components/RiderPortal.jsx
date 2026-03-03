@@ -1,8 +1,6 @@
 ﻿import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
@@ -16,7 +14,6 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
-
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
