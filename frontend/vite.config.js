@@ -32,30 +32,23 @@ export default defineConfig(({ mode }) => {
           // Without this, Rollup duplicates LanguageContext/AuthProvider
           // into each entry bundle → two React context instances → crash
           manualChunks(id) {
-            // All node_modules → vendor chunks (prevents duplication)
-            if (id.includes('node_modules')) {
-              if (id.includes('react') || id.includes('react-dom')) {
-                return 'vendor-react';
-              }
-              if (id.includes('firebase')) {
-                return 'vendor-firebase';
-              }
-              return 'vendor-misc';
-            }
+  // 1. ALL node_modules go into ONE vendor chunk. 
+  // Do NOT split React from other dependencies; it breaks the scheduler.
+  if (id.includes('node_modules')) {
+    return 'vendor';
+  }
 
-            // Your shared src/ code MUST be in one chunk so context
-            // instances are the same object across all entry points
-            if (id.includes('/src/i18n/') || id.includes('LanguageContext')) {
-              return 'shared-i18n';
-            }
-            if (id.includes('/src/config') || id.includes('AuthProvider')) {
-              return 'shared-auth';
-            }
-            // Any other shared src/ utilities
-            if (id.includes('/src/')) {
-              return 'shared-app';
-            }
-          },
+  // 2. ALL shared logic (Context, Auth, i18n) goes into ONE core chunk.
+  // This ensures there is exactly ONE instance of your Context providers.
+  if (
+    id.includes('/src/i18n/') || 
+    id.includes('LanguageContext') || 
+    id.includes('/src/config') || 
+    id.includes('AuthProvider')
+  ) {
+    return 'shared-core';
+  }
+}
         }
       }
     }
