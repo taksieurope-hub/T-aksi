@@ -1,8 +1,10 @@
 ﻿import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
+// ADDED AuthProvider and LanguageProvider HERE
+import { AuthProvider, useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
+import { LanguageProvider, useLanguage } from "@/i18n/LanguageContext";
 import api from "@/api";
-import { useLanguage } from "@/i18n/LanguageContext";
+import { useLanguage } from "@/i18n/LanguageContext"; // You can remove this duplicate line if it appears twice
 import LanguageSelector from "@/i18n/LanguageSelector";
 import { RiderTripCompletionModal } from "@/components/TripCompletionModal";
 import RatingModal from "@/components/RatingModal";
@@ -25,7 +27,6 @@ import {
   ArrowRight, MoreHorizontal, Sparkles
 } from "lucide-react";
 
-// This fixes the 'lazy is not defined' error
 const SupportChatWidget = lazy(() => import('./ChatWidget'));
 
 // =============================================================================
