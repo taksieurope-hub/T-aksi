@@ -6,17 +6,20 @@ import asyncio
 import base64
 import json
 import re
-from typing import List, Optional
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Union
 
 import firebase_admin
 from firebase_admin import credentials, firestore, storage, messaging
 
-from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form
-import shutil
+# --- FIXED SECTION: Separated Body and Pydantic ---
+from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form, Body, Response, Cookie
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
+# --------------------------------------------------
+
 from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -26,10 +29,8 @@ import httpx
 import sys
 import secrets
 
-from fastapi import Response, Cookie, Header, Depends, HTTPException
-from fastapi.responses import JSONResponse
-from typing import Optional
- # Assuming you already have this imported
+# Load environment variables
+load_dotenv()# Assuming you already have this imported
 
 # ─── SECURE COOKIE SETTINGS (UPDATED FOR RENDER CROSS-ORIGIN) ───
 COOKIE_NAME = "token"

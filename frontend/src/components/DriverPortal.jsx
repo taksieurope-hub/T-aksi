@@ -360,7 +360,7 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
     setLoading(true);
     try {
       const r = await api.post("/driver/withdraw", {
-        get_current_user_id: driverId, amount: amt,
+        driver_id: driverId, amount: amt,
         bank_details: `[${bankType.toUpperCase()}] ${bankDetails.trim()}`,
       });
       toast.success(r.data.message || `Withdrawal of ₾${amt.toFixed(2)} requested!`);
@@ -1055,7 +1055,7 @@ const NavHUD = ({ step, nextStep, speed }) => {
 };
 
 // =============================================================================
-// MAP STYLES — white roads, no blue lines, no transit clutter
+// MAP STYLES
 // =============================================================================
 const MAP_STYLES = [
   { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
@@ -1078,21 +1078,29 @@ const MAP_STYLES = [
 ];
 
 // =============================================================================
-// DRIVER SMART MAP — all original logic + tilt/rotation/HUD on top
+// DRIVER SMART MAP — Bolt-quality
+// NEW: ETA countdown pill, pickup/destination pins, auto-fit on accept,
+//      dragstart unfollow, re-centre button.
+// PRESERVED: NavHUD turn-by-turn, tilt/heading, speed, Waze/Google nav.
 // =============================================================================
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef               = useRef(null);
   const mapInstanceRef       = useRef(null);
   const markerRef            = useRef(null);
+  const pickupMarkerRef      = useRef(null);
+  const destMarkerRef        = useRef(null);
   const routeRendererRef     = useRef(null);
   const directionsServiceRef = useRef(null);
   const headingRef           = useRef(0);
   const rafRef               = useRef(null);
+  const etaIntervalRef       = useRef(null);
+  const prevRideIdRef        = useRef(null);
 
   const [isFollowing, setIsFollowing] = useState(true);
   const [routeSteps,  setRouteSteps]  = useState([]);
   const [stepIdx,     setStepIdx]     = useState(0);
   const [speed,       setSpeed]       = useState(null);
+  const [etaSeconds,  setEtaSeconds]  = useState(null);
 
   const getSafe = (v) => { const n = parseFloat(v); return !isNaN(n) && n !== 0 ? n : null; };
   const hvKm = (lat1, lo1, lat2, lo2) => {
@@ -1100,6 +1108,50 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     const a = Math.sin(dL/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dl/2)**2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   };
+
+  const fmtEta = (secs) => {
+    if (!secs || secs <= 0) return null;
+    const m = Math.floor(secs / 60), s = secs % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  };
+
+  // SVG pin helpers
+  const makePickupIcon = () => ({
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z" fill="#00ff88"/><circle cx="16" cy="16" r="6" fill="#07070f"/></svg>')}`,
+    scaledSize: new window.google.maps.Size(28, 37),
+    anchor: new window.google.maps.Point(14, 37),
+  });
+
+  const makeDestIcon = () => ({
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z" fill="#ff4444"/><circle cx="16" cy="16" r="6" fill="#07070f"/></svg>')}`,
+    scaledSize: new window.google.maps.Size(28, 37),
+    anchor: new window.google.maps.Point(14, 37),
+  });
+
+  const upsertPin = (ref, position, icon) => {
+    if (!mapInstanceRef.current || !position) return;
+    if (!ref.current) {
+      ref.current = new window.google.maps.Marker({ position, map: mapInstanceRef.current, icon, zIndex: 900 });
+    } else {
+      ref.current.setPosition(position);
+      ref.current.setIcon(icon);
+      ref.current.setMap(mapInstanceRef.current);
+    }
+  };
+  const removePin = (ref) => { if (ref.current) { ref.current.setMap(null); ref.current = null; } };
+
+  const startEtaCountdown = (durationSecs) => {
+    if (etaIntervalRef.current) clearInterval(etaIntervalRef.current);
+    let remaining = durationSecs;
+    setEtaSeconds(remaining);
+    etaIntervalRef.current = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) { clearInterval(etaIntervalRef.current); setEtaSeconds(0); }
+      else setEtaSeconds(remaining);
+    }, 1000);
+  };
+
+  useEffect(() => () => { if (etaIntervalRef.current) clearInterval(etaIntervalRef.current); }, []);
 
   const animateHeading = useCallback((targetHeading) => {
     if (!mapInstanceRef.current) return;
@@ -1116,38 +1168,39 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     rafRef.current = requestAnimationFrame(tick);
   }, []);
 
-  // Map init — same guards as original
+  // Map init
   useEffect(() => {
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 41.7151, lng: 44.8271 }, 
+      center: { lat: 41.7151, lng: 44.8271 },
       zoom: 17,
-      tilt: 45, 
+      tilt: 45,
       heading: 0,
-      disableDefaultUI: true, 
+      disableDefaultUI: true,
       gestureHandling: "greedy",
-      backgroundColor: "#07070f", // Match your app background to prevent white flashes
+      backgroundColor: "#07070f",
       styles: MAP_STYLES,
-      // Push the visual center of the map up by 200 pixels
-      padding: { bottom: 200, left: 0, right: 0, top: 0 } 
+      padding: { bottom: 200, left: 0, right: 0, top: 0 },
     });
     routeRendererRef.current = new window.google.maps.DirectionsRenderer({
-      map, 
-      suppressMarkers: false, 
+      map,
+      suppressMarkers: true,   // We draw our own pins
       preserveViewport: true,
-      polylineOptions: { 
-        strokeColor: "#00ff88", // Matched to your UI accent
-        strokeWeight: 7, 
+      polylineOptions: {
+        strokeColor: "#00ff88",
+        strokeWeight: 7,
         strokeOpacity: 0.8,
-        strokeLineCap: "round", // Makes the start/end of the line smooth
-        strokeLineJoin: "round" // Smooths the corners when turning
+        strokeLineCap: "round",
+        strokeLineJoin: "round",
       },
     });
     directionsServiceRef.current = new window.google.maps.DirectionsService();
+    // dragstart → stop following so re-centre button appears
+    map.addListener("dragstart", () => setIsFollowing(false));
     mapInstanceRef.current = map;
   }, []);
 
-  // Driver position — same logic as original + heading rotation
+  // Driver position update — heading rotation, step advance
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
     const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
@@ -1160,15 +1213,10 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       markerRef.current = new window.google.maps.Marker({
         position: pos, map: mapInstanceRef.current, zIndex: 1000,
         icon: {
-          // A sharper, more aerodynamic arrow path
-          path: "M-2,0 L0,-5 L2,0 L0,-1.5 Z", 
-          scale: 8, 
-          fillColor: "#00ff88", 
-          fillOpacity: 1,
-          strokeColor: "#ffffff", 
-          strokeWeight: 2,
-          rotation: 0, 
-          anchor: new window.google.maps.Point(0, -2.5),
+          path: "M-2,0 L0,-5 L2,0 L0,-1.5 Z",
+          scale: 8, fillColor: "#00ff88", fillOpacity: 1,
+          strokeColor: "#ffffff", strokeWeight: 2,
+          rotation: 0, anchor: new window.google.maps.Point(0, -2.5),
         },
       });
     } else {
@@ -1183,7 +1231,6 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       if (mapInstanceRef.current.getTilt() !== 45) mapInstanceRef.current.setTilt(45);
     }
 
-    // Step advance — same threshold as original (0.04 km)
     if (routeSteps.length > 0 && stepIdx < routeSteps.length) {
       const step = routeSteps[stepIdx];
       if (step.end_location && hvKm(lat, lng, step.end_location.lat(), step.end_location.lng()) < 0.04) {
@@ -1192,26 +1239,59 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }
   }, [driverLocation, isFollowing, routeSteps, stepIdx, animateHeading]);
 
-  // Directions — same logic + same deps as original, no drivingOptions
+  // Auto-fit on new ride accept — zoom to show driver + pickup
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google) return;
+    if (!activeRide || activeRide.status !== "accepted") return;
+    const rideKey = activeRide.id || activeRide.pickup_lat;
+    if (prevRideIdRef.current === rideKey) return;
+    prevRideIdRef.current = rideKey;
+
+    const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
+    const pLat = getSafe(activeRide.pickup_lat),  pLng = getSafe(activeRide.pickup_lng);
+    if (!dLat || !pLat) return;
+
+    const bounds = new window.google.maps.LatLngBounds();
+    bounds.extend({ lat: dLat, lng: dLng });
+    bounds.extend({ lat: pLat, lng: pLng });
+    mapInstanceRef.current.fitBounds(bounds, { top: 120, bottom: 240, left: 60, right: 60 });
+    // Resume following after 3s
+    setTimeout(() => setIsFollowing(true), 3000);
+  }, [activeRide?.status, activeRide?.id]);
+
+  // Directions + ETA + pins
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
     if (!activeRide || !driverLocation) {
       routeRendererRef.current?.setDirections({ routes: [] });
       setRouteSteps([]);
+      setEtaSeconds(null);
+      removePin(pickupMarkerRef);
+      removePin(destMarkerRef);
       return;
     }
+
     const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
     if (!dLat || !dLng) return;
 
     let target = null;
     if (["accepted", "arrived"].includes(activeRide.status)) {
       const lat = getSafe(activeRide.pickup_lat), lng = getSafe(activeRide.pickup_lng);
-      if (lat && lng) target = { lat, lng };
+      if (lat && lng) {
+        target = { lat, lng };
+        upsertPin(pickupMarkerRef, target, makePickupIcon());
+        removePin(destMarkerRef);
+      }
     } else if (activeRide.status === "in_progress") {
       const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat);
       const lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
-      if (lat && lng) target = { lat, lng };
+      if (lat && lng) {
+        target = { lat, lng };
+        upsertPin(destMarkerRef, target, makeDestIcon());
+        removePin(pickupMarkerRef);
+      }
     }
+
     if (!target) return;
 
     directionsServiceRef.current.route(
@@ -1221,6 +1301,8 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
           routeRendererRef.current.setDirections(result);
           setRouteSteps(result.routes[0].legs[0].steps);
           setStepIdx(0);
+          const duration = result.routes[0]?.legs[0]?.duration?.value;
+          if (duration) startEtaCountdown(duration);
         }
       }
     );
@@ -1240,18 +1322,37 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
   const curStep  = routeSteps[stepIdx];
   const nextStep = routeSteps[stepIdx + 1];
+  const etaLabel = ["accepted","arrived"].includes(activeRide?.status) ? "to pickup" : "to destination";
 
   return (
     <div className="fixed inset-0 w-full h-full z-0">
       <div ref={mapRef} className="w-full h-full" />
 
+      {/* Turn-by-turn HUD */}
       {activeRide && <NavHUD step={curStep} nextStep={nextStep} speed={speed} />}
 
+      {/* ETA countdown pill */}
+      {activeRide && etaSeconds != null && etaSeconds > 0 && (
+        <div className="absolute z-20 pointer-events-none" style={{ top: 72 + 88 + 16, left: "50%", transform: "translateX(-50%)" }}>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full shadow-xl"
+            style={{ background: "rgba(7,7,15,0.92)", border: "1px solid rgba(0,212,255,0.35)", backdropFilter: "blur(16px)" }}>
+            <Timer className="w-3.5 h-3.5 text-[#00d4ff]" />
+            <span className="text-[#00d4ff] font-bold text-sm font-mono">{fmtEta(etaSeconds)}</span>
+            <span className="text-white/35 text-xs">{etaLabel}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Re-centre button */}
       {!isFollowing && driverLocation && (
         <button onClick={() => {
             setIsFollowing(true);
             const lat = parseFloat(driverLocation.lat), lng = parseFloat(driverLocation.lng);
-            if (!isNaN(lat) && !isNaN(lng)) { mapInstanceRef.current?.panTo({ lat, lng }); mapInstanceRef.current?.setTilt(45); }
+            if (!isNaN(lat) && !isNaN(lng)) {
+              mapInstanceRef.current?.panTo({ lat, lng });
+              mapInstanceRef.current?.setTilt(45);
+              headingRef.current = parseFloat(driverLocation.heading) || headingRef.current;
+            }
           }}
           className="absolute z-20 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-2xl transition-all active:scale-95"
           style={{ bottom: "calc(72vh + 16px)", left: "50%", transform: "translateX(-50%)", background: "rgba(0,204,119,0.95)" }}>
@@ -1260,7 +1361,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         </button>
       )}
 
-      {/* ONE column — zoom, north, waze, google. No overlap. */}
+      {/* Controls column: zoom, north, waze, google */}
       <div className="absolute flex flex-col gap-2 z-10" style={{ right: 16, top: "50%", transform: "translateY(-50%)" }}>
         <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)+1)}
           className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-800 text-xl font-bold shadow-lg active:scale-95 transition-transform"
@@ -1292,6 +1393,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     </div>
   );
 };
+
 
 // =============================================================================
 // DRIVER AUTH
@@ -2099,60 +2201,20 @@ const DriverDashboard = () => {
                       <PayPalButtons
                         fundingSource="card"
                         style={{ layout: "vertical", shape: "rect", color: "black" }}
-                        createOrder={(data, actions) => {
-  // 1. Safely calculate the USD equivalent
-  const usdAmount = parseFloat(topupAmount) * 0.37;
-  
-  // 2. The Bouncer: Stop invalid or zero amounts from hitting PayPal
-  if (isNaN(usdAmount) || usdAmount <= 0) {
-    toast.error("Invalid top-up amount. Please enter a value greater than 0.");
-    return null;
-  }
-
-  // 3. Send the strictly formatted string to PayPal
-  return actions.order.create({
-    purchase_units: [{ 
-      amount: { 
-        value: usdAmount.toFixed(2), 
-        currency_code: "USD" 
-      } 
-    }],
-    application_context: { shipping_preference: "NO_SHIPPING" },
-  });
-}}
+                        createOrder={(data, actions) => actions.order.create({
+                          purchase_units: [{ amount: { value: (parseFloat(topupAmount) * 0.37).toFixed(2), currency_code: "USD" } }],
+                          application_context: { shipping_preference: "NO_SHIPPING" },
+                        })}
                         onApprove={async (data, actions) => {
                           try {
                             setLoading(true);
-                            
-                            // 1. Capture the payment response
-                            const orderDetails = await actions.order.capture();
-                            
-                            // 2. Extract the vault token and card details
-                            const paymentSource = orderDetails.payment_source?.card;
-                            const vaultId = paymentSource?.attributes?.vault?.id || null;
-                            const last4 = paymentSource?.last_digits || null;
-                            const brand = paymentSource?.brand || null;
-
-                            // 3. Send the top-up and the vault token to your Python backend
-                            await api.post("/driver/wallet/topup/paypal", { 
-                              order_id: data.orderID, 
-                              amount: parseFloat(topupAmount),
-                              vault_id: vaultId,
-                              card_last4: last4,
-                              card_brand: brand
-                            });
-                            
+                            await actions.order.capture();
+                            await api.post("/driver/wallet/topup/paypal", { order_id: data.orderID, amount: parseFloat(topupAmount) });
                             toast.success(`₾${topupAmount} added!`);
-                            if (vaultId) toast.success("Card securely saved for next time! 💳");
-                            
-                            setTopupAmount(""); 
-                            setEarningsTab("overview");
+                            setTopupAmount(""); setEarningsTab("overview");
                             await refreshUser();
-                          } catch (_) { 
-                            toast.error("Top-up failed. Contact support."); 
-                          } finally { 
-                            setLoading(false); 
-                          }
+                          } catch (_) { toast.error("Top-up failed. Contact support."); }
+                          finally { setLoading(false); }
                         }}
                         onError={() => toast.error("Payment failed.")}
                         onCancel={() => toast.info("Payment cancelled.")}
