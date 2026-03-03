@@ -39,10 +39,18 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // If the backend says the token/cookie is invalid or expired
+    // Check if the error is a 401
     if (error.response?.status === 401) {
-      // Dispatch global event — AuthProvider will catch this and clear session state.
-      window.dispatchEvent(new CustomEvent('auth:expired'));
+      
+      // OPTION A: Don't log out if we're in the middle of a trip update
+      const isTripRoute = error.config.url.includes('/trips/');
+      
+      if (isTripRoute) {
+        console.warn("401 on trip update - ignoring global logout to prevent state loss");
+      } else {
+        // Only boot them for other 401s (like unauthorized dashboard access)
+        window.dispatchEvent(new CustomEvent('auth:expired'));
+      }
     }
     return Promise.reject(error);
   }
