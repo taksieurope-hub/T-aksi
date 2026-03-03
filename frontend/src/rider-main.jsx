@@ -2,7 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthProvider } from '@/config'; 
 import { LanguageProvider } from '@/i18n/LanguageContext';
-import RiderPortal from './RiderPortal'; 
+import RiderPortal from './components/RiderPortal';
 import '@/App.css';
 
 const container = document.getElementById('root');
