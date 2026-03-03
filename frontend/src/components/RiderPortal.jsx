@@ -2256,7 +2256,13 @@ const RiderPortal = () => {
   }
 
   return (
-    <PayPalScriptProvider options={{ "client-id": PAYPAL_CLIENT_ID || "sb", currency: "USD", intent: "capture" }}>
+    <PayPalScriptProvider 
+      options={{ 
+        "client-id": PAYPAL_CLIENT_ID || "sb", 
+        currency: "USD", 
+        vault: true // 👈 Swapped capture for vault
+      }}
+    >
       <Routes>
         <Route path="/"         element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<RiderDashboard />} />

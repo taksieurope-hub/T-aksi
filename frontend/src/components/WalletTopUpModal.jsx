@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import api from "@/api";
-import { useAuth } from "@/config"; // Adjust this import if your useAuth is located elsewhere
+import { useAuth } from "@/config"; 
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
 const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
@@ -20,13 +20,11 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   const usdAmount   = (finalAmount * 0.37).toFixed(2);
   const canPay      = finalAmount >= 1;
 
-  // 1. Updated to match the "saved_cards" array from Python
   const savedCard = user?.saved_cards?.[0]; 
 
   const handleVaultedTopUp = async () => {
     setLoading(true);
     try {
-      // Sends the vault_id of the saved card to the background charge route
       await api.post("/rider/wallet/topup-vaulted", { 
         amount: finalAmount,
         vault_id: savedCard.vault_id 
@@ -43,14 +41,12 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   };
 
   return (
-    // 🚀 PROVIDER IS NOW SCOPED ONLY TO THE MODAL
     <PayPalScriptProvider
       options={{
         "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID,
         currency: "USD",
         components: "buttons,card-fields",
-        intent: "capture",
-        vault: true // Enables background card saving
+        vault: true // 👈 Removed intent: "capture" to stop the dual-intent crash
       }}
     >
       <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
@@ -84,7 +80,6 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>
           )}
 
-          {/* QUICK PAY BUTTON */}
           {canPay && savedCard ? (
             <div className="space-y-3 mb-4">
               <Button 

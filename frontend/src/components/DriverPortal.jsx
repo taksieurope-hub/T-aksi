@@ -2595,11 +2595,11 @@ const DriverPortal = () => {
   }
 
   return (
-    <PayPalScriptProvider
+   <PayPalScriptProvider
       options={{
         "client-id": PAYPAL_CLIENT_ID || "sb",
         currency: "USD",
-        intent: "capture",
+        vault: true // 👈 Swapped capture for vault
       }}
     >
       <Routes>
