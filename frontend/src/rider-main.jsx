@@ -1,15 +1,13 @@
 import React, { Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { AuthProvider } from '@/config'; 
-import { LanguageProvider } from '@/i18n/LanguageContext';
-import RiderPortal from './components/RiderPortal'; 
+import { AuthProvider } from '@/config';          // ← must use alias, not '../src/config'
+import { LanguageProvider } from '@/i18n/LanguageContext';  // ← same
+import RiderPortal from '@/components/RiderPortal';
 import '@/App.css';
 
 const container = document.getElementById('root');
-
 if (container) {
-  const root = createRoot(container);
-  root.render(
+  createRoot(container).render(
     <React.StrictMode>
       <LanguageProvider>
         <AuthProvider>
