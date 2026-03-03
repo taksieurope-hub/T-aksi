@@ -27,11 +27,7 @@ export default defineConfig(({ mode }) => {
           chunkFileNames: 'assets/[name]-[hash].js',
           entryFileNames: 'assets/[name]-[hash].js',
           manualChunks: (id) => {
-            if (id.includes('node_modules')) {
-              if (id.includes('react')) return 'vendor-react';
-              if (id.includes('firebase')) return 'vendor-firebase';
-              return 'vendor-libs';
-            }
+            // ONLY split your portals. Let Vite handle React and the libraries automatically.
             if (id.includes('RiderPortal') || id.includes('/rider/')) return 'portal-rider';
             if (id.includes('DriverPortal') || id.includes('/driver/')) return 'portal-driver';
             if (id.includes('AdminPortal') || id.includes('/admin/')) return 'portal-admin';
