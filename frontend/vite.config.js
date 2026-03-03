@@ -120,18 +120,14 @@ export default defineConfig(({ mode }) => {
       minify: 'esbuild',
       target: 'esnext',
       rollupOptions: {
+        // ── MPA ENTRY POINTS ──────────────────────────────────────────
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          rider: path.resolve(__dirname, 'rider/index.html'),
+          driver: path.resolve(__dirname, 'driver/index.html'),
+          admin: path.resolve(__dirname, 'admin/index.html'),
+        },
         output: {
-          /**
-           * FIX 3.2 + 3.3: Vendor chunk extraction + disable eager modulepreload.
-           *
-           * BEFORE: portal-rider = 643KB (included React, Radix, axios, etc.)
-           * AFTER:  portal-rider ≈ 150-200KB (portal-specific code only)
-           * vendor       ≈ 120KB  (React + ReactDOM + React Router)
-           * ui           ≈ 180KB  (all Radix UI primitives)
-           * firebase     ≈ 80KB   (Firebase SDK)
-           * motion       ≈ 50KB   (Framer Motion)
-           * paypal       ≈ 30KB   (PayPal React SDK)
-           */
           manualChunks(id) {
             // ── Core React runtime ──────────────────────────────────────────
             if (
@@ -163,7 +159,7 @@ export default defineConfig(({ mode }) => {
               return 'vendor-paypal';
             }
 
-            // ── Utility libs (small, shared everywhere) ─────────────────────
+            // ── Utility libs ────────────────────────────────────────────────
             if (
               id.includes('node_modules/axios/') ||
               id.includes('node_modules/clsx/') ||
@@ -174,7 +170,7 @@ export default defineConfig(({ mode }) => {
               return 'vendor-utils';
             }
 
-            // ── Portal chunks (portal-specific code only) ───────────────────
+            // ── Portal chunks (ensures isolation) ───────────────────────────
             if (id.includes('/components/RiderPortal') || id.includes('/rider/'))   return 'portal-rider';
             if (id.includes('/components/DriverPortal') || id.includes('/driver/')) return 'portal-driver';
             if (id.includes('/components/AdminPortal') || id.includes('/admin/'))   return 'portal-admin';
@@ -184,7 +180,6 @@ export default defineConfig(({ mode }) => {
     },
 
     esbuild: {
-      // Strips console.logs and debuggers in production for security/performance
       drop: mode === 'production' ? ['console', 'debugger'] : [],
     },
   }
