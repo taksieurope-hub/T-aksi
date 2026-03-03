@@ -14,11 +14,9 @@ from typing import Any, Dict, List, Optional, Union
 import firebase_admin
 from firebase_admin import credentials, firestore, storage, messaging
 
-# --- FIXED SECTION: Separated Body and Pydantic ---
-from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form, Body, Response, Cookie
+from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form, Body, Response, Cookie, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
-# --------------------------------------------------
 
 from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -29,16 +27,16 @@ import httpx
 import sys
 import secrets
 
-# Load environment variables
-load_dotenv()# Assuming you already have this imported
+load_dotenv()
 
-# ─── SECURE COOKIE SETTINGS (UPDATED FOR RENDER CROSS-ORIGIN) ───
+# ─── SECURE COOKIE SETTINGS ───
 COOKIE_NAME = "token"
-COOKIE_MAX_AGE = 7 * 24 * 3600      # 7 days
-COOKIE_SECURE = True                # MUST be True for cross-origin
-COOKIE_SAMESITE = "none"            # MUST be "none" because frontend and backend are different Render subdomains
-COOKIE_HTTPONLY = True              # Protects against XSS
+COOKIE_MAX_AGE = 7 * 24 * 3600
+COOKIE_SECURE = True
+COOKIE_SAMESITE = "none"
+COOKIE_HTTPONLY = True
 COOKIE_PATH = "/"
+
 
 def set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
@@ -51,6 +49,7 @@ def set_auth_cookie(response: Response, token: str) -> None:
         samesite=COOKIE_SAMESITE,
     )
 
+
 def clear_auth_cookie(response: Response) -> None:
     response.delete_cookie(
         key=COOKIE_NAME,
@@ -59,6 +58,7 @@ def clear_auth_cookie(response: Response) -> None:
         httponly=COOKIE_HTTPONLY,
         samesite=COOKIE_SAMESITE,
     )
+
 
 # =========================
 # ENV + INITIALIZATION
@@ -95,6 +95,11 @@ else:
     logger.info("PayPal is running in LIVE mode")
 
 FIREBASE_STORAGE_BUCKET = os.environ.get("FIREBASE_STORAGE_BUCKET", "")
+
+# ─── FIX: FRONTEND_URL env var controls share links ───────────────────────────
+# Set FRONTEND_URL=https://t-aksi-frontend.onrender.com in Render environment vars
+# Default is the onrender domain so it works without any config change
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://t-aksi-frontend.onrender.com")
 
 SERVICE_ACCOUNT_PATH = Path(os.environ.get(
     "FIREBASE_SERVICE_ACCOUNT_PATH",
@@ -200,11 +205,6 @@ def send_push_notification(user_id: str, title: str, body: str, data: dict = Non
             token = user_doc.to_dict().get("fcm_token")
 
         if not token:
-            rider_doc = db.collection("riders").document(user_id).get()
-            if rider_doc.exists:
-                token = rider_doc.to_dict().get("fcm_token")
-
-        if not token:
             logger.debug(f"No FCM token for user {user_id}")
             return
 
@@ -231,7 +231,6 @@ def send_push_notification(user_id: str, title: str, body: str, data: dict = Non
         try:
             db = get_db()
             db.collection("users").document(user_id).update({"fcm_token": firestore.DELETE_FIELD})
-            db.collection("riders").document(user_id).update({"fcm_token": firestore.DELETE_FIELD})
         except Exception:
             pass
     except Exception as e:
@@ -268,7 +267,6 @@ def get_current_user_id(
     authorization: Optional[str] = Header(None),
     token: Optional[str] = Cookie(None),
 ) -> Optional[str]:
-    # 1. Bearer header first (supports existing localStorage clients during transition)
     if authorization and authorization.startswith("Bearer "):
         raw = authorization.replace("Bearer ", "")
         try:
@@ -277,7 +275,6 @@ def get_current_user_id(
                 return decoded["user_id"]
         except Exception:
             pass
-    # 2. Fall back to httpOnly cookie
     if token:
         try:
             decoded = decode_token(token)
@@ -383,7 +380,34 @@ def _generate_otp() -> str:
 
 
 def _send_otp_code(phone: str, code: str):
-    logger.info(f"[OTP] {phone} → {code}")
+    # TODO: wire up real SMS provider (Twilio / etc)
+    logger.info(f"[OTP] Sending code to {phone}")
+
+
+# =========================
+# CARD VAULT HELPER
+# =========================
+
+def _save_card_vault(db, user_id: str, vault_id: str, last4: Optional[str] = None, brand: Optional[str] = None):
+    """Save a vaulted PayPal card to user profile, deduplicating by vault_id."""
+    try:
+        user_ref = db.collection("users").document(user_id)
+        user_doc = user_ref.get()
+        if not user_doc.exists:
+            return
+        existing = user_doc.to_dict().get("saved_cards", [])
+        if any(c.get("vault_id") == vault_id for c in existing):
+            return  # already saved
+        user_ref.update({
+            "saved_cards": firestore.ArrayUnion([{
+                "vault_id": vault_id,
+                "last4": last4,
+                "brand": brand,
+                "added_at": now_iso(),
+            }])
+        })
+    except Exception as e:
+        logger.warning(f"Card vault save failed for {user_id}: {e}")
 
 
 # =========================
@@ -532,6 +556,7 @@ app.add_middleware(
         "https://t-aksi-driver.onrender.com",
         "https://taksi-admin.onrender.com",
         "https://taksi.ge",
+        "https://www.taksi.ge",
     ],
     allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
@@ -540,11 +565,36 @@ app.add_middleware(
 )
 
 
+# ─── FIX: Security headers middleware ─────────────────────────────────────────
+# Adds all 4 headers that were MISSING in the PWA audit report:
+#   Content-Security-Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(self), payment=(self)"
+    )
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://www.paypal.com https://www.sandbox.paypal.com "
+        "https://maps.googleapis.com https://maps.gstatic.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https: blob:; "
+        "connect-src 'self' https://api-m.paypal.com https://api-m.sandbox.paypal.com "
+        "https://maps.googleapis.com https://firestore.googleapis.com "
+        "https://fcm.googleapis.com wss:; "
+        "frame-src https://www.paypal.com https://www.sandbox.paypal.com; "
+        "worker-src 'self' blob:;"
+    )
+    return response
+
+
 # --- RATE LIMITING ---
 import time
 from collections import defaultdict
-from starlette.responses import JSONResponse
-from fastapi import Request
 
 AUTH_RATE_LIMIT_WINDOW = 900
 AUTH_MAX_REQUESTS = 10
@@ -659,12 +709,9 @@ class RideRequest(BaseModel):
     estimated_distance: Optional[float] = Field(0, alias="estimatedDistance")
     estimated_duration: Optional[int] = Field(0, alias="estimatedDuration")
     price: Optional[float] = 0.0
-
-    # === ADD THESE 3 FIELDS TO CATCH THE VAULT DATA ===
     vault_id: Optional[str] = Field(None, alias="vault_id")
     card_last4: Optional[str] = Field(None, alias="card_last4")
     card_brand: Optional[str] = Field(None, alias="card_brand")
-    # =================================================
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
@@ -744,6 +791,9 @@ class WithdrawRequest(BaseModel):
 class PayPalTopUpRequest(BaseModel):
     order_id: str
     amount: float = Field(gt=0, le=10000)
+    vault_id: Optional[str] = None
+    card_last4: Optional[str] = None
+    card_brand: Optional[str] = None
 
 
 class SOSRequest(BaseModel):
@@ -1181,7 +1231,8 @@ async def send_otp(req: OTPSendRequest):
     })
 
     _send_otp_code(phone_norm, code)
-    return {"status": "sent", "dev_code": code, "expires_in": OTP_TTL_SECONDS}
+    # NOTE: dev_code removed — never expose OTP in production responses
+    return {"status": "sent", "expires_in": OTP_TTL_SECONDS}
 
 
 @app.post("/api/auth/otp/verify", tags=["Auth"])
@@ -1499,6 +1550,7 @@ async def get_driver_detail(driver_id: str, admin_id: str = Depends(get_admin_us
     data["id"] = doc.id
     return {"driver": serialize_firestore_data(data)}
 
+
 @app.get("/api/rides/{ride_id}/receipt", tags=["Rides"])
 async def get_ride_receipt(ride_id: str, user_id: Optional[str] = Depends(get_current_user_id)):
     db = get_db()
@@ -1680,28 +1732,24 @@ async def reject_withdrawal(id: str, admin_id: str = Depends(get_admin_user)):
 
     withdrawal_data = withdrawal_doc.to_dict()
     driver_id = withdrawal_data.get("driver_id")
-    
-    # 1. Safely calculate refund (fallback for older test requests)
+
     total_deducted = withdrawal_data.get("total_deducted", 0)
     if not total_deducted or total_deducted == 0:
         amount = withdrawal_data.get("amount", 0)
-        fee = withdrawal_data.get("fee", 1.0) # Default withdrawal fee
+        fee = withdrawal_data.get("fee", 1.0)
         total_deducted = amount + fee
 
     if driver_id and total_deducted > 0:
         driver_ref = db.collection("users").document(driver_id)
         driver_doc = driver_ref.get()
-        
+
         if driver_doc.exists:
             driver_data = driver_doc.to_dict()
-            
-            # 2. Check which wallet field this specific driver uses
             if "earnings" in driver_data and "balance" in driver_data["earnings"]:
                 update_field = "earnings.balance"
             else:
                 update_field = "wallet_balance"
-                
-            # 3. Refund the money to the correct field!
+
             driver_ref.update({
                 update_field: firestore.Increment(total_deducted)
             })
@@ -1845,7 +1893,6 @@ async def admin_add_balance(
 async def admin_dispute_refund(req: AdminRefundRequest, admin_id: str = Depends(get_admin_user)):
     db = get_db()
 
-    # Deduct from driver if specified
     if req.driver_id:
         driver_doc = db.collection("users").document(req.driver_id).get()
         if driver_doc.exists:
@@ -1856,7 +1903,6 @@ async def admin_dispute_refund(req: AdminRefundRequest, admin_id: str = Depends(
                     "earnings.balance": firestore.Increment(-deduct)
                 })
 
-    # Credit to rider
     if req.rider_id:
         rider_doc = db.collection("users").document(req.rider_id).get()
         if rider_doc.exists:
@@ -2058,6 +2104,9 @@ async def driver_topup_paypal(req: PayPalTopUpRequest, user_id: Optional[str] = 
         "paypal_mode": PAYPAL_MODE,
         "created_at": firestore.SERVER_TIMESTAMP,
     })
+
+    if req.vault_id:
+        _save_card_vault(db, user_id, req.vault_id, req.card_last4, req.card_brand)
 
     return {"message": f"Successfully added ₾{req.amount:.2f} to wallet"}
 
@@ -2314,7 +2363,7 @@ async def get_driver_history(user_id: Optional[str] = Depends(get_current_user_i
         )
     except Exception:
         rides = list(db.collection("rides").where("driver_id", "==", user_id).limit(50).stream())
-        rides.sort(key=lambda r: r.to_dict().get("created_at", ""), reverse=True)
+        rides.sort(key=lambda r: str(r.to_dict().get("created_at", "")), reverse=True)
     return {"rides": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in rides]}
 
 
@@ -2324,7 +2373,6 @@ async def get_driver_withdrawal_history(user_id: Optional[str] = Depends(get_cur
         return {"withdrawals": []}
     db = get_db()
     try:
-        # Try asking Firebase to sort it
         docs = list(
             db.collection("driver_withdrawals")
             .where("driver_id", "==", user_id)
@@ -2333,11 +2381,9 @@ async def get_driver_withdrawal_history(user_id: Optional[str] = Depends(get_cur
             .stream()
         )
     except Exception:
-        # If Firebase fails (missing index), do it manually in Python safely
         docs = list(db.collection("driver_withdrawals").where("driver_id", "==", user_id).stream())
-        # FIX: Cast the timestamp to a string to prevent the TypeError crash
         docs.sort(key=lambda d: str(d.to_dict().get("created_at", "")), reverse=True)
-        
+
     return {"withdrawals": [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in docs]}
 
 
@@ -2625,7 +2671,7 @@ async def get_support_history(user_id: Optional[str] = Depends(get_current_user_
         )
     except Exception:
         tickets = list(db.collection("support_tickets").where("user_id", "==", user_id).stream())
-        tickets.sort(key=lambda t: t.to_dict().get("created_at", ""), reverse=True)
+        tickets.sort(key=lambda t: str(t.to_dict().get("created_at", "")), reverse=True)
     return {"tickets": [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in tickets]}
 
 
@@ -2828,87 +2874,87 @@ async def set_user_language(lang: str = Query(...), user_id: Optional[str] = Dep
 
 @app.post("/api/rider/wallet/vault", tags=["Wallet"])
 async def vault_card_only(
-    payload: dict = Body(...), 
-    user_id: str = Depends(get_current_user_id)
+    payload: dict = Body(...),
+    user_id: Optional[str] = Depends(get_current_user_id)
 ):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
     db = get_db()
-    billing_token = payload.get("billing_token")
-    
+    billing_token = payload.get("billing_token") or payload.get("vault_id")
     if not billing_token:
         raise HTTPException(status_code=400, detail="Missing billing token")
-
-    # In a production environment, you would use the PayPal SDK here 
-    # to "Capture" the billing agreement and get the actual Vault ID.
-    # For now, we will store the reference so the user sees a "Saved Card".
-    
-    user_ref = db.collection("users").document(user_id)
-    
-    # We create a placeholder saved card
-    # NOTE: In a real scenario, PayPal returns the last4/brand after execution
-    new_card = {
-        "vault_id": billing_token, 
-        "last4": "Checking...", # You'll update this once the first charge hits
-        "brand": "Verified Card",
-        "added_at": firestore.SERVER_TIMESTAMP,
-        "type": "billing_agreement" 
-    }
-
-    user_ref.update({
-        "saved_cards": firestore.ArrayUnion([new_card])
-    })
-
+    _save_card_vault(db, user_id, billing_token, payload.get("last4"), payload.get("brand"))
     return {"status": "success", "message": "Card reference saved"}
+
 
 @app.post("/api/rider/wallet/topup-vaulted", tags=["Wallet"])
 async def topup_vaulted(
-    payload: dict = Body(...), 
-    user_id: str = Depends(get_current_user_id)
+    payload: dict = Body(...),
+    user_id: Optional[str] = Depends(get_current_user_id)
 ):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
     db = get_db()
-    amount_gel = payload.get("amount")
+    amount_gel = payload.get("amount", 0)
     vault_id = payload.get("vault_id")
-    
-    # 1. Convert GEL to USD for PayPal
-    amount_usd = round(amount_gel * 0.37, 2)
+    if not vault_id or amount_gel <= 0:
+        raise HTTPException(400, "vault_id and amount are required")
 
-    # 2. CALL PAYPAL SERVER SDK (Background Charge)
-    # This is where you use your ClientID/Secret to charge the vault_id
-    # For now, we'll simulate the success
-    success = True 
+    # TODO: charge via PayPal vault API here
+    db.collection("users").document(user_id).update({
+        "wallet_balance": firestore.Increment(amount_gel)
+    })
+    return {"status": "success", "message": f"₾{amount_gel:.2f} added to wallet"}
 
-    if success:
-        user_ref = db.collection("users").document(user_id)
-        user_ref.update({
-            "wallet_balance": firestore.Increment(amount_gel)
-        })
-        return {"status": "success", "new_balance": "Updated"}
-    else:
-        raise HTTPException(status_code=400, detail="Card declined by PayPal")
 
+@app.post("/api/rider/wallet/topup", tags=["Rider"])
 @app.post("/api/rider/wallet/topup/paypal", tags=["Rider"])
 async def rider_topup_paypal(req: PayPalTopUpRequest, user_id: Optional[str] = Depends(get_current_user_id)):
     if not user_id:
         raise HTTPException(401, "Not authenticated")
 
-    # ... (Keep your existing httpx validation code exactly as is) ...
-
     db = get_db()
-    
-    # --- VAULT CATCH ---
-    if req.vault_id:
-        db.collection("users").document(user_id).update({
-            "saved_cards": firestore.ArrayUnion([{
-                "vault_id": req.vault_id,
-                "last4": req.card_last4,
-                "brand": req.card_brand,
-                "added_at": firestore.SERVER_TIMESTAMP
-            }])
-        })
 
-    # ... (Keep your existing balance update and transaction logging) ...
+    if req.order_id:
+        access_token = await get_paypal_token()
+        if access_token:
+            async with httpx.AsyncClient(timeout=25) as client:
+                try:
+                    resp = await client.get(
+                        f"{PAYPAL_API_BASE}/v2/checkout/orders/{req.order_id}",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    )
+                    if resp.status_code == 200:
+                        order_data = resp.json()
+                        if order_data.get("status") not in ("COMPLETED", "APPROVED"):
+                            raise HTTPException(400, "PayPal payment not completed")
+                        existing = list(
+                            db.collection("wallet_transactions")
+                            .where("order_id", "==", req.order_id)
+                            .limit(1)
+                            .stream()
+                        )
+                        if existing:
+                            raise HTTPException(409, "This PayPal order has already been processed")
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.warning(f"PayPal order verification failed: {e}")
+
     db.collection("users").document(user_id).update({
         "wallet_balance": firestore.Increment(req.amount),
     })
+
+    db.collection("wallet_transactions").add({
+        "user_id": user_id,
+        "type": "rider_topup",
+        "amount": req.amount,
+        "order_id": req.order_id,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    if req.vault_id:
+        _save_card_vault(db, user_id, req.vault_id, req.card_last4, req.card_brand)
 
     return {"message": f"Successfully added ₾{req.amount:.2f} to wallet"}
 
@@ -3049,17 +3095,8 @@ async def request_ride(
         for s in ride_data.stops if isinstance(s, dict)
     ]
 
-    # --- SAVE THE CARD TO THE USER IF IT'S NEW ---
-    # --- Inside request_ride ---
     if getattr(ride_data, 'vault_id', None):
-        db.collection("users").document(final_user_id).update({
-            "saved_cards": firestore.ArrayUnion([{
-                "vault_id": ride_data.vault_id,
-                "last4": ride_data.card_last4,
-                "brand": ride_data.card_brand,
-                "added_at": firestore.SERVER_TIMESTAMP
-            }])
-        })
+        _save_card_vault(db, final_user_id, ride_data.vault_id, ride_data.card_last4, ride_data.card_brand)
 
     ride_ref = db.collection("rides").document()
     new_ride = {
@@ -3078,12 +3115,9 @@ async def request_ride(
         "payment_method": payment_method,
         "paymentMethod": payment_method,
         "payment_order_id": ride_data.payment_order_id,
-        
-        # --- SAVE THE CARD DATA TO THE RIDE DOC ---
         "vault_id": getattr(ride_data, 'vault_id', None),
         "card_last4": getattr(ride_data, 'card_last4', None),
         "card_brand": getattr(ride_data, 'card_brand', None),
-
         "estimated_distance": ride_data.estimated_distance,
         "estimated_duration": ride_data.estimated_duration,
         "estimated_fare": fare["total"],
@@ -3131,13 +3165,13 @@ async def estimate_fare(
     fare["total"] += service_fee
     return {**fare, "surge": surge_info}
 
+
 @app.get("/api/rider/active-ride", tags=["Rider"])
 async def get_rider_active_ride(user_id: Optional[str] = Depends(get_current_user_id)):
     if not user_id:
         return None
     db = get_db()
     active_statuses = ["searching", "accepted", "arrived", "in_progress"]
-    # Check both userId and rider_id fields (legacy + new)
     for field in ["userId", "rider_id"]:
         for status in active_statuses:
             rides = list(
@@ -3151,6 +3185,7 @@ async def get_rider_active_ride(user_id: Optional[str] = Depends(get_current_use
                 ride = rides[0]
                 return serialize_firestore_data({**ride.to_dict(), "id": ride.id})
     return None
+
 
 # =========================
 # SCHEDULED RIDES
@@ -3336,7 +3371,6 @@ async def match_drivers_to_ride(ride_id: str):
             if updated_ride.exists and updated_ride.to_dict().get("status") != "searching":
                 return
 
-    # No drivers found after all rounds
     ride_ref = db.collection("rides").document(ride_id)
     fresh_ride_data = ride_ref.get().to_dict()
 
@@ -3367,10 +3401,11 @@ async def match_drivers_to_ride(ride_id: str):
 
 @app.post("/api/rides/{ride_id}/accept", tags=["Rides"])
 async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current_user_id)):
-    final_driver_id = user_id or "test_driver_id"
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
 
     db = get_db()
-    driver_doc = db.collection("users").document(final_driver_id).get()
+    driver_doc = db.collection("users").document(user_id).get()
     if not driver_doc.exists:
         raise HTTPException(404, "Driver not found")
 
@@ -3388,10 +3423,16 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
     balance = driver_data.get("earnings", {}).get("balance", 0)
     held_commission = (ride_data.get("estimated_fare", 0) or 0) * commission_rate
 
-    # ❌ I DELETED THE "INSUFFICIENT BALANCE" CHECK FROM HERE
+    # Balance check — driver must have enough to cover commission
+    if balance < held_commission:
+        raise HTTPException(
+            400,
+            f"Insufficient balance. Need ₾{held_commission:.2f} to accept this ride. "
+            f"Current balance: ₾{balance:.2f}. Please top up your wallet."
+        )
 
     new_balance = balance - held_commission
-    db.collection("users").document(final_driver_id).update({
+    db.collection("users").document(user_id).update({
         "earnings.balance": new_balance,
         "earnings.total_commission_paid": firestore.Increment(held_commission),
     })
@@ -3408,9 +3449,9 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
 
     db.collection("rides").document(ride_id).update({
         "status": "accepted",
-        "driver_id": final_driver_id,
+        "driver_id": user_id,
         "driver_info": {
-            "id": final_driver_id,
+            "id": user_id,
             "name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}".strip(),
             "cellphone": driver_data.get("cellphone"),
             "car_make": vehicle.get("car_make"),
@@ -3622,11 +3663,9 @@ async def complete_ride(
         "user_id": rider_id,
         "userId": rider_id,
     }
-    
-    # 1. This updates the ride successfully
+
     ride_ref.update(ride_updates)
 
-    # 2. SAFELY attempt to update the Driver's balance
     if driver_id:
         try:
             held_commission = ride_data.get("commission_paid", 0) or 0
@@ -3648,21 +3687,12 @@ async def complete_ride(
         except Exception as e:
             logger.error(f"Post-ride Driver update failed gracefully: {e}")
 
-    # 3. SAFELY attempt to update the Rider's trip count
     if rider_id and rider_ref:
         try:
             if rider_ref.get().exists:
                 rider_ref.update({"total_rides": firestore.Increment(1)})
         except Exception as e:
             logger.error(f"Post-ride Rider update failed gracefully: {e}")
-
-    # 4. Safely attempt to trigger campaign logic (if you have it)
-    try:
-        # We wrap this so if the campaign function is missing or fails, it won't crash the completion
-        if 'update_driver_campaign_progress' in globals() and driver_id:
-             update_driver_campaign_progress(driver_id, {"driver_earnings": total_with_fee})
-    except Exception as e:
-        logger.error(f"Campaign update failed: {e}")
 
     if rider_id:
         send_push_notification(
@@ -3672,7 +3702,6 @@ async def complete_ride(
             data={"type": "ride_completed", "ride_id": ride_id},
         )
 
-    # 5. Successfully return the 200 OK to the Driver App
     return {
         "message": "Ride completed",
         "payment_status": payment_status,
@@ -3699,7 +3728,6 @@ async def cancel_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
     if current_status in ["completed", "cancelled"]:
         raise HTTPException(400, f"Cannot cancel ride with status: {current_status}")
 
-    # Refund wallet payment if card/wallet
     payment_method = ride_data.get("payment_method") or ride_data.get("paymentMethod", "cash")
     rider_id = ride_data.get("userId") or ride_data.get("rider_id") or ride_data.get("user_id")
 
@@ -3710,7 +3738,6 @@ async def cancel_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
                 "wallet_balance": firestore.Increment(fare_to_refund)
             })
 
-    # Refund driver commission if already accepted
     driver_id = ride_data.get("driver_id") or ride_data.get("driverId")
     if driver_id and current_status in ["accepted", "arrived"]:
         commission_paid = ride_data.get("commission_paid", 0)
@@ -3763,8 +3790,9 @@ async def get_rider_history(user_id: Optional[str] = Depends(get_current_user_id
         )
     except Exception:
         rides = list(db.collection("rides").where("userId", "==", user_id).limit(50).stream())
-        rides.sort(key=lambda r: r.to_dict().get("created_at", ""), reverse=True)
+        rides.sort(key=lambda r: str(r.to_dict().get("created_at", "")), reverse=True)
     return {"rides": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in rides]}
+
 
 @app.get("/api/rider/history", tags=["Rider"])
 async def get_rider_history_v2(user_id: Optional[str] = Depends(get_current_user_id)):
@@ -3781,7 +3809,7 @@ async def get_rider_history_v2(user_id: Optional[str] = Depends(get_current_user
         )
     except Exception:
         rides = list(db.collection("rides").where("userId", "==", user_id).limit(50).stream())
-        rides.sort(key=lambda r: r.to_dict().get("created_at", ""), reverse=True)
+        rides.sort(key=lambda r: str(r.to_dict().get("created_at", "")), reverse=True)
     return {"rides": [serialize_firestore_data({**r.to_dict(), "id": r.id}) for r in rides]}
 
 
@@ -3812,7 +3840,9 @@ async def rate_passenger(
     return {"message": "Passenger rated", "rating": rating_data.rating}
 
 
-@app.post("/api/rides/{ride_id}/rate/driver", tags=["Rides"])  # <--- Fixed the URL path here
+# ─── FIX: registered on BOTH paths so frontend works regardless of which it calls
+@app.post("/api/rides/{ride_id}/rate-driver", tags=["Rides"])
+@app.post("/api/rides/{ride_id}/rate/driver", tags=["Rides"])
 async def rate_driver(
     ride_id: str, rating_data: RateDriverRequest, user_id: Optional[str] = Depends(get_current_user_id)
 ):
@@ -3824,14 +3854,12 @@ async def rate_driver(
 
     data = ride.to_dict()
 
-    # Update the ride document with the rating
     ride_ref.update({
         "driver_rating": rating_data.rating,
         "driver_review": rating_data.review,
         "rated_at": firestore.SERVER_TIMESTAMP,
     })
 
-    # Safely update the driver's overall rating average
     driver_id = data.get("driver_id") or data.get("driverId")
     if driver_id:
         driver_ref = db.collection("users").document(driver_id)
@@ -3840,14 +3868,16 @@ async def rate_driver(
             d_data = driver_doc.to_dict()
             current_rating = d_data.get("rating", 5.0)
             total_rides = d_data.get("total_rides", 1)
-            
-            # Calculate the new average
             new_rating = ((current_rating * total_rides) + rating_data.rating) / (total_rides + 1)
             driver_ref.update({"rating": round(new_rating, 2)})
 
     return {"message": "Driver rated successfully"}
 
 
+# ─── FIX 1: CHAT — sender_role saved with every message ───────────────────────
+# Each message now stores sender_role = "rider" or "driver"
+# Frontend uses this field to align chat bubbles (left = other, right = you)
+# FCM push notification sent to the OTHER party so they get notified
 @app.post("/api/rides/{ride_id}/chat", tags=["Rides"])
 async def send_chat_message(
     ride_id: str, msg: ChatMessage, user_id: Optional[str] = Depends(get_current_user_id)
@@ -3863,27 +3893,39 @@ async def send_chat_message(
     rider_id = ride_data.get("userId") or ride_data.get("rider_id")
     driver_id = ride_data.get("driver_id") or ride_data.get("driverId")
 
-    sender_role = "rider" if user_id == rider_id else "driver"
-    recipient_id = driver_id if sender_role == "rider" else rider_id
+    # Determine who is sending and who should receive the notification
+    if user_id == rider_id:
+        sender_role = "rider"
+        recipient_id = driver_id
+        notification_title = "Message from your rider 💬"
+    elif user_id == driver_id:
+        sender_role = "driver"
+        recipient_id = rider_id
+        notification_title = "Message from your driver 💬"
+    else:
+        raise HTTPException(403, "You are not a participant in this ride")
 
+    # Save message with sender_role so frontend can distinguish bubbles
     message_doc = {
-        "ride_id": ride_id,
-        "sender_id": user_id,
-        "sender_role": sender_role,
-        "message": msg.message,
-        "timestamp": firestore.SERVER_TIMESTAMP,
+        "ride_id":     ride_id,
+        "sender_id":   user_id,
+        "sender_role": sender_role,   # ← "rider" or "driver" — frontend uses this
+        "message":     msg.message,
+        "timestamp":   firestore.SERVER_TIMESTAMP,
+        "read":        False,
     }
     db.collection("ride_messages").add(message_doc)
 
+    # Push to the OTHER party so they get notified
     if recipient_id:
         send_push_notification(
             recipient_id,
-            title=f"Message from your {'driver' if sender_role == 'rider' else 'rider'}",
+            title=notification_title,
             body=msg.message[:100],
             data={"type": "chat_message", "ride_id": ride_id},
         )
 
-    return {"message": "Message sent"}
+    return {"message": "Message sent", "sender_role": sender_role}
 
 
 @app.get("/api/rides/{ride_id}/chat", tags=["Rides"])
@@ -3919,35 +3961,26 @@ async def send_tip(
     tip_amount = req.tip_amount or req.amount
     driver_id = ride_data.get("driver_id") or ride_data.get("driverId")
 
-    # --- 1. PAYMENT BYPASS ---
-    # If there is NO reference_id, it's a Wallet tip. Deduct balance.
     if not req.reference_id:
         rider_doc = db.collection("users").document(user_id).get()
         rider_data = rider_doc.to_dict()
         wallet_balance = float(rider_data.get("wallet_balance", 0))
         if wallet_balance < tip_amount:
             raise HTTPException(400, f"Insufficient wallet balance.")
-        
+
         db.collection("users").document(user_id).update({
             "wallet_balance": firestore.Increment(-tip_amount)
         })
 
-    # --- 2. VAULT CATCH ---
     if req.vault_id:
-        db.collection("users").document(user_id).update({
-            "saved_cards": firestore.ArrayUnion([{
-                "vault_id": req.vault_id,
-                "last4": req.card_last4,
-                "brand": req.card_brand,
-                "added_at": firestore.SERVER_TIMESTAMP
-            }])
+        _save_card_vault(db, user_id, req.vault_id, req.card_last4, req.card_brand)
+
+    if driver_id:
+        db.collection("users").document(driver_id).update({
+            "earnings.balance": firestore.Increment(tip_amount),
+            "earnings.total_earned": firestore.Increment(tip_amount),
         })
 
-    # --- 3. UPDATES ---
-    db.collection("users").document(driver_id).update({
-        "earnings.balance": firestore.Increment(tip_amount),
-        "earnings.total_earned": firestore.Increment(tip_amount),
-    })
     db.collection("rides").document(ride_id).update({
         "tip_amount": firestore.Increment(tip_amount),
         "tipped": True,
@@ -3956,6 +3989,11 @@ async def send_tip(
     return {"message": "Tip processed"}
 
 
+# ─── FIX 2: SHARE RIDE — uses FRONTEND_URL instead of hardcoded taksi.ge ──────
+# The old code had: share_link = f"https://taksi.ge/track/{ride_id}"
+# taksi.ge/track doesn't exist → "server cannot be found" error on the recipient's phone
+# Now uses FRONTEND_URL env var (defaults to t-aksi-frontend.onrender.com)
+# To override: set FRONTEND_URL=https://taksi.ge in your Render environment variables
 @app.post("/api/rides/{ride_id}/share", tags=["Rides"])
 async def share_ride(
     ride_id: str, req: ShareRideRequest, user_id: Optional[str] = Depends(get_current_user_id)
@@ -3967,7 +4005,7 @@ async def share_ride(
     if not doc.exists:
         raise HTTPException(404, "Ride not found")
 
-    share_link = f"https://taksi.ge/track/{ride_id}"
+    share_link = f"{FRONTEND_URL}/track/{ride_id}"
     return {
         "share_link": share_link,
         "message": "Share this link to let others track your ride",
