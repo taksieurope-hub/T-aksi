@@ -5,6 +5,15 @@ import RiderPortal from '@/components/RiderPortal'; // 👈 Importing from your 
 import { AuthProvider } from '@/config';
 import { LanguageProvider } from '@/i18n/LanguageContext';
 import '@/App.css';
+import { lazy, Suspense } from 'react';
+
+// Change the top-level import to this:
+const SupportChatWidget = lazy(() => import('./components/SupportChatWidget'));
+
+// Wrap it in your code like this:
+<Suspense fallback={null}>
+  <SupportChatWidget />
+</Suspense>
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
