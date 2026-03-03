@@ -161,16 +161,27 @@ const StatusBadge = ({ status }) => {
 // =============================================================================
 // DRIVER WAIT TIMER
 // =============================================================================
-const DriverWaitTimer = ({ arrivedAt, carType }) => {
+
+const DriverWaitTimer = ({ arrivedAt, carType, onUpdate }) => {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    const start = arrivedAt && !isNaN(new Date(arrivedAt).getTime())
-      ? new Date(arrivedAt).getTime()
-      : Date.now();
-    const iv = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
-    return () => clearInterval(iv);
-  }, [arrivedAt]);
+    // ... your existing interval logic ...
+    
+    // NEW: Calculate and send the data up whenever elapsed changes
+    const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
+    const freeWaitSec = rules.freeWait * 60;
+    
+    if (elapsed > freeWaitSec) {
+      const overtimeSec = elapsed - freeWaitSec;
+      const overtimeMin = overtimeSec / 60;
+      // Tell the parent component the current stats
+      onUpdate?.({
+        minutes: overtimeMin,
+        earned: overtimeMin * rules.perMinWait
+      });
+    }
+  }, [elapsed, carType, arrivedAt, onUpdate]);
 
   const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
   const freeWaitSec = rules.freeWait * 60;
@@ -1599,9 +1610,15 @@ const DriverAuth = () => {
 // DRIVER DASHBOARD
 // =============================================================================
 const DriverDashboard = () => {
+  // Inside your main Driver Dashboard / Portal component
+const [totalWaitData, setTotalWaitData] = useState({ minutes: 0, earned: 0 });
+const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const handleStopFinished = (minutes) => {
+  setTotalStopMinutes(prev => prev + minutes);
+};
 
   const [activeTab, setActiveTab] = useState("rides");
   const [loading, setLoading] = useState(false);
@@ -1787,7 +1804,7 @@ const DriverDashboard = () => {
       if (action === "arrived") {
         await api.post(`/rides/${activeRide.id}/arrived`);
         setArrivedTime(null);
-        setWaitTimer(0);
+        
         toast.success("Marked as arrived");
       } else if (action === "start") {
         await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: waitTimer });
@@ -1798,11 +1815,12 @@ const DriverDashboard = () => {
         lastPositionRef.current = driverLocation;
         toast.success("Ride started!");
       } else if (action === "complete") {
-        const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled.toFixed(2));
-        const finalWait = isNaN(waitTimer) ? 0 : parseInt(waitTimer);
-        const res = await api.post(
-          `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${driverLocation?.lat || ""}&dropoff_lng=${driverLocation?.lng || ""}`
-        );
+        // This sums up the Pickup Wait + the Mid-Trip stops
+const finalWait = (parseFloat(waitTimer) || 0) + (parseFloat(midTripWaitBanked) || 0);
+
+const res = await api.post(
+  `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${driverLocation?.lat || ""}&dropoff_lng=${driverLocation?.lng || ""}`
+);
         const cashToCollect = res.data.cash_to_collect || 0;
         toast.success(
           cashToCollect > 0
@@ -1867,21 +1885,32 @@ const DriverDashboard = () => {
     finally { setLoading(false); }
   };
 
-  const handleAcceptRide = async (rideId, estimatedFare) => {
-    if (!estimatedFare || isNaN(estimatedFare)) { toast.error("Invalid fare"); return; }
-    const commission = estimatedFare * DRIVER_COMMISSION_RATE;
-    if (balance < commission) { toast.error(`Need ₾${commission.toFixed(2)} balance to accept`); return; }
-    setLoading(true);
-    try {
-      await api.post(`/rides/${rideId}/accept`);
-      toast.success("Ride accepted!");
-      const r = await api.get(`/rides/${rideId}`);
-      setActiveRide(r.data);
-      setAvailableRides(prev => prev.filter(r => r.id !== rideId));
-      setDistanceTraveled(0);
-    } catch (_) { toast.error("Failed to accept"); }
-    finally { setLoading(false); }
-  };
+  const handleAcceptRide = async (rideId) => {
+  setLoading(true);
+  try {
+    await api.post(`/rides/${rideId}/accept`);
+    toast.success("Ride accepted!");
+
+    const r = await api.get(`/rides/${rideId}`);
+    setActiveRide(r.data);
+    setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
+    setDistanceTraveled(0);
+
+  } catch (error) {
+    // THIS IS THE MONEY LINE
+    console.error("DEBUG ACCEPT ERROR:", error.response?.data);
+    
+    const backendMessage = error.response?.data?.message || "Failed to accept";
+    toast.error(backendMessage);
+
+    // If it's a 400, the ride is likely dead/gone. Remove it from view.
+    if (error.response?.status === 400) {
+       setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleDeclineRide = async (rideId) => {
     try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(prev => prev.filter(r => r.id !== rideId)); }
@@ -2090,7 +2119,12 @@ const DriverDashboard = () => {
                 </GlassCard>
 
                 {activeRide.status === "arrived" && (
-                  <DriverWaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType || activeRide.car_type} />
+                  <DriverWaitTimer 
+  arrivedAt={activeRide.arrived_at} 
+  carType={activeRide.carType || activeRide.car_type} 
+  // This uses the setWaitTimer function that ALREADY exists in your file
+  onUpdate={(data) => setWaitTimer(data.minutes)} 
+/>
                 )}
                 {activeRide.status === "in_progress" && (
                   <GlassCard accent className="p-4 flex items-center justify-between">
