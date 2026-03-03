@@ -1815,12 +1815,20 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         lastPositionRef.current = driverLocation;
         toast.success("Ride started!");
       } else if (action === "complete") {
-        // This sums up the Pickup Wait + the Mid-Trip stops
-const finalWait = (parseFloat(waitTimer) || 0) + (parseFloat(midTripWaitBanked) || 0);
+        // We define these here so the code doesn't "break" looking for them
+        const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled.toFixed(2));
+        
+        // Summing the two types of wait time: Pickup + Mid-trip Stops
+        const pickupWait = parseFloat(waitTimer) || 0;
+        const stopWait = parseFloat(midTripWaitBanked) || 0;
+        const finalWait = (pickupWait + stopWait).toFixed(2);
 
-const res = await api.post(
-  `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${driverLocation?.lat || ""}&dropoff_lng=${driverLocation?.lng || ""}`
-);
+        // The API call
+        const res = await api.post(
+          `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${driverLocation?.lat || ""}&dropoff_lng=${driverLocation?.lng || ""}`
+        );
+
+        // --- THE REST IS YOUR ORIGINAL SUCCESS LOGIC ---
         const cashToCollect = res.data.cash_to_collect || 0;
         toast.success(
           cashToCollect > 0
@@ -1828,12 +1836,18 @@ const res = await api.post(
             : "Ride complete! No cash needed.",
           { duration: 8000 }
         );
+
         const riderName = activeRide.rider_name || activeRide.driver_info?.rider_name || "Passenger";
         setRateRideId(activeRide.id);
         setRateRiderName(riderName);
         setCompletedRide({ ...res.data, final_fare: res.data.final_fare || activeRide.estimated_fare });
+        
+        // Cleanup state
         setActiveRide(null);
-        setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null); setIsWaitingAtStop(false); setMidTripWaiting(false); setMidTripWaitStart(null); setMidTripWaitSecs(0); setMidTripWaitBanked(0); setLiveFare(null);
+        setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null); 
+        setIsWaitingAtStop(false); setMidTripWaiting(false); setMidTripWaitStart(null); 
+        setMidTripWaitSecs(0); setMidTripWaitBanked(0); setLiveFare(null);
+        
         fetchRideHistory(); await refreshUser();
         return;
       }
