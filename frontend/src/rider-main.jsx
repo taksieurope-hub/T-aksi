@@ -5,7 +5,12 @@ import RiderPortal from '@/components/RiderPortal'; // 👈 Importing from your 
 import { AuthProvider } from '@/config';
 import { LanguageProvider } from '@/i18n/LanguageContext';
 import '@/App.css';
-import { lazy, Suspense } from 'react';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <BrowserRouter basename="/rider">
+    <RiderPortal />
+  </BrowserRouter>
+);
 
 // Change the top-level import to this:
 const SupportChatWidget = lazy(() => import('./components/SupportChatWidget'));
