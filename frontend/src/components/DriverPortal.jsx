@@ -164,24 +164,35 @@ const StatusBadge = ({ status }) => {
 
 const DriverWaitTimer = ({ arrivedAt, carType, onUpdate }) => {
   const [elapsed, setElapsed] = useState(0);
+  // Use a ref for the callback so the interval closure never goes stale
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
 
   useEffect(() => {
-    // ... your existing interval logic ...
-    
-    // NEW: Calculate and send the data up whenever elapsed changes
-    const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
-    const freeWaitSec = rules.freeWait * 60;
-    
-    if (elapsed > freeWaitSec) {
-      const overtimeSec = elapsed - freeWaitSec;
-      const overtimeMin = overtimeSec / 60;
-      // Tell the parent component the current stats
-      onUpdate?.({
-        minutes: overtimeMin,
-        earned: overtimeMin * rules.perMinWait
-      });
-    }
-  }, [elapsed, carType, arrivedAt, onUpdate]);
+    const startTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
+    if (isNaN(startTime)) return;
+
+    const tick = () => {
+      const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+      setElapsed(elapsedSec);
+      const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
+      const freeWaitSec = rules.freeWait * 60;
+      // Always report total elapsed minutes so parent has accurate billing value.
+      // calculate_fare on the server subtracts freeWait internally.
+      const totalMin = elapsedSec / 60;
+      if (elapsedSec > freeWaitSec) {
+        const overtimeSec = elapsedSec - freeWaitSec;
+        const overtimeMin = overtimeSec / 60;
+        onUpdateRef.current?.({ minutes: totalMin, overtime: overtimeMin, earned: overtimeMin * rules.perMinWait });
+      } else {
+        onUpdateRef.current?.({ minutes: totalMin, overtime: 0, earned: 0 });
+      }
+    };
+
+    tick(); // immediate first tick
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [arrivedAt, carType]); // ← intentionally omit onUpdate (handled via ref)
 
   const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
   const freeWaitSec = rules.freeWait * 60;
@@ -1746,8 +1757,9 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       : (arrivedTime ?? Date.now());
     if (!arrivedTime) setArrivedTime(startMs);
     const iv = setInterval(() => {
-      const totalElapsedMin = Math.floor((Date.now() - startMs) / 60000);
-      setWaitTimer(totalElapsedMin);
+      // Store fractional minutes (e.g. 2.5 = 2 min 30 sec) for accurate billing
+      const totalElapsedMs = Date.now() - startMs;
+      setWaitTimer(totalElapsedMs / 60000);
     }, 1000);
     return () => clearInterval(iv);
   }, [activeRide?.status, activeRide?.arrived_at]);
@@ -1807,7 +1819,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         
         toast.success("Marked as arrived");
       } else if (action === "start") {
-        await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: waitTimer });
+        const pickupWaitMin = parseFloat((waitTimer || 0).toFixed(4));
+        await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: pickupWaitMin });
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
         setWaitTimer(0);
@@ -1818,10 +1831,9 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         // We define these here so the code doesn't "break" looking for them
         const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled.toFixed(2));
         
-        // Summing the two types of wait time: Pickup + Mid-trip Stops
         const pickupWait = parseFloat(waitTimer) || 0;
         const stopWait = parseFloat(midTripWaitBanked) || 0;
-        const finalWait = (pickupWait + stopWait).toFixed(2);
+        const finalWait = parseFloat((pickupWait + stopWait).toFixed(4));
 
         // The API call
         const res = await api.post(
@@ -1938,7 +1950,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       setMidTripWaitStart(Date.now());
       setMidTripWaitSecs(0);
       try { await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=start`); } catch (_) {}
-      toast.success("Wait timer started — ₾0.50/min");
+      const rate = PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50;
+      toast.success(`Wait timer started — ₾${rate.toFixed(2)}/min`);
     } else {
       // Stop — ask backend to bank the time and recalc fare
       setMidTripWaiting(false);
@@ -2003,7 +2016,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const rsc = rideStatusConfig[activeRide?.status] || {};
 
   const waitDisplayMin = Math.floor(waitTimer);
-  const waitDisplaySec = 0;
+  const waitDisplaySec = Math.round((waitTimer - waitDisplayMin) * 60);
 
   return (
     <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden">
@@ -2158,7 +2171,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     </span>
                     {midTripWaiting && (
                       <p className="text-amber-400 text-xs mt-0.5 font-mono">
-                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} · ₾{((midTripWaitBanked + midTripWaitSecs / 60) * 0.50).toFixed(2)} wait fee
+                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} · ₾{((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
                       </p>
                     )}
                   </div>
@@ -2177,7 +2190,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     }`}>
                     {midTripWaiting
                       ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting — resume trip</>
-                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (₾0.50/min)</>
+                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (₾{(PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50).toFixed(2)}/min)</>
                     }
                   </button>
                 )}
