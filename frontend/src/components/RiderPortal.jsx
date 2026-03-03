@@ -730,29 +730,47 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
             <PayPalButtons
               fundingSource="card"
               style={{ layout: "vertical", shape: "rect" }}
-              createOrder={(data, actions) => actions.order.create({
-                purchase_units: [{ 
-                  amount: { value: usdAmount, currency_code: "USD" },
-                  description: `Tip for ride ${rideId}` 
-                }],
-                application_context: { shipping_preference: "NO_SHIPPING" },
-              })}
+              createOrder={(data, actions) => {
+  const safeTip = Number(usdAmount || 0);
+  if (isNaN(safeTip) || safeTip <= 0) {
+    toast.error("Invalid tip amount.");
+    return null;
+  }
+  return actions.order.create({
+    purchase_units: [{ 
+      amount: { value: safeTip.toFixed(2), currency_code: "USD" },
+      description: `Tip for ride ${rideId}` 
+    }],
+    application_context: { shipping_preference: "NO_SHIPPING" },
+  });
+}}
               onApprove={async (data, actions) => {
-                await actions.order.capture();
-                // ONLY tell the backend the tip happened AFTER the card is successfully charged
-                try {
-                  await api.post(`/rides/${rideId}/tip`, { 
-                    amount: finalAmount,
-                    tip_amount: finalAmount,
-                    reference_id: data.orderID // Send the PayPal receipt ID for the records
-                  });
-                  toast.success(`₾${finalAmount.toFixed(2)} tip successfully charged and sent! 🙏`);
-                  onTipped?.();
-                  onClose();
-                } catch (err) {
-                  toast.error("Payment went through, but failed to update ride. Please contact support.");
-                }
-              }}
+  // 1. Save the response to a variable so we can read it
+  const orderDetails = await actions.order.capture();
+  
+  try {
+    // 2. Dig out the saved card token
+    const paymentSource = orderDetails.payment_source?.card;
+    const vaultId = paymentSource?.attributes?.vault?.id || null;
+
+    await api.post(`/rides/${rideId}/tip`, { 
+      amount: finalAmount,
+      tip_amount: finalAmount,
+      reference_id: data.orderID,
+      vault_id: vaultId, // <-- Send the token to Python!
+      card_last4: paymentSource?.last_digits || null,
+      card_brand: paymentSource?.brand || null
+    });
+
+    toast.success(`₾${finalAmount.toFixed(2)} tip successfully charged and sent! 🙏`);
+    if (vaultId) toast.success("Card securely saved for next time! 💳");
+    
+    onTipped?.();
+    onClose();
+  } catch (err) {
+    toast.error("Payment went through, but failed to update ride. Please contact support.");
+  }
+}}
               onError={() => toast.error("Card payment failed. Please try again.")}
               onCancel={() => toast.info("Tip cancelled.")}
             />
@@ -975,18 +993,39 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
           <PayPalButtons
             fundingSource="card"
             style={{ layout: "vertical", shape: "rect" }}
-            createOrder={(data, actions) => actions.order.create({
-              purchase_units: [{ amount: { value: usdAmount, currency_code: "USD" } }],
-              application_context: { shipping_preference: "NO_SHIPPING" },
-            })}
-            onApprove={async (data, actions) => {
-              await actions.order.capture();
+            createOrder={(data, actions) => {
+  if (isNaN(usdAmount) || Number(usdAmount) <= 0) {
+    toast.error("Amount must be greater than 0.");
+    return null;
+  }
+  return actions.order.create({
+    purchase_units: [{ amount: { value: usdAmount, currency_code: "USD" } }],
+    application_context: { shipping_preference: "NO_SHIPPING" },
+  });
+}}
+            
               try {
-                await api.post("/rider/wallet/topup", { amount: finalAmount, reference: data.orderID });
+                const orderDetails = await actions.order.capture();
+                
+                const paymentSource = orderDetails.payment_source?.card;
+                const vaultId = paymentSource?.attributes?.vault?.id || null;
+
+                await api.post("/rider/wallet/topup", { 
+                  amount: finalAmount, 
+                  reference: data.orderID,
+                  vault_id: vaultId, // <-- Send the token to Python!
+                  card_last4: paymentSource?.last_digits || null,
+                  card_brand: paymentSource?.brand || null
+                });
+                
                 toast.success(`₾${finalAmount.toFixed(2)} added to your wallet!`);
+                if (vaultId) toast.success("Card securely saved! 💳");
+                
                 onSuccess();
                 onClose();
-              } catch { toast.error("Payment captured but wallet not updated. Contact support."); }
+              } catch (err) { 
+                toast.error("Payment captured but wallet not updated. Contact support."); 
+              }
             }}
             onError={() => toast.error("Payment failed")}
             onCancel={() => toast.info("Payment cancelled")}
@@ -1431,7 +1470,7 @@ const RiderDashboard = () => {
     processRideRequest(null);
   };
 
-  const processRideRequest = async (paypalOrderId = null) => {
+  const processRideRequest = async (paypalOrderId = null, vaultId = null, cardLast4 = null, cardBrand = null) => {
     setLoading(true);
     try {
       const rideData = {
@@ -1441,6 +1480,7 @@ const RiderDashboard = () => {
         stops: stops.filter(s => s.lat).map((s, i) => ({ address: sanitiseAddress(s.address), lat: s.lat, lng: s.lng, order: i })),
         carType, paymentMethod,
         ...(paypalOrderId && { paymentOrderId: paypalOrderId }),
+        ...(vaultId && { vault_id: vaultId, card_last4: cardLast4, card_brand: cardBrand }),
         estimatedDistance: routeInfo?.distance || 0,
         estimatedDuration: routeInfo?.duration || 0,
       };
@@ -1750,11 +1790,38 @@ const RiderDashboard = () => {
                   <PayPalButtons
                     fundingSource="card"
                     style={{ layout: "vertical", shape: "rect" }}
-                    createOrder={(data, actions) => actions.order.create({
-                      purchase_units: [{ amount: { value: usd, currency_code: "USD" } }],
-                      application_context: { shipping_preference: "NO_SHIPPING" },
-                    })}
-                    onApprove={async (data, actions) => { await actions.order.capture(); toast.success("Payment approved! Booking..."); await processRideRequest(data.orderID); }}
+                    createOrder={(data, actions) => {
+  if (isNaN(usd) || Number(usd) <= 0) {
+    toast.error("Cannot process a $0.00 ride to PayPal.");
+    setShowPayPal(false);
+    return null;
+  }
+  return actions.order.create({
+    purchase_units: [{ amount: { value: usd, currency_code: "USD" } }],
+    application_context: { shipping_preference: "NO_SHIPPING" },
+  });
+}}
+                    onApprove={async (data, actions) => {
+                      try {
+                        // 1. Capture the payment
+                        const orderDetails = await actions.order.capture();
+                        
+                        // 2. Extract the vault token
+                        const paymentSource = orderDetails.payment_source?.card;
+                        const vaultId = paymentSource?.attributes?.vault?.id || null;
+                        const last4 = paymentSource?.last_digits || null;
+                        const brand = paymentSource?.brand || null;
+
+                        toast.success("Payment approved! Booking...");
+                        if (vaultId) toast.success("Card securely saved for future rides! 💳");
+                        
+                        // 3. Pass the order ID AND the vault data to your booking function
+                        await processRideRequest(data.orderID, vaultId, last4, brand);
+                      } catch (err) {
+                        toast.error("Payment failed during capture.");
+                        setShowPayPal(false);
+                      }
+                    }}
                     onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed."); setShowPayPal(false); }}
                     onCancel={() => { toast.info("Payment cancelled."); setShowPayPal(false); }}
                   />

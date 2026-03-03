@@ -1,11 +1,3 @@
-import { useState } from "react";
-import { toast } from "react-hot-toast";
-import { Wallet, Loader2, CreditCard, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { PayPalButtons } from "@paypal/react-paypal-js";
-import { api, useAuth } from "./config"; // Ensure useAuth is imported to check for cards
-
 const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   const { user } = useAuth();
   const [amount, setAmount] = useState(20);
@@ -19,15 +11,16 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   const usdAmount   = (finalAmount * 0.37).toFixed(2);
   const canPay      = finalAmount >= 1;
 
-  // Check if the user has a vaulted card saved
-  const savedCard = user?.payment_methods?.find(m => m.is_default && m.type === "card");
+  // 1. Updated to match the "saved_cards" array from Python
+  const savedCard = user?.saved_cards?.[0]; 
 
   const handleVaultedTopUp = async () => {
     setLoading(true);
     try {
-      // Use the background charge route we built for the vault system
+      // Sends the vault_id of the saved card to the background charge route
       await api.post("/rider/wallet/topup-vaulted", { 
-        amount: finalAmount 
+        amount: finalAmount,
+        vault_id: savedCard.vault_id 
       });
       
       toast.success(`₾${finalAmount.toFixed(2)} added via saved card! ⚡`);
@@ -55,7 +48,6 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
           </div>
         </div>
 
-        {/* Amount Selection */}
         <div className="grid grid-cols-4 gap-2 mb-3">
           {AMOUNTS.map(a => (
             <button key={a} onClick={() => { setAmount(a); setCustom(""); }}
@@ -73,7 +65,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
           <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>
         )}
 
-        {/* CHOICE: Use Vaulted Card or New PayPal Payment */}
+        {/* QUICK PAY BUTTON */}
         {canPay && savedCard ? (
           <div className="space-y-3">
             <Button 
@@ -82,7 +74,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
               disabled={loading}
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5 fill-black" />}
-              Quick Pay with {savedCard.brand || "Card"} •••• {savedCard.last_4 || "4242"}
+              Quick Pay with {savedCard.brand} •••• {savedCard.last4}
             </Button>
             
             <div className="flex items-center gap-3 py-2">
@@ -98,25 +90,41 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             <PayPalButtons
               fundingSource="card"
               style={{ layout: "vertical", shape: "rect" }}
-              createOrder={(data, actions) => actions.order.create({
-                purchase_units: [{ 
-                  amount: { value: usdAmount, currency_code: "USD" },
-                  // OPTIONAL: You can also tell PayPal to vault the card right here!
+              createOrder={(data, actions) => {
+                const safeUsdAmount = Number(usdAmount);
+                if (isNaN(safeUsdAmount) || safeUsdAmount <= 0) {
+                  toast.error("Invalid amount.");
+                  return null;
+                }
+                return actions.order.create({
+                  purchase_units: [{ 
+                    amount: { value: safeUsdAmount.toFixed(2), currency_code: "USD" },
+                  }],
                   payment_source: {
                     card: {
                       attributes: {
                         vault: { store_in_vault: "ON_SUCCESS" }
                       }
                     }
-                  }
-                }],
-                application_context: { shipping_preference: "NO_SHIPPING" },
-              })}
+                  },
+                  application_context: { shipping_preference: "NO_SHIPPING" },
+                });
+              }}
               onApprove={async (data, actions) => {
-                await actions.order.capture();
+                const orderDetails = await actions.order.capture();
                 try {
-                  await api.post("/rider/wallet/topup", { amount: finalAmount, reference: data.orderID });
-                  toast.success(`₾${finalAmount.toFixed(2)} added to your wallet!`);
+                  const paymentSource = orderDetails.payment_source?.card;
+                  const vaultId = paymentSource?.attributes?.vault?.id || null;
+
+                  await api.post("/rider/wallet/topup", { 
+                    amount: finalAmount, 
+                    reference: data.orderID,
+                    vault_id: vaultId,
+                    card_last4: paymentSource?.last_digits || null,
+                    card_brand: paymentSource?.brand || null
+                  });
+
+                  toast.success(`₾${finalAmount.toFixed(2)} added!`);
                   onSuccess();
                   onClose();
                 } catch { toast.error("Payment captured but wallet not updated."); }

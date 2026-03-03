@@ -2099,20 +2099,60 @@ const DriverDashboard = () => {
                       <PayPalButtons
                         fundingSource="card"
                         style={{ layout: "vertical", shape: "rect", color: "black" }}
-                        createOrder={(data, actions) => actions.order.create({
-                          purchase_units: [{ amount: { value: (parseFloat(topupAmount) * 0.37).toFixed(2), currency_code: "USD" } }],
-                          application_context: { shipping_preference: "NO_SHIPPING" },
-                        })}
+                        createOrder={(data, actions) => {
+  // 1. Safely calculate the USD equivalent
+  const usdAmount = parseFloat(topupAmount) * 0.37;
+  
+  // 2. The Bouncer: Stop invalid or zero amounts from hitting PayPal
+  if (isNaN(usdAmount) || usdAmount <= 0) {
+    toast.error("Invalid top-up amount. Please enter a value greater than 0.");
+    return null;
+  }
+
+  // 3. Send the strictly formatted string to PayPal
+  return actions.order.create({
+    purchase_units: [{ 
+      amount: { 
+        value: usdAmount.toFixed(2), 
+        currency_code: "USD" 
+      } 
+    }],
+    application_context: { shipping_preference: "NO_SHIPPING" },
+  });
+}}
                         onApprove={async (data, actions) => {
                           try {
                             setLoading(true);
-                            await actions.order.capture();
-                            await api.post("/driver/wallet/topup/paypal", { order_id: data.orderID, amount: parseFloat(topupAmount) });
+                            
+                            // 1. Capture the payment response
+                            const orderDetails = await actions.order.capture();
+                            
+                            // 2. Extract the vault token and card details
+                            const paymentSource = orderDetails.payment_source?.card;
+                            const vaultId = paymentSource?.attributes?.vault?.id || null;
+                            const last4 = paymentSource?.last_digits || null;
+                            const brand = paymentSource?.brand || null;
+
+                            // 3. Send the top-up and the vault token to your Python backend
+                            await api.post("/driver/wallet/topup/paypal", { 
+                              order_id: data.orderID, 
+                              amount: parseFloat(topupAmount),
+                              vault_id: vaultId,
+                              card_last4: last4,
+                              card_brand: brand
+                            });
+                            
                             toast.success(`₾${topupAmount} added!`);
-                            setTopupAmount(""); setEarningsTab("overview");
+                            if (vaultId) toast.success("Card securely saved for next time! 💳");
+                            
+                            setTopupAmount(""); 
+                            setEarningsTab("overview");
                             await refreshUser();
-                          } catch (_) { toast.error("Top-up failed. Contact support."); }
-                          finally { setLoading(false); }
+                          } catch (_) { 
+                            toast.error("Top-up failed. Contact support."); 
+                          } finally { 
+                            setLoading(false); 
+                          }
                         }}
                         onError={() => toast.error("Payment failed.")}
                         onCancel={() => toast.info("Payment cancelled.")}
