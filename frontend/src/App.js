@@ -22,17 +22,28 @@ const Home = () => {
   }, []);
 
   return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" alt="logo" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
+    // Main container with the background image
+    <div 
+      className="min-h-screen relative flex items-center justify-center bg-[#000000] bg-center bg-no-repeat bg-cover"
+      style={{ backgroundImage: `url('/pwa-512x512.png')` }} 
+    >
+      {/* Dark Overlay so the text is readable */}
+      <div className="absolute inset-0 bg-black/80 z-0"></div>
+
+      {/* Content sitting on top of the background */}
+      <header className="relative z-10 flex flex-col items-center text-center p-6">
+        <h1 className="text-5xl font-bold text-white mb-2">T'aksi</h1>
+        <p className="mt-5 text-[#00ff88] text-lg font-medium">Building something incredible ~!</p>
+        
+        {/* Buttons to enter the portals */}
+        <div className="flex gap-4 mt-8">
+          <a href="/rider" className="px-6 py-3 bg-[#00ff88] text-black font-bold rounded-xl hover:scale-105 transition-transform">
+            Rider App
+          </a>
+          <a href="/driver" className="px-6 py-3 bg-white/10 text-white font-bold rounded-xl border border-white/20 hover:bg-white/20 transition-colors">
+            Driver App
+          </a>
+        </div>
       </header>
     </div>
   );
