@@ -1,32 +1,18 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from "react-router-dom";
-import RiderPortal from '@/components/RiderPortal'; // 👈 Importing from your components folder
-import { AuthProvider } from '@/config';
+import { createRoot } from 'react-dom/client';
+import RiderPortal from './RiderPortal'; // Ensure this path is correct
+import { AuthProvider } from '@/config'; // Or wherever your AuthProvider lives
 import { LanguageProvider } from '@/i18n/LanguageContext';
 import '@/App.css';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <BrowserRouter basename="/rider">
-    <RiderPortal />
-  </BrowserRouter>
-);
+const container = document.getElementById('root');
+const root = createRoot(container);
 
-// Change the top-level import to this:
-const SupportChatWidget = lazy(() => import('./components/SupportChatWidget'));
-
-// Wrap it in your code like this:
-<Suspense fallback={null}>
-  <SupportChatWidget />
-</Suspense>
-
-ReactDOM.createRoot(document.getElementById('root')).render(
+root.render(
   <React.StrictMode>
     <LanguageProvider>
       <AuthProvider>
-        <BrowserRouter basename="/rider">
-          <RiderPortal />
-        </BrowserRouter>
+        <RiderPortal />
       </AuthProvider>
     </LanguageProvider>
   </React.StrictMode>
