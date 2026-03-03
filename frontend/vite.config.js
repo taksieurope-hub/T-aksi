@@ -24,14 +24,9 @@ export default defineConfig(({ mode }) => {
           admin: 'admin/index.html',
         },
         output: {
+          // Standard naming, no custom manualChunks logic
           chunkFileNames: 'assets/[name]-[hash].js',
           entryFileNames: 'assets/[name]-[hash].js',
-          manualChunks: (id) => {
-            // ONLY split your portals. Let Vite handle React and the libraries automatically.
-            if (id.includes('RiderPortal') || id.includes('/rider/')) return 'portal-rider';
-            if (id.includes('DriverPortal') || id.includes('/driver/')) return 'portal-driver';
-            if (id.includes('AdminPortal') || id.includes('/admin/')) return 'portal-admin';
-          }
         }
       }
     }
