@@ -1014,8 +1014,8 @@ def get_surge_multiplier(lat: float = None, lng: float = None) -> dict:
 def calculate_fare(
     car_type: str,
     distance_km: float,
-    wait_minutes: int = 0,
-    stop_wait_minutes: int = 0,
+    wait_minutes: float = 0.0,
+    stop_wait_minutes: float = 0.0,
     num_stops: int = 0,
     surge_multiplier: float = 1.0,
 ) -> dict:
@@ -2995,8 +2995,15 @@ async def toggle_stop_wait(ride_id: str, is_waiting: bool, user_id: Optional[str
         ride_data = ride_snap.to_dict()
         start_time = ride_data.get("stop_wait_start")
         if start_time:
-            wait_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
-            wait_minutes = round(wait_seconds / 60, 2)
+            try:
+                if hasattr(start_time, "timestamp"):
+                    start_dt = datetime.fromtimestamp(start_time.timestamp(), tz=timezone.utc)
+                else:
+                    start_dt = start_time
+                wait_seconds = (datetime.now(timezone.utc) - start_dt).total_seconds()
+                wait_minutes = round(max(0.0, wait_seconds / 60.0), 4)
+            except Exception:
+                wait_minutes = 0.0
             update_data = {"stop_wait_minutes": firestore.Increment(wait_minutes), "stop_wait_start": None}
         else:
             update_data = {}
@@ -3517,23 +3524,44 @@ async def driver_arrived(ride_id: str, user_id: Optional[str] = Depends(get_curr
 
 
 @app.post("/api/rides/{ride_id}/start", tags=["Rides"])
-async def start_ride(ride_id: str, user_id: Optional[str] = Depends(get_current_user_id)):
+async def start_ride(
+    ride_id: str,
+    body: dict = Body(default={}),
+    user_id: Optional[str] = Depends(get_current_user_id),
+):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
     db = get_db()
     ride_doc = db.collection("rides").document(ride_id).get()
-    if ride_doc.exists:
-        ride_data = ride_doc.to_dict()
-        arrived_at = ride_data.get("arrived_at")
-        wait_minutes = 0
-        if arrived_at and hasattr(arrived_at, "timestamp"):
-            wait_seconds = (datetime.now(timezone.utc) - arrived_at).total_seconds()
-            wait_minutes = int(wait_seconds / 60)
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+    ride_data = ride_doc.to_dict()
 
-        db.collection("rides").document(ride_id).update({
-            "status": "in_progress",
-            "pickup_wait_minutes": wait_minutes,
-            "started_at": firestore.SERVER_TIMESTAMP,
-        })
-    return {"message": "Ride started"}
+    # Prefer client-sent wait time (fractional minutes, e.g. 2.5 = 2m30s).
+    # Fall back to server-side calculation only if client didn't send it.
+    client_wait = body.get("pickup_wait_time")
+    if client_wait is not None:
+        try:
+            wait_minutes = float(client_wait)
+        except (TypeError, ValueError):
+            wait_minutes = 0.0
+    else:
+        # Server-side fallback: calculate from arrived_at timestamp
+        arrived_at = ride_data.get("arrived_at")
+        wait_minutes = 0.0
+        if arrived_at and hasattr(arrived_at, "timestamp"):
+            try:
+                wait_seconds = (datetime.now(timezone.utc) - arrived_at).total_seconds()
+                wait_minutes = max(0.0, wait_seconds / 60.0)
+            except Exception:
+                wait_minutes = 0.0
+
+    db.collection("rides").document(ride_id).update({
+        "status": "in_progress",
+        "pickup_wait_minutes": wait_minutes,
+        "started_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"message": "Ride started", "pickup_wait_minutes": round(wait_minutes, 4)}
 
 
 @app.post("/api/rides/{ride_id}/update-tracking", tags=["Rides"])
@@ -3572,15 +3600,88 @@ async def stop_reached(
     return {"message": f"Stop {stop_index} completed"}
 
 
+@app.post("/api/rides/{ride_id}/mid-trip-wait", tags=["Rides"])
+async def mid_trip_wait(
+    ride_id: str,
+    action: str = Query(..., description="'start' or 'stop'"),
+    user_id: Optional[str] = Depends(get_current_user_id),
+):
+    """
+    Start or stop a mid-trip wait timer (e.g. driver waiting at a stop).
+    On stop, banks the elapsed minutes into stop_wait_minutes and recalculates the fare.
+    """
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+    if action not in ("start", "stop"):
+        raise HTTPException(400, "action must be 'start' or 'stop'")
+
+    db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    ride_snap = ride_ref.get()
+    if not ride_snap.exists:
+        raise HTTPException(404, "Ride not found")
+
+    ride_data = ride_snap.to_dict()
+
+    if action == "start":
+        ride_ref.update({"mid_trip_wait_start": firestore.SERVER_TIMESTAMP})
+        return {"message": "Wait timer started"}
+
+    # action == "stop" — bank elapsed time, recalculate fare
+    start_ts = ride_data.get("mid_trip_wait_start")
+    elapsed_min = 0.0
+
+    if start_ts is not None:
+        try:
+            if hasattr(start_ts, "timestamp"):
+                start_dt = datetime.fromtimestamp(start_ts.timestamp(), tz=timezone.utc)
+            else:
+                start_dt = start_ts
+            elapsed_sec = (datetime.now(timezone.utc) - start_dt).total_seconds()
+            elapsed_min = max(0.0, elapsed_sec / 60.0)
+        except Exception as e:
+            logger.warning(f"mid_trip_wait stop: could not compute elapsed: {e}")
+
+    # Accumulate into stop_wait_minutes
+    current_stop_wait = float(ride_data.get("stop_wait_minutes", 0) or 0)
+    new_stop_wait = current_stop_wait + elapsed_min
+
+    # Recalculate fare
+    car_type = ride_data.get("carType") or ride_data.get("car_type") or "economy"
+    distance  = float(ride_data.get("estimated_distance", 0) or 0)
+    pickup_wait = float(ride_data.get("pickup_wait_minutes", 0) or 0)
+    num_stops = ride_data.get("num_stops", 0)
+    surge     = float(ride_data.get("surge_multiplier", 1.0) or 1.0)
+
+    new_fare = calculate_fare(car_type, distance, pickup_wait, new_stop_wait, num_stops, surge)
+
+    ride_ref.update({
+        "stop_wait_minutes": new_stop_wait,
+        "mid_trip_wait_start": None,
+        "estimated_fare": new_fare["total"],
+        "fare_breakdown": new_fare,
+    })
+
+    return {
+        "message": "Wait timer stopped",
+        "accumulated_minutes": round(new_stop_wait, 4),
+        "elapsed_minutes": round(elapsed_min, 4),
+        "new_estimated_fare": new_fare["total"],
+        "fare_breakdown": new_fare,
+    }
+
+
 @app.post("/api/rides/{ride_id}/complete", tags=["Rides"])
 async def complete_ride(
     ride_id: str,
     final_distance: Optional[float] = 0.0,
-    total_wait_minutes: Optional[int] = 0,
+    total_wait_minutes: Optional[float] = None,   # float — fractional minutes from driver client
     dropoff_lat: Optional[float] = None,
     dropoff_lng: Optional[float] = None,
     user_id: Optional[str] = Depends(get_current_user_id),
 ):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
     db = get_db()
     ride_ref = db.collection("rides").document(ride_id)
     ride_snap = ride_ref.get()
@@ -3590,10 +3691,31 @@ async def complete_ride(
 
     ride_data = ride_snap.to_dict()
 
-    billing_distance = ride_data.get("estimated_distance", 0)
-    recorded_actual_distance = final_distance if final_distance else billing_distance
-    pickup_wait = ride_data.get("pickup_wait_minutes", 0)
-    stop_wait = ride_data.get("stop_wait_minutes", 0)
+    # ── Distance: use actual GPS-tracked distance, fall back to estimate ──────
+    estimated_distance = ride_data.get("estimated_distance", 0) or 0
+    billing_distance = final_distance if (final_distance and final_distance > 0) else estimated_distance
+    recorded_actual_distance = billing_distance
+
+    # ── Wait minutes: trust client value if provided, else read from DB ───────
+    db_pickup_wait = float(ride_data.get("pickup_wait_minutes", 0) or 0)
+    db_stop_wait   = float(ride_data.get("stop_wait_minutes", 0) or 0)
+
+    if total_wait_minutes is not None and total_wait_minutes >= 0:
+        # Client sends the total (pickup + mid-trip). Split proportionally using DB values,
+        # or assign all to pickup if there's no mid-trip wait on record.
+        total_db = db_pickup_wait + db_stop_wait
+        if total_db > 0:
+            ratio = db_pickup_wait / total_db
+            pickup_wait = total_wait_minutes * ratio
+            stop_wait   = total_wait_minutes * (1 - ratio)
+        else:
+            pickup_wait = total_wait_minutes
+            stop_wait   = 0.0
+    else:
+        # Fallback: use whatever the DB recorded (set by /start and mid-trip endpoints)
+        pickup_wait = db_pickup_wait
+        stop_wait   = db_stop_wait
+
     num_stops = ride_data.get("num_stops", 0)
     car_type = ride_data.get("carType") or ride_data.get("car_type") or "economy"
     surge_multiplier = ride_data.get("surge_multiplier", 1.0)
