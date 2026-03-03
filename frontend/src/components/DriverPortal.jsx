@@ -1395,6 +1395,47 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 };
 
 
+
+// =============================================================================
+// ADD-STOP INPUT — lightweight autocomplete for mid-trip stop addition
+// =============================================================================
+const AddStopInput = ({ value, onChange, mapsLoaded }) => {
+  const inputRef = useRef(null);
+  const acRef    = useRef(null);
+  useEffect(() => {
+    if (!mapsLoaded || !inputRef.current || acRef.current) return;
+    if (!window.google?.maps?.places) return;
+    acRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
+      componentRestrictions: { country: "ge" },
+      fields: ["formatted_address", "geometry", "name"],
+    });
+    acRef.current.addListener("place_changed", () => {
+      const place = acRef.current.getPlace();
+      if (place?.geometry) {
+        onChange({
+          address: place.formatted_address || place.name || "",
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+        });
+        if (inputRef.current) inputRef.current.blur();
+      }
+    });
+  }, [mapsLoaded]);
+  return (
+    <div className="relative flex items-center">
+      <MapPin className="absolute left-3 h-4 w-4 text-[#00d4ff] pointer-events-none z-10" />
+      <input
+        ref={inputRef}
+        value={value?.address || ""}
+        onChange={e => onChange({ ...value, address: e.target.value })}
+        placeholder="Search stop address…"
+        autoComplete="off"
+        className="w-full pl-9 pr-3 h-11 bg-white/5 border border-white/10 text-white text-sm rounded-xl placeholder:text-white/25 outline-none focus:border-[#00d4ff]/40"
+      />
+    </div>
+  );
+};
+
 // =============================================================================
 // DRIVER AUTH
 // =============================================================================
@@ -1582,6 +1623,15 @@ const DriverDashboard = () => {
   const [waitTimer, setWaitTimer] = useState(0);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
   const [isWaitingAtStop, setIsWaitingAtStop] = useState(false);
+  // Mid-trip wait timer state
+  const [midTripWaiting,    setMidTripWaiting]    = useState(false);
+  const [midTripWaitStart,  setMidTripWaitStart]  = useState(null);   // Date.ms
+  const [midTripWaitSecs,   setMidTripWaitSecs]   = useState(0);      // live elapsed seconds
+  const [midTripWaitBanked, setMidTripWaitBanked] = useState(0);      // confirmed minutes banked
+  const [liveFare,          setLiveFare]          = useState(null);   // live fare incl. wait fee
+  // Add-stop mid-trip
+  const [showAddStop,    setShowAddStop]    = useState(false);
+  const [newStopAddress, setNewStopAddress] = useState({ address: "", lat: null, lng: null });
   const lastPositionRef = useRef(null);
 
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -1685,6 +1735,27 @@ const DriverDashboard = () => {
     return () => clearInterval(iv);
   }, [activeRide?.status, activeRide?.arrived_at]);
 
+  // Mid-trip wait ticker
+  useEffect(() => {
+    if (!midTripWaiting || !midTripWaitStart) return;
+    const iv = setInterval(() => {
+      const elapsedSec = Math.floor((Date.now() - midTripWaitStart) / 1000);
+      setMidTripWaitSecs(elapsedSec);
+      // Live fare preview (client-side only, backend confirms on stop)
+      if (activeRide) {
+        const car   = (activeRide.carType || activeRide.car_type || "economy").toLowerCase();
+        const rules = PRICING_RULES[car] || PRICING_RULES.economy;
+        const dist  = distanceTraveled || activeRide.estimated_distance || 0;
+        const bankedMin = midTripWaitBanked + elapsedSec / 60;
+        const billableWait = Math.max(0, bankedMin - rules.freeWait);
+        const base = rules.base + dist * rules.perKm;
+        const waitFee = billableWait * rules.perMinWait;
+        setLiveFare(Math.round((base + waitFee) * 100) / 100);
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [midTripWaiting, midTripWaitStart, midTripWaitBanked, activeRide, distanceTraveled]);
+
   useEffect(() => { fetchActiveRide(); fetchRideHistory(); }, []);
   useEffect(() => {
     if (registrationStatus !== "approved" || !isOnline) return;
@@ -1744,7 +1815,7 @@ const DriverDashboard = () => {
         setRateRiderName(riderName);
         setCompletedRide({ ...res.data, final_fare: res.data.final_fare || activeRide.estimated_fare });
         setActiveRide(null);
-        setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null); setIsWaitingAtStop(false);
+        setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null); setIsWaitingAtStop(false); setMidTripWaiting(false); setMidTripWaitStart(null); setMidTripWaitSecs(0); setMidTripWaitBanked(0); setLiveFare(null);
         fetchRideHistory(); await refreshUser();
         return;
       }
@@ -1815,6 +1886,53 @@ const DriverDashboard = () => {
   const handleDeclineRide = async (rideId) => {
     try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(prev => prev.filter(r => r.id !== rideId)); }
     catch (_) {}
+  };
+
+  const toggleMidTripWait = async () => {
+    if (!midTripWaiting) {
+      // Start
+      setMidTripWaiting(true);
+      setMidTripWaitStart(Date.now());
+      setMidTripWaitSecs(0);
+      try { await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=start`); } catch (_) {}
+      toast.success("Wait timer started — ₾0.50/min");
+    } else {
+      // Stop — ask backend to bank the time and recalc fare
+      setMidTripWaiting(false);
+      try {
+        const res = await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=stop`);
+        const banked = res.data.accumulated_minutes || 0;
+        const newFare = res.data.new_estimated_fare;
+        setMidTripWaitBanked(banked);
+        setMidTripWaitSecs(0);
+        setMidTripWaitStart(null);
+        if (newFare != null) {
+          setLiveFare(newFare);
+          setActiveRide(prev => ({ ...prev, estimated_fare: newFare }));
+        }
+        const min = Math.floor(banked);
+        const sec = Math.round((banked - min) * 60);
+        toast.success(`Wait saved: ${min}m ${sec}s · resuming trip`);
+      } catch (_) {
+        setMidTripWaitBanked(prev => prev + midTripWaitSecs / 60);
+        setMidTripWaitSecs(0);
+        setMidTripWaitStart(null);
+      }
+    }
+  };
+
+  const addStopMidTrip = async () => {
+    if (!newStopAddress.lat) { toast.error("Select a valid stop location"); return; }
+    try {
+      const res = await api.post(
+        `/rides/${activeRide.id}/add-stop?stop_address=${encodeURIComponent(newStopAddress.address)}&stop_lat=${newStopAddress.lat}&stop_lng=${newStopAddress.lng}`
+      );
+      setActiveRide(prev => ({ ...prev, stops: res.data.stops, estimated_fare: res.data.new_estimated_fare }));
+      setLiveFare(res.data.new_estimated_fare);
+      setShowAddStop(false);
+      setNewStopAddress({ address: "", lat: null, lng: null });
+      toast.success(`Stop added — new fare ₾${res.data.new_estimated_fare.toFixed(2)}`);
+    } catch (err) { toast.error(err.response?.data?.detail || "Failed to add stop"); }
   };
 
   const toggleStopWait = async () => {
@@ -1984,10 +2102,61 @@ const DriverDashboard = () => {
                   </GlassCard>
                 )}
 
-                <div className="flex items-center justify-between bg-gradient-to-r from-[#00ff88]/10 to-[#00d4ff]/10 border border-[#00ff88]/20 rounded-xl px-4 py-3">
-                  <span className="text-white/60 text-sm">Estimated Fare</span>
-                  <span className="text-2xl font-bold text-[#00ff88] font-mono">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2) ?? "—"}</span>
+                {/* ── Live Fare Card ─────────────────────────────── */}
+                <div className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${midTripWaiting ? "bg-amber-500/10 border-amber-500/30 animate-pulse" : "bg-gradient-to-r from-[#00ff88]/10 to-[#00d4ff]/10 border-[#00ff88]/20"}`}>
+                  <div>
+                    <span className="text-white/60 text-sm">
+                      {midTripWaiting ? "Wait charge running…" : "Current Fare"}
+                    </span>
+                    {midTripWaiting && (
+                      <p className="text-amber-400 text-xs mt-0.5 font-mono">
+                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} · ₾{((midTripWaitBanked + midTripWaitSecs / 60) * 0.50).toFixed(2)} wait fee
+                      </p>
+                    )}
+                  </div>
+                  <span className={`text-2xl font-bold font-mono transition-colors ${midTripWaiting ? "text-amber-400" : "text-[#00ff88]"}`}>
+                    ₾{(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "—"}
+                  </span>
                 </div>
+
+                {/* ── Mid-trip Wait Timer ─────────────────────────── */}
+                {activeRide.status === "in_progress" && (
+                  <button onClick={toggleMidTripWait}
+                    className={`w-full h-12 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                      midTripWaiting
+                        ? "bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-[0_0_16px_rgba(245,158,11,0.3)]"
+                        : "bg-white/5 border-white/15 text-white/60 hover:border-amber-500/40 hover:text-amber-400"
+                    }`}>
+                    {midTripWaiting
+                      ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting — resume trip</>
+                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (₾0.50/min)</>
+                    }
+                  </button>
+                )}
+
+                {/* ── Add Stop Mid-Trip ───────────────────────────── */}
+                {activeRide.status === "in_progress" && (
+                  <button onClick={() => setShowAddStop(v => !v)}
+                    className="w-full h-11 rounded-xl border border-white/10 bg-white/4 text-white/50 text-sm font-semibold flex items-center justify-center gap-2 hover:border-[#00d4ff]/40 hover:text-[#00d4ff] transition-all active:scale-95">
+                    <Plus className="w-4 h-4" /> Add stop to route
+                  </button>
+                )}
+                {showAddStop && activeRide.status === "in_progress" && (
+                  <div className="bg-white/4 border border-[#00d4ff]/20 rounded-2xl p-4 space-y-3">
+                    <p className="text-[#00d4ff] text-xs font-bold uppercase tracking-wider">New Stop</p>
+                    <AddStopInput value={newStopAddress} onChange={setNewStopAddress} mapsLoaded={mapsLoaded} />
+                    <div className="flex gap-2">
+                      <button onClick={() => { setShowAddStop(false); setNewStopAddress({ address: "", lat: null, lng: null }); }}
+                        className="flex-1 h-10 rounded-xl border border-white/10 text-white/40 text-sm hover:bg-white/5 transition-all">
+                        Cancel
+                      </button>
+                      <button onClick={addStopMidTrip} disabled={!newStopAddress.lat}
+                        className="flex-1 h-10 rounded-xl bg-[#00d4ff] text-black font-bold text-sm disabled:opacity-40 active:scale-95 transition-all">
+                        Confirm Stop
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <RideCommunication
                   rideId={activeRide.id}
@@ -1996,13 +2165,6 @@ const DriverDashboard = () => {
                   currentUserId={user?.id}
                   isDriver={true}
                 />
-
-                {activeRide.status === "in_progress" && activeRide.stops?.some(s => s.lat) && (
-                  <button onClick={toggleStopWait}
-                    className={`w-full h-11 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${isWaitingAtStop ? "bg-amber-500/15 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-white/60"}`}>
-                    {isWaitingAtStop ? <><Timer className="w-4 h-4 animate-pulse" /> Stop Waiting</> : <><PauseCircle className="w-4 h-4" /> Start Stop Wait</>}
-                  </button>
-                )}
 
                 <div className="flex gap-3">
                   {activeRide.status === "accepted" && (

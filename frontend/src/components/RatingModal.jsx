@@ -1,6 +1,6 @@
 // RatingModal.jsx - Driver/Rider Rating Component
 import React, { useState } from "react";
-import { Star, ThumbsUp, ThumbsDown, Send, X } from "lucide-react";
+import { Star, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -43,7 +43,6 @@ const RatingModal = ({
   const [selectedTags, setSelectedTags] = useState([]);
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
-  const [tipAmount, setTipAmount] = useState(0);
 
   const tags = rating >= 4 ? POSITIVE_TAGS : rating > 0 ? NEGATIVE_TAGS : [];
 
@@ -63,44 +62,36 @@ const RatingModal = ({
 
     setLoading(true);
     try {
-      // Submit rating
       const endpoint = ratingType === "driver" 
         ? `/rides/${rideId}/rate/driver`
         : `/rides/${rideId}/rate/rider`;
       
+      // Sending rating, review (comment), and selected tags to the backend
       await api.post(endpoint, {
-        rating,
-        comment: comment.trim() || null,
+        rating: rating,
+        review: comment.trim() || null, 
         tags: selectedTags
       });
 
-      // Submit tip if any
-      if (tipAmount > 0 && ratingType === "driver") {
-        await api.post(`/rides/${rideId}/tip`, { amount: tipAmount, ride_id: rideId });
-      }
-
       toast.success(t('rating_submitted') || "Thank you for your feedback!");
-      onRatingComplete?.();
+      if (onRatingComplete) onRatingComplete();
       onClose();
     } catch (error) {
+      console.error("Rating Error:", error);
       toast.error(error.response?.data?.detail || "Failed to submit rating");
     } finally {
       setLoading(false);
     }
   };
 
-  const tipOptions = [0, 1, 2, 5, 10];
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      {/* 🔥 ADDED aria-describedby here */}
       <DialogContent aria-describedby="rating-dialog-description" className="glass-heavy border-primary/30 sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-primary text-center font-heading">
             {t('rate_your_ride') || "Rate Your Ride"}
           </DialogTitle>
           
-          {/* 🔥 ADDED id here to match the aria-describedby above */}
           <DialogDescription id="rating-dialog-description" className="text-center text-muted-foreground">
             {ratingType === "driver" 
               ? `How was your ride with ${driverName}?`
@@ -116,7 +107,10 @@ const RatingModal = ({
                 key={star}
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => setRating(star)}
+                onClick={() => {
+                  setRating(star);
+                  setSelectedTags([]); // Reset tags when changing rating drastically
+                }}
                 onMouseEnter={() => setHoverRating(star)}
                 onMouseLeave={() => setHoverRating(0)}
                 className="p-1"
@@ -140,7 +134,7 @@ const RatingModal = ({
             {rating === 3 && "Good 👍"}
             {rating === 2 && "Fair 😐"}
             {rating === 1 && "Poor 😔"}
-            {rating === 0 && t('tap_to_rate') || "Tap to rate"}
+            {rating === 0 && (t('tap_to_rate') || "Tap to rate")}
           </p>
 
           {/* Tags */}
@@ -150,7 +144,7 @@ const RatingModal = ({
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="space-y-2"
+                className="space-y-2 overflow-hidden"
               >
                 <p className="text-sm text-muted-foreground text-center">
                   {rating >= 4 ? "What did you like?" : "What could be better?"}
@@ -177,50 +171,22 @@ const RatingModal = ({
             )}
           </AnimatePresence>
 
-          {/* Comment */}
+          {/* Comment Area */}
           {rating > 0 && (
             <Textarea
               placeholder={t('add_comment') || "Add a comment (optional)"}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              className="bg-background-secondary border-border text-white resize-none"
-              rows={2}
+              className="bg-white/8 border-white/15 text-white placeholder:text-white/30 resize-none focus-visible:ring-[#00ff88]/30 focus-visible:border-[#00ff88]/40"
+              rows={3}
             />
-          )}
-
-          {/* Tip Section (only for driver rating) */}
-          {ratingType === "driver" && rating >= 4 && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-2"
-            >
-              <p className="text-sm text-muted-foreground text-center">
-                {t('add_tip') || "Add a tip for your driver?"}
-              </p>
-              <div className="flex justify-center gap-2">
-                {tipOptions.map((amount) => (
-                  <Button
-                    key={amount}
-                    variant={tipAmount === amount ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setTipAmount(amount)}
-                    className={tipAmount === amount 
-                      ? "bg-secondary text-black" 
-                      : "border-secondary/30 text-secondary"}
-                  >
-                    {amount === 0 ? "No tip" : `₾${amount}`}
-                  </Button>
-                ))}
-              </div>
-            </motion.div>
           )}
 
           {/* Submit Button */}
           <Button
             onClick={handleSubmit}
             disabled={rating === 0 || loading}
-            className="w-full bg-gradient-to-r from-primary to-secondary text-black font-bold h-12"
+            className="w-full bg-gradient-to-r from-[#00ff88] to-[#00cc6a] text-black font-bold h-12 hover:opacity-90 transition-opacity"
             data-testid="submit-rating-btn"
           >
             {loading ? (
@@ -231,7 +197,7 @@ const RatingModal = ({
             ) : (
               <span className="flex items-center gap-2">
                 <Send className="w-4 h-4" />
-                {tipAmount > 0 ? `Submit Rating & ₾${tipAmount} Tip` : "Submit Rating"}
+                Submit Rating
               </span>
             )}
           </Button>

@@ -62,7 +62,9 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-const sanitiseAddress = (str = "") => str.trim().slice(0, 300);
+// trim() only called on submit, NOT on every keystroke — otherwise spacebar is swallowed
+const sanitiseAddress = (str = "") => str.slice(0, 300);
+const sanitiseAddressForSubmit = (str = "") => str.trim().slice(0, 300);
 
 // =============================================================================
 // GOOGLE MAPS LOADER — singleton, never double-loads
@@ -1554,10 +1556,10 @@ const RiderDashboard = () => {
     setLoading(true);
     try {
       const rideData = {
-        pickup: sanitiseAddress(pickup.address), pickupLat: pickup.lat, pickupLng: pickup.lng,
-        destination: destination.address ? sanitiseAddress(destination.address) : null,
+        pickup: sanitiseAddressForSubmit(pickup.address), pickupLat: pickup.lat, pickupLng: pickup.lng,
+        destination: destination.address ? sanitiseAddressForSubmit(destination.address) : null,
         destinationLat: destination.lat || null, destinationLng: destination.lng || null,
-        stops: stops.filter(s => s.lat).map((s, i) => ({ address: sanitiseAddress(s.address), lat: s.lat, lng: s.lng, order: i })),
+        stops: stops.filter(s => s.lat).map((s, i) => ({ address: sanitiseAddressForSubmit(s.address), lat: s.lat, lng: s.lng, order: i })),
         carType, paymentMethod,
         ...(paypalOrderId && { paymentOrderId: paypalOrderId }),
         ...(vaultId && { vault_id: vaultId, card_last4: cardLast4, card_brand: cardBrand }),
