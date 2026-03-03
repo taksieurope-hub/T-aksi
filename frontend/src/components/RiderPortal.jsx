@@ -2275,4 +2275,13 @@ const RiderPortal = () => {
   );
 };
 
-export default RiderPortal;
+// This wraps the portal in its own providers so it can never be 'null'
+const RiderPortalWithProviders = () => (
+  <LanguageProvider>
+    <AuthProvider>
+      <RiderPortal />
+    </AuthProvider>
+  </LanguageProvider>
+);
+
+export default RiderPortalWithProviders;

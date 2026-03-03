@@ -6,16 +6,18 @@ import RiderPortal from './components/RiderPortal';
 import '@/App.css';
 
 const container = document.getElementById('root');
-const root = createRoot(container);
 
-root.render(
-  <React.StrictMode>
-    <LanguageProvider>
-      <AuthProvider>
-        <Suspense fallback={<div className="min-h-screen bg-[#08080f]" />}>
-          <RiderPortal />
-        </Suspense>
-      </AuthProvider>
-    </LanguageProvider>
-  </React.StrictMode>
-);
+if (container) {
+  const root = createRoot(container);
+  root.render(
+    <React.StrictMode>
+      <LanguageProvider>
+        <AuthProvider>
+          <Suspense fallback={<div className="min-h-screen bg-[#08080f]" />}>
+            <RiderPortal />
+          </Suspense>
+        </AuthProvider>
+      </LanguageProvider>
+    </React.StrictMode>
+  );
+}
