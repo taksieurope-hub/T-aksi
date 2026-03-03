@@ -25,6 +25,9 @@ import {
   ArrowRight, MoreHorizontal, Sparkles
 } from "lucide-react";
 
+// This fixes the 'lazy is not defined' error
+const SupportChatWidget = lazy(() => import('./ChatWidget'));
+
 // =============================================================================
 // PRICING RULES — Must match server.py exactly
 // =============================================================================
