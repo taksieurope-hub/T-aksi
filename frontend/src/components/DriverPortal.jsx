@@ -1149,6 +1149,11 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     scaledSize: new window.google.maps.Size(28, 37),
     anchor: new window.google.maps.Point(14, 37),
   });
+  const makeDriverIcon = () => ({
+    url: '/driver-arrow.png', // <-- Make sure this matches your actual arrow image name!
+    scaledSize: new window.google.maps.Size(35, 35), // This shrinks it to mobile size
+    anchor: new window.google.maps.Point(17.5, 17.5), // Centers the arrow exactly on the GPS dot
+  });
 
   const upsertPin = (ref, position, icon) => {
     if (!mapInstanceRef.current || !position) return;
@@ -1316,20 +1321,38 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
     if (!target) return;
 
+    // 1. Format the stops into Google Maps waypoints
+    const stopsWaypoints = activeRide?.stops
+      ?.filter(stop => stop.lat && stop.lng)
+      .map(stop => ({
+        location: { lat: parseFloat(stop.lat), lng: parseFloat(stop.lng) },
+        stopover: true
+      })) || [];
+
     directionsServiceRef.current.route(
-      { origin: { lat: dLat, lng: dLng }, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
+      { 
+        origin: { lat: dLat, lng: dLng }, 
+        destination: target, 
+        waypoints: stopsWaypoints, // 2. Add them to the request
+        travelMode: window.google.maps.TravelMode.DRIVING 
+      },
       (result, status) => {
         if (status === "OK" && routeRendererRef.current) {
           routeRendererRef.current.setDirections(result);
-          setRouteSteps(result.routes[0].legs[0].steps);
+          
+          // 3. Combine steps from all legs so navigation continues past the first stop
+          const allSteps = result.routes[0].legs.flatMap(leg => leg.steps);
+          setRouteSteps(allSteps);
           setStepIdx(0);
-          const duration = result.routes[0]?.legs[0]?.duration?.value;
-          if (duration) startEtaCountdown(duration);
+          
+          // 4. Sum the duration of all legs to get the true total ETA
+          const totalDuration = result.routes[0].legs.reduce((total, leg) => total + (leg.duration?.value || 0), 0);
+          if (totalDuration) startEtaCountdown(totalDuration);
         }
       }
     );
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat]);
-
+  // 5. IMPORTANT: Add activeRide?.stops to this dependency array!
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat, activeRide?.stops]);
   const handleNav = (app) => {
     if (!activeRide) return;
     const isPickup = ["accepted", "arrived"].includes(activeRide.status);
@@ -1823,7 +1846,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: pickupWaitMin });
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
-        setWaitTimer(0);
+        
         setArrivedTime(null);
         lastPositionRef.current = driverLocation;
         toast.success("Ride started!");
@@ -1878,11 +1901,20 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     try {
       await api.post(`/rides/${activeRide.id}/cancel`, { reason: cancelReason });
       toast.success("Ride cancelled");
-      setActiveRide(null); setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null);
+      
+      // FULL CLEANUP: Added the mid-trip and live fare resets so they don't bleed into the next ride
+      setActiveRide(null);
+      setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null);
+      setIsWaitingAtStop(false); setMidTripWaiting(false); setMidTripWaitStart(null); 
+      setMidTripWaitSecs(0); setMidTripWaitBanked(0); setLiveFare(null);
+      
       setShowCancelModal(false); setCancelReason("");
       fetchRideHistory(); fetchAvailableRides();
-    } catch (_) { toast.error("Failed to cancel"); }
-    finally { setLoading(false); }
+    } catch (_) { 
+      toast.error("Failed to cancel"); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const handleToggleOnline = async (online) => {
