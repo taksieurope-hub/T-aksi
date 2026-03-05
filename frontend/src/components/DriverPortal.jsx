@@ -1089,10 +1089,7 @@ const MAP_STYLES = [
 ];
 
 // =============================================================================
-// DRIVER SMART MAP — Bolt-quality
-// NEW: ETA countdown pill, pickup/destination pins, auto-fit on accept,
-//      dragstart unfollow, re-centre button.
-// PRESERVED: NavHUD turn-by-turn, tilt/heading, speed, Waze/Google nav.
+// DRIVER SMART MAP
 // =============================================================================
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef               = useRef(null);
@@ -1106,6 +1103,9 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const rafRef               = useRef(null);
   const etaIntervalRef       = useRef(null);
   const prevRideIdRef        = useRef(null);
+  // Rerouting: track last route-request origin to detect deviation
+  const lastRouteOriginRef   = useRef(null);
+  const rerouteTimerRef      = useRef(null);
 
   const [isFollowing, setIsFollowing] = useState(true);
   const [routeSteps,  setRouteSteps]  = useState([]);
@@ -1270,7 +1270,25 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     setTimeout(() => setIsFollowing(true), 3000);
   }, [activeRide?.status, activeRide?.id]);
 
-  // Directions + ETA + pins
+  // Core route-request function — shared by initial route + reroute
+  const requestRoute = useCallback((dLat, dLng, target) => {
+    if (!directionsServiceRef.current || !routeRendererRef.current) return;
+    lastRouteOriginRef.current = { lat: dLat, lng: dLng };
+    directionsServiceRef.current.route(
+      { origin: { lat: dLat, lng: dLng }, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
+      (result, status) => {
+        if (status === "OK" && routeRendererRef.current) {
+          routeRendererRef.current.setDirections(result);
+          setRouteSteps(result.routes[0].legs[0].steps);
+          setStepIdx(0);
+          const duration = result.routes[0]?.legs[0]?.duration?.value;
+          if (duration) startEtaCountdown(duration);
+        }
+      }
+    );
+  }, []);
+
+  // Directions + ETA + pins — fires on status/coord change
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
     if (!activeRide || !driverLocation) {
@@ -1279,6 +1297,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       setEtaSeconds(null);
       removePin(pickupMarkerRef);
       removePin(destMarkerRef);
+      lastRouteOriginRef.current = null;
       return;
     }
 
@@ -1304,20 +1323,38 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }
 
     if (!target) return;
+    requestRoute(dLat, dLng, target);
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat, requestRoute]);
 
-    directionsServiceRef.current.route(
-      { origin: { lat: dLat, lng: dLng }, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
-      (result, status) => {
-        if (status === "OK" && routeRendererRef.current) {
-          routeRendererRef.current.setDirections(result);
-          setRouteSteps(result.routes[0].legs[0].steps);
-          setStepIdx(0);
-          const duration = result.routes[0]?.legs[0]?.duration?.value;
-          if (duration) startEtaCountdown(duration);
-        }
+  // Auto-reroute when driver deviates >120m during active ride (checks every 15s)
+  useEffect(() => {
+    if (rerouteTimerRef.current) clearInterval(rerouteTimerRef.current);
+    if (!activeRide || !["accepted", "arrived", "in_progress"].includes(activeRide.status)) return;
+
+    rerouteTimerRef.current = setInterval(() => {
+      if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
+      const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
+      if (!dLat || !dLng) return;
+
+      const lastOrigin = lastRouteOriginRef.current;
+      // Only reroute if driver has moved at least 120m from where the last route was calculated
+      if (lastOrigin && hvKm(dLat, dLng, lastOrigin.lat, lastOrigin.lng) < 0.12) return;
+
+      let target = null;
+      if (["accepted", "arrived"].includes(activeRide.status)) {
+        const lat = getSafe(activeRide.pickup_lat), lng = getSafe(activeRide.pickup_lng);
+        if (lat && lng) target = { lat, lng };
+      } else if (activeRide.status === "in_progress") {
+        const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat);
+        const lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
+        if (lat && lng) target = { lat, lng };
       }
-    );
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat]);
+
+      if (target) requestRoute(dLat, dLng, target);
+    }, 15000);
+
+    return () => { if (rerouteTimerRef.current) clearInterval(rerouteTimerRef.current); };
+  }, [activeRide?.status, activeRide?.id, driverLocation, requestRoute]);
 
   const handleNav = (app) => {
     if (!activeRide) return;
@@ -1620,7 +1657,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   setTotalStopMinutes(prev => prev + minutes);
 };
 
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = useState("rides");
   const [loading, setLoading] = useState(false);
   const [mapsLoaded, setMapsLoaded] = useState(() => !!window.google?.maps);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -1711,6 +1748,22 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     setDriverLocation(location);
     const now = Date.now();
 
+    // Increment distance when ride is in_progress
+    const ride = activeRideRef.current;
+    if (ride?.status === "in_progress" && lastPositionRef.current) {
+      const prev = lastPositionRef.current;
+      const R = 6371;
+      const dLat = (location.lat - prev.lat) * Math.PI / 180;
+      const dLng = (location.lng - prev.lng) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(prev.lat*Math.PI/180)*Math.cos(location.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+      const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      // Only count movement > 5m to avoid GPS jitter
+      if (distKm > 0.005) {
+        setDistanceTraveled(prev => prev + distKm);
+      }
+    }
+    lastPositionRef.current = location;
+
     // Skip network call if: (a) sent within last 10s AND (b) moved < 15m since last send.
     // This cuts location POSTs by ~80% when stationary, preventing rate limit hits.
     const last = lastSentLocationRef.current;
@@ -1729,7 +1782,6 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     try {
       await api.post("/driver/location", location);
       lastSentLocationRef.current = location;
-      lastPositionRef.current = location;
     } catch (_) {}
   }, []);
 
@@ -1933,34 +1985,50 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
 
   const toggleMidTripWait = async () => {
     if (!midTripWaiting) {
-      // Start
+      // Start wait timer
       setMidTripWaiting(true);
       setMidTripWaitStart(Date.now());
       setMidTripWaitSecs(0);
-      try { await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=start`); } catch (_) {}
+      try {
+        await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=true`);
+      } catch (_) {}
       toast.success("Wait timer started — ₾0.50/min");
     } else {
-      // Stop — ask backend to bank the time and recalc fare
+      // Stop — bank the time
       setMidTripWaiting(false);
+      const elapsedMin = midTripWaitSecs / 60;
       try {
-        const res = await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=stop`);
-        const banked = res.data.accumulated_minutes || 0;
-        const newFare = res.data.new_estimated_fare;
-        setMidTripWaitBanked(banked);
+        await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=false`);
+        const newBanked = midTripWaitBanked + elapsedMin;
+        setMidTripWaitBanked(newBanked);
         setMidTripWaitSecs(0);
         setMidTripWaitStart(null);
-        if (newFare != null) {
-          setLiveFare(newFare);
-          setActiveRide(prev => ({ ...prev, estimated_fare: newFare }));
-        }
-        const min = Math.floor(banked);
-        const sec = Math.round((banked - min) * 60);
+        const min = Math.floor(newBanked);
+        const sec = Math.round((newBanked - min) * 60);
         toast.success(`Wait saved: ${min}m ${sec}s · resuming trip`);
       } catch (_) {
-        setMidTripWaitBanked(prev => prev + midTripWaitSecs / 60);
+        // Fallback: bank locally
+        setMidTripWaitBanked(prev => prev + elapsedMin);
         setMidTripWaitSecs(0);
         setMidTripWaitStart(null);
+        toast.success("Wait banked locally");
       }
+    }
+  };
+
+  // Stop at current location — banks wait time and marks stop complete
+  const stopAtCurrentLocation = async () => {
+    if (!driverLocation?.lat) { toast.error("GPS location unavailable"); return; }
+    if (midTripWaiting) {
+      // If wait timer is running, stop it first
+      await toggleMidTripWait();
+    }
+    try {
+      const stopIdx = (activeRide.stops?.filter(s => s.lat).length || 0);
+      await api.post(`/rides/${activeRide.id}/stop-reached?stop_index=${stopIdx}&wait_minutes=${Math.ceil(midTripWaitBanked)}`);
+      toast.success("Stop recorded at current location");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to record stop");
     }
   };
 
@@ -1987,15 +2055,12 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     } catch (_) {}
   };
 
-  // Bolt-style bottom nav tabs
   const tabs = [
-    { id: "home",     icon: Home,      label: "Home"       },
-    { id: "earn",     icon: TrendingUp,label: "Earn more"  },
-    { id: "history",  icon: History,   label: "Rides"      },
-    { id: "help",     icon: LifeBuoy,  label: "Help"       },
+    { id: "rides",    icon: Activity,  label: "Rides"   },
+    { id: "earnings", icon: Wallet,    label: "Wallet"  },
+    { id: "history",  icon: History,   label: "History" },
+    { id: "more",     icon: Settings,  label: "More"    },
   ];
-
-  const [showDrawer, setShowDrawer] = useState(false);
 
   const rideStatusConfig = {
     accepted:    { color: "#60a5fa", label: "Heading to Pickup" },
@@ -2005,309 +2070,409 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const rsc = rideStatusConfig[activeRide?.status] || {};
 
   const waitDisplayMin = Math.floor(waitTimer);
-  const waitDisplaySec = Math.round((waitTimer - waitDisplayMin) * 60);
+  const waitDisplaySec = 0;
 
   return (
-    <div className="fixed inset-0 bg-gray-100 font-sans text-gray-900 overflow-hidden">
-
-      {/* ── SIDE DRAWER ──────────────────────────────────────────────────── */}
-      {showDrawer && (
-        <div className="absolute inset-0 z-[80] flex">
-          <div className="w-72 bg-white h-full flex flex-col shadow-2xl overflow-y-auto">
-            {/* Profile header */}
-            <div className="px-5 pt-10 pb-5 border-b border-gray-100">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
-                  <User className="w-7 h-7 text-gray-400" />
-                </div>
-                <div>
-                  <p className="font-bold text-gray-900 text-base">{user?.name} {user?.surname}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                    <span className="text-xs text-gray-500 font-medium">Rewards inactive</span>
-                    <ChevronRight className="w-3 h-3 text-gray-400" />
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-gray-900 font-bold text-lg">{user?.rating?.toFixed(0) ?? 88}%</p>
-                  <p className="text-gray-400 text-xs">Driver score</p>
-                </div>
-                <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-gray-900 font-bold text-lg">{(user?.acceptance_rate ?? 87)}%</p>
-                  <p className="text-gray-400 text-xs">Acceptance rate</p>
-                </div>
-              </div>
-            </div>
-            {/* Menu items */}
-            <div className="flex-1 py-2">
-              {[
-                { icon: Wallet,   label: "Earnings",         action: () => { setActiveTab("earn"); setShowDrawer(false); } },
-                { icon: History,  label: "Trip history",     action: () => { setActiveTab("history"); setShowDrawer(false); } },
-                { icon: Flame,    label: "Campaigns",        action: () => { setActiveTab("earn"); setShowDrawer(false); } },
-                { icon: Calendar, label: "Scheduled rides",  action: () => setShowDrawer(false) },
-                { icon: Settings, label: "Settings",         action: () => setShowDrawer(false) },
-              ].map(({ icon: Icon, label, action }) => (
-                <button key={label} onClick={action}
-                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors text-left">
-                  <Icon className="w-6 h-6 text-gray-700" />
-                  <span className="text-gray-900 font-medium text-base">{label}</span>
-                </button>
-              ))}
-              <div className="mx-5 my-2 border-t border-gray-100" />
-              <button onClick={() => { setActiveTab("earn"); setShowDrawer(false); }}
-                className="w-full flex items-center gap-4 px-5 py-3 hover:bg-gray-50 transition-colors text-left">
-                <Gift className="w-5 h-5 text-gray-400" />
-                <span className="text-gray-500 text-sm">Invite friends to drive</span>
-              </button>
-              <button onClick={logout} className="w-full flex items-center gap-4 px-5 py-3 hover:bg-gray-50 transition-colors text-left">
-                <LogOut className="w-5 h-5 text-gray-400" />
-                <span className="text-gray-500 text-sm">Sign out</span>
-              </button>
-            </div>
-          </div>
-          {/* Backdrop */}
-          <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={() => setShowDrawer(false)} />
-        </div>
-      )}
-
-      {/* ── MAP (full screen behind everything) ─────────────────────────── */}
+    <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden">
+      {/* MAP */}
       <div className="absolute inset-0 z-0">
         {mapsLoaded && <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />}
         {!mapsLoaded && (
-          <div className="w-full h-full bg-gradient-to-b from-[#f5f5f0] to-[#e8e8e0] flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+          <div className="w-full h-full bg-gradient-to-b from-[#07070f] to-[#0e0e1c] flex items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-[#00ff88]/40" />
           </div>
         )}
       </div>
 
-      {/* ── MAP OVERLAY BUTTONS (top corners) ──────────────────────────── */}
-      {(activeTab === "home" || activeRide) && (
-        <>
-          {/* Hamburger menu */}
-          <button onClick={() => setShowDrawer(true)}
-            className="absolute top-12 left-4 z-50 w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center active:scale-95 transition-transform">
-            <div className="space-y-1.5">
-              <div className="w-5 h-0.5 bg-gray-700 rounded" />
-              <div className="w-5 h-0.5 bg-gray-700 rounded" />
-              <div className="w-5 h-0.5 bg-gray-700 rounded" />
+      {/* HEADER */}
+      <header className="absolute top-0 left-0 right-0 z-50 bg-[#07070f]/85 backdrop-blur-2xl border-b border-white/6">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
+              <Car className="w-5 h-5 text-black" />
             </div>
-            {availableRides.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center">
-                {availableRides.length}
-              </span>
+            <div>
+              <p className="text-white font-semibold text-sm leading-tight">{user?.name} {user?.surname}</p>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={registrationStatus} />
+                {user?.rating && <span className="text-yellow-400 text-xs">⭐ {user.rating?.toFixed(1)}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <SurgeIndicator location={driverLocation} />
+            <div className="bg-[#00ff88]/10 border border-[#00ff88]/25 rounded-lg px-2.5 py-1.5">
+              <span className="text-[#00ff88] font-bold font-mono text-sm">₾{balance.toFixed(2)}</span>
+            </div>
+            {registrationStatus === "approved" && (
+              <button onClick={() => handleToggleOnline(!isOnline)}
+                className={`relative w-14 h-7 rounded-full transition-colors duration-300 border ${isOnline ? "bg-[#00ff88]/25 border-[#00ff88]/50" : "bg-white/8 border-white/15"}`}>
+                <div className={`absolute top-0.5 w-6 h-6 rounded-full transition-transform duration-300 shadow-lg ${isOnline ? "translate-x-7 bg-[#00ff88]" : "translate-x-0.5 bg-white/40"}`} />
+              </button>
             )}
-          </button>
+            <button onClick={logout} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-red-400 transition-colors">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
 
-          {/* Safety shield */}
-          <button className="absolute top-12 right-4 z-50 w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center active:scale-95 transition-transform">
-            <Shield className="w-5 h-5 text-gray-600" />
-          </button>
-
-          {/* Re-centre / GPS */}
-          <button className="absolute z-50 w-10 h-10 rounded-full bg-white shadow-lg flex items-center justify-center active:scale-95 transition-transform"
-            style={{ bottom: "calc(var(--sheet-height, 300px) + 16px)", right: "16px" }}>
-            <Crosshair className="w-5 h-5 text-gray-600" />
-          </button>
-
-          {/* Heatmap toggle */}
-          <button className="absolute z-50 w-10 h-10 rounded-full bg-white shadow-lg flex items-center justify-center active:scale-95 transition-transform"
-            style={{ bottom: "calc(var(--sheet-height, 300px) + 64px)", right: "16px" }}>
-            <Flame className="w-5 h-5 text-orange-400" />
-          </button>
-        </>
-      )}
+        {isOnline && driverLocation && (
+          <div className="px-4 pb-2 flex items-center gap-2 text-[10px] text-[#00ff88]/50">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
+            GPS Active · {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
+            {driverLocation.speed != null && <span>· {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
+          </div>
+        )}
+      </header>
 
       {/* ACTIVE RIDE PILL (minimized) */}
       {activeRide && isMinimized && (
         <button onClick={() => setIsMinimized(false)}
-          className="absolute top-28 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full backdrop-blur-xl shadow-2xl transition-all bg-white border"
-          style={{ borderColor: `${rsc.color}60` }}>
-          <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: rsc.color }} />
-          <span className="text-sm font-bold text-gray-900">{rsc.label}</span>
-          <ChevronUp className="w-4 h-4 text-gray-500" />
+          className="absolute top-20 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full border backdrop-blur-xl shadow-2xl transition-all"
+          style={{ background: `${rsc.color}18`, borderColor: `${rsc.color}40` }}>
+          <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: rsc.color }} />
+          <span className="text-sm font-semibold" style={{ color: rsc.color }}>{rsc.label}</span>
+          <ChevronUp className="w-4 h-4" style={{ color: rsc.color }} />
         </button>
       )}
 
       {/* BOTTOM SHEET */}
       <div className={`absolute bottom-0 left-0 right-0 z-40 transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMinimized && activeRide ? "translate-y-[calc(100%-0px)]" : "translate-y-0"}`}>
-        <div className="bg-white rounded-t-3xl overflow-hidden shadow-[0_-8px_40px_rgba(0,0,0,0.18)]"
+        <div className="bg-[#0a0a18]/95 backdrop-blur-3xl border-t border-white/8 rounded-t-3xl overflow-hidden shadow-[0_-20px_60px_rgba(0,0,0,0.8)]"
           style={{ maxHeight: "72vh" }}>
 
-          <div className="flex justify-center pt-2.5 pb-1 cursor-pointer" onClick={() => setIsMinimized(p => !p)} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-            <div className="w-10 h-1 bg-gray-200 rounded-full" />
+          <div className="flex justify-center pt-3 pb-1 cursor-pointer" onClick={() => setIsMinimized(p => !p)} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+            <div className="w-12 h-1 bg-white/15 rounded-full" />
           </div>
 
-          {/* ── HOME TAB ──────────────────────────────────────────────────── */}
-          {!activeRide && activeTab === "home" && (
-            <div className="px-4 pb-4 pt-2 space-y-3 overflow-y-auto" style={{ maxHeight: "calc(72vh - 48px)" }}>
-              {/* Go Online / Offline button */}
-              {registrationStatus === "approved" ? (
-                <button onClick={() => handleToggleOnline(!isOnline)}
-                  className={`w-full h-14 rounded-full font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md ${
-                    isOnline ? "bg-orange-500 text-white" : "bg-[#1CB86A] text-white"
-                  }`}>
-                  {isOnline ? (
-                    <><ChevronRight className="w-5 h-5" /><ChevronRight className="w-5 h-5 -ml-3.5" /> Go offline</>
-                  ) : "Go online"}
-                </button>
-              ) : (
-                <div className="w-full h-14 rounded-full bg-gray-100 flex items-center justify-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
-                  <span className="text-gray-500 font-medium text-sm">Account pending review</span>
-                </div>
-              )}
-
-              {/* Referral banner */}
-              <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center">
-                    <Gift className="w-4 h-4 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="text-gray-900 font-semibold text-sm">Earn ₾60</p>
-                    <p className="text-gray-400 text-xs">Invite friends to drive</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-300" />
-              </div>
-
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <button onClick={() => setActiveTab("earn")} className="bg-white border border-gray-100 rounded-2xl p-4 text-left shadow-sm active:scale-95 transition-transform">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-gray-400 text-xs mb-0.5">Today's earnings</p>
-                      <p className="text-gray-900 font-bold text-xl font-mono">₾{(user?.earnings?.today ?? 0).toFixed(2)}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gray-300 mt-0.5" />
-                  </div>
-                </button>
-                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-                  <div className="flex items-start justify-between mb-1">
-                    <p className="text-gray-400 text-xs">Bolt Rewards</p>
-                    <ChevronRight className="w-4 h-4 text-gray-300" />
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Lock className="w-3 h-3 text-red-500" />
-                    <span className="text-red-500 font-bold text-sm">Inactive</span>
-                  </div>
-                  <p className="text-gray-400 text-[10px] mt-0.5 leading-tight">Increase scores to reactivate</p>
-                </div>
-                <button className="bg-white border border-gray-100 rounded-2xl p-4 text-left shadow-sm active:scale-95 transition-transform">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-gray-400 text-xs mb-0.5">Driver score</p>
-                      <p className="text-gray-900 font-bold text-xl">{user?.driver_score ?? Math.round((user?.rating ?? 0) * 20) ?? 88}%</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gray-300 mt-0.5" />
-                  </div>
-                </button>
-                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-gray-400 text-xs mb-0.5">Acceptance rate</p>
-                      <p className="text-gray-900 font-bold text-xl">{user?.acceptance_rate ?? 87}%</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gray-300 mt-0.5" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Available rides */}
-              {isOnline && availableRides.length > 0 && (
-                <div className="space-y-2.5">
-                  <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">{availableRides.length} incoming request{availableRides.length !== 1 ? "s" : ""}</p>
-                  {availableRides.map(ride => {
-                    const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
-                    const driverCut = (ride.estimated_fare || 0) * (1 - DRIVER_COMMISSION_RATE);
-                    const canAccept = balance >= commission && !!ride.estimated_fare;
-                    const tier = PRICING_RULES[ride.car_type?.toLowerCase()] || PRICING_RULES.economy;
-                    return (
-                      <div key={ride.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1 pr-3">
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <span>{tier.icon}</span>
-                              <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">{tier.name}</span>
-                              {ride.surge_multiplier > 1 && <span className="text-orange-500 text-xs font-bold bg-orange-50 rounded-full px-2 py-0.5">{ride.surge_multiplier}x</span>}
-                            </div>
-                            <p className="text-gray-900 font-semibold text-sm">{ride.pickup}</p>
-                            <p className="text-gray-400 text-xs mt-0.5">→ {ride.destination || "Open Trip"}</p>
-                            {ride.distance_to_pickup != null && <p className="text-[#1CB86A] text-xs mt-1 font-medium">📍 {ride.distance_to_pickup} km away</p>}
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-2xl font-bold font-mono text-gray-900">₾{ride.estimated_fare?.toFixed(2)}</p>
-                            <p className="text-gray-400 text-xs">you get ₾{driverCut.toFixed(2)}</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button disabled={loading || !canAccept}
-                            onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}
-                            className={`flex-1 h-11 rounded-xl font-bold text-sm transition-all active:scale-95 ${canAccept ? "bg-[#1CB86A] text-white" : "bg-gray-100 text-gray-400"}`}>
-                            {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : canAccept ? "Accept" : `Need ₾${commission.toFixed(2)}`}
-                          </button>
-                          <button onClick={() => handleDeclineRide(ride.id)}
-                            className="w-11 h-11 rounded-xl bg-gray-50 border border-gray-200 text-gray-400 flex items-center justify-center hover:bg-red-50 hover:text-red-400 transition-colors">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {isOnline && availableRides.length === 0 && (
-                <div className="flex items-center gap-3 bg-gray-50 rounded-2xl px-4 py-3">
-                  <Navigation className="w-5 h-5 text-[#1CB86A] animate-pulse" />
-                  <div>
-                    <p className="text-gray-700 font-medium text-sm">Searching for rides…</p>
-                    <p className="text-gray-400 text-xs">Requests will appear automatically</p>
-                  </div>
-                </div>
-              )}
+          {!activeRide && (
+            <div className="flex items-center px-2 pb-2 pt-1 border-b border-white/5">
+              {tabs.map(({ id, icon: Icon, label }) => {
+                const active = activeTab === id;
+                return (
+                  <button key={id} onClick={() => setActiveTab(id)}
+                    className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl transition-all relative ${active ? "text-[#00ff88]" : "text-white/30 hover:text-white/50"}`}>
+                    <Icon className={`w-5 h-5 transition-transform ${active ? "scale-110" : ""}`} />
+                    <span className="text-[9px] uppercase tracking-wider font-bold">{label}</span>
+                    {active && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#00ff88] shadow-[0_0_6px_#00ff88]" />}
+                  </button>
+                );
+              })}
             </div>
           )}
 
-          {/* ── EARN MORE TAB ────────────────────────────────────────────────── */}
-          {!activeRide && activeTab === "earn" && (
-            <div className="overflow-y-auto px-4 pb-6 pt-2 space-y-3" style={{ maxHeight: "calc(72vh - 48px)" }}>
-              <h2 className="text-gray-900 font-bold text-2xl pt-1">Earn more</h2>
-              <button className="w-full flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-4 border border-gray-100 active:scale-95 transition-transform">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#1CB86A] flex items-center justify-center">
-                    <Wallet className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-gray-900 font-bold text-xl font-mono">₾{(user?.earnings?.weekly ?? totalEarned ?? 0).toFixed(2)}</p>
-                    <p className="text-gray-400 text-sm">Earned this week</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400" />
-              </button>
+          <div className="overflow-y-auto px-4 pb-6 pt-3" style={{ maxHeight: activeRide ? "65vh" : "calc(72vh - 80px)" }}>
 
-              <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-gray-500 text-xs uppercase tracking-wider font-semibold">Wallet Balance</p>
-                  <span className="text-[#1CB86A] font-bold font-mono text-lg">₾{balance.toFixed(2)}</span>
+            {/* ACTIVE RIDE */}
+            {activeRide && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-white font-bold text-lg">Active Ride</p>
+                    <p className="text-white/40 text-xs">
+                      {activeRide.carType || activeRide.car_type} · {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()]?.icon || "🚗"}
+                    </p>
+                  </div>
+                  <StatusBadge status={activeRide.status} />
                 </div>
-                <div className="flex gap-2 mt-3">
-                  {[["topup","Top Up","bg-[#1CB86A] text-white"],["withdraw","Withdraw","bg-gray-100 text-gray-700"]].map(([k,l,cls]) => (
+
+                <GlassCard className="p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#00ff88] mt-1 shrink-0" />
+                    <div>
+                      <p className="text-white/40 text-[10px] uppercase tracking-wider">Pickup</p>
+                      <p className="text-white text-sm font-medium">{activeRide.pickup}</p>
+                    </div>
+                  </div>
+                  {activeRide.stops?.filter(s => s.lat).length > 0 && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 mt-1 shrink-0" />
+                      <div>
+                        <p className="text-yellow-400/60 text-[10px] uppercase tracking-wider">Stops ({activeRide.stops.length})</p>
+                        {activeRide.stops.filter(s => s.lat).map((s, i) => <p key={i} className="text-white/70 text-xs">· {s.address}</p>)}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-3">
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#00d4ff] mt-1 shrink-0" />
+                    <div>
+                      <p className="text-[#00d4ff]/60 text-[10px] uppercase tracking-wider">Destination</p>
+                      <p className="text-white text-sm font-medium">{activeRide.destination || "Open Trip"}</p>
+                    </div>
+                  </div>
+                </GlassCard>
+
+                {activeRide.status === "arrived" && (
+                  <DriverWaitTimer 
+  arrivedAt={activeRide.arrived_at} 
+  carType={activeRide.carType || activeRide.car_type} 
+  // This uses the setWaitTimer function that ALREADY exists in your file
+  onUpdate={(data) => setWaitTimer(data.minutes)} 
+/>
+                )}
+                {activeRide.status === "in_progress" && (
+                  <GlassCard accent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[#00ff88]">
+                      <Activity className="w-5 h-5 animate-pulse" />
+                      <span className="font-medium text-sm">Distance Traveled</span>
+                    </div>
+                    <span className="text-[#00ff88] font-bold font-mono text-2xl">{distanceTraveled.toFixed(2)} km</span>
+                  </GlassCard>
+                )}
+
+                {/* ── Live Fare Card ─────────────────────────────── */}
+                <div className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${midTripWaiting ? "bg-amber-500/10 border-amber-500/30 animate-pulse" : "bg-gradient-to-r from-[#00ff88]/10 to-[#00d4ff]/10 border-[#00ff88]/20"}`}>
+                  <div>
+                    <span className="text-white/60 text-sm">
+                      {midTripWaiting ? "Wait charge running…" : "Current Fare"}
+                    </span>
+                    {midTripWaiting && (
+                      <p className="text-amber-400 text-xs mt-0.5 font-mono">
+                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} · ₾{((midTripWaitBanked + midTripWaitSecs / 60) * 0.50).toFixed(2)} wait fee
+                      </p>
+                    )}
+                  </div>
+                  <span className={`text-2xl font-bold font-mono transition-colors ${midTripWaiting ? "text-amber-400" : "text-[#00ff88]"}`}>
+                    ₾{(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "—"}
+                  </span>
+                </div>
+
+                {/* ── Mid-trip Wait Timer ─────────────────────────── */}
+                {activeRide.status === "in_progress" && (
+                  <button onClick={toggleMidTripWait}
+                    className={`w-full h-12 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                      midTripWaiting
+                        ? "bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-[0_0_16px_rgba(245,158,11,0.3)]"
+                        : "bg-white/5 border-white/15 text-white/60 hover:border-amber-500/40 hover:text-amber-400"
+                    }`}>
+                    {midTripWaiting
+                      ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting — resume trip</>
+                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (₾0.50/min)</>
+                    }
+                  </button>
+                )}
+
+                {/* ── Stop at current location ────────────────────── */}
+                {activeRide.status === "in_progress" && !midTripWaiting && (
+                  <button onClick={stopAtCurrentLocation}
+                    className="w-full h-11 rounded-xl border border-yellow-500/25 bg-yellow-500/8 text-yellow-400/80 text-sm font-semibold flex items-center justify-center gap-2 hover:border-yellow-500/50 hover:text-yellow-300 hover:bg-yellow-500/12 transition-all active:scale-95">
+                    <MapPin className="w-4 h-4" /> Stop here (record stop at my location)
+                  </button>
+                )}
+
+                <RideCommunication
+                  rideId={activeRide.id}
+                  otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone}
+                  otherPartyName={activeRide.rider_name || "Rider"}
+                  currentUserId={user?.id}
+                  isDriver={true}
+                />
+
+                <div className="flex gap-3">
+                  {activeRide.status === "accepted" && (
+                    <Button className="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold h-14 text-base" onClick={() => handleRideAction("arrived")} disabled={loading}>
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <MapPin className="w-5 h-5 mr-2" />} I've Arrived
+                    </Button>
+                  )}
+                  {activeRide.status === "arrived" && (
+                    <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold h-14 text-base" onClick={() => handleRideAction("start")} disabled={loading}>
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Play className="w-5 h-5 mr-2" />} Start Ride
+                    </Button>
+                  )}
+                  {activeRide.status === "in_progress" && (
+                    <Button className="flex-1 bg-[#00ff88] hover:bg-[#00e070] text-black font-bold h-14 text-base" onClick={() => handleRideAction("complete")} disabled={loading}>
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />} Complete
+                    </Button>
+                  )}
+                  <button onClick={() => setShowCancelModal(true)}
+                    className="w-14 h-14 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* RIDES TAB */}
+            {!activeRide && activeTab === "rides" && (
+              <div>
+                {registrationStatus !== "approved" ? (
+                  <div className="text-center py-10">
+                    <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+                    <p className="text-white font-semibold">Account Pending Review</p>
+                    <p className="text-white/40 text-sm mt-1">We'll notify you once approved</p>
+                  </div>
+                ) : !isOnline ? (
+                  <div className="text-center py-10">
+                    <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-3">
+                      <Activity className="w-8 h-8 text-white/20" />
+                    </div>
+                    <p className="text-white font-semibold">You're Offline</p>
+                    <p className="text-white/40 text-sm mb-4 mt-1">Toggle online to receive rides</p>
+                    <Button className="bg-[#00ff88] text-black font-bold px-8 h-12" onClick={() => handleToggleOnline(true)}>
+                      Go Online
+                    </Button>
+                  </div>
+                ) : availableRides.length === 0 ? (
+                  <div className="space-y-4">
+                    <div className="text-center py-8">
+                      <div className="w-14 h-14 rounded-2xl bg-[#00d4ff]/8 border border-[#00d4ff]/15 flex items-center justify-center mx-auto mb-3">
+                        <Navigation className="w-7 h-7 text-[#00d4ff]/50 animate-pulse" />
+                      </div>
+                      <p className="text-white font-semibold text-sm">Searching for rides…</p>
+                      <p className="text-white/30 text-xs mt-1">New requests appear automatically</p>
+                    </div>
+                    {nearbyRides.length > 0 && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-white/30 text-[10px] uppercase tracking-widest">{nearbyRides.length} rides nearby</p>
+                          <button onClick={fetchNearbyRides} className="text-[#00d4ff] text-xs flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Refresh</button>
+                        </div>
+                        {nearbyRides.map(ride => (
+                          <GlassCard key={ride.id} className="p-3.5 mb-2">
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex-1 pr-2">
+                                <p className="text-white text-sm font-medium truncate">{ride.pickup}</p>
+                                <p className="text-white/40 text-xs">→ {ride.destination || "Open"}</p>
+                                {ride.distance_to_pickup != null && <p className="text-[#00d4ff] text-xs mt-0.5">📍 {ride.distance_to_pickup?.toFixed(1)} km</p>}
+                              </div>
+                              <p className="text-[#00ff88] font-bold font-mono shrink-0">₾{ride.estimated_fare?.toFixed(2)}</p>
+                            </div>
+                            <Button className="w-full bg-[#00d4ff]/12 border border-[#00d4ff]/25 text-[#00d4ff] font-bold h-9 text-sm hover:bg-[#00d4ff]/20 rounded-xl"
+                              onClick={async () => {
+                                setLoading(true);
+                                try { await api.post(`/rides/${ride.id}/request-join`); toast.success("Requested!"); fetchNearbyRides(); }
+                                catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
+                                finally { setLoading(false); }
+                              }}>
+                              Request to Accept
+                            </Button>
+                          </GlassCard>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-white/30 text-[10px] uppercase tracking-widest">{availableRides.length} available {availableRides.length === 1 ? "ride" : "rides"}</p>
+                    {availableRides.map(ride => {
+                      const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
+                      const driverCut = (ride.estimated_fare || 0) * (1 - DRIVER_COMMISSION_RATE);
+                      const canAccept = balance >= commission && !!ride.estimated_fare;
+                      const tier = PRICING_RULES[ride.car_type?.toLowerCase()] || PRICING_RULES.economy;
+                      return (
+                        <GlassCard key={ride.id} className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1 pr-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-lg">{tier.icon}</span>
+                                <span className="text-white/50 text-xs uppercase tracking-wider font-semibold">{tier.name}</span>
+                                {ride.surge_multiplier > 1 && (
+                                  <span className="text-orange-400 text-[10px] font-bold bg-orange-500/15 border border-orange-500/25 rounded-md px-1.5 py-0.5">{ride.surge_multiplier}× surge</span>
+                                )}
+                              </div>
+                              <div className="flex items-stretch gap-2.5">
+                                <div className="flex flex-col items-center gap-0.5 mt-1">
+                                  <div className="w-2 h-2 rounded-full bg-[#00ff88] shadow-[0_0_6px_#00ff88]" />
+                                  <div className="w-0.5 flex-1 bg-white/10 rounded-full min-h-[14px]" />
+                                  <div className="w-2 h-2 rounded-full bg-[#00d4ff] shadow-[0_0_6px_#00d4ff]" />
+                                </div>
+                                <div className="flex-1 space-y-1.5">
+                                  <p className="text-white font-medium text-sm leading-tight">{ride.pickup}</p>
+                                  <p className="text-white/40 text-xs">{ride.destination || "Open Trip"}</p>
+                                </div>
+                              </div>
+                              {ride.distance_to_pickup != null && (
+                                <p className="text-[#00d4ff] text-xs mt-1.5 flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" /> {ride.distance_to_pickup} km away
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-2xl font-bold font-mono text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
+                              <p className="text-white/35 text-xs">you get</p>
+                              <p className="text-white/70 text-sm font-bold font-mono">₾{driverCut.toFixed(2)}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-2 border-t border-white/5">
+                            <Button className="flex-1 bg-[#00ff88] hover:bg-[#00e070] text-black font-bold h-11 rounded-xl" disabled={loading || !canAccept}
+                              onClick={() => handleAcceptRide(ride.id)}>
+                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : canAccept ? "✓ Accept Ride" : `Need ₾${commission.toFixed(2)}`}
+                            </Button>
+                            <button onClick={() => handleDeclineRide(ride.id)}
+                              className="w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors active:scale-95">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </GlassCard>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* EARNINGS TAB */}
+            {!activeRide && activeTab === "earnings" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <GlassCard accent className="p-4">
+                    <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
+                    <p className="text-3xl font-bold font-mono text-[#00ff88]">₾{balance.toFixed(2)}</p>
+                  </GlassCard>
+                  <GlassCard className="p-4">
+                    <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Total Earned</p>
+                    <p className="text-3xl font-bold font-mono text-white">₾{totalEarned.toFixed(2)}</p>
+                  </GlassCard>
+                  <GlassCard className="p-3">
+                    <p className="text-red-400/60 text-[10px] uppercase tracking-widest mb-0.5">Commission</p>
+                    <p className="text-lg font-bold font-mono text-red-400">₾{commissionPaid.toFixed(2)}</p>
+                  </GlassCard>
+                  <GlassCard className="p-3">
+                    <p className="text-white/40 text-[10px] uppercase tracking-widest mb-0.5">Withdrawn</p>
+                    <p className="text-lg font-bold font-mono text-white/60">₾{totalWithdrawn.toFixed(2)}</p>
+                  </GlassCard>
+                </div>
+
+                <div className="flex gap-2">
+                  {[["overview","Overview"],["topup","Top Up"],["withdraw","Withdraw"]].map(([k,l]) => (
                     <button key={k} onClick={() => setEarningsTab(k)}
-                      className={`flex-1 h-9 rounded-xl text-sm font-semibold transition-all active:scale-95 ${cls} ${earningsTab === k ? "ring-2 ring-offset-1 ring-[#1CB86A]/30" : ""}`}>
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${earningsTab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/30 hover:text-white/60"}`}>
                       {l}
                     </button>
                   ))}
                 </div>
+
+                {earningsTab === "overview" && (
+                  <GlassCard className="p-4 space-y-3">
+                    <p className="text-white/40 text-[10px] uppercase tracking-widest">Commission Breakdown</p>
+                    {[
+                      ["Platform cut", `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
+                      ["Your share",   `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
+                      ["Surge commission", "23–24%", "text-orange-400"],
+                    ].map(([l,v,c]) => (
+                      <div key={l} className="flex justify-between items-center">
+                        <span className="text-white/60 text-sm">{l}</span>
+                        <span className={`font-mono font-bold ${c}`}>{v}</span>
+                      </div>
+                    ))}
+                  </GlassCard>
+                )}
+
                 {earningsTab === "topup" && (
-                  <div className="mt-4 space-y-3">
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1CB86A] font-bold">₾</span>
-                      <input type="number" min="5" max="500" value={topupAmount} onChange={e => setTopupAmount(e.target.value)}
-                        placeholder="50" className="w-full pl-7 pr-4 py-3 border border-gray-200 rounded-xl text-gray-900 text-lg font-mono bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#1CB86A]/30" />
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-white/60 text-xs uppercase tracking-wider">Amount (GEL)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">₾</span>
+                        <Input type="number" min="5" max="500" value={topupAmount} onChange={e => setTopupAmount(e.target.value)}
+                          placeholder="50" className="pl-7 bg-white/4 border-white/10 text-white text-lg h-12 font-mono" />
+                      </div>
+                      <p className="text-white/30 text-xs">
+                        ≈ ${topupAmount && !isNaN(parseFloat(topupAmount)) ? (parseFloat(topupAmount) * 0.37).toFixed(2) : "0.00"} USD
+                      </p>
                     </div>
+
                     {topupAmount && parseFloat(topupAmount) >= 5 ? (
                       <PayPalButtons
                         fundingSource="card"
@@ -2318,343 +2483,109 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                         })}
                         onApprove={async (data, actions) => {
                           try {
-                            setLoading(true); await actions.order.capture();
+                            setLoading(true);
+                            await actions.order.capture();
                             await api.post("/driver/wallet/topup/paypal", { order_id: data.orderID, amount: parseFloat(topupAmount) });
-                            toast.success(`₾${topupAmount} added!`); setTopupAmount(""); setEarningsTab("overview"); await refreshUser();
-                          } catch (_) { toast.error("Top-up failed."); } finally { setLoading(false); }
+                            toast.success(`₾${topupAmount} added!`);
+                            setTopupAmount(""); setEarningsTab("overview");
+                            await refreshUser();
+                          } catch (_) { toast.error("Top-up failed. Contact support."); }
+                          finally { setLoading(false); }
                         }}
                         onError={() => toast.error("Payment failed.")}
-                        onCancel={() => toast.info("Cancelled.")}
+                        onCancel={() => toast.info("Payment cancelled.")}
                       />
                     ) : (
-                      <a href="https://egreve.bog.ge//Taksi" target="_blank" rel="noreferrer"
-                        className="flex items-center justify-center gap-2 w-full h-11 rounded-xl bg-[#1CB86A]/10 border border-[#1CB86A]/30 text-[#1CB86A] font-bold text-sm">
-                        <ExternalLink className="w-4 h-4" /> BOG Bank Transfer
-                      </a>
+                      <GlassCard className="p-4 text-center">
+                        <p className="text-white/30 text-sm">Enter ₾5 or more to show payment options</p>
+                      </GlassCard>
                     )}
+
+                    <Separator className="bg-white/5" />
+
+                    <div className="space-y-2">
+                      <p className="text-white/30 text-[10px] uppercase tracking-widest">Manual Top-up via Bank Transfer</p>
+                      <GlassCard className="p-4">
+                        <p className="text-white/60 text-sm mb-3">Transfer to our BOG account, then submit your reference number below for manual processing.</p>
+                        <a href="https://egreve.bog.ge//Taksi" target="_blank" rel="noreferrer"
+                          className="flex items-center justify-center gap-2 w-full h-10 rounded-xl bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] font-bold text-sm">
+                          <ExternalLink className="w-4 h-4" /> Open BOG Payment Page
+                        </a>
+                      </GlassCard>
+                    </div>
                   </div>
                 )}
+
                 {earningsTab === "withdraw" && (
-                  <div className="mt-4">
-                    <WithdrawalPanel balance={balance} driverId={user?.id} onSuccess={async () => { setEarningsTab("overview"); await refreshUser(); }} />
-                  </div>
-                )}
-                {earningsTab !== "topup" && earningsTab !== "withdraw" && (
-                  <div className="mt-3 space-y-2">
-                    {[["Platform cut",`${(DRIVER_COMMISSION_RATE*100).toFixed(0)}%`,"text-red-500"],["Your share",`${((1-DRIVER_COMMISSION_RATE)*100).toFixed(0)}%`,"text-[#1CB86A]"],["Total earned",`₾${totalEarned.toFixed(2)}`,"text-gray-900"]].map(([l,v,c]) => (
-                      <div key={l} className="flex justify-between py-1.5 border-b border-gray-50 last:border-0">
-                        <span className="text-gray-500 text-sm">{l}</span>
-                        <span className={`font-mono font-bold text-sm ${c}`}>{v}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <WithdrawalPanel balance={balance} driverId={user?.id} onSuccess={async () => { setEarningsTab("overview"); await refreshUser(); }} />
                 )}
               </div>
+            )}
 
-              {[
-                { icon: Calendar, label: "Scheduled Rides requests", sub: "", color: "text-gray-700" },
-                { icon: Gift, label: "Refer a friend", sub: "₾60 per friend", color: "text-purple-600" },
-                { icon: Award, label: "Save on essentials", sub: "", color: "text-amber-600" },
-              ].map(({ icon: Icon, label, sub, color }) => (
-                <button key={label} className="w-full flex items-center justify-between bg-white border border-gray-100 rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
-                  <div className="flex items-center gap-3">
-                    <Icon className={`w-5 h-5 ${color}`} />
-                    <div className="text-left">
-                      <p className="text-gray-900 font-medium text-sm">{label}</p>
-                      {sub && <p className="text-gray-400 text-xs">{sub}</p>}
+            {/* HISTORY TAB */}
+            {!activeRide && activeTab === "history" && (
+              <div className="space-y-2.5">
+                {rideHistory.length === 0 ? (
+                  <div className="text-center py-10">
+                    <div className="w-14 h-14 rounded-2xl bg-white/4 border border-white/8 flex items-center justify-center mx-auto mb-3">
+                      <History className="w-7 h-7 text-white/20" />
                     </div>
+                    <p className="text-white/50 font-semibold text-sm">No rides yet</p>
+                    <p className="text-white/25 text-xs mt-1">Completed rides will appear here</p>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-300" />
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* ── RIDES / HISTORY TAB ──────────────────────────────────────────── */}
-          {!activeRide && activeTab === "history" && (
-            <div className="overflow-y-auto pb-6 pt-2" style={{ maxHeight: "calc(72vh - 48px)" }}>
-              <h2 className="text-gray-900 font-bold text-2xl px-4 pt-1 mb-3">Ride history</h2>
-              {nearbyRides.length > 0 && (
-                <div className="px-4 mb-4 space-y-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Nearby rides</p>
-                    <button onClick={fetchNearbyRides} className="text-[#1CB86A] text-xs flex items-center gap-1 font-semibold"><RefreshCw className="w-3 h-3" /> Refresh</button>
-                  </div>
-                  {nearbyRides.map(ride => (
-                    <div key={ride.id} className="bg-blue-50 border border-blue-100 rounded-2xl p-3.5">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <p className="text-gray-900 font-medium text-sm">{ride.pickup}</p>
-                          <p className="text-gray-400 text-xs">→ {ride.destination || "Open"}</p>
-                          <p className="text-[#1CB86A] text-xs mt-1 font-medium">📍 {ride.distance_to_pickup?.toFixed(1)} km</p>
+                ) : rideHistory.map(r => (
+                  <GlassCard key={r.id} className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1 pr-3 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#00ff88] shrink-0" />
+                          <p className="text-white text-sm font-medium truncate">{r.pickup}</p>
                         </div>
-                        <p className="text-[#1CB86A] font-bold font-mono">₾{ride.estimated_fare?.toFixed(2)}</p>
-                      </div>
-                      <button className="w-full h-9 rounded-xl bg-[#1CB86A]/10 border border-[#1CB86A]/30 text-[#1CB86A] font-bold text-sm"
-                        onClick={async () => { setLoading(true); try { await api.post(`/rides/${ride.id}/request-join`); toast.success("Requested!"); fetchNearbyRides(); } catch (err) { toast.error(err.response?.data?.detail || "Failed"); } finally { setLoading(false); }}}>
-                        Request to Accept
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {rideHistory.length === 0 ? (
-                <div className="text-center py-10 text-gray-300 px-4">
-                  <History className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                  <p className="text-gray-400">No completed rides yet</p>
-                </div>
-              ) : (
-                <div>
-                  {rideHistory.map((r, idx) => {
-                    const isDeclined = r.status === "declined" || r.driver_declined;
-                    const isCancelled = r.status === "cancelled" || r.status === "passenger_cancelled";
-                    const isFinished = r.status === "completed" || r.status === "finished";
-                    const dateStr = r.created_at ? new Date(r.created_at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
-                    return (
-                      <div key={r.id} className={`px-4 py-3.5 ${idx < rideHistory.length - 1 ? "border-b border-gray-100" : ""}`}>
-                        <p className="text-gray-400 text-xs mb-1">{dateStr}</p>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 pr-3">
-                            <p className="text-gray-900 font-medium text-sm leading-tight">{r.pickup || "Unknown pickup"}</p>
-                            {r.destination && <p className="text-gray-400 text-xs mt-0.5 truncate">→ {r.destination}</p>}
-                            <div className="mt-1.5">
-                              {isDeclined && <span className="text-red-500 text-sm font-semibold">You declined</span>}
-                              {isCancelled && !isDeclined && <span className="text-amber-500 text-sm font-semibold">Passenger cancelled</span>}
-                              {isFinished && <span className="text-[#1CB86A] text-sm font-semibold">Finished</span>}
-                              {!isDeclined && !isCancelled && !isFinished && <span className="text-gray-400 text-sm capitalize">{r.status}</span>}
-                            </div>
+                        {r.destination && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#00d4ff] shrink-0" />
+                            <p className="text-white/40 text-xs truncate">{r.destination}</p>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {isFinished && r.final_fare != null && (
-                              <><CreditCard className="w-4 h-4 text-gray-400" /><span className="text-gray-700 font-semibold font-mono text-sm">₾{parseFloat(r.final_fare).toFixed(2)}</span></>
-                            )}
-                            <ChevronRight className="w-4 h-4 text-gray-300" />
-                          </div>
+                        )}
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <StatusBadge status={r.status} />
+                          <span className="text-white/25 text-[10px]">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}</span>
+                          <span className="text-white/25 text-[10px] capitalize">{r.carType || r.car_type}</span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-              <div className="mx-4 mt-3 bg-[#1CB86A] rounded-2xl px-4 py-4 flex items-center justify-between">
-                <p className="text-white font-semibold text-sm leading-tight">How would you rate<br />the app?</p>
-                <div className="flex gap-2">
-                  <button className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center active:scale-90 transition-transform text-xl">👎</button>
-                  <button className="w-10 h-10 rounded-full bg-white/30 flex items-center justify-center active:scale-90 transition-transform text-xl">👍</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── HELP TAB ─────────────────────────────────────────────────────── */}
-          {!activeRide && activeTab === "help" && (
-            <div className="overflow-y-auto pb-6 pt-2" style={{ maxHeight: "calc(72vh - 48px)" }}>
-              <h2 className="text-gray-900 font-bold text-2xl px-4 pt-1 mb-4">Driver Help</h2>
-              {rideHistory.slice(0, 3).length > 0 && (
-                <div className="px-4 mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-900 font-semibold text-base">Get help with a trip</p>
-                    <button className="text-[#1CB86A] text-sm font-semibold flex items-center gap-1">See all <ChevronRight className="w-4 h-4" /></button>
-                  </div>
-                  {rideHistory.slice(0, 3).map(r => {
-                    const isDeclined = r.status === "declined" || r.driver_declined;
-                    const isCancelled = r.status === "cancelled";
-                    const dateStr = r.created_at ? new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
-                    return (
-                      <button key={r.id} className="w-full flex items-start justify-between py-3 border-b border-gray-100 last:border-0 text-left">
-                        <div>
-                          <p className="text-gray-400 text-xs mb-0.5">{dateStr}</p>
-                          <p className="text-gray-900 text-sm font-medium">{r.pickup || "Unknown"}</p>
-                          {isDeclined && <p className="text-red-500 text-sm mt-0.5 font-medium">You declined</p>}
-                          {isCancelled && !isDeclined && <p className="text-amber-500 text-sm mt-0.5 font-medium">Passenger cancelled</p>}
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-gray-300 mt-1 shrink-0" />
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              <div className="px-4 space-y-0 mb-5">
-                <p className="text-gray-900 font-semibold text-base mb-2">Contact support</p>
-                {[
-                  { icon: Send, label: "Send us a message", color: "text-[#1CB86A]" },
-                  { icon: MessageSquare, label: "Messages", color: "text-gray-400" },
-                  { icon: FileText, label: "Browse help articles", color: "text-gray-400" },
-                ].map(({ icon: Icon, label, color }) => (
-                  <button key={label} className="w-full flex items-center justify-between py-3.5 border-b border-gray-100 last:border-0">
-                    <div className="flex items-center gap-3"><Icon className={`w-5 h-5 ${color}`} /><span className="text-gray-900 text-sm font-medium">{label}</span></div>
-                    <ChevronRight className="w-4 h-4 text-gray-300" />
-                  </button>
+                      <p className="text-[#00ff88] font-bold font-mono text-base shrink-0">
+                        ₾{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "—")}
+                      </p>
+                    </div>
+                  </GlassCard>
                 ))}
               </div>
-              <div className="px-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-gray-900 font-semibold text-base">Guidance Centre</p>
-                  <button className="text-[#1CB86A] text-sm font-semibold flex items-center gap-1">See all <ChevronRight className="w-4 h-4" /></button>
-                </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {[["🚗","Inclusive rides"],["👥","Respect for diversity"],["🔒","Information Security"],["🛡️","Safety"]].map(([icon, label]) => (
-                    <button key={label} className="bg-gray-50 border border-gray-100 rounded-2xl p-4 flex flex-col items-start gap-2 active:scale-95 transition-transform">
-                      <span className="text-3xl">{icon}</span>
-                      <span className="text-gray-700 text-sm font-medium text-left">{label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="mx-4 mt-4 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center"><Shield className="w-5 h-5 text-red-500" /></div>
-                    <div>
-                      <p className="text-gray-900 font-semibold text-sm">Safety Toolkit</p>
-                      <p className="text-gray-400 text-xs">Emergency call & trip sharing</p>
-                    </div>
-                  </div>
-                  <SOSButton activeRide={activeRide} location={driverLocation} />
-                </div>
-              </div>
-              <div className="mx-4 mt-4">
-                <MorePanel registrationStatus={registrationStatus} driverRating={user?.rating} activeRide={activeRide} driverLocation={driverLocation} />
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* ── ACTIVE RIDE ──────────────────────────────────────────────────── */}
-          {activeRide && (
-            <div className="overflow-y-auto px-4 pb-6 pt-3 space-y-3" style={{ maxHeight: "65vh" }}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-900 font-bold text-lg">Active Ride</p>
-                  <p className="text-gray-400 text-xs">{activeRide.carType || activeRide.car_type} · {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()]?.icon || "🚗"}</p>
-                </div>
-                <StatusBadge status={activeRide.status} />
-              </div>
+            {/* MORE TAB */}
+            {!activeRide && activeTab === "more" && (
+              <MorePanel
+                registrationStatus={registrationStatus}
+                driverRating={user?.rating}
+                activeRide={activeRide}
+                driverLocation={driverLocation}
+              />
+            )}
 
-              <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#1CB86A] mt-1.5 shrink-0" />
-                  <div><p className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">Pickup</p><p className="text-gray-900 text-sm font-medium">{activeRide.pickup}</p></div>
-                </div>
-                {activeRide.stops?.filter(s => s.lat).length > 0 && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-2.5 h-2.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
-                    <div>
-                      <p className="text-amber-500 text-[10px] uppercase tracking-wider font-semibold">Stops ({activeRide.stops.length})</p>
-                      {activeRide.stops.filter(s => s.lat).map((s, i) => <p key={i} className="text-gray-600 text-xs">· {s.address}</p>)}
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-start gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-gray-900 mt-1.5 shrink-0" />
-                  <div><p className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">Destination</p><p className="text-gray-900 text-sm font-medium">{activeRide.destination || "Open Trip"}</p></div>
-                </div>
-              </div>
-
-              {activeRide.status === "arrived" && (
-                <DriverWaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType || activeRide.car_type} onUpdate={(data) => setWaitTimer(data.minutes)} />
-              )}
-              {activeRide.status === "in_progress" && (
-                <div className="flex items-center justify-between bg-[#1CB86A]/10 border border-[#1CB86A]/20 rounded-2xl px-4 py-3">
-                  <div className="flex items-center gap-2 text-[#1CB86A]"><Activity className="w-5 h-5 animate-pulse" /><span className="font-medium text-sm">Distance Traveled</span></div>
-                  <span className="text-[#1CB86A] font-bold font-mono text-2xl">{distanceTraveled.toFixed(2)} km</span>
-                </div>
-              )}
-
-              <div className={`flex items-center justify-between rounded-2xl px-4 py-3.5 border transition-all ${midTripWaiting ? "bg-amber-50 border-amber-200" : "bg-white border-gray-100 shadow-sm"}`}>
-                <div>
-                  <span className="text-gray-500 text-sm">{midTripWaiting ? "Wait charge running…" : "Current Fare"}</span>
-                  {midTripWaiting && (
-                    <p className="text-amber-600 text-xs mt-0.5 font-mono">
-                      +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} · ₾{((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
-                    </p>
-                  )}
-                </div>
-                <span className={`text-2xl font-bold font-mono ${midTripWaiting ? "text-amber-600" : "text-gray-900"}`}>
-                  ₾{(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "—"}
-                </span>
-              </div>
-
-              {activeRide.status === "in_progress" && (
-                <button onClick={toggleMidTripWait}
-                  className={`w-full h-12 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 ${midTripWaiting ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-white border-gray-200 text-gray-600 hover:border-amber-300"}`}>
-                  {midTripWaiting ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting — resume trip</> : <><PauseCircle className="w-4 h-4" /> Start wait timer (₾{(PRICING_RULES[(activeRide?.carType || "economy").toLowerCase()]?.perMinWait || 0.50).toFixed(2)}/min)</>}
-                </button>
-              )}
-
-              {activeRide.status === "in_progress" && (
-                <button onClick={() => setShowAddStop(v => !v)}
-                  className="w-full h-11 rounded-xl border border-gray-200 bg-white text-gray-500 text-sm font-semibold flex items-center justify-center gap-2 hover:border-[#1CB86A]/40 hover:text-[#1CB86A] transition-all active:scale-95">
-                  <Plus className="w-4 h-4" /> Add stop to route
-                </button>
-              )}
-              {showAddStop && activeRide.status === "in_progress" && (
-                <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3">
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">New Stop</p>
-                  <AddStopInput value={newStopAddress} onChange={setNewStopAddress} mapsLoaded={mapsLoaded} />
-                  <div className="flex gap-2">
-                    <button onClick={() => { setShowAddStop(false); setNewStopAddress({ address: "", lat: null, lng: null }); }} className="flex-1 h-10 rounded-xl border border-gray-200 text-gray-400 text-sm">Cancel</button>
-                    <button onClick={addStopMidTrip} disabled={!newStopAddress.lat} className="flex-1 h-10 rounded-xl bg-[#1CB86A] text-white font-bold text-sm disabled:opacity-40 active:scale-95">Confirm Stop</button>
-                  </div>
-                </div>
-              )}
-
-              <RideCommunication rideId={activeRide.id} otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone} otherPartyName={activeRide.rider_name || "Rider"} currentUserId={user?.id} isDriver={true} />
-
-              <div className="flex gap-3">
-                {activeRide.status === "accepted" && (
-                  <Button className="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold h-14 text-base rounded-xl" onClick={() => handleRideAction("arrived")} disabled={loading}>
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <MapPin className="w-5 h-5 mr-2" />} I've Arrived
-                  </Button>
-                )}
-                {activeRide.status === "arrived" && (
-                  <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold h-14 text-base rounded-xl" onClick={() => handleRideAction("start")} disabled={loading}>
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Play className="w-5 h-5 mr-2" />} Start Ride · {waitDisplayMin}:{String(waitDisplaySec).padStart(2,"0")}
-                  </Button>
-                )}
-                {activeRide.status === "in_progress" && (
-                  <Button className="flex-1 bg-[#1CB86A] hover:bg-[#16a05c] text-white font-bold h-14 text-base rounded-xl" onClick={() => handleRideAction("complete")} disabled={loading}>
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />} Complete
-                  </Button>
-                )}
-                <button onClick={() => setShowCancelModal(true)} className="w-14 h-14 rounded-xl bg-red-50 border border-red-200 text-red-400 flex items-center justify-center hover:bg-red-100 transition-colors">
-                  <XCircle className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── BOTTOM NAV ───────────────────────────────────────────────────── */}
-          {!activeRide && (
-            <div className="border-t border-gray-100 bg-white">
-              <div className="flex items-center px-2 pb-1">
-                {tabs.map(({ id, icon: Icon, label }) => (
-                  <button key={id} onClick={() => { setActiveTab(id); if (id === "history") fetchNearbyRides(); }}
-                    className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-all ${activeTab === id ? "text-[#1CB86A]" : "text-gray-400"}`}>
-                    {id === "home" && activeTab === "home" ? (
-                      <div className="w-6 h-6 rounded-lg bg-[#1CB86A] flex items-center justify-center"><Icon className="w-3.5 h-3.5 text-white" /></div>
-                    ) : (
-                      <Icon className="w-5 h-5" />
-                    )}
-                    <span className="text-[10px] font-semibold">{label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
+          </div>
         </div>
       </div>
 
       {/* Vehicle registration modal */}
       {registrationStatus === "pending_vehicle" && !hasVehicle && (
-        <div className="absolute inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end">
-          <div className="w-full bg-white border-t border-gray-100 rounded-t-3xl p-5 max-h-[90vh] overflow-y-auto">
+        <div className="absolute inset-0 z-[60] bg-[#07070f]/96 backdrop-blur-2xl flex items-end">
+          <div className="w-full bg-[#0a0a18] border-t border-white/8 rounded-t-3xl p-5 max-h-[90vh] overflow-y-auto">
             <div className="text-center mb-5">
-              <div className="w-14 h-14 rounded-2xl bg-[#1CB86A]/10 flex items-center justify-center mx-auto mb-3">
-                <Car className="w-7 h-7 text-[#1CB86A]" />
+              <div className="w-14 h-14 rounded-2xl bg-[#00ff88]/10 flex items-center justify-center mx-auto mb-3">
+                <Car className="w-7 h-7 text-[#00ff88]" />
               </div>
-              <h2 className="text-xl font-bold text-gray-900">Register Your Vehicle</h2>
-              <p className="text-gray-400 text-sm mt-1">To start driving, submit your documents for review</p>
+              <h2 className="text-xl font-bold text-white">Register Your Vehicle</h2>
+              <p className="text-white/40 text-sm mt-1">To start driving, submit your documents for review</p>
             </div>
             <form onSubmit={handleRegisterVehicle} className="space-y-4">
               <GlassCard className="p-4 space-y-3">
@@ -2706,26 +2637,26 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
 
       {/* CANCEL MODAL */}
       <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
-        <DialogContent className="bg-white border border-gray-100 text-gray-900 max-w-sm w-[95vw] rounded-2xl z-[100]">
+        <DialogContent className="bg-[#0e0e1c] border border-white/10 text-white max-w-sm w-[95vw] rounded-2xl z-[100]">
           <DialogHeader>
-            <DialogTitle className="text-red-500 flex items-center gap-2">
+            <DialogTitle className="text-red-400 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5" /> Cancel Ride
             </DialogTitle>
-            <DialogDescription className="text-gray-400 text-sm">
+            <DialogDescription className="text-white/50 text-sm">
               Select a reason. Unjustified cancellations may affect your score.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 my-2 max-h-64 overflow-y-auto">
             {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map(reason => (
               <div key={reason} onClick={() => setCancelReason(reason)}
-                className={`p-3 rounded-xl border cursor-pointer transition-all ${cancelReason === reason ? "bg-red-50 border-red-300 text-red-600" : "border-gray-100 text-gray-600 hover:border-gray-200"}`}>
+                className={`p-3 rounded-xl border cursor-pointer transition-all ${cancelReason === reason ? "bg-red-500/15 border-red-500/40 text-red-400" : "border-white/8 text-white/60 hover:border-white/20"}`}>
                 <p className="text-sm font-medium">{reason}</p>
               </div>
             ))}
           </div>
           <div className="flex gap-3">
-            <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 border border-gray-200 text-gray-500 h-11">Back</Button>
-            <Button onClick={handleCancelRide} disabled={!cancelReason || loading} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold h-11">
+            <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 border border-white/10 text-white/50 h-11">Back</Button>
+            <Button onClick={handleCancelRide} disabled={!cancelReason || loading} className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-11">
               Confirm Cancel
             </Button>
           </div>
@@ -2734,9 +2665,9 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
 
       {/* RATE PASSENGER MODAL */}
       <Dialog open={showRateModal} onOpenChange={setShowRateModal}>
-        <DialogContent className="bg-white border border-gray-100 text-gray-900 max-w-sm w-[95vw] rounded-2xl z-[100]">
+        <DialogContent className="bg-[#0e0e1c] border border-white/10 text-white max-w-sm w-[95vw] rounded-2xl z-[100]">
           <DialogHeader>
-            <DialogTitle className="text-[#1CB86A] flex items-center gap-2">
+            <DialogTitle className="text-[#00ff88] flex items-center gap-2">
               <Star className="w-5 h-5" /> Rate Passenger
             </DialogTitle>
           </DialogHeader>

@@ -1794,7 +1794,7 @@ const RiderDashboard = () => {
 
             <div>
               <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Choose vehicle</p>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4">
                 {carTypes.map((type) => {
                   const est = routeInfo
                     ? calculateFare(type.value, routeInfo.distance, 0, 0, validStopsCount, surgeInfo?.multiplier || 1.0, paymentMethod).total
@@ -1802,10 +1802,10 @@ const RiderDashboard = () => {
                   const active = carType === type.value;
                   return (
                     <button key={type.value} onClick={() => setCarType(type.value)}
-                      className={`p-2.5 rounded-xl border-2 transition-all text-center active:scale-95 ${active ? "border-[#00ff88] bg-[#00ff88]/10 shadow-[0_0_12px_rgba(0,255,136,0.15)]" : "border-white/8 bg-white/3 hover:border-white/20"}`}>
-                      <div className="text-xl mb-0.5">{type.icon}</div>
-                      <div className={`text-[10px] font-semibold leading-tight ${active ? "text-[#00ff88]" : "text-white/50"}`}>{type.name}</div>
-                      <div className={`text-[10px] mt-0.5 font-mono ${active ? "text-[#00ff88]/70" : "text-white/30"}`}>₾{est.toFixed(2)}</div>
+                      className={`flex-shrink-0 flex flex-col items-center gap-1 px-4 py-3 rounded-2xl border-2 transition-all active:scale-95 min-w-[72px] ${active ? "border-[#00ff88] bg-[#00ff88]/10 shadow-[0_0_16px_rgba(0,255,136,0.2)]" : "border-white/8 bg-white/3 hover:border-white/20"}`}>
+                      <div className="text-2xl">{type.icon}</div>
+                      <div className={`text-[11px] font-bold leading-tight ${active ? "text-[#00ff88]" : "text-white/60"}`}>{type.name}</div>
+                      <div className={`text-[11px] font-mono font-semibold ${active ? "text-[#00ff88]/80" : "text-white/35"}`}>₾{est.toFixed(2)}</div>
                     </button>
                   );
                 })}
@@ -2198,10 +2198,10 @@ const RiderDashboard = () => {
                 className={`flex-1 flex flex-col items-center gap-1 py-3 relative transition-all ${active ? "text-[#00ff88]" : "text-white/25 hover:text-white/50"}`}>
                 <div className="relative">
                   <Icon className={`w-5 h-5 transition-all ${active ? "scale-110" : ""}`} />
-                  {hasNotif && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#00ff88] border border-[#07070f]" />}
+                  {hasNotif && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#00ff88] border border-[#07070f] shadow-[0_0_6px_#00ff88]" />}
                 </div>
                 <span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
-                {active && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#00ff88]" />}
+                {active && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#00ff88] shadow-[0_0_6px_#00ff88]" />}
               </button>
             );
           })}
