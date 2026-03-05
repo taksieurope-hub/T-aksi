@@ -443,7 +443,7 @@ const RiderMap = ({
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
         map: mapInstanceRef.current,
-        icon: { url: CAR_ICON_URL, scaledSize: new window.google.maps.Size(40, 40), anchor: new window.google.maps.Point(20, 20) },
+        icon: { url: CAR_ICON_URL, scaledSize: new window.google.maps.Size(35, 35), anchor: new window.google.maps.Point(20, 20) },
         zIndex: 20,
       });
     }
