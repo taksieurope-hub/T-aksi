@@ -164,35 +164,24 @@ const StatusBadge = ({ status }) => {
 
 const DriverWaitTimer = ({ arrivedAt, carType, onUpdate }) => {
   const [elapsed, setElapsed] = useState(0);
-  // Use a ref for the callback so the interval closure never goes stale
-  const onUpdateRef = useRef(onUpdate);
-  useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
 
   useEffect(() => {
-    const startTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
-    if (isNaN(startTime)) return;
-
-    const tick = () => {
-      const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
-      setElapsed(elapsedSec);
-      const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
-      const freeWaitSec = rules.freeWait * 60;
-      // Always report total elapsed minutes so parent has accurate billing value.
-      // calculate_fare on the server subtracts freeWait internally.
-      const totalMin = elapsedSec / 60;
-      if (elapsedSec > freeWaitSec) {
-        const overtimeSec = elapsedSec - freeWaitSec;
-        const overtimeMin = overtimeSec / 60;
-        onUpdateRef.current?.({ minutes: totalMin, overtime: overtimeMin, earned: overtimeMin * rules.perMinWait });
-      } else {
-        onUpdateRef.current?.({ minutes: totalMin, overtime: 0, earned: 0 });
-      }
-    };
-
-    tick(); // immediate first tick
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [arrivedAt, carType]); // ← intentionally omit onUpdate (handled via ref)
+    // ... your existing interval logic ...
+    
+    // NEW: Calculate and send the data up whenever elapsed changes
+    const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
+    const freeWaitSec = rules.freeWait * 60;
+    
+    if (elapsed > freeWaitSec) {
+      const overtimeSec = elapsed - freeWaitSec;
+      const overtimeMin = overtimeSec / 60;
+      // Tell the parent component the current stats
+      onUpdate?.({
+        minutes: overtimeMin,
+        earned: overtimeMin * rules.perMinWait
+      });
+    }
+  }, [elapsed, carType, arrivedAt, onUpdate]);
 
   const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
   const freeWaitSec = rules.freeWait * 60;
@@ -1100,10 +1089,7 @@ const MAP_STYLES = [
 ];
 
 // =============================================================================
-// DRIVER SMART MAP — Bolt-quality
-// NEW: ETA countdown pill, pickup/destination pins, auto-fit on accept,
-//      dragstart unfollow, re-centre button.
-// PRESERVED: NavHUD turn-by-turn, tilt/heading, speed, Waze/Google nav.
+// DRIVER SMART MAP
 // =============================================================================
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef               = useRef(null);
@@ -1117,6 +1103,8 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const rafRef               = useRef(null);
   const etaIntervalRef       = useRef(null);
   const prevRideIdRef        = useRef(null);
+  const lastRouteOriginRef   = useRef(null);
+  const rerouteTimerRef      = useRef(null);
 
   const [isFollowing, setIsFollowing] = useState(true);
   const [routeSteps,  setRouteSteps]  = useState([]);
@@ -1148,11 +1136,6 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z" fill="#ff4444"/><circle cx="16" cy="16" r="6" fill="#07070f"/></svg>')}`,
     scaledSize: new window.google.maps.Size(28, 37),
     anchor: new window.google.maps.Point(14, 37),
-  });
-  const makeDriverIcon = () => ({
-    url: '/driver-arrow.png', // <-- Make sure this matches your actual arrow image name!
-    scaledSize: new window.google.maps.Size(35, 35), // This shrinks it to mobile size
-    anchor: new window.google.maps.Point(17.5, 17.5), // Centers the arrow exactly on the GPS dot
   });
 
   const upsertPin = (ref, position, icon) => {
@@ -1286,7 +1269,25 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     setTimeout(() => setIsFollowing(true), 3000);
   }, [activeRide?.status, activeRide?.id]);
 
-  // Directions + ETA + pins
+  // Extracted route requester — called on status change AND reroute timer
+  const requestRoute = useCallback((dLat, dLng, target) => {
+    if (!directionsServiceRef.current || !routeRendererRef.current) return;
+    lastRouteOriginRef.current = { lat: dLat, lng: dLng };
+    directionsServiceRef.current.route(
+      { origin: { lat: dLat, lng: dLng }, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
+      (result, status) => {
+        if (status === "OK" && routeRendererRef.current) {
+          routeRendererRef.current.setDirections(result);
+          setRouteSteps(result.routes[0].legs[0].steps);
+          setStepIdx(0);
+          const duration = result.routes[0]?.legs[0]?.duration?.value;
+          if (duration) startEtaCountdown(duration);
+        }
+      }
+    );
+  }, []);
+
+  // Directions + ETA + pins — fires on status/coord change
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
     if (!activeRide || !driverLocation) {
@@ -1295,6 +1296,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       setEtaSeconds(null);
       removePin(pickupMarkerRef);
       removePin(destMarkerRef);
+      lastRouteOriginRef.current = null;
       return;
     }
 
@@ -1304,55 +1306,40 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     let target = null;
     if (["accepted", "arrived"].includes(activeRide.status)) {
       const lat = getSafe(activeRide.pickup_lat), lng = getSafe(activeRide.pickup_lng);
-      if (lat && lng) {
-        target = { lat, lng };
-        upsertPin(pickupMarkerRef, target, makePickupIcon());
-        removePin(destMarkerRef);
-      }
+      if (lat && lng) { target = { lat, lng }; upsertPin(pickupMarkerRef, target, makePickupIcon()); removePin(destMarkerRef); }
     } else if (activeRide.status === "in_progress") {
       const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat);
       const lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
-      if (lat && lng) {
-        target = { lat, lng };
-        upsertPin(destMarkerRef, target, makeDestIcon());
-        removePin(pickupMarkerRef);
-      }
+      if (lat && lng) { target = { lat, lng }; upsertPin(destMarkerRef, target, makeDestIcon()); removePin(pickupMarkerRef); }
     }
-
     if (!target) return;
+    requestRoute(dLat, dLng, target);
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat, requestRoute]);
 
-    // 1. Format the stops into Google Maps waypoints
-    const stopsWaypoints = activeRide?.stops
-      ?.filter(stop => stop.lat && stop.lng)
-      .map(stop => ({
-        location: { lat: parseFloat(stop.lat), lng: parseFloat(stop.lng) },
-        stopover: true
-      })) || [];
-
-    directionsServiceRef.current.route(
-      { 
-        origin: { lat: dLat, lng: dLng }, 
-        destination: target, 
-        waypoints: stopsWaypoints, // 2. Add them to the request
-        travelMode: window.google.maps.TravelMode.DRIVING 
-      },
-      (result, status) => {
-        if (status === "OK" && routeRendererRef.current) {
-          routeRendererRef.current.setDirections(result);
-          
-          // 3. Combine steps from all legs so navigation continues past the first stop
-          const allSteps = result.routes[0].legs.flatMap(leg => leg.steps);
-          setRouteSteps(allSteps);
-          setStepIdx(0);
-          
-          // 4. Sum the duration of all legs to get the true total ETA
-          const totalDuration = result.routes[0].legs.reduce((total, leg) => total + (leg.duration?.value || 0), 0);
-          if (totalDuration) startEtaCountdown(totalDuration);
-        }
+  // Auto-reroute every 15s if driver moved 120m+ from last route origin
+  useEffect(() => {
+    if (rerouteTimerRef.current) clearInterval(rerouteTimerRef.current);
+    if (!activeRide || !["accepted", "arrived", "in_progress"].includes(activeRide.status)) return;
+    rerouteTimerRef.current = setInterval(() => {
+      if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
+      const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
+      if (!dLat || !dLng) return;
+      const last = lastRouteOriginRef.current;
+      if (last && hvKm(dLat, dLng, last.lat, last.lng) < 0.12) return;
+      let target = null;
+      if (["accepted", "arrived"].includes(activeRide.status)) {
+        const lat = getSafe(activeRide.pickup_lat), lng = getSafe(activeRide.pickup_lng);
+        if (lat && lng) target = { lat, lng };
+      } else {
+        const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat);
+        const lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
+        if (lat && lng) target = { lat, lng };
       }
-    );
-  // 5. IMPORTANT: Add activeRide?.stops to this dependency array!
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat, activeRide?.stops]);
+      if (target) requestRoute(dLat, dLng, target);
+    }, 15000);
+    return () => { if (rerouteTimerRef.current) clearInterval(rerouteTimerRef.current); };
+  }, [activeRide?.status, activeRide?.id, driverLocation, requestRoute]);
+
   const handleNav = (app) => {
     if (!activeRide) return;
     const isPickup = ["accepted", "arrived"].includes(activeRide.status);
@@ -1745,15 +1732,27 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     setDriverLocation(location);
     const now = Date.now();
 
+    // Accumulate GPS distance during active trip
+    const ride = activeRideRef.current;
+    if (ride?.status === "in_progress" && lastPositionRef.current) {
+      const prev = lastPositionRef.current;
+      const R = 6371;
+      const dLat = (location.lat - prev.lat) * Math.PI / 180;
+      const dLng = (location.lng - prev.lng) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(prev.lat*Math.PI/180)*Math.cos(location.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+      const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      if (distKm > 0.005) setDistanceTraveled(prev => prev + distKm); // ignore GPS jitter < 5m
+    }
+    lastPositionRef.current = location;
+
     // Skip network call if: (a) sent within last 10s AND (b) moved < 15m since last send.
-    // This cuts location POSTs by ~80% when stationary, preventing rate limit hits.
     const last = lastSentLocationRef.current;
     const movedEnough = !last || (() => {
       const R = 6371000;
       const dLat = (location.lat - last.lat) * Math.PI / 180;
       const dLng = (location.lng - last.lng) * Math.PI / 180;
       const a = Math.sin(dLat/2)**2 + Math.cos(last.lat * Math.PI/180) * Math.cos(location.lat * Math.PI/180) * Math.sin(dLng/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) > 15;  // > 15 metres
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) > 15;
     })();
     const enoughTimePassed = now - lastNetworkPingRef.current >= 10000;
 
@@ -1763,7 +1762,6 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     try {
       await api.post("/driver/location", location);
       lastSentLocationRef.current = location;
-      lastPositionRef.current = location;
     } catch (_) {}
   }, []);
 
@@ -1780,9 +1778,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       : (arrivedTime ?? Date.now());
     if (!arrivedTime) setArrivedTime(startMs);
     const iv = setInterval(() => {
-      // Store fractional minutes (e.g. 2.5 = 2 min 30 sec) for accurate billing
-      const totalElapsedMs = Date.now() - startMs;
-      setWaitTimer(totalElapsedMs / 60000);
+      const totalElapsedMin = Math.floor((Date.now() - startMs) / 60000);
+      setWaitTimer(totalElapsedMin);
     }, 1000);
     return () => clearInterval(iv);
   }, [activeRide?.status, activeRide?.arrived_at]);
@@ -1842,11 +1839,10 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         
         toast.success("Marked as arrived");
       } else if (action === "start") {
-        const pickupWaitMin = parseFloat((waitTimer || 0).toFixed(4));
-        await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: pickupWaitMin });
+        await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: waitTimer });
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
-        
+        setWaitTimer(0);
         setArrivedTime(null);
         lastPositionRef.current = driverLocation;
         toast.success("Ride started!");
@@ -1854,9 +1850,10 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         // We define these here so the code doesn't "break" looking for them
         const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled.toFixed(2));
         
+        // Summing the two types of wait time: Pickup + Mid-trip Stops
         const pickupWait = parseFloat(waitTimer) || 0;
         const stopWait = parseFloat(midTripWaitBanked) || 0;
-        const finalWait = parseFloat((pickupWait + stopWait).toFixed(4));
+        const finalWait = (pickupWait + stopWait).toFixed(2);
 
         // The API call
         const res = await api.post(
@@ -1901,20 +1898,11 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     try {
       await api.post(`/rides/${activeRide.id}/cancel`, { reason: cancelReason });
       toast.success("Ride cancelled");
-      
-      // FULL CLEANUP: Added the mid-trip and live fare resets so they don't bleed into the next ride
-      setActiveRide(null);
-      setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null);
-      setIsWaitingAtStop(false); setMidTripWaiting(false); setMidTripWaitStart(null); 
-      setMidTripWaitSecs(0); setMidTripWaitBanked(0); setLiveFare(null);
-      
+      setActiveRide(null); setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null);
       setShowCancelModal(false); setCancelReason("");
       fetchRideHistory(); fetchAvailableRides();
-    } catch (_) { 
-      toast.error("Failed to cancel"); 
-    } finally { 
-      setLoading(false); 
-    }
+    } catch (_) { toast.error("Failed to cancel"); }
+    finally { setLoading(false); }
   };
 
   const handleToggleOnline = async (online) => {
@@ -1977,50 +1965,44 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
 
   const toggleMidTripWait = async () => {
     if (!midTripWaiting) {
-      // Start
+      // Start wait timer
       setMidTripWaiting(true);
       setMidTripWaitStart(Date.now());
       setMidTripWaitSecs(0);
-      try { await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=start`); } catch (_) {}
-      const rate = PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50;
-      toast.success(`Wait timer started — ₾${rate.toFixed(2)}/min`);
+      try { await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=true`); } catch (_) {}
+      toast.success("Wait timer started — ₾0.50/min");
     } else {
-      // Stop — ask backend to bank the time and recalc fare
+      // Stop wait timer — bank elapsed time locally (server doesn't return accumulated_minutes)
       setMidTripWaiting(false);
-      try {
-        const res = await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=stop`);
-        const banked = res.data.accumulated_minutes || 0;
-        const newFare = res.data.new_estimated_fare;
-        setMidTripWaitBanked(banked);
-        setMidTripWaitSecs(0);
-        setMidTripWaitStart(null);
-        if (newFare != null) {
-          setLiveFare(newFare);
-          setActiveRide(prev => ({ ...prev, estimated_fare: newFare }));
-        }
-        const min = Math.floor(banked);
-        const sec = Math.round((banked - min) * 60);
-        toast.success(`Wait saved: ${min}m ${sec}s · resuming trip`);
-      } catch (_) {
-        setMidTripWaitBanked(prev => prev + midTripWaitSecs / 60);
-        setMidTripWaitSecs(0);
-        setMidTripWaitStart(null);
-      }
+      const elapsedMin = midTripWaitSecs / 60;
+      setMidTripWaitBanked(prev => prev + elapsedMin);
+      setMidTripWaitSecs(0);
+      setMidTripWaitStart(null);
+      try { await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=false`); } catch (_) {}
+      const min = Math.floor(elapsedMin);
+      const sec = Math.round((elapsedMin - min) * 60);
+      toast.success(`Wait saved: ${min}m ${sec}s · resuming trip`);
     }
   };
 
-  const addStopMidTrip = async () => {
-    if (!newStopAddress.lat) { toast.error("Select a valid stop location"); return; }
+  // Stop at current GPS position — no address input needed
+  const stopAtCurrentLocation = async () => {
+    if (!driverLocation?.lat) { toast.error("GPS not available"); return; }
+    // Auto-stop wait timer if running
+    if (midTripWaiting) {
+      setMidTripWaiting(false);
+      const elapsedMin = midTripWaitSecs / 60;
+      setMidTripWaitBanked(prev => prev + elapsedMin);
+      setMidTripWaitSecs(0);
+      setMidTripWaitStart(null);
+      try { await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=false`); } catch (_) {}
+    }
+    const stopIdx = (activeRide.stops?.length || 0);
+    const bankedMin = Math.round(midTripWaitBanked);
     try {
-      const res = await api.post(
-        `/rides/${activeRide.id}/add-stop?stop_address=${encodeURIComponent(newStopAddress.address)}&stop_lat=${newStopAddress.lat}&stop_lng=${newStopAddress.lng}`
-      );
-      setActiveRide(prev => ({ ...prev, stops: res.data.stops, estimated_fare: res.data.new_estimated_fare }));
-      setLiveFare(res.data.new_estimated_fare);
-      setShowAddStop(false);
-      setNewStopAddress({ address: "", lat: null, lng: null });
-      toast.success(`Stop added — new fare ₾${res.data.new_estimated_fare.toFixed(2)}`);
-    } catch (err) { toast.error(err.response?.data?.detail || "Failed to add stop"); }
+      await api.post(`/rides/${activeRide.id}/stop-reached?stop_index=${stopIdx}&wait_minutes=${bankedMin}`);
+      toast.success("Stop recorded at current location");
+    } catch (err) { toast.error(err.response?.data?.detail || "Failed to record stop"); }
   };
 
   const toggleStopWait = async () => {
@@ -2034,7 +2016,6 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
 
   const tabs = [
     { id: "rides",    icon: Activity,  label: "Rides"   },
-    { id: "nearby",   icon: Crosshair, label: "Nearby"  },
     { id: "earnings", icon: Wallet,    label: "Wallet"  },
     { id: "history",  icon: History,   label: "History" },
     { id: "more",     icon: Settings,  label: "More"    },
@@ -2048,7 +2029,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const rsc = rideStatusConfig[activeRide?.status] || {};
 
   const waitDisplayMin = Math.floor(waitTimer);
-  const waitDisplaySec = Math.round((waitTimer - waitDisplayMin) * 60);
+  const waitDisplaySec = 0;
 
   return (
     <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden">
@@ -2125,14 +2106,18 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
           </div>
 
           {!activeRide && (
-            <div className="flex items-center gap-1 px-3 pb-2 pt-1 border-b border-white/5">
-              {tabs.map(({ id, icon: Icon, label }) => (
-                <button key={id} onClick={() => { setActiveTab(id); if (id === "nearby") fetchNearbyRides(); }}
-                  className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl transition-all ${activeTab === id ? "bg-[#00ff88]/12 text-[#00ff88]" : "text-white/30 hover:text-white/60"}`}>
-                  <Icon className="w-4 h-4" />
-                  <span className="text-[9px] uppercase tracking-wider font-bold">{label}</span>
-                </button>
-              ))}
+            <div className="flex items-center px-2 pb-2 pt-1 border-b border-white/5">
+              {tabs.map(({ id, icon: Icon, label }) => {
+                const active = activeTab === id;
+                return (
+                  <button key={id} onClick={() => setActiveTab(id)}
+                    className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl transition-all relative ${active ? "text-[#00ff88]" : "text-white/30 hover:text-white/50"}`}>
+                    <Icon className={`w-5 h-5 transition-transform ${active ? "scale-110" : ""}`} />
+                    <span className="text-[9px] uppercase tracking-wider font-bold">{label}</span>
+                    {active && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#00ff88] shadow-[0_0_6px_#00ff88]" />}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -2203,7 +2188,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     </span>
                     {midTripWaiting && (
                       <p className="text-amber-400 text-xs mt-0.5 font-mono">
-                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} · ₾{((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
+                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} · ₾{((midTripWaitBanked + midTripWaitSecs / 60) * 0.50).toFixed(2)} wait fee
                       </p>
                     )}
                   </div>
@@ -2222,33 +2207,17 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     }`}>
                     {midTripWaiting
                       ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting — resume trip</>
-                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (₾{(PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50).toFixed(2)}/min)</>
+                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (₾0.50/min)</>
                     }
                   </button>
                 )}
 
-                {/* ── Add Stop Mid-Trip ───────────────────────────── */}
-                {activeRide.status === "in_progress" && (
-                  <button onClick={() => setShowAddStop(v => !v)}
-                    className="w-full h-11 rounded-xl border border-white/10 bg-white/4 text-white/50 text-sm font-semibold flex items-center justify-center gap-2 hover:border-[#00d4ff]/40 hover:text-[#00d4ff] transition-all active:scale-95">
-                    <Plus className="w-4 h-4" /> Add stop to route
+                {/* ── Stop Here (current GPS position) ─────────────── */}
+                {activeRide.status === "in_progress" && !midTripWaiting && (
+                  <button onClick={stopAtCurrentLocation}
+                    className="w-full h-11 rounded-xl border border-yellow-500/30 bg-yellow-500/8 text-yellow-400 text-sm font-semibold flex items-center justify-center gap-2 hover:border-yellow-500/50 hover:bg-yellow-500/15 transition-all active:scale-95">
+                    <MapPin className="w-4 h-4" /> Stop here (record stop at my location)
                   </button>
-                )}
-                {showAddStop && activeRide.status === "in_progress" && (
-                  <div className="bg-white/4 border border-[#00d4ff]/20 rounded-2xl p-4 space-y-3">
-                    <p className="text-[#00d4ff] text-xs font-bold uppercase tracking-wider">New Stop</p>
-                    <AddStopInput value={newStopAddress} onChange={setNewStopAddress} mapsLoaded={mapsLoaded} />
-                    <div className="flex gap-2">
-                      <button onClick={() => { setShowAddStop(false); setNewStopAddress({ address: "", lat: null, lng: null }); }}
-                        className="flex-1 h-10 rounded-xl border border-white/10 text-white/40 text-sm hover:bg-white/5 transition-all">
-                        Cancel
-                      </button>
-                      <button onClick={addStopMidTrip} disabled={!newStopAddress.lat}
-                        className="flex-1 h-10 rounded-xl bg-[#00d4ff] text-black font-bold text-sm disabled:opacity-40 active:scale-95 transition-all">
-                        Confirm Stop
-                      </button>
-                    </div>
-                  </div>
                 )}
 
                 <RideCommunication
@@ -2304,12 +2273,43 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     </Button>
                   </div>
                 ) : availableRides.length === 0 ? (
-                  <div className="text-center py-10">
-                    <div className="w-16 h-16 rounded-2xl bg-[#00d4ff]/5 flex items-center justify-center mx-auto mb-3">
-                      <Navigation className="w-8 h-8 text-[#00d4ff]/40 animate-pulse" />
+                  <div className="space-y-4">
+                    <div className="text-center py-8">
+                      <div className="w-14 h-14 rounded-2xl bg-[#00d4ff]/8 border border-[#00d4ff]/15 flex items-center justify-center mx-auto mb-3">
+                        <Navigation className="w-7 h-7 text-[#00d4ff]/50 animate-pulse" />
+                      </div>
+                      <p className="text-white font-semibold text-sm">Searching for rides…</p>
+                      <p className="text-white/30 text-xs mt-1">New requests appear automatically</p>
                     </div>
-                    <p className="text-white font-semibold">Searching for rides...</p>
-                    <p className="text-white/30 text-sm mt-1">New requests will appear automatically</p>
+                    {nearbyRides.length > 0 && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-white/30 text-[10px] uppercase tracking-widest">{nearbyRides.length} rides nearby</p>
+                          <button onClick={fetchNearbyRides} className="text-[#00d4ff] text-xs flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Refresh</button>
+                        </div>
+                        {nearbyRides.map(ride => (
+                          <GlassCard key={ride.id} className="p-3.5 mb-2">
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex-1 pr-2">
+                                <p className="text-white text-sm font-medium truncate">{ride.pickup}</p>
+                                <p className="text-white/40 text-xs">→ {ride.destination || "Open"}</p>
+                                {ride.distance_to_pickup != null && <p className="text-[#00d4ff] text-xs mt-0.5">📍 {ride.distance_to_pickup?.toFixed(1)} km</p>}
+                              </div>
+                              <p className="text-[#00ff88] font-bold font-mono shrink-0">₾{ride.estimated_fare?.toFixed(2)}</p>
+                            </div>
+                            <Button className="w-full bg-[#00d4ff]/12 border border-[#00d4ff]/25 text-[#00d4ff] font-bold h-9 text-sm hover:bg-[#00d4ff]/20 rounded-xl"
+                              onClick={async () => {
+                                setLoading(true);
+                                try { await api.post(`/rides/${ride.id}/request-join`); toast.success("Requested!"); fetchNearbyRides(); }
+                                catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
+                                finally { setLoading(false); }
+                              }}>
+                              Request to Accept
+                            </Button>
+                          </GlassCard>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -2323,33 +2323,43 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                         <GlassCard key={ride.id} className="p-4">
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex-1 pr-3">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span>{tier.icon}</span>
-                                <span className="text-white/40 text-xs uppercase tracking-wider">{tier.name}</span>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-lg">{tier.icon}</span>
+                                <span className="text-white/50 text-xs uppercase tracking-wider font-semibold">{tier.name}</span>
                                 {ride.surge_multiplier > 1 && (
-                                  <span className="text-orange-400 text-xs font-bold bg-orange-500/15 rounded px-1.5">{ride.surge_multiplier}x</span>
+                                  <span className="text-orange-400 text-[10px] font-bold bg-orange-500/15 border border-orange-500/25 rounded-md px-1.5 py-0.5">{ride.surge_multiplier}× surge</span>
                                 )}
                               </div>
-                              <p className="text-white font-medium text-sm leading-tight">{ride.pickup}</p>
-                              <p className="text-white/40 text-xs mt-0.5 flex items-center gap-1">
-                                <ArrowRight className="w-3 h-3" /> {ride.destination || "Open Trip"}
-                              </p>
+                              <div className="flex items-stretch gap-2.5">
+                                <div className="flex flex-col items-center gap-0.5 mt-1">
+                                  <div className="w-2 h-2 rounded-full bg-[#00ff88] shadow-[0_0_6px_#00ff88]" />
+                                  <div className="w-0.5 flex-1 bg-white/10 rounded-full min-h-[14px]" />
+                                  <div className="w-2 h-2 rounded-full bg-[#00d4ff] shadow-[0_0_6px_#00d4ff]" />
+                                </div>
+                                <div className="flex-1 space-y-1.5">
+                                  <p className="text-white font-medium text-sm leading-tight">{ride.pickup}</p>
+                                  <p className="text-white/40 text-xs">{ride.destination || "Open Trip"}</p>
+                                </div>
+                              </div>
                               {ride.distance_to_pickup != null && (
-                                <p className="text-[#00d4ff] text-xs mt-1">📍 {ride.distance_to_pickup} km away</p>
+                                <p className="text-[#00d4ff] text-xs mt-1.5 flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" /> {ride.distance_to_pickup} km away
+                                </p>
                               )}
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-2xl font-bold font-mono text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
-                              <p className="text-white/40 text-xs">you get ₾{driverCut.toFixed(2)}</p>
+                              <p className="text-white/35 text-xs">you get</p>
+                              <p className="text-white/70 text-sm font-bold font-mono">₾{driverCut.toFixed(2)}</p>
                             </div>
                           </div>
-                          <div className="flex gap-2">
-                            <Button className="flex-1 bg-[#00ff88] text-black font-bold h-11" disabled={loading || !canAccept}
+                          <div className="flex gap-2 pt-2 border-t border-white/5">
+                            <Button className="flex-1 bg-[#00ff88] hover:bg-[#00e070] text-black font-bold h-11 rounded-xl" disabled={loading || !canAccept}
                               onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}>
-                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : canAccept ? "Accept Ride" : `Need ₾${commission.toFixed(2)}`}
+                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : canAccept ? "✓ Accept Ride" : `Need ₾${commission.toFixed(2)}`}
                             </Button>
                             <button onClick={() => handleDeclineRide(ride.id)}
-                              className="w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
+                              className="w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors active:scale-95">
                               <X className="w-4 h-4" />
                             </button>
                           </div>
@@ -2361,62 +2371,32 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
               </div>
             )}
 
-            {/* NEARBY TAB */}
-            {!activeRide && activeTab === "nearby" && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-white/30 text-[10px] uppercase tracking-widest">Within 10km</p>
-                  <button onClick={fetchNearbyRides} className="text-[#00d4ff] text-xs flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Refresh</button>
-                </div>
-                {nearbyRides.length === 0 ? (
-                  <div className="text-center py-8 text-white/30">
-                    <MapPinned className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>No rides nearby</p>
-                  </div>
-                ) : nearbyRides.map(ride => (
-                  <GlassCard key={ride.id} className="p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="text-white font-medium text-sm">{ride.pickup}</p>
-                        <p className="text-white/40 text-xs">→ {ride.destination || "Open"}</p>
-                        <p className="text-[#00d4ff] text-xs mt-1">📍 {ride.distance_to_pickup?.toFixed(1)} km</p>
-                      </div>
-                      <p className="text-[#00ff88] font-bold font-mono">₾{ride.estimated_fare?.toFixed(2)}</p>
-                    </div>
-                    <Button className="w-full bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] font-bold h-10 text-sm"
-                      onClick={async () => {
-                        setLoading(true);
-                        try { await api.post(`/rides/${ride.id}/request-join`); toast.success("Requested!"); fetchNearbyRides(); }
-                        catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
-                        finally { setLoading(false); }
-                      }}>
-                      Request to Accept
-                    </Button>
-                  </GlassCard>
-                ))}
-              </div>
-            )}
-
             {/* EARNINGS TAB */}
             {!activeRide && activeTab === "earnings" && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <GlassCard accent className="p-4 text-center">
+                  <GlassCard accent className="p-4">
                     <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
                     <p className="text-3xl font-bold font-mono text-[#00ff88]">₾{balance.toFixed(2)}</p>
                   </GlassCard>
-                  <GlassCard className="p-4 text-center">
+                  <GlassCard className="p-4">
                     <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Total Earned</p>
                     <p className="text-3xl font-bold font-mono text-white">₾{totalEarned.toFixed(2)}</p>
                   </GlassCard>
-                  <StatPill label="Commission Paid" value={`₾${commissionPaid.toFixed(2)}`} color="text-red-400" />
-                  <StatPill label="Withdrawn" value={`₾${totalWithdrawn.toFixed(2)}`} color="text-white/60" />
+                  <GlassCard className="p-3">
+                    <p className="text-red-400/60 text-[10px] uppercase tracking-widest mb-0.5">Commission</p>
+                    <p className="text-lg font-bold font-mono text-red-400">₾{commissionPaid.toFixed(2)}</p>
+                  </GlassCard>
+                  <GlassCard className="p-3">
+                    <p className="text-white/40 text-[10px] uppercase tracking-widest mb-0.5">Withdrawn</p>
+                    <p className="text-lg font-bold font-mono text-white/60">₾{totalWithdrawn.toFixed(2)}</p>
+                  </GlassCard>
                 </div>
 
                 <div className="flex gap-2">
                   {[["overview","Overview"],["topup","Top Up"],["withdraw","Withdraw"]].map(([k,l]) => (
                     <button key={k} onClick={() => setEarningsTab(k)}
-                      className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${earningsTab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/30 hover:text-white/60"}`}>
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${earningsTab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/30 hover:text-white/60"}`}>
                       {l}
                     </button>
                   ))}
@@ -2503,29 +2483,38 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
 
             {/* HISTORY TAB */}
             {!activeRide && activeTab === "history" && (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {rideHistory.length === 0 ? (
-                  <div className="text-center py-10 text-white/30">
-                    <History className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>No completed rides yet</p>
+                  <div className="text-center py-10">
+                    <div className="w-14 h-14 rounded-2xl bg-white/4 border border-white/8 flex items-center justify-center mx-auto mb-3">
+                      <History className="w-7 h-7 text-white/20" />
+                    </div>
+                    <p className="text-white/50 font-semibold text-sm">No rides yet</p>
+                    <p className="text-white/25 text-xs mt-1">Completed rides will appear here</p>
                   </div>
                 ) : rideHistory.map(r => (
                   <GlassCard key={r.id} className="p-4">
                     <div className="flex justify-between items-start">
-                      <div className="flex-1 pr-3">
-                        <p className="text-white text-sm font-medium truncate">{r.pickup}</p>
-                        {r.destination && <p className="text-white/40 text-xs truncate">→ {r.destination}</p>}
+                      <div className="flex-1 pr-3 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#00ff88] shrink-0" />
+                          <p className="text-white text-sm font-medium truncate">{r.pickup}</p>
+                        </div>
+                        {r.destination && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#00d4ff] shrink-0" />
+                            <p className="text-white/40 text-xs truncate">{r.destination}</p>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 mt-1.5">
                           <StatusBadge status={r.status} />
                           <span className="text-white/25 text-[10px]">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}</span>
+                          <span className="text-white/25 text-[10px] capitalize">{r.carType || r.car_type}</span>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-[#00ff88] font-bold font-mono">
-                          ₾{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "—")}
-                        </p>
-                        <p className="text-white/30 text-xs capitalize">{r.carType || r.car_type || "—"}</p>
-                      </div>
+                      <p className="text-[#00ff88] font-bold font-mono text-base shrink-0">
+                        ₾{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "—")}
+                      </p>
                     </div>
                   </GlassCard>
                 ))}
