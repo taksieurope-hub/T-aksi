@@ -1147,75 +1147,52 @@ async def register_rider(data: UserRegister, response: Response, x_phone_verifie
 
 
 @app.post("/api/auth/register/driver", tags=["Auth"])
-@app.post("/api/driver/register", tags=["Auth"])
 async def register_driver(data: UserRegister, response: Response, x_phone_verified: Optional[str] = Header(None)):
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
 
-    # 1. Verification Security
-    if not x_phone_verified:
-        raise HTTPException(403, "Phone number must be verified before registering.")
-    token_data = decode_token(x_phone_verified)
-    if not token_data or token_data.get("role") != "phone_verified":
-        raise HTTPException(403, "Invalid or expired phone verification token.")
-    if token_data.get("user_id") != phone_norm:
-        raise HTTPException(403, "Phone token does not match the phone number being registered.")
-
-    otp_doc = db.collection("otp_codes").document(phone_norm).get()
-    if not otp_doc.exists or not otp_doc.to_dict().get("verified"):
-        raise HTTPException(403, "Phone number has not been verified via OTP.")
-
-    existing = list(db.collection("users").where("cellphone_norm", "==", phone_norm).limit(1).stream())
-    if existing:
-        raise HTTPException(400, "Phone number already registered")
-
-    # 🛠️ TIERED BONUS LOGIC: Automatically counts drivers and assigns bonus
-    # 
-    all_drivers = list(db.collection("users").where("user_type", "==", "driver").stream())
+    # 🔍 1. Count current drivers specifically in the 'drivers' collection
+    # This determines if they get the 50, 20, or 10 GEL bonus
+    all_drivers = list(db.collection("drivers").stream())
     driver_count = len(all_drivers)
 
     if driver_count < 10:
-        signup_bonus = 50.0  # First 10
+        signup_bonus = 50.0
     elif driver_count < 50:
-        signup_bonus = 20.0  # 11 to 50
-    elif driver_count < 100:
-        signup_bonus = 10.0  # 51 to 100
+        signup_bonus = 20.0
     else:
-        signup_bonus = 0.0   # 101+
+        signup_bonus = 10.0
 
-    user_ref = db.collection("users").document()
-    user_data = {
-        "id": user_ref.id,
+    # 🛡️ 2. Check if this phone number is already a driver
+    existing = list(db.collection("drivers").where("cellphone_norm", "==", phone_norm).limit(1).stream())
+    if existing:
+        raise HTTPException(400, "This phone number is already registered as a driver.")
+
+    # 🛠️ 3. Save to the 'drivers' collection instead of 'users'
+    driver_ref = db.collection("drivers").document()
+    driver_data = {
+        "id": driver_ref.id,
         "name": data.name,
         "surname": data.surname,
         "cellphone": data.cellphone,
         "cellphone_norm": phone_norm,
-        "email": data.email,
         "password_hash": hash_password(data.password),
-        "user_type": "driver",
-        "registration_status": "approved", 
-        "is_online": False,
-        "current_location": None,
-        "driver_info": {"vehicle": None, "vehicle_tier": None},
+        "status": "approved",
         "earnings": {
             "balance": signup_bonus,
-            "locked_bonus": signup_bonus, 
+            "locked_bonus": signup_bonus, # Keeps your money safe!
             "total_earned": 0.0,
-            "total_topped_up": 0.0,
-            "total_withdrawn": 0.0,
-            "total_commission_paid": 0.0,
         },
-        "total_rides": 0,
-        "rating": 5.0,
         "created_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP,
     }
     
-    # Save the driver
-    user_ref.set(user_data)
+    driver_ref.set(driver_data)
 
-    token = create_token(user_ref.id, "driver")
+    # 4. Auth & Response
+    token = create_token(driver_ref.id, "driver")
     set_auth_cookie(response, token)
+    
+    return {"token": token, "user": {"id": driver_ref.id, "name": data.name, "balance": signup_bonus}}
     
     # Prepare response
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
