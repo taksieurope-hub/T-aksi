@@ -1152,6 +1152,7 @@ async def register_driver(data: UserRegister, response: Response, x_phone_verifi
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
 
+    # 1. Verification Security
     if not x_phone_verified:
         raise HTTPException(403, "Phone number must be verified before registering.")
     token_data = decode_token(x_phone_verified)
@@ -1168,6 +1169,20 @@ async def register_driver(data: UserRegister, response: Response, x_phone_verifi
     if existing:
         raise HTTPException(400, "Phone number already registered")
 
+    # 🛠️ TIERED BONUS LOGIC: Automatically counts drivers and assigns bonus
+    # 
+    all_drivers = list(db.collection("users").where("user_type", "==", "driver").stream())
+    driver_count = len(all_drivers)
+
+    if driver_count < 10:
+        signup_bonus = 50.0  # First 10
+    elif driver_count < 50:
+        signup_bonus = 20.0  # 11 to 50
+    elif driver_count < 100:
+        signup_bonus = 10.0  # 51 to 100
+    else:
+        signup_bonus = 0.0   # 101+
+
     user_ref = db.collection("users").document()
     user_data = {
         "id": user_ref.id,
@@ -1178,69 +1193,37 @@ async def register_driver(data: UserRegister, response: Response, x_phone_verifi
         "email": data.email,
         "password_hash": hash_password(data.password),
         "user_type": "driver",
-        
-        # 🛠️ AUTO-APPROVE: Instantly approves them to drive today
         "registration_status": "approved", 
-        
         "is_online": False,
         "current_location": None,
         "driver_info": {"vehicle": None, "vehicle_tier": None},
-        
-        # 🛠️ THE BONUS: 50 GEL starting balance and withdrawal lock
         "earnings": {
-            "balance": 50.0,
-            "locked_bonus": 50.0,
+            "balance": signup_bonus,
+            "locked_bonus": signup_bonus, 
             "total_earned": 0.0,
             "total_topped_up": 0.0,
             "total_withdrawn": 0.0,
             "total_commission_paid": 0.0,
         },
-        
         "total_rides": 0,
         "rating": 5.0,
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP,
     }
+    
+    # Save the driver
     user_ref.set(user_data)
 
     token = create_token(user_ref.id, "driver")
     set_auth_cookie(response, token)
+    
+    # Prepare response
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
-    
-    # 🛠️ THE CRASH FIX (Stops the 500 error)
     safe_user["updated_at"] = now_iso() 
     
     return {"token": token, "user": safe_user}
-
-
-@app.post("/api/auth/otp/verify", tags=["Auth"])
-async def verify_otp(req: OTPVerifyRequest):
-    db = get_db()
-    phone_norm = normalize_phone(req.cellphone)
-    doc = db.collection("otp_codes").document(phone_norm).get()
-
-    if not doc.exists:
-        raise HTTPException(400, "No OTP found for this number.")
-
-    data = doc.to_dict()
-    now_ts = datetime.now(timezone.utc).timestamp()
-
-    if now_ts > data.get("expires_at", 0):
-        raise HTTPException(400, "Code has expired. Please request a new one.")
-
-    if data.get("code") != req.code.strip():
-        raise HTTPException(400, "Incorrect code.")
-
-    phone_token = create_token(phone_norm, "phone_verified")
-    db.collection("otp_codes").document(phone_norm).update({
-        "verified": True,
-        "verified_at": firestore.SERVER_TIMESTAMP,
-    })
-
-    return {"status": "verified", "phone_token": phone_token}
-
 
 @app.post("/api/admin/login", tags=["Admin"])
 async def admin_login(data: AdminLoginRequest, response: Response):
