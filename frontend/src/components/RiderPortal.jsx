@@ -17,7 +17,7 @@ import RideCommunication from "./RideCommunication";
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
-  Lock, Phone, MessageSquare, Star, Clock, Shield, AlertTriangle, Loader2,
+  Lock, Phone, Star, Clock, Shield, AlertTriangle, Loader2,
   Search, X, Crosshair, MapPinned, CheckCircle2, Zap, Activity,
   Plus, TrendingUp, Timer, CreditCard, Target, Route as RouteIcon, Wallet,
   Share2, Calendar, Heart, AlertCircle, Gift, Copy, ChevronRight,
@@ -25,7 +25,7 @@ import {
   ArrowRight, MoreHorizontal, Sparkles
 } from "lucide-react";
 
-const SupportChatWidget = lazy(() => import('./ChatWidget'));
+
 
 // =============================================================================
 // PRICING RULES — Must match server.py exactly
