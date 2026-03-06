@@ -1018,6 +1018,7 @@ def calculate_fare(
     stop_wait_minutes: float = 0.0,
     num_stops: int = 0,
     surge_multiplier: float = 1.0,
+    promo_code: Optional[str] = None # 🛠️ Added this argument
 ) -> dict:
     rules = PRICING_RULES.get(car_type, PRICING_RULES["economy"])
 
@@ -1041,6 +1042,15 @@ def calculate_fare(
     surge_fee = subtotal * (surge_multiplier - 1.0) if surge_multiplier > 1.0 else 0.0
     total = subtotal + surge_fee
 
+    # 🛑 THE PROMO LOGIC: BETA15
+    discount_amount = 0.0
+    applied_commission_rate = DRIVER_COMMISSION_RATE # Use the 0.15 you set earlier
+
+    if promo_code and promo_code.upper() == "BETA15":
+        discount_amount = total * 0.15  # 15% off for the rider
+        total -= discount_amount        # Lower the price for the rider
+        applied_commission_rate = 0.0   # 0% commission from the driver
+
     return {
         "base": round(base_fare, 2),
         "distance": round(distance_fare, 2),
@@ -1052,14 +1062,17 @@ def calculate_fare(
         "subtotal": round(subtotal, 2),
         "surge_fee": round(surge_fee, 2),
         "surge_multiplier": surge_multiplier,
-        "base_total": round(total, 2),
+        "base_total": round(total + discount_amount, 2),
+        "discount": round(discount_amount, 2), # 🛠️ New field
         "total": round(total, 2),
+        "applied_commission_rate": applied_commission_rate, # 🛠️ Return this to the caller
         "breakdown": {
             "distance_km": round(distance_km, 2),
             "wait_minutes": wait_minutes,
             "stop_wait_minutes": stop_wait_minutes,
             "num_stops": num_stops,
             "free_wait_minutes": rules["free_wait_minutes"],
+            "is_promo": discount_amount > 0
         },
     }
 
@@ -3047,21 +3060,40 @@ async def request_ride(
     if not ride_data.pickup_lat or not ride_data.pickup_lng:
         raise HTTPException(status_code=422, detail="Pickup coordinates are required.")
 
+    # 🛠️ 1. CHECK PROMO ELIGIBILITY (First 2 Rides Only)
+    promo_to_apply = getattr(ride_data, 'promo_code', None)
+    if promo_to_apply and promo_to_apply.upper() == "BETA15":
+        # Check how many rides this user has already completed
+        completed_rides = list(
+            db.collection("rides")
+            .where("userId", "==", final_user_id)
+            .where("status", "==", "completed")
+            .limit(2)
+            .stream()
+        )
+        # If they already did 2, strip the promo
+        if len(completed_rides) >= 2:
+            promo_to_apply = None
+
     surge_info = get_surge_multiplier(ride_data.pickup_lat, ride_data.pickup_lng)
     surge_multiplier = surge_info["multiplier"]
-    commission_rate = surge_info["commission_rate"]
-
+    
+    # 🛠️ 2. CALCULATE FARE WITH PROMO
     num_stops = len(ride_data.stops)
     fare = calculate_fare(
         ride_data.car_type or "economy",
         ride_data.estimated_distance or 5,
         0, 0, num_stops, surge_multiplier,
+        promo_code=promo_to_apply # <-- Pass it here
     )
+
+    # Use the commission rate from calculate_fare (which is 0.0 if promo is used)
+    commission_rate = fare.get("applied_commission_rate", surge_info["commission_rate"])
 
     payment_method = ride_data.payment_method
     service_fee = 2.0 if payment_method == "card" else 0.0
     fare["service_fee"] = service_fee
-    fare["base_total"] = fare["total"]
+    # Note: total is already discounted inside calculate_fare if promo was valid
     fare["total"] += service_fee
 
     stops_data = [
@@ -3099,7 +3131,7 @@ async def request_ride(
         "service_fee": service_fee,
         "surge_multiplier": surge_multiplier,
         "surge_info": surge_info,
-        "commission_rate": commission_rate,
+        "commission_rate": commission_rate, # 🛠️ This will be 0.0 for promos!
         "status": "searching",
         "matching_radius": 3,
         "notified_drivers": [],

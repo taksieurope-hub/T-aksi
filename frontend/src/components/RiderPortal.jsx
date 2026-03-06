@@ -38,19 +38,30 @@ const PRICING_RULES = {
   jumpstart: { name: "Jumpstart", base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡", desc: "Flat rate battery jump" },
 };
 
-const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0, paymentMethod = "cash") => {
+const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0, paymentMethod = "cash", promoCode = "") => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
   subtotal += distanceKm * rules.perKm;
   if (distanceKm > 7)  subtotal += (distanceKm - 7)  * 0.15;
   if (distanceKm > 30) subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
+  
   const billableWait = Math.max(0, waitMin - rules.freeWait);
   subtotal += billableWait * rules.perMinWait;
   subtotal += stopWaitMin * rules.perMinWait;
   subtotal += numStops * rules.stopFee;
+  
   const surgeFee   = subtotal * (surgeMultiplier - 1.0);
   const serviceFee = paymentMethod === "card" ? 2.00 : 0.00;
-  const total      = subtotal + surgeFee + serviceFee;
+  
+  let total = subtotal + surgeFee + serviceFee;
+  
+  // 🛠️ ADD PROMO MATH
+  let discount = 0;
+  if (promoCode.toUpperCase() === "BETA15") {
+    discount = total * 0.15;
+    total -= discount;
+  }
+
   return {
     base: rules.base,
     distance: Math.round(distanceKm * rules.perKm * 100) / 100,
@@ -60,6 +71,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
     surgeFee: Math.round(surgeFee * 100) / 100,
     serviceFee: parseFloat(serviceFee.toFixed(2)),
     surgeMultiplier,
+    discount: Math.round(discount * 100) / 100, // New field
     total: Math.round(total * 100) / 100,
   };
 };
@@ -1427,6 +1439,9 @@ const RiderDashboard = () => {
   const [showFavorites, setShowFavorites] = useState(false);
   const [showReferral,  setShowReferral]  = useState(false);
 
+  const [promoCode, setPromoCode] = useState("");
+const [promoApplied, setPromoApplied] = useState(false);
+
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
     loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
@@ -1518,10 +1533,11 @@ const RiderDashboard = () => {
     return () => clearTimeout(timer);
   }, [mapsLoaded, calculateRoute]);
 
-  useEffect(() => {
-    if (!routeInfo) return;
-    setFareEstimate(calculateFare(carType, routeInfo.distance, 0, 0, validStopsCount, surgeInfo?.multiplier || 1.0, paymentMethod));
-  }, [routeInfo, carType, validStopsCount, surgeInfo, paymentMethod]);
+    useEffect(() => {
+  if (!routeInfo) return;
+  setFareEstimate(calculateFare(carType, routeInfo.distance, 0, 0, validStopsCount, surgeInfo?.multiplier || 1.0, paymentMethod, promoCode));
+  setPromoApplied(promoCode.toUpperCase() === "BETA15");
+}, [routeInfo, carType, validStopsCount, surgeInfo, paymentMethod, promoCode]); // 🛠️ Added promoCode
 
   const getCurrentLocation = () => {
     if (!navigator.geolocation) { toast.error("Geolocation not supported."); return; }
@@ -1568,11 +1584,24 @@ const RiderDashboard = () => {
     setLoading(true);
     try {
       const rideData = {
-        pickup: sanitiseAddressForSubmit(pickup.address), pickupLat: pickup.lat, pickupLng: pickup.lng,
+        pickup: sanitiseAddressForSubmit(pickup.address), 
+        pickupLat: pickup.lat, 
+        pickupLng: pickup.lng,
         destination: destination.address ? sanitiseAddressForSubmit(destination.address) : null,
-        destinationLat: destination.lat || null, destinationLng: destination.lng || null,
-        stops: stops.filter(s => s.lat).map((s, i) => ({ address: sanitiseAddressForSubmit(s.address), lat: s.lat, lng: s.lng, order: i })),
-        carType, paymentMethod,
+        destinationLat: destination.lat || null, 
+        destinationLng: destination.lng || null,
+        stops: stops.filter(s => s.lat).map((s, i) => ({ 
+          address: sanitiseAddressForSubmit(s.address), 
+          lat: s.lat, 
+          lng: s.lng, 
+          order: i 
+        })),
+        carType, 
+        paymentMethod,
+        
+        // 🛠️ THE CRITICAL ADDITION: Pass the promo code to the server
+        promo_code: promoApplied ? "BETA15" : null, 
+        
         ...(paypalOrderId && { paymentOrderId: paypalOrderId }),
         ...(vaultId && { vault_id: vaultId, card_last4: cardLast4, card_brand: cardBrand }),
         estimatedDistance: routeInfo?.distance || 0,
@@ -1844,11 +1873,62 @@ const RiderDashboard = () => {
               </div>
             </div>
 
-            <Button className="w-full bg-[#00ff88] text-black font-bold h-14 text-base rounded-2xl hover:bg-[#00e07a] transition-all shadow-[0_4px_30px_rgba(0,255,136,0.3)] active:scale-[0.98]"
-              onClick={handleBookRide} disabled={loading} data-testid="request-ride-btn">
-              {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Rocket className="w-5 h-5 mr-2" />}
-              {loading ? "Finding your ride..." : "Request Ride"}
-            </Button>
+            {/* 🛠️ PROMO CODE SECTION */}
+<div className="mt-6 mb-3 space-y-3">
+  <div className={`relative flex items-center bg-white/5 border rounded-2xl transition-all duration-500 ${promoApplied ? 'border-[#00ff88]/50 bg-[#00ff88]/5 shadow-[0_0_20px_rgba(0,255,136,0.05)]' : 'border-white/10 focus-within:border-white/20'}`}>
+    <div className="pl-4">
+      <Gift className={`w-4 h-4 transition-colors ${promoApplied ? 'text-[#00ff88]' : 'text-white/20'}`} />
+    </div>
+    <input
+      type="text"
+      placeholder="Have a promo code?"
+      value={promoCode}
+      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+      className="flex-1 bg-transparent px-3 py-4 text-sm font-bold text-white outline-none placeholder:text-white/20 placeholder:font-normal uppercase tracking-wider"
+    />
+    {promoApplied && (
+      <div className="pr-4 flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+        <span className="text-[10px] font-black text-[#00ff88] bg-[#00ff88]/10 px-2 py-1 rounded-lg border border-[#00ff88]/20">
+          -15%
+        </span>
+        <CheckCircle2 className="w-5 h-5 text-[#00ff88]" />
+      </div>
+    )}
+  </div>
+
+  {/* Visual confirmation of savings */}
+  {promoApplied && fareEstimate?.discount > 0 && (
+    <div className="flex items-center justify-between px-2 animate-in slide-in-from-top-1">
+       <p className="text-[#00ff88] text-[11px] font-bold flex items-center gap-1.5">
+        <Sparkles className="w-3.5 h-3.5" /> 
+        Beta Bonus: ₾{fareEstimate.discount.toFixed(2)} off!
+      </p>
+      <p className="text-white/30 text-[10px] font-medium uppercase tracking-tighter">
+        1 of 2 uses left
+      </p>
+    </div>
+  )}
+</div>
+
+{/* THE MAIN ACTION BUTTON */}
+<Button 
+  className="w-full bg-[#00ff88] text-black font-bold h-14 text-base rounded-2xl hover:bg-[#00e07a] transition-all shadow-[0_4px_30px_rgba(0,255,136,0.3)] active:scale-[0.98] disabled:opacity-50 disabled:grayscale"
+  onClick={handleBookRide} 
+  disabled={loading} 
+  data-testid="request-ride-btn"
+>
+  {loading ? (
+    <div className="flex items-center">
+      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+      <span>Finding your ride...</span>
+    </div>
+  ) : (
+    <div className="flex items-center">
+      <Rocket className="w-5 h-5 mr-2" />
+      <span>Request {carType} · ₾{fareEstimate?.total.toFixed(2)}</span>
+    </div>
+  )}
+</Button>
 
             {showPayPal && paymentMethod === "card" && (() => {
               const amount = fareEstimate?.total ?? calculateFare(carType, routeInfo?.distance ?? 5, 0, 0, validStopsCount, surgeInfo?.multiplier ?? 1.0, "card").total;
