@@ -1219,7 +1219,8 @@ async def send_otp(req: OTPSendRequest):
     if not phone_norm:
         raise HTTPException(422, "Invalid phone number")
 
-    code = _generate_otp()
+    # 🛑 TEMPORARY BYPASS: Hardcode the OTP to "1111"
+    code = "1111" 
     expires_at = datetime.now(timezone.utc).timestamp() + OTP_TTL_SECONDS
 
     db.collection("otp_codes").document(phone_norm).set({
@@ -1230,8 +1231,10 @@ async def send_otp(req: OTPSendRequest):
         "created_at": firestore.SERVER_TIMESTAMP,
     })
 
-    _send_otp_code(phone_norm, code)
-    # NOTE: dev_code removed — never expose OTP in production responses
+    # 🛑 TEMPORARY BYPASS: Comment out the real SMS sender
+    # _send_otp_code(phone_norm, code)
+    print(f"⚠️ BETA MODE: {phone_norm} is registering. Tell them to use code 1111.")
+
     return {"status": "sent", "expires_in": OTP_TTL_SECONDS}
 
 
