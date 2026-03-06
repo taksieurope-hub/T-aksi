@@ -1253,10 +1253,16 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }
 
     if (isFollowing) {
-      mapInstanceRef.current.panTo(pos);
-      animateHeading(heading);
-      if (mapInstanceRef.current.getTilt() !== 45) mapInstanceRef.current.setTilt(45);
-    }
+  // 1. Center the car on the screen
+  mapInstanceRef.current.panTo(pos);
+  
+  // 2. Rotate the map to face forward (Heading)
+  // We use the 'heading' from the GPS (0-360 degrees)
+  mapInstanceRef.current.setHeading(heading);
+  
+  // 3. Keep the 3D tilt for that 'Driving' view
+  mapInstanceRef.current.setTilt(45);
+}
 
     if (routeSteps.length > 0 && stepIdx < routeSteps.length) {
       const step = routeSteps[stepIdx];
@@ -1414,11 +1420,18 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
         <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)-1)}
           className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-800 text-xl font-bold shadow-lg active:scale-95 transition-transform"
           style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>−</button>
-        <button onClick={() => { mapInstanceRef.current?.setHeading(0); headingRef.current = 0; }}
-          className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-          style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }} title="Reset north">
-          <Navigation className="w-4 h-4 text-gray-700" />
-        </button>
+        <button 
+  onClick={() => { 
+    mapInstanceRef.current?.setHeading(0); 
+    headingRef.current = 0; 
+    setIsFollowing(true); // 👈 This re-activates the auto-rotate logic
+  }}
+  className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+  style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }} 
+  title="Reset north"
+>
+  <Navigation className="w-4 h-4 text-gray-700" />
+</button>
         {activeRide && <div style={{ height: 1, background: "rgba(200,200,200,0.4)", margin: "2px 4px" }} />}
         {activeRide && (
           <button onClick={() => handleNav("waze")}
@@ -2023,6 +2036,46 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     } catch (err) { toast.error(err.response?.data?.detail || "Failed to add stop"); }
   };
 
+  const handleAddStopAtCurrentLocation = async () => {
+    // 1. Open the UI area immediately
+    setShowAddStop(true);
+
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported");
+      return;
+    }
+
+    // 2. Get high-accuracy GPS coordinates
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+
+      try {
+        // 3. Turn coordinates into a real address using your Google Key
+        const response = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}`
+        );
+        const data = await response.json();
+
+        if (data.results && data.results[0]) {
+          const address = data.results[0].formatted_address;
+          
+          // 4. Update the input automatically
+          setNewStopAddress({
+            address: address,
+            lat: latitude,
+            lng: longitude
+          });
+          toast.success("Location captured!");
+        }
+      } catch (error) {
+        console.error("Geocoding failed", error);
+        toast.error("Could not find address");
+      }
+    }, (err) => {
+      toast.error("Please enable GPS permissions");
+    }, { enableHighAccuracy: true });
+  };
+
   const toggleStopWait = async () => {
     try {
       const next = !isWaitingAtStop;
@@ -2229,7 +2282,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
 
                 {/* ── Add Stop Mid-Trip ───────────────────────────── */}
                 {activeRide.status === "in_progress" && (
-                  <button onClick={() => setShowAddStop(v => !v)}
+                  <button onClick={handleAddStopAtCurrentLocation}
                     className="w-full h-11 rounded-xl border border-white/10 bg-white/4 text-white/50 text-sm font-semibold flex items-center justify-center gap-2 hover:border-[#00d4ff]/40 hover:text-[#00d4ff] transition-all active:scale-95">
                     <Plus className="w-4 h-4" /> Add stop to route
                   </button>
@@ -2250,6 +2303,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     </div>
                   </div>
                 )}
+
+                
 
                 <RideCommunication
                   rideId={activeRide.id}
