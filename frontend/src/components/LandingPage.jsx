@@ -62,18 +62,19 @@ const LandingPage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
-      <div className="relative">
+    <div className="min-h-screen bg-black text-white overflow-hidden flex flex-col">
+      <div className="relative flex-grow">
         <div className="absolute inset-0 bg-gradient-to-b from-[#00ff88]/10 via-transparent to-black pointer-events-none" />
         
         <header className="relative z-10 flex items-center justify-between p-6 max-w-7xl mx-auto">
-          <div className="flex items-center space-x-3">
-            <div className="w-14 h-14 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
+          <div className="flex items-center space-x-4">
+            {/* 👇 CHANGED: Made the logo bigger (w-20 h-20) and added shrink-0 */}
+            <div className="w-20 h-20 shrink-0 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
               <img src="/logo.png" alt="T'aksi Logo" className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col">
-              <span className="text-2xl font-black tracking-tight leading-none">{t('app_name')}</span>
-              <span className="text-[10px] text-[#00ff88] uppercase tracking-[0.2em] mt-1">{t('app_tagline')}</span>
+              <span className="text-3xl font-black tracking-tight leading-none">{t('app_name')}</span>
+              <span className="text-xs text-[#00ff88] uppercase tracking-[0.2em] mt-1">{t('app_tagline')}</span>
             </div>
           </div>
           <div className="flex items-center space-x-4">
@@ -84,7 +85,7 @@ const LandingPage = () => {
           </div>
         </header>
 
-        <main className="relative z-10 max-w-7xl mx-auto px-6 py-20">
+        <main className="relative z-10 max-w-7xl mx-auto px-6 py-16">
           <div className="text-center mb-16">
             <h1 className="text-5xl md:text-7xl font-black mb-6">
               <span className="bg-gradient-to-r from-[#00ff88] to-[#00d4ff] bg-clip-text text-transparent">{t('hero_title')}</span>
@@ -96,7 +97,7 @@ const LandingPage = () => {
             {/* 🔥 BUTTONS CONTAINER */}
             <div className="flex flex-col sm:flex-row flex-wrap gap-4 justify-center items-center">
               
-              {/* 🟢 SHARE BUTTON (Will show immediately) */}
+              {/* 🟢 SHARE BUTTON */}
               <Button 
                 size="lg" 
                 variant="outline" 
@@ -106,7 +107,7 @@ const LandingPage = () => {
                 <Share2 className="w-5 h-5 mr-2" /> Share App
               </Button>
 
-              {/* 🔵 DOWNLOAD APP BUTTON (Invisible until PWA is set up) */}
+              {/* 🔵 DOWNLOAD APP BUTTON */}
               {deferredPrompt && (
                 <Button 
                   size="lg" 
@@ -147,6 +148,22 @@ const LandingPage = () => {
             </div>
           </div>
         </main>
+
+        {/* 👇 NEW: Footer with Policy Link */}
+        <footer className="relative z-10 border-t border-white/10 py-8 text-center bg-black/50">
+          <p className="text-gray-500 text-sm mb-3">
+            &copy; {new Date().getFullYear()} T'aksi. All rights reserved.
+          </p>
+          <a 
+            href="/policy.html" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-[#00ff88] hover:text-[#00d4ff] transition-colors text-sm font-medium underline tracking-wide"
+          >
+            Read our Terms & Privacy Policy
+          </a>
+        </footer>
+
       </div>
     </div>
   );
