@@ -905,7 +905,7 @@ PRICING_RULES = {
     },
 }
 
-DRIVER_COMMISSION_RATE = 0.23
+DRIVER_COMMISSION_RATE = 0.15
 
 SURGE_SCHEDULE = {
     2: {"start": 18, "end": 26},
@@ -1126,6 +1126,10 @@ async def register_rider(data: UserRegister, response: Response, x_phone_verifie
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
+    
+    # 🛠️ THE CRASH FIX (Stops the 500 error)
+    safe_user["updated_at"] = now_iso() 
+    
     return {"token": token, "user": safe_user}
 
 
@@ -1161,17 +1165,24 @@ async def register_driver(data: UserRegister, response: Response, x_phone_verifi
         "email": data.email,
         "password_hash": hash_password(data.password),
         "user_type": "driver",
-        "registration_status": "pending_vehicle",
+        
+        # 🛠️ AUTO-APPROVE: Instantly approves them to drive today
+        "registration_status": "approved", 
+        
         "is_online": False,
         "current_location": None,
         "driver_info": {"vehicle": None, "vehicle_tier": None},
+        
+        # 🛠️ THE BONUS: 50 GEL starting balance and withdrawal lock
         "earnings": {
-            "balance": 0.0,
+            "balance": 50.0,
+            "locked_bonus": 50.0,
             "total_earned": 0.0,
             "total_topped_up": 0.0,
             "total_withdrawn": 0.0,
             "total_commission_paid": 0.0,
         },
+        
         "total_rides": 0,
         "rating": 5.0,
         "created_at": firestore.SERVER_TIMESTAMP,
@@ -1184,58 +1195,11 @@ async def register_driver(data: UserRegister, response: Response, x_phone_verifi
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
+    
+    # 🛠️ THE CRASH FIX (Stops the 500 error)
+    safe_user["updated_at"] = now_iso() 
+    
     return {"token": token, "user": safe_user}
-
-
-@app.post("/api/auth/login", tags=["Auth"])
-@app.post("/api/rider/login", tags=["Auth"])
-async def login(data: UserLogin, response: Response):
-    db = get_db()
-    phone_norm = normalize_phone(data.cellphone)
-
-    users = list(db.collection("users").where("cellphone_norm", "==", phone_norm).limit(1).stream())
-    if not users:
-        users = list(db.collection("users").where("cellphone", "==", data.cellphone).limit(1).stream())
-    if not users:
-        raise HTTPException(401, "Invalid credentials")
-
-    user_doc = users[0]
-    user_data = user_doc.to_dict()
-
-    if not verify_password(data.password, user_data.get("password_hash", "")):
-        raise HTTPException(401, "Invalid credentials")
-
-    token = create_token(user_doc.id, user_data.get("user_type", "rider"))
-    set_auth_cookie(response, token)
-    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
-    safe_user["id"] = user_doc.id
-    return {"token": token, "user": serialize_firestore_data(safe_user)}
-
-
-@app.post("/api/auth/otp/send", tags=["Auth"])
-async def send_otp(req: OTPSendRequest):
-    db = get_db()
-    phone_norm = normalize_phone(req.cellphone)
-    if not phone_norm:
-        raise HTTPException(422, "Invalid phone number")
-
-    # 🛑 TEMPORARY BYPASS: Hardcode the OTP to "1111"
-    code = "1111" 
-    expires_at = datetime.now(timezone.utc).timestamp() + OTP_TTL_SECONDS
-
-    db.collection("otp_codes").document(phone_norm).set({
-        "phone": phone_norm,
-        "code": code,
-        "expires_at": expires_at,
-        "verified": False,
-        "created_at": firestore.SERVER_TIMESTAMP,
-    })
-
-    # 🛑 TEMPORARY BYPASS: Comment out the real SMS sender
-    # _send_otp_code(phone_norm, code)
-    print(f"⚠️ BETA MODE: {phone_norm} is registering. Tell them to use code 1111.")
-
-    return {"status": "sent", "expires_in": OTP_TTL_SECONDS}
 
 
 @app.post("/api/auth/otp/verify", tags=["Auth"])
