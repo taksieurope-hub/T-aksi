@@ -132,17 +132,35 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
   useEffect(() => { return () => { if (etaIntervalRef.current) clearInterval(etaIntervalRef.current); }; }, []);
   const fmtEta = (secs) => { if (secs == null || secs <= 0) return null; const m = Math.floor(secs / 60), s = secs % 60; return m > 0 ? `${m}m ${s}s` : `${s}s`; };
 
-  // DRIVER CAR MARKER
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
+    
     const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
+    const currentHeading = parseFloat(driverLocation.heading) || 0;
+
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
-        position: pos, map: mapInstanceRef.current, zIndex: 1000,
-        icon: { path: "M 0,-18 L 12,14 L 0,8 L -12,14 Z", scale: 1.4, fillColor: "#00d4ff", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, rotation: parseFloat(driverLocation.heading) || 0 }
+        position: pos, 
+        map: mapInstanceRef.current, 
+        zIndex: 1000,
+        icon: { 
+          path: "M 0,-18 L 12,14 L 0,8 L -12,14 Z", 
+          scale: 1.4, fillColor: "#00d4ff", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, 
+          rotation: currentHeading 
+        }
       });
-    } else { driverMarkerRef.current.setPosition(pos); }
-    if (isFollowing) mapInstanceRef.current.panTo(pos);
+    } else { 
+      driverMarkerRef.current.setPosition(pos); 
+      // Ensure the icon still points forward
+      driverMarkerRef.current.setIcon({ ...driverMarkerRef.current.getIcon(), rotation: currentHeading });
+    }
+
+    // 👇 THIS WAS MISSING FROM YOUR SNIPPET 👇
+    if (isFollowing) {
+      mapInstanceRef.current.panTo(pos);
+      // This command physically spins the map to face forward
+      mapInstanceRef.current.setHeading(currentHeading); 
+    }
   }, [driverLocation, isFollowing]);
 
   return (

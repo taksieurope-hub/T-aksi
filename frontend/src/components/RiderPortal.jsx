@@ -256,6 +256,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 // - Driver marker with heading rotation
 // =============================================================================
 const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, status }) => {
+  const stopMarkersRef = useRef([]);
   const mapRef                = useRef(null);
   const mapInstanceRef        = useRef(null);
   const directionsRendererRef = useRef(null);
@@ -435,21 +436,30 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     if (ref.current) { ref.current.setMap(null); ref.current = null; }
   };
 
-  // Driver marker — follows live location
+  // Driver marker — follows live location AND rotates the map
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
-    const pos     = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
+    
+    const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
     const heading = parseFloat(driverLocation.heading) || 0;
+    
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
-        position: pos, map: mapInstanceRef.current,
-        icon: makeDriverIcon(heading), zIndex: 1000,
+        position: pos, 
+        map: mapInstanceRef.current,
+        icon: makeDriverIcon(heading), 
+        zIndex: 1000,
       });
     } else {
       driverMarkerRef.current.setPosition(pos);
       driverMarkerRef.current.setIcon(makeDriverIcon(heading));
     }
-    if (isFollowing) mapInstanceRef.current.panTo(pos);
+    
+    if (isFollowing) {
+      mapInstanceRef.current.panTo(pos);
+      // 🛠️ THIS SPINS THE ENTIRE MAP TO FACE FORWARD
+      mapInstanceRef.current.setHeading(heading);
+    }
   }, [driverLocation, isFollowing]);
 
   const etaLabel = status === "in_progress" ? "ETA to destination" : "ETA to pickup";

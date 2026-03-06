@@ -1667,6 +1667,39 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   setTotalStopMinutes(prev => prev + minutes);
 };
 
+  const [locationLoading, setLocationLoading] = useState(false);
+
+  const handleUseCurrentLocation = () => {
+    setLocationLoading(true);
+    
+    // If you already have their live location in state, use it!
+    // Otherwise, ask the browser:
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        
+        // Reverse geocode it so they see a real address, not numbers
+        new window.google.maps.Geocoder().geocode({ location: { lat, lng } }, (results, status) => {
+          if (status === "OK" && results[0]) {
+             // 🛠️ Update your input state here
+             setNewStopAddress(results[0].formatted_address);
+             setNewStopCoords({ lat, lng });
+          } else {
+             // Fallback to coordinates if address fails
+             setNewStopAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+             setNewStopCoords({ lat, lng });
+          }
+          setLocationLoading(false);
+        });
+      },
+      (err) => {
+        toast.error("Could not get location. Check permissions.");
+        setLocationLoading(false);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
   const [activeTab, setActiveTab] = useState("rides");
   const [loading, setLoading] = useState(false);
   const [mapsLoaded, setMapsLoaded] = useState(() => !!window.google?.maps);
@@ -2287,10 +2320,30 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     <Plus className="w-4 h-4" /> Add stop to route
                   </button>
                 )}
+                {/* ── Add Stop Mid-Trip ───────────────────────────── */}
+                {activeRide.status === "in_progress" && !showAddStop && (
+                  <button onClick={() => setShowAddStop(true)}
+                    className="w-full h-11 rounded-xl border border-white/10 bg-white/4 text-white/50 text-sm font-semibold flex items-center justify-center gap-2 hover:border-[#00d4ff]/40 hover:text-[#00d4ff] transition-all active:scale-95">
+                    <Plus className="w-4 h-4" /> Add stop to route
+                  </button>
+                )}
+                
                 {showAddStop && activeRide.status === "in_progress" && (
                   <div className="bg-white/4 border border-[#00d4ff]/20 rounded-2xl p-4 space-y-3">
-                    <p className="text-[#00d4ff] text-xs font-bold uppercase tracking-wider">New Stop</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[#00d4ff] text-xs font-bold uppercase tracking-wider">New Stop</p>
+                      
+                      {/* 🛠️ FIXED: Now uses YOUR existing function */}
+                      <button 
+                        onClick={handleAddStopAtCurrentLocation} 
+                        className="flex items-center gap-1.5 bg-[#00d4ff]/15 text-[#00d4ff] px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#00d4ff]/25 transition-all"
+                      >
+                        <MapPin className="w-3 h-3" /> Use My Location
+                      </button>
+                    </div>
+                    
                     <AddStopInput value={newStopAddress} onChange={setNewStopAddress} mapsLoaded={mapsLoaded} />
+                    
                     <div className="flex gap-2">
                       <button onClick={() => { setShowAddStop(false); setNewStopAddress({ address: "", lat: null, lng: null }); }}
                         className="flex-1 h-10 rounded-xl border border-white/10 text-white/40 text-sm hover:bg-white/5 transition-all">
