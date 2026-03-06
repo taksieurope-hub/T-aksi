@@ -1,128 +1,182 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader } from '@react-google-maps/api';
+const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, status }) => {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const directionsRendererRef = useRef(null);
+  const driverMarkerRef = useRef(null);
+  const pickupMarkerRef = useRef(null);
+  const destMarkerRef = useRef(null);
+  const stopMarkersRef = useRef([]); // 📍 TRACKS THE STOP DOTS
+  const routeDrawnForStatus = useRef(null);
+  const prevRideIdRef = useRef(null);
+  const etaIntervalRef = useRef(null);
+  const [isFollowing, setIsFollowing] = useState(true);
+  const [etaSeconds, setEtaSeconds] = useState(null);
 
-const containerStyle = {
-  width: '100%',
-  height: '100%'
-};
+  const getSafeCoord = (val) => { const n = parseFloat(val); return !isNaN(n) && n !== 0 ? n : null; };
 
-// Default center (if no data)
-const defaultCenter = { lat: 41.7151, lng: 44.8271 };
-
-import { GOOGLE_MAPS_API_KEY } from '@/config'; // Adjust path if needed
-
-const LiveTrackingMap = ({ pickup, destination, driverLocation, status }) => {
-  // 1. Load the Google Maps API
-  const { isLoaded } = useJsApiLoader({
-    id: 'google-map-script',
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY, // ✅ Much cleaner!
-    libraries: ['places'] 
+  // SVG Icons
+  const makePickupIcon = () => ({
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z" fill="#00ff88"/><circle cx="16" cy="16" r="6" fill="#07070f"/></svg>`)}`,
+    scaledSize: new window.google.maps.Size(28, 37), anchor: new window.google.maps.Point(14, 37),
   });
 
-  const [map, setMap] = useState(null);
-  const [directionsResponse, setDirectionsResponse] = useState(null);
-  
-  // Keep track of previous coordinates to prevent infinite re-renders
-  const prevPickup = useRef(null);
-  const prevDest = useRef(null);
+  const makeDestIcon = () => ({
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z" fill="#ff4444"/><circle cx="16" cy="16" r="6" fill="#07070f"/></svg>`)}`,
+    scaledSize: new window.google.maps.Size(28, 37), anchor: new window.google.maps.Point(14, 37),
+  });
 
-  const onLoad = useCallback(function callback(map) {
-    setMap(map);
+  const fmtEta = (secs) => {
+    if (secs == null || secs <= 0) return null;
+    const m = Math.floor(secs / 60), s = secs % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  };
+
+  // Init Map
+  useEffect(() => {
+    if (!mapRef.current || !window.google || mapInstanceRef.current) return;
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: { lat: 41.7151, lng: 44.8271 }, zoom: 15,
+      disableDefaultUI: true, gestureHandling: "greedy", backgroundColor: "#0d0d1a",
+      styles: [{ elementType: "geometry", stylers: [{ color: "#0d0d1a" }] }, { featureType: "road", elementType: "geometry", stylers: [{ color: "#1f2937" }] }],
+    });
+    directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+      map, suppressMarkers: true,
+      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 5, strokeOpacity: 0.9 },
+    });
+    map.addListener("dragstart", () => setIsFollowing(false));
+    mapInstanceRef.current = map;
   }, []);
 
-  const onUnmount = useCallback(function callback(map) {
-    setMap(null);
-  }, []);
+  // 🛠️ THE FIX: DRAW ROUTE + STOP DOTS
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google) return;
 
-  // 2. 🔥 CALCULATE THE NAVIGATION LINE (ROUTE)
-  // Inside your LiveTrackingMap.jsx useEffect:
-useEffect(() => {
-  if (isLoaded && pickup && destination) {
-    const directionsService = new window.google.maps.DirectionsService();
+    const pLat = getSafeCoord(pickup?.lat), pLng = getSafeCoord(pickup?.lng);
+    const dLat = getSafeCoord(destination?.lat), dLng = getSafeCoord(destination?.lng);
+    const drLat = getSafeCoord(driverLocation?.lat), drLng = getSafeCoord(driverLocation?.lng);
 
-    // 🚀 NEW: Convert your stops array into Google Waypoints
-    const waypoints = (stops || []).map(stop => ({
-      location: { lat: stop.lat, lng: stop.lng },
-      stopover: true,
-    }));
+    // 1. Format waypoints correctly
+    const waypoints = (stops || [])
+      .filter(s => s && s.lat && s.lng)
+      .map(s => ({ location: { lat: parseFloat(s.lat), lng: parseFloat(s.lng) }, stopover: true }));
 
-    directionsService.route(
-      {
-        origin: pickup,
-        destination: destination,
-        waypoints: waypoints, // 🚀 ADD THIS
-        optimizeWaypoints: false, // Keep them in the order the driver added them
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === window.google.maps.DirectionsStatus.OK) {
-          setDirectionsResponse(result);
+    const sig = `${drLat},${drLng}|${pLat},${pLng}|${dLat},${dLng}|${status}|${waypoints.length}`;
+    if (routeDrawnForStatus.current === sig) return;
+
+    // 2. Clear old stop dots
+    stopMarkersRef.current.forEach(m => m.setMap(null));
+    stopMarkersRef.current = [];
+
+    // 3. Draw Preview Route
+    if (status === "preview" && pLat && dLat) {
+      drawRoute({ lat: pLat, lng: pLng }, { lat: dLat, lng: dLng }, waypoints, false);
+      updateStaticPin(pickupMarkerRef, { lat: pLat, lng: pLng }, makePickupIcon());
+      updateStaticPin(destMarkerRef, { lat: dLat, lng: dLng }, makeDestIcon());
+      
+      // Draw Yellow Stop Dots
+      waypoints.forEach(wp => {
+        const m = new window.google.maps.Marker({
+          position: wp.location, map: mapInstanceRef.current,
+          icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: "#facc15", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+          zIndex: 950
+        });
+        stopMarkersRef.current.push(m);
+      });
+      routeDrawnForStatus.current = sig;
+      return;
+    }
+
+    // 4. Live Trip Routing
+    if (!drLat || !drLng) return;
+    const origin = { lat: drLat, lng: drLng };
+
+    if (["accepted", "searching", "arrived"].includes(status) && pLat) {
+      drawRoute(origin, { lat: pLat, lng: pLng }, [], true);
+      updateStaticPin(pickupMarkerRef, { lat: pLat, lng: pLng }, makePickupIcon());
+      removePin(destMarkerRef);
+    } else if (status === "in_progress" && dLat) {
+      drawRoute(origin, { lat: dLat, lng: dLng }, waypoints, true);
+      updateStaticPin(destMarkerRef, { lat: dLat, lng: dLng }, makeDestIcon());
+      removePin(pickupMarkerRef);
+      
+      // Keep stops visible during trip
+      waypoints.forEach(wp => {
+        const m = new window.google.maps.Marker({
+          position: wp.location, map: mapInstanceRef.current,
+          icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: "#facc15", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 }
+        });
+        stopMarkersRef.current.push(m);
+      });
+    }
+    routeDrawnForStatus.current = sig;
+  }, [pickup?.lat, destination?.lat, JSON.stringify(stops), status, driverLocation?.lat]);
+
+  const drawRoute = (origin, dest, waypoints = [], withEta = false) => {
+    new window.google.maps.DirectionsService().route(
+      { origin, destination: dest, waypoints, travelMode: window.google.maps.TravelMode.DRIVING },
+      (result, st) => {
+        if (st === "OK" && directionsRendererRef.current) {
+          directionsRendererRef.current.setDirections(result);
+          // Sum up duration of ALL legs for correct ETA
+          if (withEta) {
+            const totalSecs = result.routes[0].legs.reduce((acc, leg) => acc + leg.duration.value, 0);
+            startEtaCountdown(totalSecs);
+          }
+          if (status === "preview") {
+            const bounds = new window.google.maps.LatLngBounds();
+            bounds.extend(origin); bounds.extend(dest);
+            waypoints.forEach(wp => bounds.extend(wp.location));
+            mapInstanceRef.current.fitBounds(bounds, { top: 80, bottom: 80, left: 40, right: 40 });
+          }
         }
       }
     );
-  }
-}, [isLoaded, pickup, destination, stops]); // 🚀 Add 'stops' to dependency array
+  };
 
-  if (!isLoaded) return <div className="w-full h-full bg-gray-900 animate-pulse" />;
+  const startEtaCountdown = (durationSeconds) => {
+    if (etaIntervalRef.current) clearInterval(etaIntervalRef.current);
+    let remaining = durationSeconds;
+    setEtaSeconds(remaining);
+    etaIntervalRef.current = setInterval(() => {
+      remaining -= 1;
+      setEtaSeconds(remaining <= 0 ? 0 : remaining);
+    }, 1000);
+  };
+
+  const updateStaticPin = (ref, position, icon) => {
+    if (!mapInstanceRef.current) return;
+    if (!ref.current) ref.current = new window.google.maps.Marker({ position, map: mapInstanceRef.current, icon, zIndex: 900 });
+    else { ref.current.setPosition(position); ref.current.setIcon(icon); }
+  };
+
+  const removePin = (ref) => { if (ref.current) { ref.current.setMap(null); ref.current = null; } };
+
+  // Driver marker logic (unchanged but protected)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
+    const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
+    if (!driverMarkerRef.current) {
+      driverMarkerRef.current = new window.google.maps.Marker({
+        position: pos, map: mapInstanceRef.current, zIndex: 1000,
+        icon: { path: "M 0,-18 L 12,14 L 0,8 L -12,14 Z", scale: 1.4, fillColor: "#00d4ff", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, rotation: parseFloat(driverLocation.heading) || 0 }
+      });
+    } else {
+      driverMarkerRef.current.setPosition(pos);
+    }
+    if (isFollowing) mapInstanceRef.current.panTo(pos);
+  }, [driverLocation, isFollowing]);
 
   return (
-    <GoogleMap
-      mapContainerStyle={containerStyle}
-      center={driverLocation || pickup || defaultCenter}
-      zoom={14}
-      onLoad={onLoad}
-      onUnmount={onUnmount}
-      options={{
-        disableDefaultUI: true, // Clean look
-        zoomControl: false,
-        styles: [ // Dark Mode Style
-            { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-            { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-            { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-            { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
-            { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
-        ]
-      }}
-    >
-      {/* 3. Render the Navigation Line */}
-      {directionsResponse && (
-        <DirectionsRenderer
-          directions={directionsResponse}
-          options={{
-            suppressMarkers: true, // Hide default A/B markers so we can use custom ones
-            polylineOptions: {
-              strokeColor: "#00d4ff", // Neon Blue Line
-              strokeOpacity: 0.8,
-              strokeWeight: 5,
-            },
-          }}
-        />
+    <div className="relative w-full rounded-2xl overflow-hidden bg-[#0d0d1a]">
+      <div ref={mapRef} style={{ height: "46vh", minHeight: "300px", width: "100%" }} />
+      {etaSeconds != null && etaSeconds > 0 && status !== "preview" && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
+          <div className="bg-[#07070f]/90 px-4 py-2 rounded-full border border-[#00d4ff]/30 flex items-center gap-2 shadow-xl">
+            <Timer className="w-3.5 h-3.5 text-[#00d4ff]" />
+            <span className="text-[#00d4ff] font-bold text-sm font-mono">{fmtEta(etaSeconds)}</span>
+          </div>
+        </div>
       )}
-
-      {/* Pickup Marker */}
-      {pickup && <Marker position={pickup} label="P" />}
-
-      {/* Destination Marker */}
-      {destination && <Marker position={destination} label="D" />}
-
-      {/* 4. Live Driver Car Marker */}
-      {driverLocation && (
-        <Marker
-          position={driverLocation}
-          icon={{
-            path: "M17.402,0H5.643C2.526,0,0,3.467,0,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759c3.116,0,5.644-2.527,5.644-5.644 V6.584C23.044,3.467,20.518,0,17.402,0z M22.057,14.188v11.665l-2.729,0.351v-4.806L22.057,14.188z M20.625,10.773 c-1.016,3.9-2.219,8.51-2.219,8.51H4.638l-2.222-8.51C2.417,10.773,11.3,7.755,20.625,10.773z M3.748,21.713v4.492l-2.73-0.349 V14.502L3.748,21.713z M1.018,37.938V27.579l2.73,0.343v8.196L1.018,37.938z M2.575,40.882l2.218-3.336h13.771l2.219,3.336H2.575z M19.328,35.805v-7.872l2.729-0.355v10.048L19.328,35.805z",
-            fillColor: "#00ff88", // Neon Green
-            fillOpacity: 1,
-            strokeWeight: 1,
-            rotation: 0, // Calculate heading if you have it
-            scale: 0.7,
-            anchor: new window.google.maps.Point(10, 25),
-          }}
-        />
-      )}
-    </GoogleMap>
+    </div>
   );
 };
-
-export default LiveTrackingMap;
