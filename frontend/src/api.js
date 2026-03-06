@@ -1,8 +1,15 @@
 ﻿import axios from 'axios';
 
-// 🛠️ HARD-FIX: Added /api to the URL so it finds the backend again.
+// Dynamic URL configuration - uses environment variable or falls back to localhost
+const getBaseUrl = () => {
+  let url = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  url = url.replace(/\/+$/, ''); // Remove trailing slashes
+  if (!url.endsWith('/api')) url += '/api';
+  return url;
+};
+
 const api = axios.create({
-  baseURL: 'https://t-aksi.onrender.com/api',
+  baseURL: getBaseUrl(),
   withCredentials: true,
 });
 

@@ -19,7 +19,11 @@ const LanguageSelector = ({ variant = "default" }) => {
     zh: "🇨🇳",
     nl: "🇳🇱",
     fr: "🇫🇷",
-    de: "🇩🇪"
+    de: "🇩🇪",
+    pl: "🇵🇱",
+    af: "🇿🇦",
+    zu: "🇿🇦",
+    xh: "🇿🇦"
   };
 
   return (
