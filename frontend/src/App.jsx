@@ -14,7 +14,7 @@ const LandingPage    = lazy(() => import("@/components/LandingPage"));
 const RiderPortal    = lazy(() => import("@/components/RiderPortal"));
 const DriverPortal   = lazy(() => import("@/components/DriverPortal"));
 const AdminPortal    = lazy(() => import("@/components/AdminPortal"));
-const SupportChatWidget = lazy(() => import("@/components/SupportChatWidget"));
+
 
 const PortalLoader = () => (
   <div style={{
@@ -83,7 +83,6 @@ function App() {
                   <Route path="/dashboard"      element={<Navigate to="/rider/dashboard" replace />} />
                   <Route path="*"               element={<Navigate to="/" replace />} />
                 </Routes>
-                <SupportChatWidget />
               </Suspense>
             </BrowserRouter>
           </div>
