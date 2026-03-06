@@ -905,7 +905,7 @@ PRICING_RULES = {
     },
 }
 
-DRIVER_COMMISSION_RATE = 0.15
+DRIVER_COMMISSION_RATE = 0.20
 
 SURGE_SCHEDULE = {
     2: {"start": 18, "end": 26},
