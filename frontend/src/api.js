@@ -2,7 +2,7 @@
 
 // 🛠️ FIX: Added '/api' back to the baseURL so it stops hitting 404
 const api = axios.create({
-  baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api',
+  baseURL: (import.meta.env.VITE_API_URL || 'https://t-aksi.onrender.com/api') + '/api',
   withCredentials: true,
 });
 
