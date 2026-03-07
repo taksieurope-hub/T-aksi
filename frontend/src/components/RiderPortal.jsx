@@ -2342,7 +2342,7 @@ const RiderPortal = () => {
   const { user }   = useAuth();
   const location   = useLocation();
 
-  if (!user || user.user_type !== "rider") {
+  if (!user || (user.role !== "rider" && user.user_type !== "rider")) {
     if (location.pathname === "/rider" || location.pathname === "/rider/") return <RiderAuth />;
     return <Navigate to="/rider" replace />;
   }
@@ -2352,7 +2352,7 @@ const RiderPortal = () => {
       options={{ 
         "client-id": PAYPAL_CLIENT_ID || "sb", 
         currency: "USD", 
-        vault: true // 👈 Swapped capture for vault
+        vault: true 
       }}
     >
       <Routes>
