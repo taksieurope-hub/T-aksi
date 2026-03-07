@@ -1,6 +1,7 @@
 ﻿import axios from 'axios';
+import { tokenStorage } from './config'; // Make sure this path is correct for your app
 
-// Dynamic URL configuration - uses environment variable or falls back to localhost
+// Your dynamic URL configuration - robust and perfectly handles the slashes
 const getBaseUrl = () => {
   let url = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   url = url.replace(/\/+$/, ''); // Remove trailing slashes
@@ -13,18 +14,31 @@ const api = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  // 1. Auth Logic - Get token from where you usually store it
-  const token = localStorage.getItem('taksi_token'); 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+// REQUEST INTERCEPTOR - Stripped of the language header that caused the 404
+api.interceptors.request.use(
+  (config) => {
+    // Auth Logic - Get token from where you usually store it
+    const token = tokenStorage.getToken(); 
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-  // 🌍 2. The Language Sync - Tells the server to send Georgian/Russian/etc.
-  const lang = localStorage.getItem('taksi_language') || 'ka';
-  config.headers['Accept-Language'] = lang;
-  
-  return config;
-}, (error) => Promise.reject(error));
+// RESPONSE INTERCEPTOR
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const isTripRoute = error.config.url?.includes('/trips/');
+      if (!isTripRoute) {
+        window.dispatchEvent(new CustomEvent('auth:expired'));
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;

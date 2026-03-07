@@ -905,7 +905,7 @@ PRICING_RULES = {
     },
 }
 
-DRIVER_COMMISSION_RATE = 0.20
+DRIVER_COMMISSION_RATE = 0.23
 
 SURGE_SCHEDULE = {
     2: {"start": 18, "end": 26},
@@ -1018,7 +1018,6 @@ def calculate_fare(
     stop_wait_minutes: float = 0.0,
     num_stops: int = 0,
     surge_multiplier: float = 1.0,
-    promo_code: Optional[str] = None # 🛠️ Added this argument
 ) -> dict:
     rules = PRICING_RULES.get(car_type, PRICING_RULES["economy"])
 
@@ -1042,15 +1041,6 @@ def calculate_fare(
     surge_fee = subtotal * (surge_multiplier - 1.0) if surge_multiplier > 1.0 else 0.0
     total = subtotal + surge_fee
 
-    # 🛑 THE PROMO LOGIC: BETA15
-    discount_amount = 0.0
-    applied_commission_rate = DRIVER_COMMISSION_RATE # Use the 0.15 you set earlier
-
-    if promo_code and promo_code.upper() == "BETA15":
-        discount_amount = total * 0.15  # 15% off for the rider
-        total -= discount_amount        # Lower the price for the rider
-        applied_commission_rate = 0.0   # 0% commission from the driver
-
     return {
         "base": round(base_fare, 2),
         "distance": round(distance_fare, 2),
@@ -1062,17 +1052,14 @@ def calculate_fare(
         "subtotal": round(subtotal, 2),
         "surge_fee": round(surge_fee, 2),
         "surge_multiplier": surge_multiplier,
-        "base_total": round(total + discount_amount, 2),
-        "discount": round(discount_amount, 2), # 🛠️ New field
+        "base_total": round(total, 2),
         "total": round(total, 2),
-        "applied_commission_rate": applied_commission_rate, # 🛠️ Return this to the caller
         "breakdown": {
             "distance_km": round(distance_km, 2),
             "wait_minutes": wait_minutes,
             "stop_wait_minutes": stop_wait_minutes,
             "num_stops": num_stops,
             "free_wait_minutes": rules["free_wait_minutes"],
-            "is_promo": discount_amount > 0
         },
     }
 
@@ -1139,68 +1126,144 @@ async def register_rider(data: UserRegister, response: Response, x_phone_verifie
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
-    
-    # 🛠️ THE CRASH FIX (Stops the 500 error)
-    safe_user["updated_at"] = now_iso() 
-    
     return {"token": token, "user": safe_user}
 
 
 @app.post("/api/auth/register/driver", tags=["Auth"])
+@app.post("/api/driver/register", tags=["Auth"])
 async def register_driver(data: UserRegister, response: Response, x_phone_verified: Optional[str] = Header(None)):
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
 
-    # 🔍 1. Count current drivers specifically in the 'drivers' collection
-    # This determines if they get the 50, 20, or 10 GEL bonus
-    all_drivers = list(db.collection("drivers").stream())
-    driver_count = len(all_drivers)
+    if not x_phone_verified:
+        raise HTTPException(403, "Phone number must be verified before registering.")
+    token_data = decode_token(x_phone_verified)
+    if not token_data or token_data.get("role") != "phone_verified":
+        raise HTTPException(403, "Invalid or expired phone verification token.")
+    if token_data.get("user_id") != phone_norm:
+        raise HTTPException(403, "Phone token does not match the phone number being registered.")
 
-    if driver_count < 10:
-        signup_bonus = 50.0
-    elif driver_count < 50:
-        signup_bonus = 20.0
-    else:
-        signup_bonus = 10.0
+    otp_doc = db.collection("otp_codes").document(phone_norm).get()
+    if not otp_doc.exists or not otp_doc.to_dict().get("verified"):
+        raise HTTPException(403, "Phone number has not been verified via OTP.")
 
-    # 🛡️ 2. Check if this phone number is already a driver
-    existing = list(db.collection("drivers").where("cellphone_norm", "==", phone_norm).limit(1).stream())
+    existing = list(db.collection("users").where("cellphone_norm", "==", phone_norm).limit(1).stream())
     if existing:
-        raise HTTPException(400, "This phone number is already registered as a driver.")
+        raise HTTPException(400, "Phone number already registered")
 
-    # 🛠️ 3. Save to the 'drivers' collection instead of 'users'
-    driver_ref = db.collection("drivers").document()
-    driver_data = {
-        "id": driver_ref.id,
+    user_ref = db.collection("users").document()
+    user_data = {
+        "id": user_ref.id,
         "name": data.name,
         "surname": data.surname,
         "cellphone": data.cellphone,
         "cellphone_norm": phone_norm,
+        "email": data.email,
         "password_hash": hash_password(data.password),
-        "status": "approved",
+        "user_type": "driver",
+        "registration_status": "pending_vehicle",
+        "is_online": False,
+        "current_location": None,
+        "driver_info": {"vehicle": None, "vehicle_tier": None},
         "earnings": {
-            "balance": signup_bonus,
-            "locked_bonus": signup_bonus, # Keeps your money safe!
+            "balance": 0.0,
             "total_earned": 0.0,
+            "total_topped_up": 0.0,
+            "total_withdrawn": 0.0,
+            "total_commission_paid": 0.0,
         },
+        "total_rides": 0,
+        "rating": 5.0,
         "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP,
     }
-    
-    driver_ref.set(driver_data)
+    user_ref.set(user_data)
 
-    # 4. Auth & Response
-    token = create_token(driver_ref.id, "driver")
+    token = create_token(user_ref.id, "driver")
     set_auth_cookie(response, token)
-    
-    return {"token": token, "user": {"id": driver_ref.id, "name": data.name, "balance": signup_bonus}}
-    
-    # Prepare response
     safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
-    safe_user["updated_at"] = now_iso() 
-    
     return {"token": token, "user": safe_user}
+
+
+@app.post("/api/auth/login", tags=["Auth"])
+@app.post("/api/rider/login", tags=["Auth"])
+async def login(data: UserLogin, response: Response):
+    db = get_db()
+    phone_norm = normalize_phone(data.cellphone)
+
+    users = list(db.collection("users").where("cellphone_norm", "==", phone_norm).limit(1).stream())
+    if not users:
+        users = list(db.collection("users").where("cellphone", "==", data.cellphone).limit(1).stream())
+    if not users:
+        raise HTTPException(401, "Invalid credentials")
+
+    user_doc = users[0]
+    user_data = user_doc.to_dict()
+
+    if not verify_password(data.password, user_data.get("password_hash", "")):
+        raise HTTPException(401, "Invalid credentials")
+
+    token = create_token(user_doc.id, user_data.get("user_type", "rider"))
+    set_auth_cookie(response, token)
+    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
+    safe_user["id"] = user_doc.id
+    return {"token": token, "user": serialize_firestore_data(safe_user)}
+
+
+@app.post("/api/auth/otp/send", tags=["Auth"])
+async def send_otp(req: OTPSendRequest):
+    db = get_db()
+    phone_norm = normalize_phone(req.cellphone)
+    if not phone_norm:
+        raise HTTPException(422, "Invalid phone number")
+
+    # 🛑 TEMPORARY BYPASS: Hardcode the OTP to "1111"
+    code = "1111" 
+    expires_at = datetime.now(timezone.utc).timestamp() + OTP_TTL_SECONDS
+
+    db.collection("otp_codes").document(phone_norm).set({
+        "phone": phone_norm,
+        "code": code,
+        "expires_at": expires_at,
+        "verified": False,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    # 🛑 TEMPORARY BYPASS: Comment out the real SMS sender
+    # _send_otp_code(phone_norm, code)
+    print(f"⚠️ BETA MODE: {phone_norm} is registering. Tell them to use code 1111.")
+
+    return {"status": "sent", "expires_in": OTP_TTL_SECONDS}
+
+
+@app.post("/api/auth/otp/verify", tags=["Auth"])
+async def verify_otp(req: OTPVerifyRequest):
+    db = get_db()
+    phone_norm = normalize_phone(req.cellphone)
+    doc = db.collection("otp_codes").document(phone_norm).get()
+
+    if not doc.exists:
+        raise HTTPException(400, "No OTP found for this number.")
+
+    data = doc.to_dict()
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    if now_ts > data.get("expires_at", 0):
+        raise HTTPException(400, "Code has expired. Please request a new one.")
+
+    if data.get("code") != req.code.strip():
+        raise HTTPException(400, "Incorrect code.")
+
+    phone_token = create_token(phone_norm, "phone_verified")
+    db.collection("otp_codes").document(phone_norm).update({
+        "verified": True,
+        "verified_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    return {"status": "verified", "phone_token": phone_token}
+
 
 @app.post("/api/admin/login", tags=["Admin"])
 async def admin_login(data: AdminLoginRequest, response: Response):
@@ -3020,40 +3083,21 @@ async def request_ride(
     if not ride_data.pickup_lat or not ride_data.pickup_lng:
         raise HTTPException(status_code=422, detail="Pickup coordinates are required.")
 
-    # 🛠️ 1. CHECK PROMO ELIGIBILITY (First 2 Rides Only)
-    promo_to_apply = getattr(ride_data, 'promo_code', None)
-    if promo_to_apply and promo_to_apply.upper() == "BETA15":
-        # Check how many rides this user has already completed
-        completed_rides = list(
-            db.collection("rides")
-            .where("userId", "==", final_user_id)
-            .where("status", "==", "completed")
-            .limit(2)
-            .stream()
-        )
-        # If they already did 2, strip the promo
-        if len(completed_rides) >= 2:
-            promo_to_apply = None
-
     surge_info = get_surge_multiplier(ride_data.pickup_lat, ride_data.pickup_lng)
     surge_multiplier = surge_info["multiplier"]
-    
-    # 🛠️ 2. CALCULATE FARE WITH PROMO
+    commission_rate = surge_info["commission_rate"]
+
     num_stops = len(ride_data.stops)
     fare = calculate_fare(
         ride_data.car_type or "economy",
         ride_data.estimated_distance or 5,
         0, 0, num_stops, surge_multiplier,
-        promo_code=promo_to_apply # <-- Pass it here
     )
-
-    # Use the commission rate from calculate_fare (which is 0.0 if promo is used)
-    commission_rate = fare.get("applied_commission_rate", surge_info["commission_rate"])
 
     payment_method = ride_data.payment_method
     service_fee = 2.0 if payment_method == "card" else 0.0
     fare["service_fee"] = service_fee
-    # Note: total is already discounted inside calculate_fare if promo was valid
+    fare["base_total"] = fare["total"]
     fare["total"] += service_fee
 
     stops_data = [
@@ -3091,7 +3135,7 @@ async def request_ride(
         "service_fee": service_fee,
         "surge_multiplier": surge_multiplier,
         "surge_info": surge_info,
-        "commission_rate": commission_rate, # 🛠️ This will be 0.0 for promos!
+        "commission_rate": commission_rate,
         "status": "searching",
         "matching_radius": 3,
         "notified_drivers": [],
