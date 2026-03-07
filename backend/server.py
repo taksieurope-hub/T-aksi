@@ -1123,9 +1123,11 @@ async def register_rider(data: UserRegister, response: Response, x_phone_verifie
 
     token = create_token(user_ref.id, "rider")
     set_auth_cookie(response, token)
-    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
+    safe_user = {k: v for k, v in user_data.items() if k not in ["password_hash", "created_at", "updated_at"]}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
+    safe_user["updated_at"] = now_iso()
+    
     return {"token": token, "user": safe_user}
 
 
@@ -1575,6 +1577,20 @@ async def get_ride_receipt(ride_id: str, user_id: Optional[str] = Depends(get_cu
         "completed_at": data.get("completed_at"),
     })
 
+@app.get("/api/rides/estimate", tags=["Rides"])
+def estimate_fare(
+    car_type: str = Query("economy", description="Car type: economy, comfort, or business"),
+    distance: float = Query(..., description="Distance in km", gt=0)
+):
+    """
+    Estimate fare based on distance and car type.
+    No authentication required (public endpoint for previews).
+    """
+    try:
+        fare = calculate_fare(distance, car_type)
+        return {"fare": fare}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/admin/riders/{rider_id}", tags=["Admin"])
 async def get_rider_detail(rider_id: str, admin_id: str = Depends(get_admin_user)):
