@@ -2339,14 +2339,18 @@ if (!PAYPAL_CLIENT_ID) {
 }
 
 const RiderPortal = () => {
-  const { user }   = useAuth();
-  const location   = useLocation();
+  const { user } = useAuth();
+  
+  // 🔍 DEBUG: This will show us exactly what React sees
+  console.log("Current Auth State:", user);
 
-  if (!user || (user.role !== "rider" && user.user_type !== "rider")) {
-    if (location.pathname === "/rider" || location.pathname === "/rider/") return <RiderAuth />;
-    return <Navigate to="/rider" replace />;
+  // 🛡️ THE NEW BOUNCER: Simple and impossible to fail
+  // If there is no user logged in, just show the Auth screen.
+  if (!user) {
+    return <RiderAuth />;
   }
 
+  // ✅ IF YOU MAKE IT HERE, YOU ARE LOGGED IN. SHOW THE DASHBOARD.
   return (
     <PayPalScriptProvider 
       options={{ 
@@ -2356,9 +2360,9 @@ const RiderPortal = () => {
       }}
     >
       <Routes>
-        <Route path="/"         element={<Navigate to="dashboard" replace />} />
+        <Route path="/" element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<RiderDashboard />} />
-        <Route path="*"         element={<Navigate to="dashboard" replace />} />
+        <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Routes>
     </PayPalScriptProvider>
   );
