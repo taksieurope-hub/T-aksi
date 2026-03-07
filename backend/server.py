@@ -1183,9 +1183,13 @@ async def register_driver(data: UserRegister, response: Response, x_phone_verifi
 
     token = create_token(user_ref.id, "driver")
     set_auth_cookie(response, token)
-    safe_user = {k: v for k, v in user_data.items() if k != "password_hash"}
+    
+    # ✅ Strip out password AND both timestamp sentinels
+    safe_user = {k: v for k, v in user_data.items() if k not in ["password_hash", "created_at", "updated_at"]}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
+    safe_user["updated_at"] = now_iso() # ✅ Safely added back as text
+    
     return {"token": token, "user": safe_user}
 
 
