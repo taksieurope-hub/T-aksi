@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+﻿// src/components/RiderPortal.jsx
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import { LanguageProvider, useLanguage } from "@/i18n/LanguageContext";
@@ -6,7 +7,7 @@ import api from "@/api";
 import LanguageSelector from "@/i18n/LanguageSelector";
 import { RiderTripCompletionModal } from "@/components/TripCompletionModal";
 import RatingModal from "@/components/RatingModal";
-import { toast } from "sonner"; 
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +15,6 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
-
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
   Lock, Phone, Star, Clock, Shield, AlertTriangle, Loader2,
@@ -24,44 +24,39 @@ import {
   Receipt, DollarSign, Bell, Bookmark, Send, ChevronDown, ChevronUp, Map,
   ArrowRight, MoreHorizontal, Sparkles
 } from "lucide-react";
-
-
-
 // =============================================================================
 // PRICING RULES — Must match server.py exactly
 // =============================================================================
 const PRICING_RULES = {
-  economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "🚗", desc: "Affordable everyday rides" },
-  comfort:   { name: "Comfort",   base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "🚙", desc: "Extra space & comfort" },
-  suv:       { name: "SUV / XL",  base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "🚐", desc: "Up to 6 passengers" },
-  personal:  { name: "Personal",  base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "👤", desc: "Premium personal driver" },
+  economy: { name: "Economy", base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚗", desc: "Affordable everyday rides" },
+  comfort: { name: "Comfort", base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚙", desc: "Extra space & comfort" },
+  suv: { name: "SUV / XL", base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "🚐", desc: "Up to 6 passengers" },
+  personal: { name: "Personal", base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2, stopFee: 0.00, icon: "👤", desc: "Premium personal driver" },
   jumpstart: { name: "Jumpstart", base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡", desc: "Flat rate battery jump" },
 };
-
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0, paymentMethod = "cash", promoCode = "") => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
   subtotal += distanceKm * rules.perKm;
-  if (distanceKm > 7)  subtotal += (distanceKm - 7)  * 0.15;
+  if (distanceKm > 7) subtotal += (distanceKm - 7) * 0.15;
   if (distanceKm > 30) subtotal += Math.ceil((distanceKm - 30) / 15) * 5;
-  
+ 
   const billableWait = Math.max(0, waitMin - rules.freeWait);
   subtotal += billableWait * rules.perMinWait;
   subtotal += stopWaitMin * rules.perMinWait;
   subtotal += numStops * rules.stopFee;
-  
-  const surgeFee   = subtotal * (surgeMultiplier - 1.0);
+ 
+  const surgeFee = subtotal * (surgeMultiplier - 1.0);
   const serviceFee = paymentMethod === "card" ? 2.00 : 0.00;
-  
+ 
   let total = subtotal + surgeFee + serviceFee;
-  
+ 
   // 🛠️ ADD PROMO MATH
   let discount = 0;
   if (promoCode.toUpperCase() === "BETA15") {
     discount = total * 0.15;
     total -= discount;
   }
-
   return {
     base: rules.base,
     distance: Math.round(distanceKm * rules.perKm * 100) / 100,
@@ -75,17 +70,14 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
     total: Math.round(total * 100) / 100,
   };
 };
-
-// trim() only called on submit, NOT on every keystroke — otherwise spacebar is swallowed
+// trim() only called on submit, NOT on every keystroke, otherwise spacebar is swallowed
 const sanitiseAddress = (str = "") => str.slice(0, 300);
 const sanitiseAddressForSubmit = (str = "") => str.trim().slice(0, 300);
-
 // =============================================================================
 // GOOGLE MAPS LOADER — singleton, never double-loads
 // =============================================================================
 let mapsLoadState = "idle";
 const mapsReadyCallbacks = [];
-
 const loadGoogleMaps = (apiKey) => {
   if (mapsLoadState === "loaded" && window.google?.maps) return Promise.resolve();
   if (mapsLoadState === "loaded" && !window.google?.maps) mapsLoadState = "idle";
@@ -111,7 +103,6 @@ const loadGoogleMaps = (apiKey) => {
     document.head.appendChild(script);
   });
 };
-
 // =============================================================================
 // GOOGLE MAPS AUTOCOMPLETE HOOK — UNCHANGED
 // =============================================================================
@@ -157,24 +148,20 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
     return () => { attachedRef.current = false; };
   }, [mapsLoaded]);
 };
-
 // =============================================================================
 // MAP PICKER MODAL — UNCHANGED
 // =============================================================================
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
-  const mapRef          = useRef(null);
-  const mapInstanceRef  = useRef(null);
-  const [address, setAddress]       = useState("Move map to select location...");
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const [address, setAddress] = useState("Move map to select location...");
   const [isDragging, setIsDragging] = useState(false);
-  const [locating, setLocating]     = useState(false);
-  const [center, setCenter]         = useState({ lat: 41.7151, lng: 44.8271 });
-
+  const [locating, setLocating] = useState(false);
+  const [center, setCenter] = useState({ lat: 41.7151, lng: 44.8271 });
   useEffect(() => {
     if (initialLocation?.lat) setCenter({ lat: parseFloat(initialLocation.lat), lng: parseFloat(initialLocation.lng) });
   }, [initialLocation?.lat, initialLocation?.lng]);
-
   useEffect(() => { if (!isOpen) mapInstanceRef.current = null; }, [isOpen]);
-
   useEffect(() => {
     if (!isOpen || !mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
@@ -204,13 +191,12 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
     });
     map.addListener("dragstart", () => setIsDragging(true));
   }, [isOpen]);
-
   const handleLocateMe = () => {
     if (!navigator.geolocation) return toast.error("Geolocation not supported");
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const lat = parseFloat(pos.coords.latitude), lng = parseFloat(pos.coords.longitude);
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
         if (mapInstanceRef.current) { mapInstanceRef.current.panTo({ lat, lng }); mapInstanceRef.current.setZoom(17); }
         setCenter({ lat, lng });
         setLocating(false);
@@ -219,7 +205,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       { enableHighAccuracy: true }
     );
   };
-
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
@@ -258,7 +243,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
     </div>
   );
 };
-
 // =============================================================================
 // LIVE TRACKING MAP — UPGRADED
 // - ETA countdown pill (live ticking)
@@ -269,34 +253,30 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 // =============================================================================
 const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, status }) => {
   const stopMarkersRef = useRef([]);
-  const mapRef                = useRef(null);
-  const mapInstanceRef        = useRef(null);
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
-  const driverMarkerRef       = useRef(null);
-  const pickupMarkerRef       = useRef(null);
-  const destMarkerRef         = useRef(null);
-  const routeDrawnForStatus   = useRef(null);
-  const prevRideIdRef         = useRef(null);
-  const etaDurationRef        = useRef(null);   // seconds from Directions API
-  const etaIntervalRef        = useRef(null);   // countdown interval
+  const driverMarkerRef = useRef(null);
+  const pickupMarkerRef = useRef(null);
+  const destMarkerRef = useRef(null);
+  const routeDrawnForStatus = useRef(null);
+  const prevRideIdRef = useRef(null);
+  const etaDurationRef = useRef(null); // seconds from Directions API
+  const etaIntervalRef = useRef(null); // countdown interval
   const [isFollowing, setIsFollowing] = useState(true);
-  const [etaSeconds, setEtaSeconds]   = useState(null);
-
+  const [etaSeconds, setEtaSeconds] = useState(null);
   const getSafeCoord = (val) => { const n = parseFloat(val); return !isNaN(n) && n !== 0 ? n : null; };
-
   // SVG marker helpers
   const makePickupIcon = () => ({
     url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z" fill="#00ff88"/><circle cx="16" cy="16" r="6" fill="#07070f"/></svg>`)}`,
     scaledSize: new window.google.maps.Size(28, 37),
     anchor: new window.google.maps.Point(14, 37),
   });
-
   const makeDestIcon = () => ({
     url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z" fill="#ff4444"/><circle cx="16" cy="16" r="6" fill="#07070f"/></svg>`)}`,
     scaledSize: new window.google.maps.Size(28, 37),
     anchor: new window.google.maps.Point(14, 37),
   });
-
   const makeDriverIcon = (heading = 0) => ({
     path: "M 0,-18 L 12,14 L 0,8 L -12,14 Z",
     scale: 1.4,
@@ -307,14 +287,12 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     rotation: heading,
     anchor: new window.google.maps.Point(0, 0),
   });
-
   // Format seconds as "Xm Ys"
   const fmtEta = (secs) => {
     if (secs == null || secs <= 0) return null;
     const m = Math.floor(secs / 60), s = secs % 60;
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
   };
-
   // Init map once
   useEffect(() => {
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
@@ -337,7 +315,6 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     map.addListener("dragstart", () => setIsFollowing(false));
     mapInstanceRef.current = map;
   }, []);
-
   // Draw/update route based on status
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
@@ -349,7 +326,6 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     }));
     const sig = `${drLat},${drLng}|${pLat},${pLng}|${dLat},${dLng}|${status}`;
     if (routeDrawnForStatus.current === sig) return;
-
     // Preview mode (booking screen): show route pickup → destination, no driver
     if (status === "preview") {
       if (pLat && pLng && dLat && dLng) {
@@ -360,10 +336,8 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
       }
       return;
     }
-
     if (!drLat || !drLng) return;
     const origin = { lat: drLat, lng: drLng };
-
     if (["accepted", "searching", "arrived"].includes(status) && pLat) {
       drawRoute(origin, { lat: pLat, lng: pLng }, [], true);
       updateStaticPin(pickupMarkerRef, { lat: pLat, lng: pLng }, makePickupIcon());
@@ -376,34 +350,28 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
       routeDrawnForStatus.current = sig;
     }
   }, [pickup?.lat, destination?.lat, JSON.stringify(stops), status, driverLocation?.lat]);
-
   // Auto-fit when ride is first accepted — show driver + pickup
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
     if (status !== "accepted") return;
     const drLat = getSafeCoord(driverLocation?.lat), drLng = getSafeCoord(driverLocation?.lng);
-    const pLat  = getSafeCoord(pickup?.lat),         pLng  = getSafeCoord(pickup?.lng);
+    const pLat = getSafeCoord(pickup?.lat), pLng = getSafeCoord(pickup?.lng);
     if (!drLat || !pLat) return;
-
     // Only do this once per new ride (driver arrives = new fit)
     const rideKey = `${drLat},${pLat}`;
     if (prevRideIdRef.current === rideKey) return;
     prevRideIdRef.current = rideKey;
-
     const bounds = new window.google.maps.LatLngBounds();
     bounds.extend({ lat: drLat, lng: drLng });
-    bounds.extend({ lat: pLat,  lng: pLng  });
+    bounds.extend({ lat: pLat, lng: pLng });
     mapInstanceRef.current.fitBounds(bounds, { top: 80, bottom: 200, left: 50, right: 50 });
-
     // After 3s resume following driver
     setTimeout(() => setIsFollowing(true), 3000);
   }, [status, driverLocation?.lat, pickup?.lat]);
-
   // ETA countdown — starts fresh whenever a new Directions result comes in
   useEffect(() => {
     return () => { if (etaIntervalRef.current) clearInterval(etaIntervalRef.current); };
   }, []);
-
   const startEtaCountdown = (durationSeconds) => {
     if (etaIntervalRef.current) clearInterval(etaIntervalRef.current);
     let remaining = durationSeconds;
@@ -414,7 +382,6 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
       else setEtaSeconds(remaining);
     }, 1000);
   };
-
   const drawRoute = (origin, dest, waypoints = [], withEta = false) => {
     new window.google.maps.DirectionsService().route(
       { origin, destination: dest, waypoints, travelMode: window.google.maps.TravelMode.DRIVING },
@@ -433,7 +400,6 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
       }
     );
   };
-
   const updateStaticPin = (ref, position, icon) => {
     if (!mapInstanceRef.current) return;
     if (!ref.current) {
@@ -443,43 +409,38 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
       ref.current.setIcon(icon);
     }
   };
-
   const removePin = (ref) => {
     if (ref.current) { ref.current.setMap(null); ref.current = null; }
   };
-
   // Driver marker — follows live location AND rotates the map
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
-    
+   
     const pos = { lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) };
     const heading = parseFloat(driverLocation.heading) || 0;
-    
+   
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
-        position: pos, 
+        position: pos,
         map: mapInstanceRef.current,
-        icon: makeDriverIcon(heading), 
+        icon: makeDriverIcon(heading),
         zIndex: 1000,
       });
     } else {
       driverMarkerRef.current.setPosition(pos);
       driverMarkerRef.current.setIcon(makeDriverIcon(heading));
     }
-    
+   
     if (isFollowing) {
       mapInstanceRef.current.panTo(pos);
       // 🛠️ THIS SPINS THE ENTIRE MAP TO FACE FORWARD
       mapInstanceRef.current.setHeading(heading);
     }
   }, [driverLocation, isFollowing]);
-
   const etaLabel = status === "in_progress" ? "ETA to destination" : "ETA to pickup";
-
   return (
     <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: "#0d0d1a" }}>
       <div ref={mapRef} style={{ height: "46vh", minHeight: "300px", width: "100%" }} />
-
       {/* ETA pill */}
       {etaSeconds != null && etaSeconds > 0 && status !== "preview" && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
@@ -490,7 +451,6 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
           </div>
         </div>
       )}
-
       {/* Re-centre button */}
       {!isFollowing && driverLocation && (
         <button
@@ -504,7 +464,6 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
           <Crosshair className="w-5 h-5" />
         </button>
       )}
-
       {/* Zoom controls */}
       <div className="absolute bottom-4 left-4 flex flex-col gap-1.5 z-10">
         <button
@@ -521,7 +480,6 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     </div>
   );
 };
-
 // =============================================================================
 // LOCATION INPUT — UNCHANGED
 // =============================================================================
@@ -529,7 +487,6 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   useGoogleMapsAutocomplete(inputRef, (place) => onChange({ address: place.address, lat: place.lat, lng: place.lng }), mapsLoaded);
-
   return (
     <>
       <div className="relative flex items-center">
@@ -555,22 +512,19 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
     </>
   );
 };
-
 // =============================================================================
 // AUTH
 // =============================================================================
 const RiderAuth = () => {
   const { login } = useAuth();
-  const navigate  = useNavigate();
-  const { t }     = useLanguage();
-  const [isLogin, setIsLogin]   = useState(true);
-  const [loading, setLoading]   = useState(false);
+  const navigate = useNavigate();
+  const { t } = useLanguage();
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ name: "", surname: "", cellphone: "", password: "" });
-
-  const [otpStep, setOtpStep]       = useState("form");
-  const [otpCode, setOtpCode]       = useState("");
+  const [otpStep, setOtpStep] = useState("form");
+  const [otpCode, setOtpCode] = useState("");
   const [phoneToken, setPhoneToken] = useState(null);
-
   const handleSendOtp = async () => {
     if (!formData.cellphone) return toast.error("Enter your phone number first");
     setLoading(true);
@@ -582,7 +536,6 @@ const RiderAuth = () => {
       toast.error(err.response?.data?.detail || "Failed to send code");
     } finally { setLoading(false); }
   };
-
   const handleVerifyOtp = async () => {
     setLoading(true);
     try {
@@ -594,7 +547,6 @@ const RiderAuth = () => {
       toast.error(err.response?.data?.detail || "Incorrect code");
     } finally { setLoading(false); }
   };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -621,7 +573,6 @@ const RiderAuth = () => {
       toast.error(error.response?.data?.detail || error.message || t("error"));
     } finally { setLoading(false); }
   };
-
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#07070f" }}>
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
@@ -637,15 +588,15 @@ const RiderAuth = () => {
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#00ff88] to-[#00d4ff] flex items-center justify-center mb-5 shadow-[0_0_40px_rgba(0,255,136,0.25)]">
             <Rocket className="w-8 h-8 text-black" />
           </div>
-          <h1 className="text-3xl font-bold text-white">{isLogin ? "Welcome back" : "Join T'aksi"}</h1>
-          <p className="text-white/40 mt-1 text-sm">{isLogin ? "Sign in to your rider account" : "Create your rider account"}</p>
+          <h1 className="text-3xl font-bold text-white">{isLogin ? t('welcome_back') : t('join_taksi')}</h1>
+          <p className="text-white/40 mt-1 text-sm">{isLogin ? t('sign_in_rider') : t('create_rider_account')}</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           {!isLogin && (
             <div className="grid grid-cols-2 gap-3">
               {[["name","First name","given-name"],["surname","Last name","family-name"]].map(([k,l,ac]) => (
                 <div key={k}>
-                  <label className="text-white/40 text-xs font-medium mb-1.5 block">{l}</label>
+                  <label className="text-white/40 text-xs font-medium mb-1.5 block">{t(l.toLowerCase().replace(' ', '_'))}</label>
                   <Input id={`rider-${k}`} name={k} value={formData[k]} onChange={e => setFormData({ ...formData, [k]: e.target.value })}
                     className="bg-white/5 border-white/10 text-white h-11 rounded-xl" required autoComplete={ac} />
                 </div>
@@ -653,7 +604,7 @@ const RiderAuth = () => {
             </div>
           )}
           <div>
-            <label className="text-white/40 text-xs font-medium mb-1.5 block">{t("phone_number")}</label>
+            <label className="text-white/40 text-xs font-medium mb-1.5 block">{t('phone_number')}</label>
             <div className="relative flex gap-2">
               <div className="relative flex-1">
                 <Phone className="absolute left-3 top-3.5 h-4 w-4 text-white/30" />
@@ -666,34 +617,32 @@ const RiderAuth = () => {
               {!isLogin && otpStep === "form" && (
                 <Button type="button" onClick={handleSendOtp} disabled={loading || !formData.cellphone}
                   className="h-11 px-3 bg-white/10 text-white text-xs rounded-xl border border-white/10 hover:bg-white/15">
-                  Verify
+                  {t('verify')}
                 </Button>
               )}
               {!isLogin && otpStep === "done" && (
-                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">✓ Verified</div>
+                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">{t('verified')}</div>
               )}
             </div>
           </div>
-
           {!isLogin && otpStep === "otp" && (
             <div>
-              <label className="text-white/40 text-xs font-medium mb-1.5 block">Enter 4-digit code</label>
+              <label className="text-white/40 text-xs font-medium mb-1.5 block">{t('enter_code')}</label>
               <div className="flex gap-2">
                 <Input value={otpCode} onChange={e => setOtpCode(e.target.value)} maxLength={4}
                   placeholder="0000" className="bg-white/5 border-white/10 text-white h-11 rounded-xl text-center text-lg tracking-widest flex-1" />
                 <Button type="button" onClick={handleVerifyOtp} disabled={loading || otpCode.length < 4}
                   className="h-11 px-4 bg-[#00d4ff] text-black font-bold rounded-xl text-sm">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm"}
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : t('confirm')}
                 </Button>
               </div>
               <button type="button" onClick={handleSendOtp} className="text-white/30 text-xs mt-1 hover:text-white/60">
-                Resend code
+                {t('resend_code')}
               </button>
             </div>
           )}
-
           <div>
-            <label className="text-white/40 text-xs font-medium mb-1.5 block">{t("password")}</label>
+            <label className="text-white/40 text-xs font-medium mb-1.5 block">{t('password')}</label>
             <div className="relative">
               <Lock className="absolute left-3 top-3.5 h-4 w-4 text-white/30" />
               <Input id="rider-password" name="password" type="password" value={formData.password}
@@ -714,7 +663,6 @@ const RiderAuth = () => {
     </div>
   );
 };
-
 // =============================================================================
 // WAIT TIMER — UNCHANGED
 // =============================================================================
@@ -726,10 +674,8 @@ const WaitTimer = ({ arrivedAt, carType }) => {
     const interval = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
     return () => clearInterval(interval);
   }, [arrivedAt]);
-
   const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
   const freeWaitSeconds = rules.freeWait * 60;
-
   if (elapsed <= freeWaitSeconds) {
     const remaining = freeWaitSeconds - elapsed;
     return (
@@ -749,9 +695,8 @@ const WaitTimer = ({ arrivedAt, carType }) => {
       </div>
     );
   }
-
   const overtime = elapsed - freeWaitSeconds;
-  const liveFee  = ((overtime / 60) * rules.perMinWait).toFixed(2);
+  const liveFee = ((overtime / 60) * rules.perMinWait).toFixed(2);
   return (
     <div className="bg-red-500/10 border border-red-500/25 p-4 rounded-2xl flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -772,14 +717,12 @@ const WaitTimer = ({ arrivedAt, carType }) => {
     </div>
   );
 };
-
 // =============================================================================
 // RECEIPT MODAL — UNCHANGED
 // =============================================================================
 const ReceiptModal = ({ isOpen, onClose, rideId }) => {
   const [receipt, setReceipt] = useState(null);
   const [loading, setLoading] = useState(false);
-
   useEffect(() => {
     if (!isOpen || !rideId) return;
     setLoading(true);
@@ -788,15 +731,14 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
       .catch(() => toast.error("Failed to load receipt"))
       .finally(() => setLoading(false));
   }, [isOpen, rideId]);
-
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
       <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="w-10 h-1 bg-white/15 rounded-full mx-auto mb-5" />
+        <div className="w-10 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-white text-lg font-bold flex items-center gap-2">
-            <Receipt className="w-5 h-5 text-[#00ff88]" /> Trip Receipt
+            <Receipt className="w-5 h-5 text-[#00ff88]" /> {t('trip_receipt')}
           </h2>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/8 flex items-center justify-center text-white/50 hover:text-white transition-colors">
             <X className="w-4 h-4" />
@@ -809,28 +751,28 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
             <div className="bg-white/5 rounded-2xl p-4 space-y-3 border border-white/5">
               {[["Driver", receipt.driver_name], ["Car Type", receipt.car_type], ["Distance", `${receipt.distance_km?.toFixed(1)} km`], ["Payment", receipt.payment_method]].map(([k, v]) => (
                 <div key={k} className="flex justify-between text-sm">
-                  <span className="text-white/40">{k}</span>
+                  <span className="text-white/40">{t(k.toLowerCase().replace(' ', '_'))}</span>
                   <span className="text-white font-medium capitalize">{v}</span>
                 </div>
               ))}
             </div>
             <div className="bg-white/5 rounded-2xl p-4 space-y-2.5 border border-white/5">
-              <p className="text-white/30 text-xs uppercase tracking-widest font-bold mb-3">Fare Breakdown</p>
+              <p className="text-white/30 text-xs uppercase tracking-widest font-bold mb-3">{t('fare_breakdown')}</p>
               {Object.entries(receipt.fare_breakdown || {}).filter(([k]) => !["breakdown","surge_multiplier","base_total"].includes(k) && typeof receipt.fare_breakdown[k] === "number" && receipt.fare_breakdown[k] > 0).map(([k, v]) => (
                 <div key={k} className="flex justify-between text-sm">
-                  <span className="text-white/40 capitalize">{k.replace(/_/g, " ")}</span>
+                  <span className="text-white/40 capitalize">{t(k.replace(/_/g, " ").toLowerCase())}</span>
                   <span className="text-white">₾{parseFloat(v).toFixed(2)}</span>
                 </div>
               ))}
               {receipt.tip > 0 && (
                 <div className="flex justify-between text-sm pt-2 border-t border-white/8">
-                  <span className="text-yellow-400/80 flex items-center gap-1"><Star className="w-3 h-3" /> Tip</span>
+                  <span className="text-yellow-400/80 flex items-center gap-1"><Star className="w-3 h-3" /> {t('tip')}</span>
                   <span className="text-yellow-400">₾{parseFloat(receipt.tip).toFixed(2)}</span>
                 </div>
               )}
               <div className="h-px bg-white/10 my-1" />
               <div className="flex justify-between font-bold text-base pt-1">
-                <span className="text-white">Total</span>
+                <span className="text-white">{t('total')}</span>
                 <span className="text-[#00ff88]">₾{parseFloat(receipt.total || 0).toFixed(2)}</span>
               </div>
             </div>
@@ -840,22 +782,17 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
     </div>
   );
 };
-
 const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
   const [tipAmount, setTipAmount] = useState(null);
-  const [custom, setCustom]       = useState("");
+  const [custom, setCustom] = useState("");
   const TIPS = [1, 2, 3, 5];
-
-  useEffect(() => { 
-    if (isOpen) { setTipAmount(null); setCustom(""); } 
+  useEffect(() => {
+    if (isOpen) { setTipAmount(null); setCustom(""); }
   }, [isOpen]);
-
   if (!isOpen) return null;
-
   const finalAmount = custom ? parseFloat(custom) : tipAmount;
   const isValidTip = finalAmount && finalAmount > 0;
   const usdAmount = isValidTip ? (finalAmount * 0.37).toFixed(2) : "0.00";
-
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
       <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
@@ -864,8 +801,8 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
           <div className="w-14 h-14 rounded-2xl bg-yellow-500/15 border border-yellow-500/25 flex items-center justify-center mx-auto mb-3">
             <Star className="w-7 h-7 text-yellow-400" />
           </div>
-          <h2 className="text-white text-xl font-bold">Tip Your Driver</h2>
-          <p className="text-white/40 text-sm mt-1">{driverName} deserves recognition!</p>
+          <h2 className="text-white text-xl font-bold">{t('tip_your_driver')}</h2>
+          <p className="text-white/40 text-sm mt-1">{driverName} {t('deserves_recognition')}</p>
         </div>
         <div className="grid grid-cols-4 gap-2 mb-4">
           {TIPS.map(amt => (
@@ -875,7 +812,7 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
             </button>
           ))}
         </div>
-        <Input type="number" placeholder="Custom amount (₾)" value={custom}
+        <Input type="number" placeholder={t('custom_amount_gel')} value={custom}
           onChange={e => { setCustom(e.target.value); setTipAmount(null); }}
           className="bg-white/5 border-white/10 text-white text-center h-12 rounded-xl mb-4 placeholder:text-white/25" />
         {isValidTip && <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>}
@@ -894,10 +831,10 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
               }}
               onApprove={async (data, actions) => {
                 const orderDetails = await actions.order.capture();
+                const paymentSource = orderDetails.payment_source?.card;
+                const vaultId = paymentSource?.attributes?.vault?.id || null;
                 try {
-                  const paymentSource = orderDetails.payment_source?.card;
-                  const vaultId = paymentSource?.attributes?.vault?.id || null;
-                  await api.post(`/rides/${rideId}/tip`, { 
+                  await api.post(`/rides/${rideId}/tip`, {
                     amount: finalAmount, tip_amount: finalAmount, reference_id: data.orderID,
                     vault_id: vaultId, card_last4: paymentSource?.last_digits || null, card_brand: paymentSource?.brand || null
                   });
@@ -912,56 +849,51 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
             />
           </div>
         ) : (
-          <div className="bg-white/4 rounded-xl p-4 text-center mb-4 border border-white/5">
+          <div className="bg-white/4 rounded-xl p-4 text-center mb-2 border border-white/5">
             <p className="text-white/25 text-sm flex items-center justify-center gap-2">
-              <DollarSign className="w-4 h-4" /> Select an amount to pay securely
+              <DollarSign className="w-4 h-4" /> {t('select_amount_to_pay')}
             </p>
           </div>
         )}
         <Button variant="ghost" className="w-full border border-white/10 text-white/40 rounded-xl h-12 text-sm hover:bg-white/5" onClick={onClose}>
-          Maybe Later
+          {t('maybe_later')}
         </Button>
       </div>
     </div>
   );
 };
-
 // =============================================================================
 // SOS BUTTON — UNCHANGED
 // =============================================================================
 const SOSButton = ({ rideId, lat, lng }) => {
-  const [loading, setLoading]     = useState(false);
+  const [loading, setLoading] = useState(false);
   const [triggered, setTriggered] = useState(false);
-
   const handleSOS = async () => {
-    if (!window.confirm("🚨 Trigger SOS? This will alert our safety team immediately.")) return;
+    if (!window.confirm(t('confirm_sos'))) return;
     setLoading(true);
     try {
       await api.post("/sos", { ride_id: rideId, lat: lat || 0, lng: lng || 0, message: "Rider triggered SOS during trip" });
       setTriggered(true);
-      toast.error("🚨 SOS Triggered! Help is on the way.", { duration: 10000 });
-    } catch { toast.error("SOS failed — call emergency services directly"); }
+      toast.error(t('sos_triggered'), { duration: 10000 });
+    } catch { toast.error(t('sos_failed')); }
     finally { setLoading(false); }
   };
-
   return (
     <button onClick={handleSOS} disabled={loading || triggered}
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${triggered ? "bg-red-900/30 border border-red-900/50 text-red-700" : "bg-red-500/15 border border-red-500/35 text-red-400 hover:bg-red-500/25"}`}>
       {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
-      {triggered ? "SOS Sent" : "SOS"}
+      {triggered ? t('sos_sent') : "SOS"}
     </button>
   );
 };
-
 // =============================================================================
 // SHARE TRIP MODAL — UNCHANGED
 // =============================================================================
 const ShareTripModal = ({ isOpen, onClose, rideId }) => {
   const [shareLink, setShareLink] = useState("");
-  const [loading, setLoading]     = useState(false);
-  const [phone, setPhone]         = useState("");
-  const [email, setEmail]         = useState("");
-
+  const [loading, setLoading] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   useEffect(() => {
     if (!isOpen || !rideId) return;
     setLoading(true);
@@ -970,19 +902,16 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
       .catch(() => setShareLink(`https://taksi.ge/track/${rideId}`))
       .finally(() => setLoading(false));
   }, [isOpen, rideId]);
-
   const handleShare = async () => {
     setLoading(true);
     try {
       await api.post(`/rides/${rideId}/share`, { recipient_phone: phone || null, recipient_email: email || null });
-      toast.success("Trip shared!");
+      toast.success(t('trip_shared'));
       onClose();
-    } catch { toast.error("Failed to share"); } finally { setLoading(false); }
+    } catch { toast.error(t('failed_to_share')); } finally { setLoading(false); }
   };
-
-  const copyLink = () => { navigator.clipboard?.writeText(shareLink); toast.success("Link copied!"); };
-  const nativeShare = () => navigator.share?.({ title: "Track my T'aksi ride", url: shareLink });
-
+  const copyLink = () => { navigator.clipboard?.writeText(shareLink); toast.success(t('link_copied')); };
+  const nativeShare = () => navigator.share?.({ title: t('track_my_taksi_ride'), url: shareLink });
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
@@ -992,8 +921,8 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
           <div className="w-14 h-14 rounded-2xl bg-[#00d4ff]/15 border border-[#00d4ff]/25 flex items-center justify-center mx-auto mb-3">
             <Share2 className="w-7 h-7 text-[#00d4ff]" />
           </div>
-          <h2 className="text-white text-xl font-bold">Share Your Trip</h2>
-          <p className="text-white/40 text-sm mt-1">Let friends & family track you in real-time</p>
+          <h2 className="text-white text-xl font-bold">{t('share_your_trip')}</h2>
+          <p className="text-white/40 text-sm mt-1">{t('let_friends_track_you')}</p>
         </div>
         {shareLink && (
           <div className="bg-white/5 rounded-2xl p-3 flex items-center gap-3 mb-4 border border-white/8">
@@ -1005,37 +934,35 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
         )}
         {navigator.share && shareLink && (
           <Button className="w-full bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] font-bold rounded-xl h-12 mb-3 hover:bg-[#00d4ff]/25" onClick={nativeShare}>
-            <Share2 className="w-4 h-4 mr-2" /> Share via Phone
+            <Share2 className="w-4 h-4 mr-2" /> {t('share_via_phone')}
           </Button>
         )}
         <div className="space-y-2 mb-4">
-          <Input placeholder="Send to phone number (optional)" value={phone} onChange={e => setPhone(e.target.value)}
+          <Input placeholder={t('send_to_phone_optional')} value={phone} onChange={e => setPhone(e.target.value)}
             className="bg-white/5 border-white/10 text-white h-11 rounded-xl placeholder:text-white/25" />
-          <Input placeholder="Send to email (optional)" value={email} onChange={e => setEmail(e.target.value)}
+          <Input placeholder={t('send_to_email_optional')} value={email} onChange={e => setEmail(e.target.value)}
             className="bg-white/5 border-white/10 text-white h-11 rounded-xl placeholder:text-white/25" />
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-11" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1 bg-[#00d4ff] text-black font-bold rounded-xl h-11" onClick={handleShare} disabled={loading || (!phone && !email)}>
+          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-12" onClick={onClose}>{t('cancel')}</Button>
+          <Button className="flex-1 bg-[#00d4ff] text-black font-bold rounded-xl h-12" onClick={handleShare} disabled={loading || (!phone && !email)}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-            Send Link
+            {t('send_link')}
           </Button>
         </div>
       </div>
     </div>
   );
 };
-
 // =============================================================================
 // SCHEDULED RIDE MODAL — UNCHANGED
 // =============================================================================
 const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) => {
   const [scheduledTime, setScheduledTime] = useState("");
-  const [loading, setLoading]             = useState(false);
-
+  const [loading, setLoading] = useState(false);
   const handleSchedule = async () => {
-    if (!pickup?.lat || !destination?.lat) { toast.error("Set pickup and destination first"); return; }
-    if (!scheduledTime) { toast.error("Select a date and time"); return; }
+    if (!pickup?.lat || !destination?.lat) { toast.error(t('set_pickup_destination')); return; }
+    if (!scheduledTime) { toast.error(t('select_date_time')); return; }
     setLoading(true);
     try {
       await api.post("/rides/schedule", {
@@ -1044,11 +971,10 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
         scheduled_time: new Date(scheduledTime).toISOString(),
         car_type: carType, payment_method: "cash", stops: [],
       });
-      toast.success("Ride scheduled!");
+      toast.success(t('ride_scheduled'));
       onClose();
-    } catch (err) { toast.error(err.response?.data?.detail || "Failed to schedule"); } finally { setLoading(false); }
+    } catch (err) { toast.error(err.response?.data?.detail || t('failed_to_schedule')); } finally { setLoading(false); }
   };
-
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
@@ -1059,30 +985,29 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
             <Calendar className="w-5 h-5 text-yellow-400" />
           </div>
           <div>
-            <h2 className="text-white text-lg font-bold">Schedule a Ride</h2>
-            <p className="text-white/40 text-sm">Book your ride in advance</p>
+            <h2 className="text-white text-lg font-bold">{t('schedule_ride')}</h2>
+            <p className="text-white/40 text-sm">{t('book_in_advance')}</p>
           </div>
         </div>
         {pickup?.address && <p className="text-xs text-white/40 mb-1 truncate flex items-center gap-1"><MapPin className="w-3 h-3 text-[#00ff88]" />{pickup.address}</p>}
         {destination?.address && <p className="text-xs text-white/40 mb-4 truncate flex items-center gap-1"><Navigation className="w-3 h-3 text-[#00d4ff]" />{destination.address}</p>}
         <div className="mb-4">
-          <label className="text-white/40 text-xs font-medium mb-1.5 block">Date & Time</label>
+          <label className="text-white/40 text-xs font-medium mb-1.5 block">{t('date_time')}</label>
           <Input type="datetime-local" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)}
             min={new Date(Date.now() + 30 * 60000).toISOString().slice(0, 16)}
             className="bg-white/5 border-white/10 text-white h-12 rounded-xl" />
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-12" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-12" onClick={onClose}>{t('cancel')}</Button>
           <Button className="flex-1 bg-yellow-500 text-black font-bold rounded-xl h-12" onClick={handleSchedule} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calendar className="w-4 h-4 mr-2" />}
-            Schedule
+            {t('schedule')}
           </Button>
         </div>
       </div>
     </div>
   );
 };
-
 // =============================================================================
 // WALLET TOP-UP MODAL — UNCHANGED
 // =============================================================================
@@ -1090,12 +1015,10 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   const [amount, setAmount] = useState(20);
   const [custom, setCustom] = useState("");
   const AMOUNTS = [5, 10, 20, 50];
-
   if (!isOpen) return null;
   const finalAmount = custom ? (parseFloat(custom) || 0) : amount;
-  const usdAmount   = (finalAmount * 0.37).toFixed(2);
-  const canPay      = finalAmount >= 1;
-
+  const usdAmount = (finalAmount * 0.37).toFixed(2);
+  const canPay = finalAmount >= 1;
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
       <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
@@ -1105,8 +1028,8 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             <Wallet className="w-5 h-5 text-[#00ff88]" />
           </div>
           <div>
-            <h2 className="text-white text-lg font-bold">Top Up Wallet</h2>
-            <p className="text-white/40 text-sm">Add funds to your T'aksi wallet</p>
+            <h2 className="text-white text-lg font-bold">{t('top_up_wallet')}</h2>
+            <p className="text-white/40 text-sm">{t('add_funds_to_wallet')}</p>
           </div>
         </div>
         <div className="grid grid-cols-4 gap-2 mb-3">
@@ -1117,19 +1040,18 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             </button>
           ))}
         </div>
-        <Input type="number" placeholder="Custom amount (₾)" value={custom} min="1" max="1000"
+        <Input type="number" placeholder={t('custom_amount_gel')} value={custom} min="1" max="1000"
           onChange={e => setCustom(e.target.value)}
-          className="bg-white/5 border-white/10 text-white text-center h-11 rounded-xl mb-4 placeholder:text-white/25" />
+          className="bg-white/5 border-white/10 text-white text-center h-12 rounded-xl mb-4 placeholder:text-white/25" />
         {canPay && <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>}
         {canPay ? (
           <PayPalButtons
             fundingSource="card"
             style={{ layout: "vertical", shape: "rect" }}
             createOrder={(data, actions) => {
-              if (isNaN(usdAmount) || Number(usdAmount) <= 0) { toast.error("Amount must be greater than 0."); return null; }
+              if (isNaN(usdAmount) || Number(usdAmount) <= 0) { toast.error(t('amount_greater_than_0')); return null; }
               return actions.order.create({
                 purchase_units: [{ amount: { value: usdAmount, currency_code: "USD" } }],
-                payment_source: { card: { attributes: { vault: { store_in_vault: "ON_SUCCESS" } } } },
                 application_context: { shipping_preference: "NO_SHIPPING" },
               });
             }}
@@ -1138,57 +1060,52 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
                 const orderDetails = await actions.order.capture();
                 const paymentSource = orderDetails.payment_source?.card;
                 const vaultId = paymentSource?.attributes?.vault?.id || null;
-                await api.post("/rider/wallet/topup", { 
+                await api.post("/rider/wallet/topup", {
                   amount: finalAmount, reference: data.orderID,
                   vault_id: vaultId, card_last4: paymentSource?.last_digits || null, card_brand: paymentSource?.brand || null
                 });
-                toast.success(`₾${finalAmount.toFixed(2)} added to your wallet!`);
-                if (vaultId) toast.success("Card saved! 💳");
+                toast.success(t('amount_added_to_wallet', { amount: finalAmount.toFixed(2) }));
+                if (vaultId) toast.success(t('card_saved'));
                 onSuccess();
                 onClose();
-              } catch { toast.error("Payment captured but wallet not updated. Contact support."); }
+              } catch { toast.error(t('payment_captured_but_not_updated')); }
             }}
-            onError={() => toast.error("Payment failed")}
-            onCancel={() => toast.info("Payment cancelled")}
+            onError={() => toast.error(t('payment_failed'))}
+            onCancel={() => toast.info(t('payment_cancelled'))}
           />
         ) : (
-          <div className="bg-white/4 rounded-xl p-4 text-center mb-2">
-            <p className="text-white/25 text-sm">Enter ₾1 or more to show payment</p>
+          <div className="bg-white/4 rounded-xl p-4 text-center mb-2 border border-white/5">
+            <p className="text-white/25 text-sm">{t('enter_1_or_more')}</p>
           </div>
         )}
-        <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose}>{t('cancel')}</Button>
       </div>
     </div>
   );
 };
-
 // =============================================================================
 // FAVORITES PANEL — UNCHANGED
 // =============================================================================
 const FavoritesPanel = ({ onSelect }) => {
   const [favorites, setFavorites] = useState([]);
-  const [loading, setLoading]     = useState(false);
-
+  const [loading, setLoading] = useState(false);
   useEffect(() => {
     setLoading(true);
     api.get("/user/favorites").then(res => setFavorites(res.data.favorites || [])).catch(() => {}).finally(() => setLoading(false));
   }, []);
-
   const deleteFav = async (id) => {
     await api.delete(`/user/favorites/${id}`);
     setFavorites(prev => prev.filter(f => f.id !== id));
-    toast.success("Removed");
+    toast.success(t('removed'));
   };
-
   if (loading) return <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-white/30" /></div>;
   if (!favorites.length) return (
     <div className="text-center py-6">
       <Heart className="w-8 h-8 text-white/15 mx-auto mb-2" />
-      <p className="text-white/30 text-sm">No saved places yet</p>
-      <p className="text-white/20 text-xs mt-1">Tap ❤️ on a location to save it</p>
+      <p className="text-white/30 text-sm">{t('no_saved_places')}</p>
+      <p className="text-white/20 text-xs mt-1">{t('tap_heart_to_save')}</p>
     </div>
   );
-
   return (
     <div className="space-y-2">
       {favorites.map(fav => (
@@ -1206,7 +1123,6 @@ const FavoritesPanel = ({ onSelect }) => {
     </div>
   );
 };
-
 // =============================================================================
 // SAVE FAVORITE DIALOG — UNCHANGED
 // =============================================================================
@@ -1214,20 +1130,18 @@ const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("📍");
   const ICONS = ["🏠", "🏢", "🏋️", "🛒", "🏫", "🍕", "🏥", "📍"];
-
   const handleSave = async () => {
-    if (!name.trim()) { toast.error("Enter a name"); return; }
+    if (!name.trim()) { toast.error(t('enter_name')); return; }
     try {
       await api.post("/user/favorites", { name, address: location.address, lat: location.lat, lng: location.lng, icon });
-      toast.success("Location saved!");
+      toast.success(t('location_saved'));
       onSave();
-    } catch { toast.error("Failed to save"); }
+    } catch { toast.error(t('failed_to_save')); }
   };
-
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#0d0d1a] border border-white/10 rounded-2xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
-        <h3 className="text-white font-bold text-base mb-1">Save Location</h3>
+        <h3 className="text-white font-bold text-base mb-1">{t('save_location')}</h3>
         <p className="text-white/35 text-xs mb-4 truncate">{location?.address}</p>
         <div className="flex gap-1.5 mb-4">
           {ICONS.map(ic => (
@@ -1237,27 +1151,24 @@ const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
             </button>
           ))}
         </div>
-        <Input placeholder="Name (e.g. Home, Work)" value={name} onChange={e => setName(e.target.value)}
+        <Input placeholder={t('name_example')} value={name} onChange={e => setName(e.target.value)}
           className="bg-white/5 border-white/10 text-white mb-4 h-11 rounded-xl placeholder:text-white/25" />
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-10 text-sm" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1 bg-pink-500 text-white font-bold rounded-xl h-10 text-sm" onClick={handleSave}>Save</Button>
+          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-10 text-sm" onClick={onClose}>{t('cancel')}</Button>
+          <Button className="flex-1 bg-pink-500 text-white font-bold rounded-xl h-10 text-sm" onClick={handleSave}>{t('save')}</Button>
         </div>
       </div>
     </div>
   );
 };
-
 // =============================================================================
 // REFERRAL PANEL — UNCHANGED
 // =============================================================================
 const ReferralPanel = () => {
-  const [referral, setReferral]   = useState(null);
+  const [referral, setReferral] = useState(null);
   const [codeInput, setCodeInput] = useState("");
-  const [applying, setApplying]   = useState(false);
-
+  const [applying, setApplying] = useState(false);
   useEffect(() => { api.get("/user/referral").then(res => setReferral(res.data)).catch(() => {}); }, []);
-
   const applyCode = async () => {
     if (!codeInput.trim()) return;
     setApplying(true);
@@ -1266,189 +1177,92 @@ const ReferralPanel = () => {
       toast.success(res.data.message);
       api.get("/user/referral").then(r => setReferral(r.data));
       setCodeInput("");
-    } catch (err) { toast.error(err.response?.data?.detail || "Invalid code"); } finally { setApplying(false); }
+    } catch (err) { toast.error(err.response?.data?.detail || t('invalid_code')); } finally { setApplying(false); }
   };
-
-  const copyCode = () => { navigator.clipboard?.writeText(referral?.referral_code || ""); toast.success("Code copied!"); };
-
+  const copyCode = () => { navigator.clipboard?.writeText(referral?.referral_code || ""); toast.success(t('code_copied')); };
   return (
     <div className="space-y-4">
       {referral && (
         <>
           <div className="bg-gradient-to-br from-[#00ff88]/10 to-[#00d4ff]/10 border border-[#00ff88]/20 rounded-2xl p-4">
-            <p className="text-white/35 text-xs uppercase tracking-widest font-bold mb-3">Your Code</p>
+            <p className="text-white/35 text-xs uppercase tracking-widest mb-3">{t('your_code')}</p>
             <div className="flex items-center justify-between">
               <p className="text-[#00ff88] font-mono text-3xl font-bold tracking-widest">{referral.referral_code}</p>
               <button onClick={copyCode} className="p-2.5 rounded-xl bg-[#00ff88]/15 border border-[#00ff88]/25 text-[#00ff88] hover:bg-[#00ff88]/25 transition-colors">
                 <Copy className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-white/30 text-xs mt-2">Share to earn bonuses when friends join</p>
+            <p className="text-white/30 text-xs mt-2">{t('share_to_earn_bonuses')}</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white/4 border border-white/8 rounded-xl p-3.5 text-center">
+            <div className="bg-white/4 rounded-xl p-3.5 text-center">
               <p className="text-[#00ff88] text-2xl font-bold">{referral.referrals_count || 0}</p>
-              <p className="text-white/35 text-xs mt-0.5">Friends Referred</p>
+              <p className="text-white/35 text-xs mt-0.5">{t('friends_referred')}</p>
             </div>
-            <div className="bg-white/4 border border-white/8 rounded-xl p-3.5 text-center">
+            <div className="bg-white/4 rounded-xl p-3.5 text-center">
               <p className="text-[#00ff88] text-2xl font-bold">₾{(referral.bonus_earned || 0).toFixed(2)}</p>
-              <p className="text-white/35 text-xs mt-0.5">Bonus Earned</p>
-            </div>
+              <p className="text-white/35 text-xs mt-0.5">{t('bonus_earned')}</p>
+              </div>
           </div>
         </>
       )}
       <div className="bg-white/4 border border-white/8 rounded-xl p-4">
-        <p className="text-white/60 text-sm font-medium mb-2.5">Have a referral code?</p>
+        <p className="text-white/60 text-sm font-medium mb-1.5">{t('have_referral_code')}</p>
         <div className="flex gap-2">
-          <Input placeholder="Enter code" value={codeInput} onChange={e => setCodeInput(e.target.value.toUpperCase())}
+          <Input placeholder={t('enter_code')} value={codeInput} onChange={e => setCodeInput(e.target.value.toUpperCase())}
             className="bg-white/5 border-white/10 text-white uppercase font-mono h-10 rounded-xl placeholder:text-white/20" maxLength={12} />
           <Button className="bg-[#00ff88] text-black font-bold h-10 px-4 rounded-xl shrink-0" onClick={applyCode} disabled={applying}>
-            {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}
+            {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : t('apply')}
           </Button>
         </div>
       </div>
     </div>
   );
 };
-
-// =============================================================================
-// RIDE HISTORY ITEM — UNCHANGED
-// =============================================================================
-const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
-  const [expanded, setExpanded] = useState(false);
-  const sc = statusConfig[ride.status] || statusConfig.cancelled;
-
-  return (
-    <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
-      <button className="w-full p-4 text-left" onClick={() => setExpanded(v => !v)}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${sc.color}`}>{sc.label}</span>
-              <span className="text-white/25 text-xs">{ride.created_at ? new Date(ride.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" }) : "—"}</span>
-            </div>
-            <p className="text-white text-sm font-medium truncate">{ride.pickup}</p>
-            {ride.destination && <p className="text-white/40 text-xs truncate mt-0.5 flex items-center gap-1"><ArrowRight className="w-3 h-3 shrink-0" />{ride.destination}</p>}
-          </div>
-          <div className="text-right shrink-0 flex flex-col items-end gap-2">
-            <span className="text-[#00ff88] font-bold text-lg font-mono">₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2) ?? "—"}</span>
-            {expanded ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
-          </div>
-        </div>
-      </button>
-      {expanded && (
-        <div className="px-4 pb-4 pt-0 border-t border-white/6 space-y-3">
-          <div className="grid grid-cols-2 gap-2 pt-3">
-            {[
-              ["Car Type", ride.carType || ride.car_type || "—"],
-              ["Payment", ride.payment_method || ride.paymentMethod || "Cash"],
-              ride.driver_info?.name ? ["Driver", ride.driver_info.name] : null,
-              ride.distance_km ? ["Distance", `${parseFloat(ride.distance_km).toFixed(1)} km`] : null,
-            ].filter(Boolean).map(([k, v]) => (
-              <div key={k} className="bg-white/4 rounded-xl p-2.5">
-                <p className="text-white/35 text-[10px] uppercase tracking-wider">{k}</p>
-                <p className="text-white text-sm font-medium mt-0.5 capitalize">{v}</p>
-              </div>
-            ))}
-          </div>
-          <div className="bg-white/4 rounded-xl p-3 space-y-2">
-            <div className="flex items-start gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-[#00ff88] mt-1.5 shrink-0" />
-              <p className="text-white/60 text-xs">{ride.pickup}</p>
-            </div>
-            {ride.stops?.map((s, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <div className="w-2 h-2 rounded-full bg-yellow-400 mt-1.5 shrink-0" />
-                <p className="text-white/50 text-xs">{s.address}</p>
-              </div>
-            ))}
-            {ride.destination && (
-              <div className="flex items-start gap-2.5">
-                <div className="w-2 h-2 rounded-full bg-[#00d4ff] mt-1.5 shrink-0" />
-                <p className="text-white/60 text-xs">{ride.destination}</p>
-              </div>
-            )}
-          </div>
-          {ride.status === "completed" && (
-            <div className="flex gap-2">
-              <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 text-xs font-medium transition-all border border-white/8 hover:border-white/15"
-                onClick={() => onReceipt(ride.id)}>
-                <Receipt className="w-3.5 h-3.5" /> Receipt
-              </button>
-              {!ride.tip_amount && ride.driver_id && (
-                <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-xs font-medium transition-all border border-yellow-500/20 hover:border-yellow-500/35"
-                  onClick={() => onTip({ rideId: ride.id, driverName: ride.driver_info?.name || "Driver" })}>
-                  <Star className="w-3.5 h-3.5" /> Tip Driver
-                </button>
-              )}
-              {!ride.rider_rating && (
-                <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#00ff88]/8 hover:bg-[#00ff88]/15 text-[#00ff88]/80 text-xs font-medium transition-all border border-[#00ff88]/20 hover:border-[#00ff88]/35"
-                  onClick={() => onRate(ride.id)}>
-                  <Star className="w-3.5 h-3.5" /> Rate
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
 // =============================================================================
 // RIDER DASHBOARD — UNCHANGED logic, uses upgraded LiveTrackingMap above
 // =============================================================================
 const RiderDashboard = () => {
   const { user, logout, refreshUser } = useAuth();
-  const navigate  = useNavigate();
-  const { t }     = useLanguage();
-
+  const navigate = useNavigate();
+  const { t } = useLanguage();
   const [showSaveCard, setShowSaveCard] = useState(false);
-
-  const notifiedArrived  = useRef(false);
+  const notifiedArrived = useRef(false);
   const notifiedAccepted = useRef(false);
-
-  const [activeTab,       setActiveTab]       = useState("book");
-  const [loading,         setLoading]         = useState(false);
+  const [activeTab, setActiveTab] = useState("book");
+  const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [mapsLoaded,      setMapsLoaded]      = useState(() => !!window.google?.maps);
-
-  const [activeRide,        setActiveRide]       = useState(null);
-  const [rideHistory,       setRideHistory]      = useState([]);
+  const [mapsLoaded, setMapsLoaded] = useState(() => !!window.google?.maps);
+  const [activeRide, setActiveRide] = useState(null);
+  const [rideHistory, setRideHistory] = useState([]);
   const [completedRideData, setCompletedRideData] = useState(null);
-  const [showRatingModal,   setShowRatingModal]  = useState(null);
-  const [scheduledRides,    setScheduledRides]   = useState([]);
-
-  const [pickup,        setPickup]        = useState({ address: "", lat: null, lng: null });
-  const [destination,   setDestination]   = useState({ address: "", lat: null, lng: null });
-  const [stops,         setStops]         = useState([]);
-  const [carType,       setCarType]       = useState("economy");
+  const [showRatingModal, setShowRatingModal] = useState(null);
+  const [scheduledRides, setScheduledRides] = useState([]);
+  const [pickup, setPickup] = useState({ address: "", lat: null, lng: null });
+  const [destination, setDestination] = useState({ address: "", lat: null, lng: null });
+  const [stops, setStops] = useState([]);
+  const [carType, setCarType] = useState("economy");
   const [paymentMethod, setPaymentMethod] = useState("cash");
-
-  const [routeInfo,    setRouteInfo]    = useState(null);
+  const [routeInfo, setRouteInfo] = useState(null);
   const [fareEstimate, setFareEstimate] = useState(null);
-  const [surgeInfo,    setSurgeInfo]    = useState(null);
-
-  const [showPayPal,    setShowPayPal]    = useState(false);
-  const [showReceipt,   setShowReceipt]   = useState(null);
-  const [showTip,       setShowTip]       = useState(null);
-  const [showShare,     setShowShare]     = useState(false);
-  const [showSchedule,  setShowSchedule]  = useState(false);
-  const [showTopUp,     setShowTopUp]     = useState(false);
-  const [showSaveFav,   setShowSaveFav]   = useState(null);
+  const [surgeInfo, setSurgeInfo] = useState(null);
+  const [showPayPal, setShowPayPal] = useState(false);
+  const [showReceipt, setShowReceipt] = useState(null);
+  const [showTip, setShowTip] = useState(null);
+  const [showShare, setShowShare] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [showTopUp, setShowTopUp] = useState(false);
+  const [showSaveFav, setShowSaveFav] = useState(null);
   const [showFavorites, setShowFavorites] = useState(false);
-  const [showReferral,  setShowReferral]  = useState(false);
-
+  const [showReferral, setShowReferral] = useState(false);
   const [promoCode, setPromoCode] = useState("");
-const [promoApplied, setPromoApplied] = useState(false);
-
+  const [promoApplied, setPromoApplied] = useState(false);
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
     loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
       .then(() => setMapsLoaded(true))
-      .catch(() => toast.error("Failed to load Google Maps"));
+      .catch(() => toast.error(t('failed_load_maps')));
   }, []);
-
   useEffect(() => {
     fetchActiveRide();
     fetchRideHistory();
@@ -1456,15 +1270,12 @@ const [promoApplied, setPromoApplied] = useState(false);
     fetchScheduledRides();
     api.get("/user/language").catch(() => {});
   }, []);
-
   useEffect(() => {
     if (pickup.lat) fetchSurgeStatus();
   }, [pickup.lat, pickup.lng]); // eslint-disable-line
-
   useEffect(() => {
     if (mapsLoaded && !pickup.lat) getCurrentLocation();
   }, [mapsLoaded]); // eslint-disable-line
-
   useEffect(() => {
     if (!activeRide || ["completed", "cancelled", "no_drivers"].includes(activeRide.status)) return;
     const interval = setInterval(async () => {
@@ -1476,14 +1287,13 @@ const [promoApplied, setPromoApplied] = useState(false);
     }, 10000);
     return () => clearInterval(interval);
   }, [activeRide]);
-
   const handleRideStatusChange = (ride) => {
     if (ride.status === "arrived" && !notifiedArrived.current) {
-      toast.success("Your driver has arrived!", { description: "Free wait timer started.", duration: 8000, icon: "🚗" });
+      toast.success(t('driver_arrived'), { description: t('free_wait_started'), duration: 8000, icon: "🚗" });
       notifiedArrived.current = true;
     }
     if (ride.status === "accepted" && ride.driver_info && !notifiedAccepted.current) {
-      toast.success(`${ride.driver_info.name} is on the way!`);
+      toast.success(t('driver_on_way', { name: ride.driver_info.name }));
       notifiedAccepted.current = true;
     }
     if (ride.status === "searching") { notifiedArrived.current = false; notifiedAccepted.current = false; }
@@ -1494,10 +1304,9 @@ const [promoApplied, setPromoApplied] = useState(false);
       fetchRideHistory();
       if (refreshUser) refreshUser();
     }
-    if (ride.status === "no_drivers") toast.error("No drivers available in your area.");
+    if (ride.status === "no_drivers") toast.error(t('no_drivers_available'));
     if (ride.status === "cancelled") { setActiveRide(null); setActiveTab("book"); }
   };
-
   const fetchSurgeStatus = async () => {
     try {
       const params = pickup.lat ? `?lat=${pickup.lat}&lng=${pickup.lng}` : "";
@@ -1505,13 +1314,11 @@ const [promoApplied, setPromoApplied] = useState(false);
       setSurgeInfo(res.data);
     } catch {}
   };
-  const fetchActiveRide     = async () => { try { const res = await api.get("/rider/active-ride"); if (res.data) setActiveRide(res.data); } catch {} };
-  const fetchRideHistory    = async () => { try { const res = await api.get("/rider/history"); setRideHistory(res.data.rides || []); } catch {} };
+  const fetchActiveRide = async () => { try { const res = await api.get("/rider/active-ride"); if (res.data) setActiveRide(res.data); } catch {} };
+  const fetchRideHistory = async () => { try { const res = await api.get("/rider/history"); setRideHistory(res.data.rides || []); } catch {} };
   const fetchScheduledRides = async () => { try { const res = await api.get("/rides/scheduled"); setScheduledRides(res.data.scheduled_rides || []); } catch {} };
-
-  const stopsSignature  = useMemo(() => stops.map(s => `${s.lat},${s.lng}`).join("|"), [stops]);
+  const stopsSignature = useMemo(() => stops.map(s => `${s.lat},${s.lng}`).join("|"), [stops]);
   const validStopsCount = useMemo(() => stops.filter(s => s.lat && s.lng).length, [stops]);
-
   const calculateRoute = useCallback(() => {
     if (!window.google || !pickup.lat || !destination.lat) return;
     const waypoints = stops.filter(s => s.lat && s.lng).map(s => ({ location: { lat: parseFloat(s.lat), lng: parseFloat(s.lng) }, stopover: true }));
@@ -1526,21 +1333,18 @@ const [promoApplied, setPromoApplied] = useState(false);
       }
     );
   }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stopsSignature]); // eslint-disable-line
-
   useEffect(() => {
     if (!mapsLoaded || !pickup.lat || !destination.lat) return;
     const timer = setTimeout(calculateRoute, 500);
     return () => clearTimeout(timer);
   }, [mapsLoaded, calculateRoute]);
-
     useEffect(() => {
   if (!routeInfo) return;
   setFareEstimate(calculateFare(carType, routeInfo.distance, 0, 0, validStopsCount, surgeInfo?.multiplier || 1.0, paymentMethod, promoCode));
   setPromoApplied(promoCode.toUpperCase() === "BETA15");
 }, [routeInfo, carType, validStopsCount, surgeInfo, paymentMethod, promoCode]); // 🛠️ Added promoCode
-
   const getCurrentLocation = () => {
-    if (!navigator.geolocation) { toast.error("Geolocation not supported."); return; }
+    if (!navigator.geolocation) { toast.error(t('geolocation_not_supported')); return; }
     setLocationLoading(true);
     const safetyTimer = setTimeout(() => { setLocationLoading(false); }, 15000);
     navigator.geolocation.getCurrentPosition(
@@ -1551,57 +1355,54 @@ const [promoApplied, setPromoApplied] = useState(false);
         new window.google.maps.Geocoder().geocode({ location: { lat, lng } }, (results, status) => {
           setLocationLoading(false);
           setPickup({ address: status === "OK" && results[0] ? results[0].formatted_address : `${lat.toFixed(5)}, ${lng.toFixed(5)}`, lat, lng });
-          if (status === "OK") toast.success("Location detected");
+          if (status === "OK") toast.success(t('location_detected'));
         });
       },
       (err) => {
         clearTimeout(safetyTimer);
         setLocationLoading(false);
-        const msgs = { 1: "Location access denied.", 2: "Location unavailable.", 3: "Request timed out." };
-        toast.error(msgs[err.code] || "Could not get location.");
+        const msgs = { 1: t('location_access_denied'), 2: t('location_unavailable'), 3: t('request_timed_out') };
+        toast.error(msgs[err.code] || t('could_not_get_location'));
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
-
-  const addStop    = () => stops.length < 3 ? setStops([...stops, { address: "", lat: null, lng: null, order: stops.length }]) : toast.error("Maximum 3 stops");
+  const addStop = () => stops.length < 3 ? setStops([...stops, { address: "", lat: null, lng: null, order: stops.length }]) : toast.error(t('max_3_stops'));
   const updateStop = (i, data) => setStops(prev => { const s = [...prev]; s[i] = { ...s[i], ...data }; return s; });
   const removeStop = (i) => setStops(stops.filter((_, idx) => idx !== i));
-
   const handleBookRide = () => {
-    if (!pickup.lat || !pickup.address.trim()) { toast.error("Please select a pickup location"); return; }
-    if (paymentMethod !== "cash" && !destination.lat) { toast.error("Set a destination for card or wallet payments"); return; }
+    if (!pickup.lat || !pickup.address.trim()) { toast.error(t('select_pickup')); return; }
+    if (paymentMethod !== "cash" && !destination.lat) { toast.error(t('set_destination_for_non_cash')); return; }
     if (paymentMethod === "wallet") {
       const balance = user?.wallet_balance || 0;
       const estimate = fareEstimate?.total || 0;
-      if (balance < estimate) { toast.error(`Insufficient balance (₾${balance.toFixed(2)})`); return; }
+      if (balance < estimate) { toast.error(t('insufficient_balance', { balance: balance.toFixed(2) })); return; }
     }
     if (paymentMethod === "card") { setShowPayPal(true); return; }
     processRideRequest(null);
   };
-
   const processRideRequest = async (paypalOrderId = null, vaultId = null, cardLast4 = null, cardBrand = null) => {
     setLoading(true);
     try {
       const rideData = {
-        pickup: sanitiseAddressForSubmit(pickup.address), 
-        pickupLat: pickup.lat, 
+        pickup: sanitiseAddressForSubmit(pickup.address),
+        pickupLat: pickup.lat,
         pickupLng: pickup.lng,
         destination: destination.address ? sanitiseAddressForSubmit(destination.address) : null,
-        destinationLat: destination.lat || null, 
+        destinationLat: destination.lat || null,
         destinationLng: destination.lng || null,
-        stops: stops.filter(s => s.lat).map((s, i) => ({ 
-          address: sanitiseAddressForSubmit(s.address), 
-          lat: s.lat, 
-          lng: s.lng, 
-          order: i 
+        stops: stops.filter(s => s.lat).map((s, i) => ({
+          address: sanitiseAddressForSubmit(s.address),
+          lat: s.lat,
+          lng: s.lng,
+          order: i
         })),
-        carType, 
+        carType,
         paymentMethod,
-        
+       
         // 🛠️ THE CRITICAL ADDITION: Pass the promo code to the server
-        promo_code: promoApplied ? "BETA15" : null, 
-        
+        promo_code: promoApplied ? "BETA15" : null,
+       
         ...(paypalOrderId && { paymentOrderId: paypalOrderId }),
         ...(vaultId && { vault_id: vaultId, card_last4: cardLast4, card_brand: cardBrand }),
         estimatedDistance: routeInfo?.distance || 0,
@@ -1613,80 +1414,71 @@ const [promoApplied, setPromoApplied] = useState(false);
         estimated_fare: res.data.estimated_fare, fare_breakdown: res.data.fare_breakdown,
         pickup: pickup.address, pickup_lat: pickup.lat, pickup_lng: pickup.lng,
         destination: destination.address || null, destination_lat: destination.lat || null, destination_lng: destination.lng || null,
-        stops: rideData.stops, carType, paymentMethod, matching_status: "Searching within 3km",
+        stops: rideData.stops, carType, paymentMethod, matching_status: t('searching_within_3km'),
       });
-      toast.success("Searching for drivers...");
+      toast.success(t('searching_for_drivers'));
       setActiveTab("active");
       notifiedArrived.current = false; notifiedAccepted.current = false;
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to request ride");
+      toast.error(error.response?.data?.detail || t('failed_request_ride'));
     } finally {
       setLoading(false);
       setShowPayPal(false);
     }
   };
-
   const handleCancelRide = async () => {
     if (!activeRide) return;
     try {
       await api.post(`/rides/${activeRide.id}/cancel`);
-      toast.success("Ride cancelled");
+      toast.success(t('ride_cancelled'));
       setActiveRide(null);
       setActiveTab("book");
       if (refreshUser) refreshUser();
-    } catch { toast.error("Failed to cancel"); }
+    } catch { toast.error(t('failed_to_cancel')); }
   };
-
   const handleRetryRide = async () => {
     if (!activeRide) return;
     try {
       await api.post(`/rides/${activeRide.id}/retry`);
-      toast.success("Retrying search...");
+      toast.success(t('retrying_search'));
       notifiedArrived.current = false; notifiedAccepted.current = false;
-      setActiveRide(prev => ({ ...prev, status: "searching", matching_status: "Retrying..." }));
-    } catch (err) { toast.error(err.response?.data?.detail || "Failed to retry"); }
+      setActiveRide(prev => ({ ...prev, status: "searching", matching_status: t('retrying') }));
+    } catch (err) { toast.error(err.response?.data?.detail || t('failed_to_retry')); }
   };
-
   const cancelScheduledRide = async (rideId) => {
     try {
       await api.delete(`/rides/scheduled/${rideId}`);
-      toast.success("Scheduled ride cancelled");
+      toast.success(t('scheduled_ride_cancelled'));
       fetchScheduledRides();
-    } catch { toast.error("Failed to cancel"); }
+    } catch { toast.error(t('failed_to_cancel')); }
   };
-
   const carTypes = useMemo(() => Object.entries(PRICING_RULES).map(([key, val]) => ({ value: key, ...val })), []);
-
   const statusConfig = {
-    searching:   { color: "bg-amber-500/20 text-amber-400 border-amber-500/30",       label: "Searching" },
-    accepted:    { color: "bg-blue-500/20 text-blue-400 border-blue-500/30",           label: "Accepted" },
-    arrived:     { color: "bg-violet-500/20 text-violet-400 border-violet-500/30",     label: "Arrived" },
-    in_progress: { color: "bg-[#00ff88]/15 text-[#00ff88] border-[#00ff88]/30",        label: "In Progress" },
-    completed:   { color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",  label: "Completed" },
-    cancelled:   { color: "bg-red-500/20 text-red-400 border-red-500/30",              label: "Cancelled" },
-    no_drivers:  { color: "bg-white/10 text-white/40 border-white/15",                 label: "No Drivers" },
+    searching: { color: "bg-amber-500/20 text-amber-400 border-amber-500/30", label: t('searching') },
+    accepted: { color: "bg-blue-500/20 text-blue-400 border-blue-500/30", label: t('accepted') },
+    arrived: { color: "bg-violet-500/20 text-violet-400 border-violet-500/30", label: t('arrived') },
+    in_progress: { color: "bg-[#00ff88]/15 text-[#00ff88] border-[#00ff88]/30", label: t('in_progress') },
+    completed: { color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30", label: t('completed') },
+    cancelled: { color: "bg-red-500/20 text-red-400 border-red-500/30", label: t('cancelled') },
+    no_drivers: { color: "bg-white/10 text-white/40 border-white/15", label: t('no_drivers') },
   };
-
   const rideCoord = (ride, field) => {
     const keys = { pickupLat: ["pickup_lat","pickupLat"], pickupLng: ["pickup_lng","pickupLng"], destLat: ["destination_lat","destinationLat","dest_lat"], destLng: ["destination_lng","destinationLng","dest_lng"] };
     for (const k of (keys[field] || [])) { if (ride[k] != null) return parseFloat(ride[k]); }
     return null;
   };
-
   const tabs = [
-    { id: "book",    label: "Book",    Icon: Rocket  },
-    { id: "active",  label: "Active",  Icon: Navigation },
-    { id: "history", label: "History", Icon: History },
-    { id: "profile", label: "Profile", Icon: User    },
+    { id: "book", label: t('book'), Icon: Rocket },
+    { id: "active", label: t('active'), Icon: Navigation },
+    { id: "history", label: t('history'), Icon: History },
+    { id: "profile", label: t('profile'), Icon: User },
   ];
-
   return (
     <div className="min-h-screen text-white" style={{ background: "#07070f" }}>
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-60 -right-60 w-[600px] h-[600px] bg-[#00ff88]/3 rounded-full blur-3xl" />
         <div className="absolute -bottom-60 -left-60 w-[600px] h-[600px] bg-[#00d4ff]/3 rounded-full blur-3xl" />
       </div>
-
       <header className="sticky top-0 z-50 border-b border-white/6" style={{ background: "rgba(7,7,15,0.92)", backdropFilter: "blur(24px)" }}>
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1699,7 +1491,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                 <Wallet className="w-2.5 h-2.5" />
                 ₾{user?.wallet_balance?.toFixed(2) || "0.00"}
                 <span className="text-white/25">·</span>
-                <span className="text-white/40">Top Up</span>
+                <span className="text-white/40">{t('top_up')}</span>
               </button>
             </div>
           </div>
@@ -1707,7 +1499,7 @@ const [promoApplied, setPromoApplied] = useState(false);
             {activeRide && ["accepted","arrived","in_progress"].includes(activeRide.status) && (
               <button onClick={() => setActiveTab("active")}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00ff88]/15 border border-[#00ff88]/30 text-[#00ff88] text-xs font-bold mr-1 animate-pulse">
-                <Activity className="w-3 h-3" /> Live
+                <Activity className="w-3 h-3" /> {t('live')}
               </button>
             )}
             <button className="w-8 h-8 rounded-xl flex items-center justify-center text-white/30 hover:text-white hover:bg-white/8 transition-all" onClick={() => navigate("/")}>
@@ -1719,90 +1511,81 @@ const [promoApplied, setPromoApplied] = useState(false);
           </div>
         </div>
       </header>
-
       <main className="max-w-2xl mx-auto px-4 pb-28 pt-4 relative">
-
         {/* ================================================================ */}
-        {/* BOOK TAB                                                          */}
+        {/* BOOK TAB */}
         {/* ================================================================ */}
         {activeTab === "book" && (
           <div className="space-y-4">
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
               <button onClick={() => setShowFavorites(v => !v)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${showFavorites ? "bg-pink-500/20 border-pink-500/35 text-pink-400" : "bg-white/4 border-white/10 text-white/40 hover:border-white/20 hover:text-white/60"}`}>
-                <Heart className="w-3.5 h-3.5" /> Saved Places
+                <Heart className="w-3.5 h-3.5" /> {t('saved_places')}
               </button>
               <button onClick={() => setShowSchedule(true)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border bg-white/4 border-white/10 text-white/40 text-xs font-semibold hover:border-white/20 hover:text-white/60 whitespace-nowrap transition-all shrink-0">
-                <Calendar className="w-3.5 h-3.5" /> Schedule
+                <Calendar className="w-3.5 h-3.5" /> {t('schedule')}
               </button>
               {scheduledRides.length > 0 && (
                 <div className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs font-semibold shrink-0">
-                  <Calendar className="w-3 h-3" /> {scheduledRides.length} scheduled
+                  <Calendar className="w-3 h-3" /> {scheduledRides.length} {t('scheduled')}
                 </div>
               )}
             </div>
-
             {showFavorites && (
               <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
                 <p className="text-pink-400/80 text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <Heart className="w-3.5 h-3.5" /> Saved Places
+                  <Heart className="w-3.5 h-3.5" /> {t('saved_places')}
                 </p>
-                <FavoritesPanel onSelect={(fav) => { setDestination({ address: fav.address, lat: fav.lat, lng: fav.lng }); setShowFavorites(false); toast.success(`${fav.name} set as destination`); }} />
+                <FavoritesPanel onSelect={(fav) => { setDestination({ address: fav.address, lat: fav.lat, lng: fav.lng }); setShowFavorites(false); toast.success(t('set_as_destination', { name: fav.name })); }} />
               </div>
             )}
-
             <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
               <div className="p-4 space-y-3">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wider">Pickup</label>
+                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wider">{t('pickup')}</label>
                     <button className="flex items-center gap-1 text-[#00ff88] text-xs font-medium hover:text-[#00d4ff] transition-colors disabled:opacity-50"
                       onClick={getCurrentLocation} disabled={locationLoading}>
                       {locationLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Crosshair className="w-3 h-3" />}
-                      My location
+                      {t('my_location')}
                     </button>
                   </div>
                   <LocationInput id="pickup-input" name="pickup" value={pickup} onChange={setPickup}
-                    placeholder="Where should we pick you up?" icon={MapPin} iconColor="text-[#00ff88]"
+                    placeholder={t('where_pick_you_up')} icon={MapPin} iconColor="text-[#00ff88]"
                     onSaveAsFavorite={pickup.lat ? () => setShowSaveFav(pickup) : null} mapsLoaded={mapsLoaded} />
                 </div>
-
                 {stops.map((stop, idx) => (
                   <div key={idx}>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-yellow-400/70 text-xs font-semibold uppercase tracking-wider">Stop {idx + 1}</label>
+                      <label className="text-yellow-400/70 text-xs font-semibold uppercase tracking-wider">{t('stop_num', { num: idx + 1 })}</label>
                       <button className="text-white/25 hover:text-red-400 transition-colors" onClick={() => removeStop(idx)}>
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                     <LocationInput id={`stop-${idx}`} name={`stop_${idx}`} value={stop}
-                      onChange={(data) => updateStop(idx, data)} placeholder="Stop address"
+                      onChange={(data) => updateStop(idx, data)} placeholder={t('stop_address')}
                       icon={MapPin} iconColor="text-yellow-400/70" mapsLoaded={mapsLoaded} />
                   </div>
                 ))}
-
                 <div>
-                  <label className="text-white/40 text-xs font-semibold uppercase tracking-wider block mb-2">Destination</label>
+                  <label className="text-white/40 text-xs font-semibold uppercase tracking-wider block mb-2">{t('destination')}</label>
                   <LocationInput id="destination-input" name="destination" value={destination} onChange={setDestination}
-                    placeholder="Where to?" icon={Navigation} iconColor="text-[#00d4ff]"
+                    placeholder={t('where_to')} icon={Navigation} iconColor="text-[#00d4ff]"
                     onSaveAsFavorite={destination.lat ? () => setShowSaveFav(destination) : null} mapsLoaded={mapsLoaded} />
                 </div>
-
                 {stops.length < 3 && (
                   <button className="w-full flex items-center justify-center gap-2 py-2 text-xs text-white/25 hover:text-white/50 border border-dashed border-white/10 rounded-xl hover:border-white/20 transition-all" onClick={addStop}>
-                    <Plus className="w-3 h-3" /> Add stop (free)
+                    <Plus className="w-3 h-3" /> {t('add_stop_free')}
                   </button>
                 )}
               </div>
-
               {mapsLoaded && pickup.lat && destination.lat && (
                 <div className="border-t border-white/6">
                   <LiveTrackingMap pickup={pickup} destination={destination} stops={stops} status="preview" driverLocation={null} />
                 </div>
               )}
             </div>
-
             {surgeInfo?.is_surge && (
               <div className="bg-orange-500/10 border border-orange-500/25 rounded-2xl px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1810,14 +1593,13 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <TrendingUp className="w-4 h-4 text-orange-400" />
                   </div>
                   <div>
-                    <p className="text-orange-300 font-semibold text-sm">High Demand</p>
+                    <p className="text-orange-300 font-semibold text-sm">{t('high_demand')}</p>
                     <p className="text-orange-400/60 text-xs">{surgeInfo.surge_reason}</p>
                   </div>
                 </div>
                 <span className="text-orange-300 font-bold text-xl bg-orange-500/20 px-3 py-1 rounded-xl">×{surgeInfo.multiplier}</span>
               </div>
             )}
-
             {routeInfo && fareEstimate && (
               <div className="bg-white/3 border border-white/8 rounded-2xl px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-white/40 text-sm">
@@ -1826,13 +1608,12 @@ const [promoApplied, setPromoApplied] = useState(false);
                 </div>
                 <div className="text-right">
                   <span className="text-[#00ff88] font-bold text-2xl">₾{fareEstimate.total.toFixed(2)}</span>
-                  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">incl. ₾2 card fee</p>}
+                  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">{t('incl_card_fee')}</p>}
                 </div>
               </div>
             )}
-
             <div>
-              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Choose vehicle</p>
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">{t('choose_vehicle')}</p>
               <div className="grid grid-cols-5 gap-1.5">
                 {carTypes.map((type) => {
                   const est = routeInfo
@@ -1843,25 +1624,24 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <button key={type.value} onClick={() => setCarType(type.value)}
                       className={`p-2.5 rounded-xl border-2 transition-all text-center active:scale-95 ${active ? "border-[#00ff88] bg-[#00ff88]/10 shadow-[0_0_12px_rgba(0,255,136,0.15)]" : "border-white/8 bg-white/3 hover:border-white/20"}`}>
                       <div className="text-xl mb-0.5">{type.icon}</div>
-                      <div className={`text-[10px] font-semibold leading-tight ${active ? "text-[#00ff88]" : "text-white/50"}`}>{type.name}</div>
+                      <div className={`text-[10px] font-semibold leading-tight ${active ? "text-[#00ff88]" : "text-white/50"}`}>{t(type.name.toLowerCase().replace(/ /g, '_'))}</div>
                       <div className={`text-[10px] mt-0.5 font-mono ${active ? "text-[#00ff88]/70" : "text-white/30"}`}>₾{est.toFixed(2)}</div>
                     </button>
                   );
                 })}
               </div>
             </div>
-
             <div>
-              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Payment method</p>
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">{t('payment_method')}</p>
               <div className="flex gap-2">
                 {[
-                  { val: "cash",   label: "Cash",   Icon: null },
-                  { val: "wallet", label: `₾${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: "Wallet", Icon: Wallet },
-                  { val: "card",   label: "Card",   Icon: CreditCard },
+                  { val: "cash", label: t('cash'), Icon: null },
+                  { val: "wallet", label: `₾${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: t('wallet'), Icon: Wallet },
+                  { val: "card", label: t('card'), Icon: CreditCard },
                 ].map(({ val, label, subLabel, Icon }) => (
                   <button key={val}
                     onClick={() => {
-                      if (val === "wallet" && (user?.wallet_balance || 0) <= 0) { toast.error("Wallet empty"); setShowTopUp(true); return; }
+                      if (val === "wallet" && (user?.wallet_balance || 0) <= 0) { toast.error(t('wallet_empty')); setShowTopUp(true); return; }
                       setPaymentMethod(val); setShowPayPal(false);
                     }}
                     className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${paymentMethod === val ? "border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]" : "border-white/8 bg-white/3 text-white/40 hover:border-white/20 hover:text-white/60"}`}>
@@ -1872,7 +1652,6 @@ const [promoApplied, setPromoApplied] = useState(false);
                 ))}
               </div>
             </div>
-
             {/* 🛠️ PROMO CODE SECTION */}
 <div className="mt-6 mb-3 space-y-3">
   <div className={`relative flex items-center bg-white/5 border rounded-2xl transition-all duration-500 ${promoApplied ? 'border-[#00ff88]/50 bg-[#00ff88]/5 shadow-[0_0_20px_rgba(0,255,136,0.05)]' : 'border-white/10 focus-within:border-white/20'}`}>
@@ -1881,7 +1660,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     </div>
     <input
       type="text"
-      placeholder="Have a promo code?"
+      placeholder={t('have_promo_code')}
       value={promoCode}
       onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
       className="flex-1 bg-transparent px-3 py-4 text-sm font-bold text-white outline-none placeholder:text-white/20 placeholder:font-normal uppercase tracking-wider"
@@ -1895,52 +1674,49 @@ const [promoApplied, setPromoApplied] = useState(false);
       </div>
     )}
   </div>
-
   {/* Visual confirmation of savings */}
   {promoApplied && fareEstimate?.discount > 0 && (
-    <div className="flex items-center justify-between px-2 animate-in slide-in-from-top-1">
+    <div className="flex items-center justify-between px-2 animate-in slide-in-from-top-1 duration-300">
        <p className="text-[#00ff88] text-[11px] font-bold flex items-center gap-1.5">
-        <Sparkles className="w-3.5 h-3.5" /> 
-        Beta Bonus: ₾{fareEstimate.discount.toFixed(2)} off!
+        <Sparkles className="w-3.5 h-3.5" />
+        {t('beta_bonus', { discount: fareEstimate.discount.toFixed(2) })}
       </p>
       <p className="text-white/30 text-[10px] font-medium uppercase tracking-tighter">
-        1 of 2 uses left
+        {t('uses_left')}
       </p>
     </div>
   )}
 </div>
-
 {/* THE MAIN ACTION BUTTON */}
-<Button 
+<Button
   className="w-full bg-[#00ff88] text-black font-bold h-14 text-base rounded-2xl hover:bg-[#00e07a] transition-all shadow-[0_4px_30px_rgba(0,255,136,0.3)] active:scale-[0.98] disabled:opacity-50 disabled:grayscale"
-  onClick={handleBookRide} 
-  disabled={loading} 
+  onClick={handleBookRide}
+  disabled={loading}
   data-testid="request-ride-btn"
 >
   {loading ? (
     <div className="flex items-center">
       <Loader2 className="w-5 h-5 animate-spin mr-2" />
-      <span>Finding your ride...</span>
+      <span>{t('finding_your_ride')}</span>
     </div>
   ) : (
     <div className="flex items-center">
       <Rocket className="w-5 h-5 mr-2" />
-      <span>Request {carType} · ₾{fareEstimate?.total.toFixed(2)}</span>
+      <span>{t('request_carType', { carType: carType, amount: fareEstimate?.total.toFixed(2) })}</span>
     </div>
   )}
 </Button>
-
             {showPayPal && paymentMethod === "card" && (() => {
               const amount = fareEstimate?.total ?? calculateFare(carType, routeInfo?.distance ?? 5, 0, 0, validStopsCount, surgeInfo?.multiplier ?? 1.0, "card").total;
               const usd = (amount * 0.37).toFixed(2);
               return (
                 <div className="bg-white/3 border border-white/10 rounded-2xl p-4">
-                  <p className="text-center text-sm text-white/40 mb-3">Pay ₾{amount.toFixed(2)} (${usd} USD)</p>
+                  <p className="text-center text-sm text-white/40 mb-3">{t('pay_amount', { amount: amount.toFixed(2), usd })}</p>
                   <PayPalButtons
                     fundingSource="card"
                     style={{ layout: "vertical", shape: "rect" }}
                     createOrder={(data, actions) => {
-                      if (isNaN(usd) || Number(usd) <= 0) { toast.error("Cannot process a $0.00 ride."); setShowPayPal(false); return null; }
+                      if (isNaN(usd) || Number(usd) <= 0) { toast.error(t('cannot_process_0')); setShowPayPal(false); return null; }
                       return actions.order.create({
                         purchase_units: [{ amount: { value: usd, currency_code: "USD" } }],
                         application_context: { shipping_preference: "NO_SHIPPING" },
@@ -1953,32 +1729,31 @@ const [promoApplied, setPromoApplied] = useState(false);
                         const vaultId = paymentSource?.attributes?.vault?.id || null;
                         const last4 = paymentSource?.last_digits || null;
                         const brand = paymentSource?.brand || null;
-                        toast.success("Payment approved! Booking...");
-                        if (vaultId) toast.success("Card saved for future rides! 💳");
+                        toast.success(t('payment_approved_booking'));
+                        if (vaultId) toast.success(t('card_saved_future'));
                         await processRideRequest(data.orderID, vaultId, last4, brand);
-                      } catch { toast.error("Payment failed during capture."); setShowPayPal(false); }
+                      } catch { toast.error(t('payment_failed_capture')); setShowPayPal(false); }
                     }}
-                    onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed."); setShowPayPal(false); }}
-                    onCancel={() => { toast.info("Payment cancelled."); setShowPayPal(false); }}
+                    onError={(err) => { console.error("PayPal error:", err); toast.error(t('payment_failed')); setShowPayPal(false); }}
+                    onCancel={() => { toast.info(t('payment_cancelled')); setShowPayPal(false); }}
                   />
-                  <button className="w-full text-center text-white/25 text-xs mt-3 hover:text-white/50 transition-colors" onClick={() => setShowPayPal(false)}>Cancel</button>
+                  <button className="w-full text-center text-white/25 text-xs mt-3 hover:text-white/50 transition-colors" onClick={() => setShowPayPal(false)}>{t('cancel')}</button>
                 </div>
               );
             })()}
-
             {scheduledRides.length > 0 && (
               <div className="bg-yellow-500/5 border border-yellow-500/15 rounded-2xl p-4">
                 <p className="text-yellow-400/80 text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Calendar className="w-3.5 h-3.5" /> Scheduled Rides
+                  <Calendar className="w-3.5 h-3.5" /> {t('scheduled_rides')}
                 </p>
                 {scheduledRides.slice(0, 2).map(r => (
                   <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-yellow-500/8 last:border-0">
                     <div>
                       <p className="text-white text-sm font-medium truncate max-w-[220px]">{r.pickup_address}</p>
-                      <p className="text-yellow-400/50 text-xs mt-0.5">{new Date(r.scheduled_time).toLocaleString()}</p>
+                      <p className="text-yellow-400/50 text-xs">{new Date(r.scheduled_time).toLocaleString()}</p>
                     </div>
                     <button className="text-red-400/60 hover:text-red-400 text-xs transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10" onClick={() => cancelScheduledRide(r.id)}>
-                      Cancel
+                      {t('cancel')}
                     </button>
                   </div>
                 ))}
@@ -1986,9 +1761,8 @@ const [promoApplied, setPromoApplied] = useState(false);
             )}
           </div>
         )}
-
         {/* ================================================================ */}
-        {/* ACTIVE TAB                                                        */}
+        {/* ACTIVE TAB */}
         {/* ================================================================ */}
         {activeTab === "active" && (
           <div>
@@ -2003,7 +1777,6 @@ const [promoApplied, setPromoApplied] = useState(false);
                   </div>
                   <SOSButton rideId={activeRide.id} lat={rideCoord(activeRide, "pickupLat")} lng={rideCoord(activeRide, "pickupLng")} />
                 </div>
-
                 {mapsLoaded && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/8">
                     <LiveTrackingMap
@@ -2017,39 +1790,36 @@ const [promoApplied, setPromoApplied] = useState(false);
                       <div className="bg-[#07070f]/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
                         <p className="text-xs text-white font-semibold">
-                          {activeRide.status === "in_progress" ? "Live Trip" : "Driver Arriving"}
+                          {activeRide.status === "in_progress" ? t('live_trip') : t('driver_arriving')}
                         </p>
                       </div>
                     </div>
                   </div>
                 )}
-
                 {activeRide.status === "searching" && (
                   <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-amber-500/20 flex items-center justify-center shrink-0">
                       <Loader2 className="w-5 h-5 animate-spin text-amber-400" />
                     </div>
                     <div>
-                      <p className="text-amber-300 font-semibold text-sm">{activeRide.matching_status || "Finding you a driver..."}</p>
-                      {activeRide.drivers_notified_count > 0 && <p className="text-amber-400/50 text-xs mt-0.5">{activeRide.drivers_notified_count} drivers notified</p>}
+                      <p className="text-amber-300 font-semibold text-sm">{activeRide.matching_status || t('finding_driver')}</p>
+                      {activeRide.drivers_notified_count > 0 && <p className="text-amber-400/50 text-xs mt-0.5">{activeRide.drivers_notified_count} {t('drivers_notified')}</p>}
                     </div>
                   </div>
                 )}
-
                 {activeRide.status === "no_drivers" && (
                   <div className="bg-white/4 border border-white/10 p-4 rounded-2xl">
-                    <p className="text-white font-semibold text-sm mb-3">No drivers available right now</p>
+                    <p className="text-white font-semibold text-sm mb-3">{t('no_drivers_now')}</p>
                     <div className="flex gap-2">
                       <Button className="flex-1 bg-[#00ff88] text-black font-bold rounded-xl h-11 text-sm" onClick={handleRetryRide}>
-                        <Rocket className="w-4 h-4 mr-1.5" /> Retry
+                        <Rocket className="w-4 h-4 mr-1.5" /> {t('retry')}
                       </Button>
                       <Button variant="outline" className="border-white/10 text-white/40 rounded-xl h-11 text-sm px-4" onClick={() => { setActiveRide(null); setActiveTab("book"); }}>
-                        New Ride
+                        {t('new_ride')}
                       </Button>
                     </div>
                   </div>
                 )}
-
                 <div className="bg-white/3 border border-white/8 rounded-2xl p-4 space-y-3">
                   <div className="flex items-start gap-3">
                     <div className="flex flex-col items-center gap-0.5 pt-1">
@@ -2057,7 +1827,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                       <div className="w-px h-full min-h-[16px] bg-white/10" />
                     </div>
                     <div className="flex-1 pb-3 border-b border-white/6">
-                      <p className="text-white/35 text-[10px] uppercase tracking-wider mb-0.5">Pickup</p>
+                      <p className="text-white/35 text-[10px] uppercase tracking-wider mb-0.5">{t('pickup')}</p>
                       <p className="text-white text-sm">{activeRide.pickup}</p>
                     </div>
                   </div>
@@ -2068,7 +1838,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                         <div className="w-px h-full min-h-[16px] bg-white/10" />
                       </div>
                       <div className="flex-1 pb-3 border-b border-white/6">
-                        <p className="text-yellow-400/50 text-[10px] uppercase tracking-wider mb-0.5">Stop {i + 1}</p>
+                        <p className="text-yellow-400/50 text-[10px] uppercase tracking-wider mb-0.5">{t('stop_num', { num: i + 1 })}</p>
                         <p className="text-white/70 text-sm">{s.address}</p>
                       </div>
                     </div>
@@ -2077,13 +1847,12 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <div className="flex items-start gap-3">
                       <div className="w-2.5 h-2.5 rounded-full bg-[#00d4ff] mt-1" />
                       <div>
-                        <p className="text-white/35 text-[10px] uppercase tracking-wider mb-0.5">Destination</p>
+                        <p className="text-white/35 text-[10px] uppercase tracking-wider mb-0.5">{t('destination')}</p>
                         <p className="text-white text-sm">{activeRide.destination}</p>
                       </div>
                     </div>
                   )}
                 </div>
-
                 {activeRide.driver_info && (
                   <div className="bg-white/3 border border-white/8 rounded-2xl p-4 space-y-4">
                     <div className="flex items-center gap-4">
@@ -2091,9 +1860,9 @@ const [promoApplied, setPromoApplied] = useState(false);
                         <User className="w-7 h-7 text-white/50" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-xl text-white truncate">{activeRide.driver_info.name}</p>
+                        <p className="text-white font-bold text-xl truncate">{activeRide.driver_info.name}</p>
                         <p className="text-white/40 text-sm flex items-center gap-1.5 mt-0.5 truncate">
-                          <Car className="w-3.5 h-3.5 shrink-0" />
+                          <Car className="w-3.5 h-3.5" />
                           {activeRide.driver_info.car_color} {activeRide.driver_info.car_make} {activeRide.driver_info.car_model}
                         </p>
                       </div>
@@ -2103,7 +1872,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     </div>
                     <div className="flex items-center gap-2 text-xs text-white/30 pt-1 border-t border-white/6">
                       <Shield className="w-3 h-3 text-[#00ff88]/60" />
-                      <span>Background checked & verified</span>
+                      <span>{t('background_checked')}</span>
                     </div>
                     <RideCommunication
                       rideId={activeRide.id}
@@ -2115,31 +1884,27 @@ const [promoApplied, setPromoApplied] = useState(false);
                     {activeRide.status === "in_progress" && (
                       <button onClick={() => setShowTip({ rideId: activeRide.id, driverName: activeRide.driver_info?.name || "Driver" })}
                         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm font-semibold hover:bg-yellow-500/20 transition-all">
-                        <Star className="w-4 h-4" /> Tip Driver
+                        <Star className="w-4 h-4" /> {t('tip_driver')}
                       </button>
                     )}
                   </div>
                 )}
-
                 {activeRide.status === "arrived" && (
                   <WaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType || activeRide.car_type} />
                 )}
-
                 {["accepted","arrived","in_progress"].includes(activeRide.status) && (
                   <button className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-white/8 text-white/35 text-sm hover:border-white/20 hover:text-white/60 transition-all"
                     onClick={() => setShowShare(true)}>
-                    <Share2 className="w-4 h-4" /> Share trip with someone
+                    <Share2 className="w-4 h-4" /> {t('share_trip_with_someone')}
                   </button>
                 )}
-
                 <div className="bg-[#00ff88]/5 border border-[#00ff88]/15 rounded-2xl px-4 py-3.5 flex justify-between items-center">
-                  <span className="text-white/40 text-sm">Estimated fare</span>
+                  <span className="text-white/40 text-sm">{t('estimated_fare')}</span>
                   <span className="text-[#00ff88] font-bold text-2xl font-mono">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span>
                 </div>
-
                 {["searching","accepted"].includes(activeRide.status) && (
-                  <Button variant="outline" className="w-full border-red-500/25 text-red-400/80 hover:bg-red-500/10 hover:border-red-500/40 rounded-xl h-12" onClick={handleCancelRide}>
-                    Cancel Ride
+                  <Button variant="outline" className="w-full border-red-500/25 text-red-400/80 hover:bg-red-500/10 hover:border-red-500/40 rounded-xl h-12 text-sm" onClick={handleCancelRide}>
+                    {t('cancel_ride')}
                   </Button>
                 )}
               </div>
@@ -2148,34 +1913,33 @@ const [promoApplied, setPromoApplied] = useState(false);
                 <div className="w-20 h-20 rounded-3xl bg-white/4 border border-white/8 flex items-center justify-center mb-4">
                   <Navigation className="w-9 h-9 text-white/20" />
                 </div>
-                <p className="text-white/30 text-base mb-1">No active ride</p>
-                <p className="text-white/15 text-sm mb-6">Your ride will appear here once booked</p>
+                <p className="text-white/30 text-base mb-1">{t('no_active_ride')}</p>
+                <p className="text-white/15 text-sm mb-6">{t('ride_appear_here')}</p>
                 <Button className="bg-[#00ff88] text-black font-bold rounded-xl px-8 h-12" onClick={() => setActiveTab("book")}>
-                  Book a Ride
+                  {t('book_ride')}
                 </Button>
               </div>
             )}
           </div>
         )}
-
         {/* ================================================================ */}
-        {/* HISTORY TAB                                                       */}
+        {/* HISTORY TAB */}
         {/* ================================================================ */}
         {activeTab === "history" && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-white font-bold text-lg">Trip History</h2>
-              <span className="text-white/25 text-sm">{rideHistory.length} rides</span>
+              <h2 className="text-white font-bold text-lg">{t('trip_history')}</h2>
+              <span className="text-white/25 text-sm">{rideHistory.length} {t('rides')}</span>
             </div>
             {rideHistory.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24">
                 <div className="w-20 h-20 rounded-3xl bg-white/4 border border-white/8 flex items-center justify-center mb-4">
                   <History className="w-9 h-9 text-white/20" />
                 </div>
-                <p className="text-white/30 text-base mb-1">No rides yet</p>
-                <p className="text-white/15 text-sm mb-6">Your completed trips will show here</p>
+                <p className="text-white/30 text-base mb-1">{t('no_rides_yet')}</p>
+                <p className="text-white/15 text-sm mb-6">{t('completed_trips_here')}</p>
                 <Button className="bg-[#00ff88] text-black font-bold rounded-xl px-8 h-12" onClick={() => setActiveTab("book")}>
-                  Book Your First Ride
+                  {t('book_first_ride')}
                 </Button>
               </div>
             ) : (
@@ -2188,9 +1952,8 @@ const [promoApplied, setPromoApplied] = useState(false);
             )}
           </div>
         )}
-
         {/* ================================================================ */}
-        {/* PROFILE TAB                                                       */}
+        {/* PROFILE TAB */}
         {/* ================================================================ */}
         {activeTab === "profile" && (
           <div className="space-y-4">
@@ -2201,50 +1964,47 @@ const [promoApplied, setPromoApplied] = useState(false);
                 </div>
                 <div>
                   <p className="text-white font-bold text-xl">{user?.name} {user?.surname}</p>
-                  <p className="text-white/40 text-sm mt-0.5">{user?.cellphone}</p>
+                  <p className="text-white/40 text-sm">{user?.cellphone}</p>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
-                  <p className="text-[#00ff88] text-xl font-bold font-mono">{user?.total_rides || 0}</p>
-                  <p className="text-white/30 text-xs mt-0.5">Rides</p>
+                <div className="bg-white/4 rounded-xl p-3 text-center">
+                  <p className="text-[#00ff88] text-2xl font-bold">{user?.total_rides || 0}</p>
+                  <p className="text-white/35 text-xs mt-0.5">{t('rides')}</p>
                 </div>
-                <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
-                  <p className="text-yellow-400 text-xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p>
-                  <p className="text-white/30 text-xs mt-0.5">Rating ⭐</p>
+                <div className="bg-white/4 rounded-xl p-3 text-center">
+                  <p className="text-yellow-400 text-2xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p>
+                  <p className="text-white/35 text-xs mt-0.5">{t('rating_star')}</p>
                 </div>
-                <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
-                  <p className="text-[#00d4ff] text-xl font-bold font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
-                  <p className="text-white/30 text-xs mt-0.5">Wallet</p>
+                <div className="bg-white/4 rounded-xl p-3 text-center">
+                  <p className="text-[#00d4ff] text-2xl font-bold font-mono">₾{(user?.wallet_balance?.toFixed(2) || "0.00")}</p>
+                  <p className="text-white/35 text-xs mt-0.5">{t('wallet')}</p>
                 </div>
               </div>
             </div>
-
             <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-[#00ff88]/15 flex items-center justify-center">
                     <Wallet className="w-4 h-4 text-[#00ff88]" />
                   </div>
                   <div>
-                    <p className="text-white font-semibold text-sm">T'aksi Wallet</p>
-                    <p className="text-white/30 text-xs">Pay faster with wallet</p>
+                    <p className="text-white font-semibold text-sm">{t('taksi_wallet')}</p>
+                    <p className="text-white/30 text-xs">{t('pay_faster_with_wallet')}</p>
                   </div>
                 </div>
                 <span className="text-[#00ff88] font-bold text-2xl font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</span>
               </div>
               <Button className="w-full bg-[#00ff88] text-black font-bold rounded-xl h-11 text-sm" onClick={() => setShowTopUp(true)}>
-                <Plus className="w-4 h-4 mr-1.5" /> Add Funds
+                <Plus className="w-4 h-4 mr-1.5" /> {t('add_funds')}
               </Button>
             </div>
-
             <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
               <p className="text-white font-semibold text-sm flex items-center gap-2 mb-4">
-                <Heart className="w-4 h-4 text-pink-400" /> Saved Places
+                <Heart className="w-4 h-4 text-pink-400" /> {t('saved_places')}
               </p>
-              <FavoritesPanel onSelect={(fav) => { setDestination({ address: fav.address, lat: fav.lat, lng: fav.lng }); setActiveTab("book"); toast.success(`${fav.name} set as destination`); }} />
+              <FavoritesPanel onSelect={(fav) => { setDestination({ address: fav.address, lat: fav.lat, lng: fav.lng }); setActiveTab("book"); toast.success(t('set_as_destination', { name: fav.name })); }} />
             </div>
-
             <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
               <button className="w-full flex items-center justify-between px-4 py-4" onClick={() => setShowReferral(v => !v)}>
                 <div className="flex items-center gap-3">
@@ -2252,8 +2012,8 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <Gift className="w-4 h-4 text-[#00d4ff]" />
                   </div>
                   <div>
-                    <p className="text-white font-semibold text-sm">Refer & Earn</p>
-                    <p className="text-white/30 text-xs">Share your code, get bonuses</p>
+                    <p className="text-white font-semibold text-sm">{t('refer_and_earn')}</p>
+                    <p className="text-white/30 text-xs">{t('share_code_get_bonuses')}</p>
                   </div>
                 </div>
                 {showReferral ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
@@ -2264,19 +2024,16 @@ const [promoApplied, setPromoApplied] = useState(false);
                 </div>
               )}
             </div>
-
             <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
-              <p className="text-white font-semibold text-sm mb-3">Language</p>
+              <p className="text-white font-semibold text-sm mb-3">{t('language')}</p>
               <LanguageSelector variant="outline" onSelect={(lang) => api.post(`/user/language?lang=${lang}`).catch(() => {})} />
             </div>
-
             <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border border-red-500/20 text-red-400/70 text-sm font-medium hover:bg-red-500/10 hover:border-red-500/35 hover:text-red-400 transition-all">
-              <LogOut className="w-4 h-4" /> Sign Out
+              <LogOut className="w-4 h-4" /> {t('sign_out')}
             </button>
           </div>
         )}
       </main>
-
       {/* BOTTOM NAV */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/6" style={{ background: "rgba(7,7,15,0.96)", backdropFilter: "blur(24px)" }}>
         <div className="max-w-2xl mx-auto px-4 flex">
@@ -2297,7 +2054,6 @@ const [promoApplied, setPromoApplied] = useState(false);
           })}
         </div>
       </nav>
-
       {/* MODALS */}
       <RiderTripCompletionModal
         isOpen={!!completedRideData}
@@ -2329,34 +2085,23 @@ const [promoApplied, setPromoApplied] = useState(false);
     </div>
   );
 };
-
 // =============================================================================
 // PORTAL ROUTER
 // =============================================================================
-const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
-if (!PAYPAL_CLIENT_ID) {
-  console.error("❌ VITE_PAYPAL_CLIENT_ID is not set.");
-}
-
+const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID || "sb";
 const RiderPortal = () => {
   const { user } = useAuth();
-  
-  // 🔍 DEBUG: This will show us exactly what React sees
-  console.log("Current Auth State:", user);
-
-  // 🛡️ THE NEW BOUNCER: Simple and impossible to fail
-  // If there is no user logged in, just show the Auth screen.
-  if (!user) {
-    return <RiderAuth />;
+  const location = useLocation();
+  if (!user || user.user_type !== "rider") {
+    if (location.pathname === "/rider" || location.pathname === "/rider/") return <RiderAuth />;
+    return <Navigate to="/rider" replace />;
   }
-
-  // ✅ IF YOU MAKE IT HERE, YOU ARE LOGGED IN. SHOW THE DASHBOARD.
   return (
-    <PayPalScriptProvider 
-      options={{ 
-        "client-id": PAYPAL_CLIENT_ID || "sb", 
-        currency: "USD", 
-        vault: true 
+    <PayPalScriptProvider
+      options={{
+        "client-id": PAYPAL_CLIENT_ID,
+        currency: "USD",
+        vault: true
       }}
     >
       <Routes>
@@ -2367,7 +2112,6 @@ const RiderPortal = () => {
     </PayPalScriptProvider>
   );
 };
-
 // This wraps the portal in its own providers so it can never be 'null'
 const RiderPortalWithProviders = () => (
   <LanguageProvider>
@@ -2376,5 +2120,4 @@ const RiderPortalWithProviders = () => (
     </AuthProvider>
   </LanguageProvider>
 );
-
 export default RiderPortalWithProviders;
