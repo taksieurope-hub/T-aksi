@@ -1,70 +1,120 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
 import axios from "axios";
-import { PayPalScriptProvider } from "@paypal/react-paypal-js";
+import { useLanguagePreference } from "@/hooks/useLanguagePreference";
+import { getTranslation, SUPPORTED_LANGUAGES } from "@/lib/i18n";
 
-// Vite uses import.meta.env, NOT process.env.
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const Home = () => {
+  const { language, setLanguage, isRtl } = useLanguagePreference();
+  const t = useMemo(() => getTranslation(language), [language]);
+  const [backendMessage, setBackendMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
   const helloWorldApi = async () => {
+    setIsLoading(true);
+    setErrorMessage("");
+
     try {
-      if (!API.startsWith('http')) return; // Avoid crashing if URL is missing
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
+      const response = await axios.get(`${API}/`, {
+        params: { lang: language },
+        headers: {
+          "Accept-Language": language,
+        },
+      });
+
+      setBackendMessage(response.data.message);
     } catch (e) {
       console.error(e, `errored out requesting / api`);
+      setErrorMessage(t.backendError);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     helloWorldApi();
-  }, []);
+  }, [language]);
 
   return (
-    <div 
-      className="min-h-screen relative flex items-center justify-center bg-[#000000] bg-center bg-no-repeat bg-cover"
-      style={{ backgroundImage: `url('/pwa-512x512.png')` }} 
-    >
-      <div className="absolute inset-0 bg-black/80 z-0"></div>
+    <main className={`app-shell ${isRtl ? "rtl" : ""}`} data-testid="home-page">
+      <header className="App-header" data-testid="app-header">
+        <div className="language-controls" data-testid="language-controls">
+          <label htmlFor="language-select" data-testid="language-select-label">
+            {t.languageLabel}
+          </label>
 
-      <header className="relative z-10 flex flex-col items-center text-center p-6">
-        <h1 className="text-5xl font-bold text-white mb-2">T'aksi</h1>
-        <p className="mt-5 text-[#00ff88] text-lg font-medium">Building something incredible ~!</p>
-        
-        <div className="flex gap-4 mt-8">
-          <a href="/rider" className="px-6 py-3 bg-[#00ff88] text-black font-bold rounded-xl hover:scale-105 transition-transform">
-            Rider App
-          </a>
-          <a href="/driver" className="px-6 py-3 bg-white/10 text-white font-bold rounded-xl border border-white/20 hover:bg-white/20 transition-colors">
-            Driver App
-          </a>
+          <select
+            id="language-select"
+            className="language-select"
+            value={language}
+            onChange={(event) => setLanguage(event.target.value)}
+            data-testid="language-selector"
+          >
+            {SUPPORTED_LANGUAGES.map((languageOption) => (
+              <option
+                key={languageOption.code}
+                value={languageOption.code}
+                data-testid={`language-option-${languageOption.code}`}
+              >
+                {languageOption.label}
+              </option>
+            ))}
+          </select>
         </div>
+
+        <a
+          className="App-link"
+          href="https://emergent.sh"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="emergent-home-link"
+        >
+          <img
+            src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4"
+            alt="Emergent"
+            className="hero-logo"
+            data-testid="hero-logo"
+          />
+        </a>
+
+        <h1 className="headline" data-testid="headline-text">
+          {t.headline}
+        </h1>
+
+        <p className="description" data-testid="description-text">
+          {t.description}
+        </p>
+
+        <section className="backend-status" data-testid="backend-status-section">
+          <h2 data-testid="backend-status-title">{t.backendStatusLabel}</h2>
+
+          {isLoading ? (
+            <p data-testid="backend-message-loading">{t.loading}</p>
+          ) : null}
+
+          {!isLoading && errorMessage ? (
+            <p className="error-text" data-testid="backend-message-error">
+              {errorMessage}
+            </p>
+          ) : null}
+
+          {!isLoading && !errorMessage ? (
+            <p data-testid="backend-message-text">{backendMessage}</p>
+          ) : null}
+        </section>
       </header>
-    </div>
+    </main>
   );
 };
 
 function App() {
-  return (
-    <PayPalScriptProvider
-      options={{
-        "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "sb",
-        currency: "USD",
-        components: "buttons,card-fields",
-        vault: true
-      }}
-    >
-      <BrowserRouter>
-        <Routes>
-          {/* FIXED: One simple route. No nesting loops. */}
-          <Route path="/" element={<Home />} />
-        </Routes>
-      </BrowserRouter>
-    </PayPalScriptProvider>
-  );
+  return <Home />;
 }
 
 export default App;
+
+

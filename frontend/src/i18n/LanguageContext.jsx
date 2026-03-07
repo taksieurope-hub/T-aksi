@@ -1,3 +1,4 @@
+// src/i18n/LanguageContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { translations, defaultLanguage, languageNames } from './translations';
 
@@ -12,20 +13,22 @@ export const LanguageProvider = ({ children }) => {
 
   const [renderKey, setRenderKey] = useState(0);
 
-  const t = useCallback((key) => {
-    return translations[language]?.[key] || translations.en?.[key] || key;
-  }, [language]);
-
   useEffect(() => {
     localStorage.setItem('taksi_language', language);
     document.documentElement.lang = language;
-    // 🚀 THE RESET TRIGGER: Changes the key to force a full app re-mount
-    setRenderKey(prev => prev + 1);
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'; // RTL for Arabic if added
   }, [language]);
 
-  const changeLanguage = (lang) => {
-    if (translations[lang]) setLanguageState(lang);
-  };
+  const t = useCallback((key) => {
+    return translations[language][key] || translations[defaultLanguage][key] || key;
+  }, [language]);
+
+  const changeLanguage = useCallback((newLanguage) => {
+    if (translations[newLanguage]) {
+      setLanguageState(newLanguage);
+      setRenderKey((prev) => prev + 1); // Force re-render for RTL/LTR changes
+    }
+  }, []);
 
   return (
     <LanguageContext.Provider value={{ 
