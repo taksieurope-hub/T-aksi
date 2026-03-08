@@ -27,9 +27,13 @@ export const translations = {
     last_name: "გვარი",
     sign_in: "შესვლა",
     sign_up: "რეგისტრაცია",
-    need_account: "არ გაქვთ ანგარიში?",
-    have_account: "უკვე გაქვთ ანგარიში?",
+    need_account: "არ გაქვთ ანგარიში? რეგისტრაცია",
+    have_account: "უკვე გაქვთ ანგარიში? შესვლა",
     invalid_credentials: "არასწორი მონაცემები",
+    verify: "დადასტურება",
+    verified: "დადასტურებულია",
+    enter_otp_code: "შეიყვანეთ 4-ციფრიანი კოდი",
+    resend_code: "კოდის ხელახლა გაგზავნა",
     
     // Home
     hero_title: "თქვენი მგზავრობა",
@@ -317,9 +321,13 @@ export const translations = {
     last_name: "Last Name",
     sign_in: "Sign In",
     sign_up: "Sign Up",
-    need_account: "Need an account?",
-    have_account: "Have an account?",
+    need_account: "Need an account? Register",
+    have_account: "Have an account? Sign In",
     invalid_credentials: "Invalid credentials",
+    verify: "Verify",
+    verified: "Verified",
+    enter_otp_code: "Enter 4-digit code",
+    resend_code: "Resend code",
     
     // Home
     hero_title: "Your Ride",

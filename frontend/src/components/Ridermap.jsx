@@ -425,12 +425,44 @@ const RiderMap = ({
     current.forEach(id => { driverDotRefs.current[id]?.setMap(null); delete driverDotRefs.current[id]; });
   }, [nearbyDrivers, phase, mapsReady]);
 
-  // ── Active ride: driver marker + route + ETA ───────────────────────────────
+  // ── Active ride: driver marker + route + ETA with SMOOTH ANIMATION ──────────
+  const lastDriverPosRef = useRef(null);
+  const driverAnimationRef = useRef(null);
+  
+  const animateDriverMarker = useCallback((targetLat, targetLng) => {
+    if (!driverMarkerRef.current) return;
+    
+    const startPos = lastDriverPosRef.current || { lat: targetLat, lng: targetLng };
+    const startTime = performance.now();
+    const duration = 400;
+
+    const animate = (currentTime) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      
+      const lat = startPos.lat + (targetLat - startPos.lat) * eased;
+      const lng = startPos.lng + (targetLng - startPos.lng) * eased;
+      
+      driverMarkerRef.current.setPosition({ lat, lng });
+      
+      if (progress < 1) {
+        driverAnimationRef.current = requestAnimationFrame(animate);
+      } else {
+        lastDriverPosRef.current = { lat: targetLat, lng: targetLng };
+      }
+    };
+    
+    if (driverAnimationRef.current) cancelAnimationFrame(driverAnimationRef.current);
+    driverAnimationRef.current = requestAnimationFrame(animate);
+  }, []);
+
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
     if (phase !== "active" || !activeRide) {
       driverMarkerRef.current?.setMap(null);
       routeRendererRef.current?.setDirections({ routes: [] });
+      lastDriverPosRef.current = null;
       return;
     }
 
@@ -439,15 +471,19 @@ const RiderMap = ({
 
     const dPos = { lat: parseFloat(drvLoc.lat), lng: parseFloat(drvLoc.lng) };
 
-    // Driver car marker
+    // Driver car marker with smooth animation
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new window.google.maps.Marker({
         map: mapInstanceRef.current,
-        icon: { url: CAR_ICON_URL, scaledSize: new window.google.maps.Size(35, 35), anchor: new window.google.maps.Point(20, 20) },
+        icon: { url: CAR_ICON_URL, scaledSize: new window.google.maps.Size(40, 40), anchor: new window.google.maps.Point(20, 20) },
         zIndex: 20,
       });
+      lastDriverPosRef.current = dPos;
+      driverMarkerRef.current.setPosition(dPos);
+    } else {
+      // Smooth animation to new position
+      animateDriverMarker(dPos.lat, dPos.lng);
     }
-    driverMarkerRef.current.setPosition(dPos);
     driverMarkerRef.current.setMap(mapInstanceRef.current);
 
     // Show pickup pin during accepted/arrived
@@ -506,7 +542,7 @@ const RiderMap = ({
         }
       }
     );
-  }, [activeRide?.driver_location, activeRide?.status, phase, isFollowing, mapsReady]);
+  }, [activeRide?.driver_location, activeRide?.status, phase, isFollowing, mapsReady, animateDriverMarker]);
 
   // ── Auto-fit map on ride accept ────────────────────────────────────────────
   useEffect(() => {

@@ -2,15 +2,52 @@
 <html lang="ka">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/logo.png" />
-    
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="T'aksi - Your Ride Across the Galaxy. Experience the future of transportation in Georgia. Fast, reliable, and out of this world." />
+    <meta name="theme-color" content="#00ff88" />
     
-    <title>T'aksi</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" href="/favicon.ico" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://taksi.ge/" />
+    <meta property="og:title" content="T'aksi - Your Ride Across the Galaxy" />
+    <meta property="og:description" content="Experience the future of transportation in Georgia. Fast, reliable, and out of this world." />
+    <meta property="og:image" content="https://taksi.ge/og-image.png" />
+    <meta property="og:locale" content="ka_GE" />
+    <meta property="og:site_name" content="T'aksi" />
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://taksi.ge/" />
+    <meta name="twitter:title" content="T'aksi - Your Ride Across the Galaxy" />
+    <meta name="twitter:description" content="Experience the future of transportation in Georgia. Fast, reliable, and out of this world." />
+    <meta name="twitter:image" content="https://taksi.ge/twitter-card.png" />
+    
+    <!-- Security Headers (fallback for static hosting) -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-Frame-Options" content="SAMEORIGIN" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    
+    <title>T'aksi - Galactic Rides</title>
   </head>
-  <body style="background-color: black; margin: 0; padding: 0;">
+  <body style="background-color: #07070f; margin: 0; padding: 0;">
+    <!-- No-JS Fallback -->
+    <noscript>
+      <div style="background: #07070f; color: #fff; text-align: center; padding: 50px; font-family: system-ui;">
+        <h1>T'aksi</h1>
+        <p>JavaScript is required to run this application.</p>
+        <p>Please enable JavaScript in your browser settings.</p>
+      </div>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/index.jsx"></script>
   </body>
 </html>
-

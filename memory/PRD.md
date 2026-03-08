@@ -1,267 +1,212 @@
-# T'aksi Galactic - Product Requirements Document
+# T'aksi - Galactic Ride-Hailing Application PRD
 
-## Overview
-T'aksi Galactic is a premium ride-sharing application for the Georgian market, designed to compete with and exceed Bolt's user experience.
+## Project Overview
+**Name**: T'aksi (თ'აქსი)  
+**Tagline**: "Your Ride Across the Galaxy"  
+**Type**: Full-stack ride-hailing application  
+**Stack**: React (Vite) + FastAPI + Firebase Firestore  
+**Date**: March 8, 2026
+
+---
 
 ## Original Problem Statement
-User had existing T'aksi codebase and wanted to:
-1. Build iOS application support
-2. Implement UI/UX enhancements with premium design
-3. Fix i18n to work across entire app (not just landing page)
-4. Add in-app chat between riders/drivers with auto-translate
-5. Add AI chatbot for support with escalation to admin
-6. Add all missing features to compete with Bolt/Uber
+Build a premium ride-hailing application better than Bolt, Uber, Yandex, and Maxim with:
+1. Waze-style auto-rotating maps that face direction of travel
+2. Smoother ride animations for rider and driver
+3. Less cramped driver screen with clean maps
+4. Smooth PayPal card vaulting
+5. Full multi-language support (12 languages)
+6. Real-time ride tracking for passengers
+7. Firebase database integration
 
-## Tech Stack
-- **Frontend**: React + Vite + Tailwind CSS + Framer Motion
-- **Backend**: FastAPI + Python
-- **Database**: Firebase Firestore
-- **AI**: Gemini 3 Flash (via emergentintegrations)
-- **Mobile**: Capacitor (iOS & Android)
-- **Maps**: Google Maps API
-- **Payments**: PayPal integration
+---
 
 ## User Personas
-1. **Riders**: Georgian citizens seeking premium ride-hailing experience
-2. **Drivers (Pilots)**: Individuals looking for flexible income opportunities
-3. **Admins**: Platform operators managing users, approvals, support, and withdrawals
 
-## Core Features
+### Rider
+- Books rides via phone app
+- Tracks driver in real-time
+- Pays via PayPal card vault
+- Multi-language support
 
-### Rider Portal
-- Book rides with pickup, destination, and up to 3 stops
-- Real-time driver tracking
-- Multiple vehicle classes (Economy, Comfort, Premium, XL, Luxury)
-- Surge pricing visibility
-- Cash and card payment options
-- Ride history
-- **NEW**: Favorite locations (Home, Work, etc.)
-- **NEW**: Scheduled rides (book for later)
-- **NEW**: Share trip with friends/family
-- **NEW**: Rate driver with tags and tips
-- **NEW**: SOS emergency button
-- **NEW**: AI support chat
+### Driver (Pilot)
+- Accepts ride requests
+- Uses navigation HUD while driving
+- Manages earnings and withdrawals
+- Real-time location broadcasting
 
-### Driver Portal  
-- Go online/offline status
-- Accept/reject ride requests
-- Turn-by-turn navigation
-- Earnings wallet with top-up and withdrawal
-- Vehicle registration and document upload
-- Cancellation with reason tracking
-- **NEW**: Rate riders with tags
-- **NEW**: In-app chat with auto-translate
-- **NEW**: Trip receipts
-- **NEW**: SOS emergency button
-
-### Admin Portal
-- Overview dashboard with stats
-- Driver approval workflow
-- Withdrawal request management
-- User management
-- **NEW**: Support ticket management with AI escalation
-- **NEW**: Active SOS alert monitoring and resolution
-- **NEW**: Escalated ticket queue
-
-### AI Features (Gemini 3 Flash)
-- **Auto-translate chat**: Real-time translation between rider and driver
-- **Support chatbot**: Handles FAQ, trip issues, payment questions
-- **Smart escalation**: AI identifies urgent issues and escalates to admin
+### Admin
+- Manages fleet and drivers
+- Views analytics and earnings
+- Handles support tickets
 
 ---
 
-## What's Been Implemented
+## Core Requirements (Static)
 
-### Session 1 - Feb 19, 2026
+### Map Navigation
+- [x] Auto-rotate map to face direction of travel
+- [x] Smooth 55° tilt for immersive driving view
+- [x] Compact and full HUD toggle modes
+- [x] Smooth heading animation with lerp interpolation
+- [x] External navigation to Waze/Google Maps
 
-#### iOS App Capability
-- [x] Configured Capacitor for iOS and Android builds
-- [x] Added native plugins: Geolocation, Push Notifications, Splash Screen, Status Bar
-- [x] Created iOS build script at `/app/frontend/scripts/build-ios.sh`
-- [x] Updated `capacitor.config.json` with proper iOS/Android settings
+### Driver Experience
+- [x] DriverSmartMap with smooth position animation
+- [x] Compact NavHUD with turn-by-turn directions
+- [x] ETA countdown timer
+- [x] Speed indicator (km/h)
+- [x] Re-center button when user pans away
+- [x] HUD size toggle (compact/full)
 
-#### UI/UX Enhancements (Cyber-Noir Luxury Theme)
-- [x] Updated Tailwind config with premium design tokens
-- [x] Implemented glassmorphism card effects
-- [x] Applied Clash Display font for headings, Manrope for body
-- [x] Neon glow effects (cyan #00d4ff, green #00ff88)
-- [x] Dark background with premium depth layering
-- [x] Mobile-first responsive design
+### Rider Experience
+- [x] RiderMap with smooth driver marker animation
+- [x] Real-time driver tracking during active ride
+- [x] Pulse animation during driver search
+- [x] Route preview during booking
 
-#### i18n Fix (Full Translation Support)
-- [x] Extended translations for all portals (Rider, Driver, Admin)
-- [x] Added language selector to auth pages
-- [x] 8 languages supported: Georgian, English, Russian, Hindi, Chinese, Dutch, French, German
+### Payment (PayPal)
+- [x] Card vaulting with PayPal SDK
+- [x] Multiple cards support
+- [x] Set default card
+- [x] Skeleton loading states
+- [x] Animated success/error feedback
 
-### Session 2 - Feb 19, 2026
-
-#### In-App Chat with Auto-Translate
-- [x] Backend translation endpoint `/api/translate`
-- [x] Chat translation endpoint `/api/rides/{ride_id}/chat/translate`
-- [x] Gemini 3 Flash integration via emergentintegrations
-
-#### AI Support Chatbot
-- [x] Support message endpoint `/api/support/message`
-- [x] Smart categorization (FAQ, trip, payment, safety, etc.)
-- [x] Automatic escalation for urgent issues
-- [x] Support history endpoint `/api/support/history`
-- [x] SupportChatWidget component (floating button)
-
-#### Admin Support Panel
-- [x] AdminSupportPanel component with ticket management
-- [x] SOS alert monitoring
-- [x] Ticket filtering (escalated, in_progress, resolved, ai_handled)
-- [x] Admin response and resolution workflow
-- [x] Added Support tab to Admin portal
-
-#### Driver Campaigns System
-- [x] Campaign CRUD endpoints (create, read, update, delete)
-- [x] 6 Pre-built campaign templates:
-  - Weekend Warrior (20 rides = ₾30 bonus)
-  - Rush Hour Hero (10 peak rides = ₾25)
-  - 5-Star Excellence (50 rated rides = ₾40)
-  - 7-Day Streak (daily rides = ₾50)
-  - Earnings Milestone (₾500 = ₾35 bonus)
-  - Welcome Bonus (first 25 rides = ₾75)
-- [x] Campaign types: rides_count, earnings_target, peak_hours, rating_bonus, streak, new_driver
-- [x] Admin campaigns panel with:
-  - Create custom campaigns
-  - Quick templates
-  - Campaign filtering (active/paused/completed/cancelled)
-  - Participant tracking
-  - Pause/resume campaigns
-- [x] Driver campaign participation endpoints
-- [x] Automatic progress tracking after ride completion
-- [x] Auto-bonus payout when target reached
-
-#### Rating System
-- [x] Rating tags (positive and negative)
-- [x] Driver rating endpoint with tags
-- [x] Rider rating endpoint with tags
-- [x] RatingModal component with star rating, tags, and tips
-- [x] Average rating calculation and storage
-
-#### SOS Emergency
-- [x] SOS trigger endpoint `/api/sos`
-- [x] Active SOS alerts endpoint `/api/admin/sos/active`
-- [x] SOS resolution endpoint
-- [x] SOSButton component with countdown confirmation
-
-#### Share Trip
-- [x] Share trip endpoint `/api/rides/{ride_id}/share`
-- [x] Public tracking endpoint `/api/track/{ride_id}`
-- [x] ShareTripModal component with WhatsApp, SMS, Email sharing
-
-#### Favorite Locations
-- [x] CRUD endpoints for favorites
-- [x] FavoriteLocations component with icons
-- [x] Geocoding integration
-
-#### Scheduled Rides
-- [x] Schedule ride endpoint
-- [x] Get scheduled rides endpoint
-- [x] Cancel scheduled ride endpoint
-
-#### Referral System
-- [x] Get/generate referral code endpoint
-- [x] Apply referral code endpoint
-- [x] Bonus calculation (₾5 referrer, ₾3 referee)
-
-#### Driver Tips
-- [x] Add tip endpoint
-- [x] Tip integration in RatingModal
-
-#### Trip Receipts
-- [x] Detailed receipt endpoint with fare breakdown
+### Multi-language (i18n)
+- [x] Georgian (ქართული) - Default
+- [x] English
+- [x] Russian (Русский)
+- [x] Hindi (हिंदी)
+- [x] Chinese (中文)
+- [x] Dutch (Nederlands)
+- [x] French (Français)
+- [x] German (Deutsch)
+- [x] Polish (Polski)
+- [x] Afrikaans
+- [x] isiZulu
+- [x] isiXhosa
 
 ---
 
-## Backlog (Prioritized)
+## What's Been Implemented (March 8, 2026)
 
-### P0 - Critical (For Launch)
-- [ ] Push notifications implementation (FCM integration)
-- [ ] SMS verification for phone numbers
-- [ ] Real payment processing (Stripe/PayPal live)
+### PWA Audit Fixes (Based on Report Guide)
+- **Security Headers**: Added `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `Content-Security-Policy`
+- **robots.txt**: Updated with proper directives for public/login-gated sections
+- **manifest.webmanifest**: PWA manifest with proper icons, shortcuts, theme colors
+- **HTML Meta Tags**: Added description, Open Graph, Twitter Card meta tags
+- **Offline Fallback**: offline.html page for service worker
+- **Noscript Fallback**: Added for JavaScript-disabled browsers
 
-### P1 - High Priority
-- [ ] In-app voice messages
-- [ ] Driver incentives/bonuses
-- [ ] Promo codes and discount system
-- [ ] Driver document verification workflow
+### Map Improvements
+- **DriverSmartMap**: 
+  - Smooth marker position interpolation with requestAnimationFrame
+  - Auto-rotate map heading using animateHeading with smooth lerp (0.08 easing)
+  - 55° immersive tilt angle
+  - Compact HUD mode toggle for cleaner driving view
+  - Modern SVG driver arrow with glow effect
+  
+- **RiderMap**:
+  - Smooth driver marker animation during active ride (400ms ease-out)
+  - Better car icon sizing (40x40)
 
-### P2 - Medium Priority
-- [ ] Dark/light theme toggle
-- [ ] Multi-currency support
-- [ ] Trip splitting (share fare with friends)
-- [ ] Corporate accounts
+### UI/UX Improvements
+- **NavHUD**: 
+  - Compact mode with smaller turn indicator
+  - Inline speed display
+  - Minimal "then" preview for next turn
+  
+- **PaymentMethodManager**:
+  - Gradient brand badges with hover effects
+  - Skeleton loading for cards
+  - Animated success/error states with slide-in
+  - Modern card styling with transform effects
 
-### P3 - Nice to Have
-- [ ] Accessibility improvements (WCAG 2.1)
-- [ ] Performance optimization (code splitting)
-- [ ] Offline mode for drivers
-- [ ] Advanced analytics dashboard
-
----
-
-## API Endpoints Added
-
-### AI & Chat
-- `POST /api/translate` - Translate text
-- `POST /api/rides/{ride_id}/chat/translate` - Send translated chat
-
-### Support
-- `POST /api/support/message` - Send support message (AI responds)
-- `GET /api/support/history` - Get support ticket history
-- `GET /api/admin/support/tickets` - Get tickets (filterable)
-- `GET /api/admin/support/tickets/escalated` - Get escalated tickets
-- `POST /api/admin/support/tickets/{id}/respond` - Admin response
-- `POST /api/admin/support/tickets/{id}/resolve` - Resolve ticket
-
-### Rating
-- `GET /api/rating/tags` - Get available tags
-- `POST /api/rides/{id}/rate/driver` - Rate driver with tags
-- `POST /api/rides/{id}/rate/rider` - Rate rider with tags
-
-### Safety
-- `POST /api/sos` - Trigger SOS
-- `GET /api/admin/sos/active` - Get active SOS alerts
-- `POST /api/admin/sos/{id}/resolve` - Resolve SOS
-
-### Sharing
-- `POST /api/rides/{id}/share` - Generate share link
-- `GET /api/track/{id}` - Public ride tracking
-
-### Favorites
-- `GET /api/user/favorites` - Get saved places
-- `POST /api/user/favorites` - Add saved place
-- `DELETE /api/user/favorites/{id}` - Remove saved place
-
-### Scheduled Rides
-- `POST /api/rides/schedule` - Schedule ride
-- `GET /api/rides/scheduled` - Get scheduled rides
-- `DELETE /api/rides/scheduled/{id}` - Cancel scheduled ride
-
-### Referrals
-- `GET /api/user/referral` - Get referral code
-- `POST /api/user/referral/apply` - Apply referral code
-
-### Tips & Receipts
-- `POST /api/rides/{id}/tip` - Add tip
-- `GET /api/rides/{id}/receipt` - Get trip receipt
+### Map Styles
+- Updated to modern dark theme
+- Removed POI clutter for cleaner navigation
+- Transit hidden for driving focus
 
 ---
 
-## Next Steps
-1. **iOS Deployment**: Run build script on Mac, configure signing, submit to App Store
-2. **Android Build**: `npx cap sync android && npx cap open android`
-3. **Push Notifications**: Integrate Firebase Cloud Messaging
-4. **Production Deployment**: Set up production Firebase project and payment credentials
+## Prioritized Backlog
+
+### P0 - Critical (Done)
+- [x] Map auto-rotation
+- [x] Smooth marker animation
+- [x] Multi-language support
+
+### P1 - Important
+- [ ] Fix language persistence on navigation
+- [ ] Add turn-by-turn voice guidance (optional)
+- [ ] Improve route preview styling
+
+### P2 - Nice to Have
+- [ ] Offline map caching
+- [ ] Night mode map style
+- [ ] Driver rating animations
+- [ ] Ride history export
 
 ---
 
-## Technical Notes
-- Backend runs on port 8001, frontend on 3000
-- Firebase service account at `/app/backend/firebase-service-account.json`
-- All API routes prefixed with `/api/`
-- Hot reload enabled for both frontend and backend
-- Emergent LLM key used for AI features
+## Technical Architecture
+
+```
+/app
+├── backend/
+│   ├── server.py          # FastAPI main server (4000+ lines)
+│   ├── firebase-service-account.json
+│   └── .env
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── DriverPortal.jsx    # Driver app with SmartMap
+│   │   │   ├── RiderPortal.jsx     # Rider app
+│   │   │   ├── Ridermap.jsx        # Rider map component
+│   │   │   ├── Paymentmethodmanager.jsx
+│   │   │   └── maps/
+│   │   │       └── LiveTrackingMap.jsx
+│   │   ├── i18n/
+│   │   │   ├── translations.js     # 12 languages
+│   │   │   └── LanguageContext.jsx
+│   │   └── config.jsx
+│   └── .env
+└── memory/
+    └── PRD.md
+```
+
+---
+
+## Environment Configuration
+
+### Frontend (.env)
+```
+VITE_GOOGLE_MAPS_API_KEY=AIzaSyAAenq7Dyy1R8tS49JxKf70Nxtf5es4QJ4
+VITE_PAYPAL_CLIENT_ID=AR1tgXOIjqZQ7hObQi8NFV1VnInwSH4IO9K8mVrzv4Bl3ZgFWb8Rz9W9EvP1ZHf0pkUGR-EgAfrsqNR0
+VITE_USE_LOCALSTORAGE_FALLBACK=true
+```
+
+### Backend (.env)
+```
+JWT_SECRET=wP8zK2mR5vX9nQ3bL1sJ7fT4hY6uG0vE
+PAYPAL_CLIENT_ID=...
+PAYPAL_CLIENT_SECRET=...
+FIREBASE_STORAGE_BUCKET=t-aksi-eu.firebasestorage.app
+```
+
+---
+
+## Next Action Items
+
+1. **Language Persistence**: Store selected language in localStorage and persist across navigation
+2. **Driver Dashboard Analytics**: Add earnings charts and ride statistics
+3. **Push Notifications**: Implement Firebase Cloud Messaging for ride alerts
+4. **Surge Pricing**: Real-time demand-based pricing indicators
+
+---
+
+## Enhancement Ideas
+
+- **Revenue**: Implement ride passes / subscription tiers for frequent riders
+- **Engagement**: Add referral rewards with shareable promo codes
+- **Experience**: Scheduled rides booking in advance

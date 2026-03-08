@@ -1444,10 +1444,19 @@ const [promoApplied, setPromoApplied] = useState(false);
 
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
-    loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error("VITE_GOOGLE_MAPS_API_KEY is not set");
+      toast.error(t("maps_api_key_missing") || "Maps API key missing");
+      return;
+    }
+    loadGoogleMaps(apiKey)
       .then(() => setMapsLoaded(true))
-      .catch(() => toast.error("Failed to load Google Maps"));
-  }, []);
+      .catch((err) => {
+        console.error("Maps load error:", err);
+        toast.error(t("maps_load_error") || "Failed to load Google Maps. Check API key restrictions.");
+      });
+  }, [t]);
 
   useEffect(() => {
     fetchActiveRide();
@@ -1674,10 +1683,10 @@ const [promoApplied, setPromoApplied] = useState(false);
   };
 
   const tabs = [
-    { id: "book",    label: "Book",    Icon: Rocket  },
-    { id: "active",  label: "Active",  Icon: Navigation },
-    { id: "history", label: "History", Icon: History },
-    { id: "profile", label: "Profile", Icon: User    },
+    { id: "book",    label: t("book"),    Icon: Rocket  },
+    { id: "active",  label: t("active"),  Icon: Navigation },
+    { id: "history", label: t("history"), Icon: History },
+    { id: "profile", label: t("profile"), Icon: User    },
   ];
 
   return (
@@ -1699,7 +1708,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                 <Wallet className="w-2.5 h-2.5" />
                 ₾{user?.wallet_balance?.toFixed(2) || "0.00"}
                 <span className="text-white/25">·</span>
-                <span className="text-white/40">Top Up</span>
+                <span className="text-white/40">{t("top_up")}</span>
               </button>
             </div>
           </div>
@@ -1707,9 +1716,10 @@ const [promoApplied, setPromoApplied] = useState(false);
             {activeRide && ["accepted","arrived","in_progress"].includes(activeRide.status) && (
               <button onClick={() => setActiveTab("active")}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00ff88]/15 border border-[#00ff88]/30 text-[#00ff88] text-xs font-bold mr-1 animate-pulse">
-                <Activity className="w-3 h-3" /> Live
+                <Activity className="w-3 h-3" /> {t("active")}
               </button>
             )}
+            <LanguageSelector variant="default" />
             <button className="w-8 h-8 rounded-xl flex items-center justify-center text-white/30 hover:text-white hover:bg-white/8 transition-all" onClick={() => navigate("/")}>
               <Home className="w-4 h-4" />
             </button>
@@ -1730,15 +1740,15 @@ const [promoApplied, setPromoApplied] = useState(false);
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
               <button onClick={() => setShowFavorites(v => !v)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${showFavorites ? "bg-pink-500/20 border-pink-500/35 text-pink-400" : "bg-white/4 border-white/10 text-white/40 hover:border-white/20 hover:text-white/60"}`}>
-                <Heart className="w-3.5 h-3.5" /> Saved Places
+                <Heart className="w-3.5 h-3.5" /> {t("saved_places")}
               </button>
               <button onClick={() => setShowSchedule(true)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border bg-white/4 border-white/10 text-white/40 text-xs font-semibold hover:border-white/20 hover:text-white/60 whitespace-nowrap transition-all shrink-0">
-                <Calendar className="w-3.5 h-3.5" /> Schedule
+                <Calendar className="w-3.5 h-3.5" /> {t("schedule")}
               </button>
               {scheduledRides.length > 0 && (
                 <div className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs font-semibold shrink-0">
-                  <Calendar className="w-3 h-3" /> {scheduledRides.length} scheduled
+                  <Calendar className="w-3 h-3" /> {scheduledRides.length} {t("scheduled")}
                 </div>
               )}
             </div>
@@ -1760,38 +1770,38 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <button className="flex items-center gap-1 text-[#00ff88] text-xs font-medium hover:text-[#00d4ff] transition-colors disabled:opacity-50"
                       onClick={getCurrentLocation} disabled={locationLoading}>
                       {locationLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Crosshair className="w-3 h-3" />}
-                      My location
+                      {t("use_my_location")}
                     </button>
                   </div>
                   <LocationInput id="pickup-input" name="pickup" value={pickup} onChange={setPickup}
-                    placeholder="Where should we pick you up?" icon={MapPin} iconColor="text-[#00ff88]"
+                    placeholder={t("where_pickup")} icon={MapPin} iconColor="text-[#00ff88]"
                     onSaveAsFavorite={pickup.lat ? () => setShowSaveFav(pickup) : null} mapsLoaded={mapsLoaded} />
                 </div>
 
                 {stops.map((stop, idx) => (
                   <div key={idx}>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-yellow-400/70 text-xs font-semibold uppercase tracking-wider">Stop {idx + 1}</label>
+                      <label className="text-yellow-400/70 text-xs font-semibold uppercase tracking-wider">{t("stops")} {idx + 1}</label>
                       <button className="text-white/25 hover:text-red-400 transition-colors" onClick={() => removeStop(idx)}>
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                     <LocationInput id={`stop-${idx}`} name={`stop_${idx}`} value={stop}
-                      onChange={(data) => updateStop(idx, data)} placeholder="Stop address"
+                      onChange={(data) => updateStop(idx, data)} placeholder={t("stop_address")}
                       icon={MapPin} iconColor="text-yellow-400/70" mapsLoaded={mapsLoaded} />
                   </div>
                 ))}
 
                 <div>
-                  <label className="text-white/40 text-xs font-semibold uppercase tracking-wider block mb-2">Destination</label>
+                  <label className="text-white/40 text-xs font-semibold uppercase tracking-wider block mb-2">{t("destination")}</label>
                   <LocationInput id="destination-input" name="destination" value={destination} onChange={setDestination}
-                    placeholder="Where to?" icon={Navigation} iconColor="text-[#00d4ff]"
+                    placeholder={t("where_going")} icon={Navigation} iconColor="text-[#00d4ff]"
                     onSaveAsFavorite={destination.lat ? () => setShowSaveFav(destination) : null} mapsLoaded={mapsLoaded} />
                 </div>
 
                 {stops.length < 3 && (
                   <button className="w-full flex items-center justify-center gap-2 py-2 text-xs text-white/25 hover:text-white/50 border border-dashed border-white/10 rounded-xl hover:border-white/20 transition-all" onClick={addStop}>
-                    <Plus className="w-3 h-3" /> Add stop (free)
+                    <Plus className="w-3 h-3" /> {t("add_stop_free")}
                   </button>
                 )}
               </div>
@@ -1810,7 +1820,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <TrendingUp className="w-4 h-4 text-orange-400" />
                   </div>
                   <div>
-                    <p className="text-orange-300 font-semibold text-sm">High Demand</p>
+                    <p className="text-orange-300 font-semibold text-sm">{t("surge_active")}</p>
                     <p className="text-orange-400/60 text-xs">{surgeInfo.surge_reason}</p>
                   </div>
                 </div>
@@ -1822,17 +1832,17 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="bg-white/3 border border-white/8 rounded-2xl px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-white/40 text-sm">
                   <RouteIcon className="w-4 h-4" />
-                  <span>{routeInfo.distance} km · {routeInfo.duration} min</span>
+                  <span>{routeInfo.distance} {t("km")} · {routeInfo.duration} {t("min")}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-[#00ff88] font-bold text-2xl">₾{fareEstimate.total.toFixed(2)}</span>
-                  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">incl. ₾2 card fee</p>}
+                  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">{t("card_fee_included")}</p>}
                 </div>
               </div>
             )}
 
             <div>
-              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Choose vehicle</p>
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">{t("vehicle_class")}</p>
               <div className="grid grid-cols-5 gap-1.5">
                 {carTypes.map((type) => {
                   const est = routeInfo
@@ -1852,16 +1862,16 @@ const [promoApplied, setPromoApplied] = useState(false);
             </div>
 
             <div>
-              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Payment method</p>
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">{t("payment_method")}</p>
               <div className="flex gap-2">
                 {[
-                  { val: "cash",   label: "Cash",   Icon: null },
-                  { val: "wallet", label: `₾${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: "Wallet", Icon: Wallet },
-                  { val: "card",   label: "Card",   Icon: CreditCard },
+                  { val: "cash",   label: t("cash"),   Icon: null },
+                  { val: "wallet", label: `₾${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: t("wallet"), Icon: Wallet },
+                  { val: "card",   label: t("card"),   Icon: CreditCard },
                 ].map(({ val, label, subLabel, Icon }) => (
                   <button key={val}
                     onClick={() => {
-                      if (val === "wallet" && (user?.wallet_balance || 0) <= 0) { toast.error("Wallet empty"); setShowTopUp(true); return; }
+                      if (val === "wallet" && (user?.wallet_balance || 0) <= 0) { toast.error(t("wallet_empty")); setShowTopUp(true); return; }
                       setPaymentMethod(val); setShowPayPal(false);
                     }}
                     className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${paymentMethod === val ? "border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]" : "border-white/8 bg-white/3 text-white/40 hover:border-white/20 hover:text-white/60"}`}>
@@ -1881,7 +1891,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     </div>
     <input
       type="text"
-      placeholder="Have a promo code?"
+      placeholder={t("have_promo_code")}
       value={promoCode}
       onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
       className="flex-1 bg-transparent px-3 py-4 text-sm font-bold text-white outline-none placeholder:text-white/20 placeholder:font-normal uppercase tracking-wider"
@@ -1901,10 +1911,10 @@ const [promoApplied, setPromoApplied] = useState(false);
     <div className="flex items-center justify-between px-2 animate-in slide-in-from-top-1">
        <p className="text-[#00ff88] text-[11px] font-bold flex items-center gap-1.5">
         <Sparkles className="w-3.5 h-3.5" /> 
-        Beta Bonus: ₾{fareEstimate.discount.toFixed(2)} off!
+        {t("promo_discount")}: ₾{fareEstimate.discount.toFixed(2)}!
       </p>
       <p className="text-white/30 text-[10px] font-medium uppercase tracking-tighter">
-        1 of 2 uses left
+        {t("uses_left")}
       </p>
     </div>
   )}
@@ -1920,12 +1930,12 @@ const [promoApplied, setPromoApplied] = useState(false);
   {loading ? (
     <div className="flex items-center">
       <Loader2 className="w-5 h-5 animate-spin mr-2" />
-      <span>Finding your ride...</span>
+      <span>{t("searching_drivers")}</span>
     </div>
   ) : (
     <div className="flex items-center">
       <Rocket className="w-5 h-5 mr-2" />
-      <span>Request {carType} · ₾{fareEstimate?.total.toFixed(2)}</span>
+      <span>{t("request_ride")} {carType} · ₾{fareEstimate?.total.toFixed(2)}</span>
     </div>
   )}
 </Button>

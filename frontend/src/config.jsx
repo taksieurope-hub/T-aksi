@@ -2,10 +2,10 @@
 
 /**
  * INTELLIGENT URL CONFIGURATION
- * Automatically adds '/api' if missing.
+ * Uses REACT_APP_BACKEND_URL for Emergent, falls back to VITE_API_URL
  */
 const getBaseUrl = () => {
-  let url = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  let url = import.meta.env.REACT_APP_BACKEND_URL || import.meta.env.VITE_API_URL || "http://localhost:8001";
   url = url.replace(/\/+$/, "");
   if (!url.endsWith("/api")) url += "/api";
   return url;
