@@ -163,6 +163,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
 // MAP PICKER MODAL — UNCHANGED
 // =============================================================================
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
+  const { t } = useLanguage();
   const mapRef          = useRef(null);
   const mapInstanceRef  = useRef(null);
   const [address, setAddress]       = useState("Move map to select location...");
@@ -527,6 +528,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
 // LOCATION INPUT — UNCHANGED
 // =============================================================================
 const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name, onSaveAsFavorite, mapsLoaded }) => {
+  const { t } = useLanguage();
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   useGoogleMapsAutocomplete(inputRef, (place) => onChange({ address: place.address, lat: place.lat, lng: place.lng }), mapsLoaded);
@@ -720,6 +722,7 @@ const RiderAuth = () => {
 // WAIT TIMER — UNCHANGED
 // =============================================================================
 const WaitTimer = ({ arrivedAt, carType }) => {
+  const { t } = useLanguage();
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const startTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
@@ -778,6 +781,7 @@ const WaitTimer = ({ arrivedAt, carType }) => {
 // RECEIPT MODAL — UNCHANGED
 // =============================================================================
 const ReceiptModal = ({ isOpen, onClose, rideId }) => {
+  const { t } = useLanguage();
   const [receipt, setReceipt] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -843,6 +847,7 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
 };
 
 const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
+  const { t } = useLanguage();
   const [tipAmount, setTipAmount] = useState(null);
   const [custom, setCustom]       = useState("");
   const TIPS = [1, 2, 3, 5];
@@ -958,6 +963,7 @@ const SOSButton = ({ rideId, lat, lng }) => {
 // SHARE TRIP MODAL — UNCHANGED
 // =============================================================================
 const ShareTripModal = ({ isOpen, onClose, rideId }) => {
+  const { t } = useLanguage();
   const [shareLink, setShareLink] = useState("");
   const [loading, setLoading]     = useState(false);
   const [phone, setPhone]         = useState("");
@@ -1031,6 +1037,7 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
 // SCHEDULED RIDE MODAL — UNCHANGED
 // =============================================================================
 const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) => {
+  const { t } = useLanguage();
   const [scheduledTime, setScheduledTime] = useState("");
   const [loading, setLoading]             = useState(false);
 
@@ -1088,6 +1095,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
 // WALLET TOP-UP MODAL — UNCHANGED
 // =============================================================================
 const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
+  const { t } = useLanguage();
   const [amount, setAmount] = useState(20);
   const [custom, setCustom] = useState("");
   const AMOUNTS = [5, 10, 20, 50];
@@ -1167,6 +1175,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
 // FAVORITES PANEL — UNCHANGED
 // =============================================================================
 const FavoritesPanel = ({ onSelect }) => {
+  const { t } = useLanguage();
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading]     = useState(false);
 
@@ -1212,6 +1221,7 @@ const FavoritesPanel = ({ onSelect }) => {
 // SAVE FAVORITE DIALOG — UNCHANGED
 // =============================================================================
 const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
+  const { t } = useLanguage();
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("📍");
   const ICONS = ["🏠", "🏢", "🏋️", "🛒", "🏫", "🍕", "🏥", "📍"];
@@ -1253,6 +1263,7 @@ const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
 // REFERRAL PANEL — UNCHANGED
 // =============================================================================
 const ReferralPanel = () => {
+  const { t } = useLanguage();
   const [referral, setReferral]   = useState(null);
   const [codeInput, setCodeInput] = useState("");
   const [applying, setApplying]   = useState(false);
@@ -1316,6 +1327,7 @@ const ReferralPanel = () => {
 // RIDE HISTORY ITEM — UNCHANGED
 // =============================================================================
 const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
+  const { t } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const sc = statusConfig[ride.status] || statusConfig.cancelled;
 
