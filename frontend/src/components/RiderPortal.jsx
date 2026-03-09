@@ -253,7 +253,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         <Button className="w-full bg-[#00ff88] text-black font-bold h-13 text-base rounded-xl hover:bg-[#00e07a] transition-colors"
           onClick={() => { onLocationSelect({ address, lat: parseFloat(center.lat), lng: parseFloat(center.lng) }); onClose(); }}
           disabled={isDragging}>
-          {isDragging ? "Release to Confirm" : "Confirm Location"}
+          {isDragging ? t("loading") : t("confirm")}
         </Button>
       </div>
     </div>
@@ -475,7 +475,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     }
   }, [driverLocation, isFollowing]);
 
-  const etaLabel = status === "in_progress" ? "ETA to destination" : "ETA to pickup";
+  const etaLabel = status === "in_progress" ? t("destination") : t("pickup");
 
   return (
     <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: "#0d0d1a" }}>
@@ -644,7 +644,7 @@ const RiderAuth = () => {
         <form onSubmit={handleSubmit} className="space-y-3">
           {!isLogin && (
             <div className="grid grid-cols-2 gap-3">
-              {[["name","First name","given-name"],["surname","Last name","family-name"]].map(([k,l,ac]) => (
+              {[["name",t("first_name"),"given-name"],["surname",t("last_name"),"family-name"]].map(([k,l,ac]) => (
                 <div key={k}>
                   <label className="text-white/40 text-xs font-medium mb-1.5 block">{l}</label>
                   <Input id={`rider-${k}`} name={k} value={formData[k]} onChange={e => setFormData({ ...formData, [k]: e.target.value })}
@@ -808,7 +808,7 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
         ) : receipt ? (
           <div className="space-y-3">
             <div className="bg-white/5 rounded-2xl p-4 space-y-3 border border-white/5">
-              {[["Driver", receipt.driver_name], ["Car Type", receipt.car_type], ["Distance", `${receipt.distance_km?.toFixed(1)} km`], ["Payment", receipt.payment_method]].map(([k, v]) => (
+              {[[t("your_driver"), receipt.driver_name], [t("car_type"), receipt.car_type], [t("km"), `${receipt.distance_km?.toFixed(1)} km`], [t("payment"), receipt.payment_method]].map(([k, v]) => (
                 <div key={k} className="flex justify-between text-sm">
                   <span className="text-white/40">{k}</span>
                   <span className="text-white font-medium capitalize">{v}</span>
@@ -816,7 +816,7 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
               ))}
             </div>
             <div className="bg-white/5 rounded-2xl p-4 space-y-2.5 border border-white/5">
-              <p className="text-white/30 text-xs uppercase tracking-widest font-bold mb-3">Fare Breakdown</p>
+              <p className="text-white/30 text-xs uppercase tracking-widest font-bold mb-3">{t("fare")} Breakdown</p>
               {Object.entries(receipt.fare_breakdown || {}).filter(([k]) => !["breakdown","surge_multiplier","base_total"].includes(k) && typeof receipt.fare_breakdown[k] === "number" && receipt.fare_breakdown[k] > 0).map(([k, v]) => (
                 <div key={k} className="flex justify-between text-sm">
                   <span className="text-white/40 capitalize">{k.replace(/_/g, " ")}</span>
@@ -876,7 +876,7 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
             </button>
           ))}
         </div>
-        <Input type="number" placeholder="Custom amount (₾)" value={custom}
+        <Input type="number" placeholder={t("custom_amount")} value={custom}
           onChange={e => { setCustom(e.target.value); setTipAmount(null); }}
           className="bg-white/5 border-white/10 text-white text-center h-12 rounded-xl mb-4 placeholder:text-white/25" />
         {isValidTip && <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>}
@@ -1010,13 +1010,13 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
           </Button>
         )}
         <div className="space-y-2 mb-4">
-          <Input placeholder="Send to phone number (optional)" value={phone} onChange={e => setPhone(e.target.value)}
+          <Input placeholder={t("phone_optional")} value={phone} onChange={e => setPhone(e.target.value)}
             className="bg-white/5 border-white/10 text-white h-11 rounded-xl placeholder:text-white/25" />
-          <Input placeholder="Send to email (optional)" value={email} onChange={e => setEmail(e.target.value)}
+          <Input placeholder={t("email_optional")} value={email} onChange={e => setEmail(e.target.value)}
             className="bg-white/5 border-white/10 text-white h-11 rounded-xl placeholder:text-white/25" />
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-11" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-11" onClick={onClose}>{t("cancel")}</Button>
           <Button className="flex-1 bg-[#00d4ff] text-black font-bold rounded-xl h-11" onClick={handleShare} disabled={loading || (!phone && !email)}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
             Send Link
@@ -1073,7 +1073,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
             className="bg-white/5 border-white/10 text-white h-12 rounded-xl" />
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-12" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-12" onClick={onClose}>{t("cancel")}</Button>
           <Button className="flex-1 bg-yellow-500 text-black font-bold rounded-xl h-12" onClick={handleSchedule} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calendar className="w-4 h-4 mr-2" />}
             Schedule
@@ -1106,8 +1106,8 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             <Wallet className="w-5 h-5 text-[#00ff88]" />
           </div>
           <div>
-            <h2 className="text-white text-lg font-bold">Top Up Wallet</h2>
-            <p className="text-white/40 text-sm">Add funds to your T'aksi wallet</p>
+            <h2 className="text-white text-lg font-bold">{t("top_up_wallet")}</h2>
+            <p className="text-white/40 text-sm">{t("add_funds_desc")}</p>
           </div>
         </div>
         <div className="grid grid-cols-4 gap-2 mb-3">
@@ -1118,7 +1118,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             </button>
           ))}
         </div>
-        <Input type="number" placeholder="Custom amount (₾)" value={custom} min="1" max="1000"
+        <Input type="number" placeholder={t("custom_amount")} value={custom} min="1" max="1000"
           onChange={e => setCustom(e.target.value)}
           className="bg-white/5 border-white/10 text-white text-center h-11 rounded-xl mb-4 placeholder:text-white/25" />
         {canPay && <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>}
@@ -1154,10 +1154,10 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
           />
         ) : (
           <div className="bg-white/4 rounded-xl p-4 text-center mb-2">
-            <p className="text-white/25 text-sm">Enter ₾1 or more to show payment</p>
+            <p className="text-white/25 text-sm">{t("loading")}</p>
           </div>
         )}
-        <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose}>{t("cancel")}</Button>
       </div>
     </div>
   );
@@ -1185,8 +1185,8 @@ const FavoritesPanel = ({ onSelect }) => {
   if (!favorites.length) return (
     <div className="text-center py-6">
       <Heart className="w-8 h-8 text-white/15 mx-auto mb-2" />
-      <p className="text-white/30 text-sm">No saved places yet</p>
-      <p className="text-white/20 text-xs mt-1">Tap ❤️ on a location to save it</p>
+      <p className="text-white/30 text-sm">{t("no_saved_places")}</p>
+      <p className="text-white/20 text-xs mt-1">{t("favorite_added")}</p>
     </div>
   );
 
@@ -1241,7 +1241,7 @@ const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
         <Input placeholder="Name (e.g. Home, Work)" value={name} onChange={e => setName(e.target.value)}
           className="bg-white/5 border-white/10 text-white mb-4 h-11 rounded-xl placeholder:text-white/25" />
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-10 text-sm" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-10 text-sm" onClick={onClose}>{t("cancel")}</Button>
           <Button className="flex-1 bg-pink-500 text-white font-bold rounded-xl h-10 text-sm" onClick={handleSave}>Save</Button>
         </div>
       </div>
@@ -1341,10 +1341,10 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
         <div className="px-4 pb-4 pt-0 border-t border-white/6 space-y-3">
           <div className="grid grid-cols-2 gap-2 pt-3">
             {[
-              ["Car Type", ride.carType || ride.car_type || "—"],
-              ["Payment", ride.payment_method || ride.paymentMethod || "Cash"],
-              ride.driver_info?.name ? ["Driver", ride.driver_info.name] : null,
-              ride.distance_km ? ["Distance", `${parseFloat(ride.distance_km).toFixed(1)} km`] : null,
+              [t("car_type"), ride.carType || ride.car_type || "—"],
+              [t("payment"), ride.payment_method || ride.paymentMethod || t("cash")],
+              ride.driver_info?.name ? [t("your_driver"), ride.driver_info.name] : null,
+              ride.distance_km ? [t("traveled"), `${parseFloat(ride.distance_km).toFixed(1)} km`] : null,
             ].filter(Boolean).map(([k, v]) => (
               <div key={k} className="bg-white/4 rounded-xl p-2.5">
                 <p className="text-white/35 text-[10px] uppercase tracking-wider">{k}</p>
@@ -1379,7 +1379,7 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
               {!ride.tip_amount && ride.driver_id && (
                 <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-xs font-medium transition-all border border-yellow-500/20 hover:border-yellow-500/35"
                   onClick={() => onTip({ rideId: ride.id, driverName: ride.driver_info?.name || "Driver" })}>
-                  <Star className="w-3.5 h-3.5" /> Tip Driver
+                  <Star className="w-3.5 h-3.5" /> {t("tip_driver")}
                 </button>
               )}
               {!ride.rider_rating && (
@@ -1757,7 +1757,7 @@ const [promoApplied, setPromoApplied] = useState(false);
             {showFavorites && (
               <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
                 <p className="text-pink-400/80 text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <Heart className="w-3.5 h-3.5" /> Saved Places
+                  <Heart className="w-3.5 h-3.5" /> {t("saved_places")}
                 </p>
                 <FavoritesPanel onSelect={(fav) => { setDestination({ address: fav.address, lat: fav.lat, lng: fav.lng }); setShowFavorites(false); toast.success(`${fav.name} set as destination`); }} />
               </div>
@@ -1767,7 +1767,7 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="p-4 space-y-3">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wider">Pickup</label>
+                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wider">{t("pickup")}</label>
                     <button className="flex items-center gap-1 text-[#00ff88] text-xs font-medium hover:text-[#00d4ff] transition-colors disabled:opacity-50"
                       onClick={getCurrentLocation} disabled={locationLoading}>
                       {locationLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Crosshair className="w-3 h-3" />}
@@ -1978,7 +1978,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed."); setShowPayPal(false); }}
                     onCancel={() => { toast.info("Payment cancelled."); setShowPayPal(false); }}
                   />
-                  <button className="w-full text-center text-white/25 text-xs mt-3 hover:text-white/50 transition-colors" onClick={() => setShowPayPal(false)}>Cancel</button>
+                  <button className="w-full text-center text-white/25 text-xs mt-3 hover:text-white/50 transition-colors" onClick={() => setShowPayPal(false)}>{t("cancel")}</button>
                 </div>
               );
             })()}
@@ -1986,7 +1986,7 @@ const [promoApplied, setPromoApplied] = useState(false);
             {scheduledRides.length > 0 && (
               <div className="bg-yellow-500/5 border border-yellow-500/15 rounded-2xl p-4">
                 <p className="text-yellow-400/80 text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Calendar className="w-3.5 h-3.5" /> Scheduled Rides
+                  <Calendar className="w-3.5 h-3.5" /> {t("schedule")}
                 </p>
                 {scheduledRides.slice(0, 2).map(r => (
                   <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-yellow-500/8 last:border-0">
@@ -1995,7 +1995,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                       <p className="text-yellow-400/50 text-xs mt-0.5">{new Date(r.scheduled_time).toLocaleString()}</p>
                     </div>
                     <button className="text-red-400/60 hover:text-red-400 text-xs transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10" onClick={() => cancelScheduledRide(r.id)}>
-                      Cancel
+                      {t("cancel")}
                     </button>
                   </div>
                 ))}
@@ -2034,7 +2034,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                       <div className="bg-[#07070f]/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
                         <p className="text-xs text-white font-semibold">
-                          {activeRide.status === "in_progress" ? "Live Trip" : "Driver Arriving"}
+                          {activeRide.status === "in_progress" ? t("ride_started") : t("driver_coming")}
                         </p>
                       </div>
                     </div>
@@ -2120,7 +2120,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     </div>
                     <div className="flex items-center gap-2 text-xs text-white/30 pt-1 border-t border-white/6">
                       <Shield className="w-3 h-3 text-[#00ff88]/60" />
-                      <span>{t("background_checked")}</span>
+                      <span>Background checked & verified</span>
                     </div>
                     <RideCommunication
                       rideId={activeRide.id}
@@ -2132,7 +2132,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     {activeRide.status === "in_progress" && (
                       <button onClick={() => setShowTip({ rideId: activeRide.id, driverName: activeRide.driver_info?.name || "Driver" })}
                         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm font-semibold hover:bg-yellow-500/20 transition-all">
-                        <Star className="w-4 h-4" /> Tip Driver
+                        <Star className="w-4 h-4" /> {t("tip_driver")}
                       </button>
                     )}
                   </div>
@@ -2224,15 +2224,15 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="grid grid-cols-3 gap-2">
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
                   <p className="text-[#00ff88] text-xl font-bold font-mono">{user?.total_rides || 0}</p>
-                  <p className="text-white/30 text-xs mt-0.5">Rides</p>
+                  <p className="text-white/30 text-xs mt-0.5">{t("rides")}</p>
                 </div>
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
                   <p className="text-yellow-400 text-xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p>
-                  <p className="text-white/30 text-xs mt-0.5">Rating ⭐</p>
+                  <p className="text-white/30 text-xs mt-0.5">{t("rating_submitted").split(" ")[0]} ⭐</p>
                 </div>
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
                   <p className="text-[#00d4ff] text-xl font-bold font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
-                  <p className="text-white/30 text-xs mt-0.5">Wallet</p>
+                  <p className="text-white/30 text-xs mt-0.5">{t("wallet")}</p>
                 </div>
               </div>
             </div>
@@ -2244,20 +2244,20 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <Wallet className="w-4 h-4 text-[#00ff88]" />
                   </div>
                   <div>
-                    <p className="text-white font-semibold text-sm">T'aksi Wallet</p>
-                    <p className="text-white/30 text-xs">Pay faster with wallet</p>
+                    <p className="text-white font-semibold text-sm">{t("top_up_wallet")}</p>
+                    <p className="text-white/30 text-xs">{t("add_funds_desc")}</p>
                   </div>
                 </div>
                 <span className="text-[#00ff88] font-bold text-2xl font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</span>
               </div>
               <Button className="w-full bg-[#00ff88] text-black font-bold rounded-xl h-11 text-sm" onClick={() => setShowTopUp(true)}>
-                <Plus className="w-4 h-4 mr-1.5" /> Add Funds
+                <Plus className="w-4 h-4 mr-1.5" /> {t("top_up")}
               </Button>
             </div>
 
             <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
               <p className="text-white font-semibold text-sm flex items-center gap-2 mb-4">
-                <Heart className="w-4 h-4 text-pink-400" /> Saved Places
+                <Heart className="w-4 h-4 text-pink-400" /> {t("saved_places")}
               </p>
               <FavoritesPanel onSelect={(fav) => { setDestination({ address: fav.address, lat: fav.lat, lng: fav.lng }); setActiveTab("book"); toast.success(`${fav.name} set as destination`); }} />
             </div>
@@ -2269,8 +2269,8 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <Gift className="w-4 h-4 text-[#00d4ff]" />
                   </div>
                   <div>
-                    <p className="text-white font-semibold text-sm">Refer & Earn</p>
-                    <p className="text-white/30 text-xs">Share your code, get bonuses</p>
+                    <p className="text-white font-semibold text-sm">{t("share_and_earn")}</p>
+                    <p className="text-white/30 text-xs">{t("invite_friend_desc")}</p>
                   </div>
                 </div>
                 {showReferral ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
@@ -2283,12 +2283,12 @@ const [promoApplied, setPromoApplied] = useState(false);
             </div>
 
             <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
-              <p className="text-white font-semibold text-sm mb-3">Language</p>
+              <p className="text-white font-semibold text-sm mb-3">{t("language")}</p>
               <LanguageSelector variant="outline" onSelect={(lang) => api.post(`/user/language?lang=${lang}`).catch(() => {})} />
             </div>
 
             <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border border-red-500/20 text-red-400/70 text-sm font-medium hover:bg-red-500/10 hover:border-red-500/35 hover:text-red-400 transition-all">
-              <LogOut className="w-4 h-4" /> Sign Out
+              <LogOut className="w-4 h-4" /> {t("logout")}
             </button>
           </div>
         )}
