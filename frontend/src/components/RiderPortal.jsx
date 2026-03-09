@@ -2240,7 +2240,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                 </div>
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
                   <p className="text-yellow-400 text-xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p>
-                  <p className="text-white/30 text-xs mt-0.5">{t("rating_submitted").split(" ")[0]} ⭐</p>
+                  <p className="text-white/30 text-xs mt-0.5">{t("rating")} ⭐</p>
                 </div>
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
                   <p className="text-[#00d4ff] text-xl font-bold font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>

@@ -374,7 +374,18 @@ export const translations = {
     install_app: "აპლიკაციის ინსტალაცია",
     safety_features: "უსაფრთხოების ფუნქციები",
     dispute: "დავა",
-    campaign: "კამპანია"
+    campaign: "კამპანია",
+    wallet: "საფულე",
+    rating: "შეფასება",
+    wallet_empty: "საფულე ცარიელია",
+    payment_method: "გადახდის მეთოდი",
+    schedule: "დაგეგმვა",
+    scheduled: "დაგეგმილი",
+    have_promo_code: "გაქვთ პრომო კოდი?",
+    promo_discount: "ფასდაკლება",
+    uses_left: "დარჩენილი გამოყენება",
+    maps_api_key_missing: "რუქის გასაღები არ არის",
+    maps_load_error: "რუქის ჩატვირთვა ვერ მოხერხდა"
   },
   
   en: {
@@ -721,7 +732,18 @@ export const translations = {
     payment_processed: "Payment automatically processed",
     thank_your_driver: "Thank you for riding with",
     rate_your_driver: "Rate Your Driver",
-    maybe_later: "Maybe Later"
+    maybe_later: "Maybe Later",
+    wallet: "Wallet",
+    rating: "Rating",
+    wallet_empty: "Wallet is empty",
+    payment_method: "Payment Method",
+    schedule: "Schedule",
+    scheduled: "Scheduled",
+    have_promo_code: "Have a promo code?",
+    promo_discount: "Promo discount",
+    uses_left: "uses left",
+    maps_api_key_missing: "Maps API key missing",
+    maps_load_error: "Failed to load Google Maps"
   },
   
   ru: {
