@@ -254,7 +254,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         <Button className="w-full bg-[#00ff88] text-black font-bold h-13 text-base rounded-xl hover:bg-[#00e07a] transition-colors"
           onClick={() => { onLocationSelect({ address, lat: parseFloat(center.lat), lng: parseFloat(center.lng) }); onClose(); }}
           disabled={isDragging}>
-          {isDragging ? t("loading") : t("confirm")}
+          {isDragging ? "Release to Confirm" : "Confirm Location"}
         </Button>
       </div>
     </div>
@@ -646,7 +646,7 @@ const RiderAuth = () => {
         <form onSubmit={handleSubmit} className="space-y-3">
           {!isLogin && (
             <div className="grid grid-cols-2 gap-3">
-              {[["name",t("first_name"),"given-name"],["surname",t("last_name"),"family-name"]].map(([k,l,ac]) => (
+              {[['name',t("first_name"),'given-name'],['surname',t("last_name"),'family-name']].map(([k,l,ac]) => (
                 <div key={k}>
                   <label className="text-white/40 text-xs font-medium mb-1.5 block">{l}</label>
                   <Input id={`rider-${k}`} name={k} value={formData[k]} onChange={e => setFormData({ ...formData, [k]: e.target.value })}
@@ -1162,7 +1162,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
           />
         ) : (
           <div className="bg-white/4 rounded-xl p-4 text-center mb-2">
-            <p className="text-white/25 text-sm">{t("loading")}</p>
+            <p className="text-white/25 text-sm">Enter ₾1 or more to show payment</p>
           </div>
         )}
         <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose}>{t("cancel")}</Button>
@@ -1510,7 +1510,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     }
     if (ride.status === "searching") { notifiedArrived.current = false; notifiedAccepted.current = false; }
     if (ride.status === "completed") {
-      setCompletedRideData({ id: ride.id, final_fare: ride.final_fare || ride.estimated_fare, payment_method: ride.payment_method || ride.paymentMethod, driver_name: ride.driver_info?.name || "Your Driver", driver_id: ride.driver_id });
+      setCompletedRideData({ id: ride.id, final_fare: ride.final_fare || ride.estimated_fare, payment_method: ride.payment_method || ride.paymentMethod, driver_name: ride.driver_info?.name || t("your_driver"), driver_id: ride.driver_id });
       setActiveRide(null);
       setActiveTab("book");
       fetchRideHistory();
@@ -1779,7 +1779,7 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="p-4 space-y-3">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wider">{t("pickup")}</label>
+                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wider">{t('pickup')}</label>
                     <button className="flex items-center gap-1 text-[#00ff88] text-xs font-medium hover:text-[#00d4ff] transition-colors disabled:opacity-50"
                       onClick={getCurrentLocation} disabled={locationLoading}>
                       {locationLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Crosshair className="w-3 h-3" />}
@@ -2007,7 +2007,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                       <p className="text-yellow-400/50 text-xs mt-0.5">{new Date(r.scheduled_time).toLocaleString()}</p>
                     </div>
                     <button className="text-red-400/60 hover:text-red-400 text-xs transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10" onClick={() => cancelScheduledRide(r.id)}>
-                      {t("cancel")}
+                      Cancel
                     </button>
                   </div>
                 ))}
@@ -2132,7 +2132,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     </div>
                     <div className="flex items-center gap-2 text-xs text-white/30 pt-1 border-t border-white/6">
                       <Shield className="w-3 h-3 text-[#00ff88]/60" />
-                      <span>Background checked & verified</span>
+                      <span>{t("background_checked")}</span>
                     </div>
                     <RideCommunication
                       rideId={activeRide.id}
