@@ -2397,13 +2397,11 @@ const RiderPortal = () => {
   );
 };
 
-// This wraps the portal in its own providers so it can never be 'null'
+// AuthProvider only — LanguageProvider comes from the app root
 const RiderPortalWithProviders = () => (
-  <LanguageProvider>
-    <AuthProvider>
-      <RiderPortal />
-    </AuthProvider>
-  </LanguageProvider>
+  <AuthProvider>
+    <RiderPortal />
+  </AuthProvider>
 );
 
 export default RiderPortalWithProviders;
