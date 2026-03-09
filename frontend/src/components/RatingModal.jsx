@@ -95,7 +95,7 @@ const RatingModal = ({
           <DialogDescription id="rating-dialog-description" className="text-center text-muted-foreground">
             {ratingType === "driver" 
               ? `How was your ride with ${driverName}?`
-              : "Rate your passenger"}
+              : t('rate_passenger')}
           </DialogDescription>
         </DialogHeader>
 
@@ -147,7 +147,7 @@ const RatingModal = ({
                 className="space-y-2 overflow-hidden"
               >
                 <p className="text-sm text-muted-foreground text-center">
-                  {rating >= 4 ? "What did you like?" : "What could be better?"}
+                  {rating >= 4 ? t('what_did_you_like') : t('what_could_be_better')}
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {tags.map((tag) => (
@@ -192,12 +192,12 @@ const RatingModal = ({
             {loading ? (
               <span className="flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                Submitting...
+                {t('submitting')}
               </span>
             ) : (
               <span className="flex items-center gap-2">
                 <Send className="w-4 h-4" />
-                Submit Rating
+                {t('submit_rating')}
               </span>
             )}
           </Button>

@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
+import CurrencyConverter from "@/components/CurrencyConverter";
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
@@ -1835,9 +1836,12 @@ const [promoApplied, setPromoApplied] = useState(false);
                   <span>{routeInfo.distance} {t("km")} · {routeInfo.duration} {t("min")}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[#00ff88] font-bold text-2xl">₾{fareEstimate.total.toFixed(2)}</span>
-                  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">{t("card_fee_included")}</p>}
-                </div>
+  <div className="flex items-baseline justify-end">
+    <span className="text-[#00ff88] font-bold text-2xl">₾{fareEstimate.total.toFixed(2)}</span>
+    <CurrencyConverter gelAmount={fareEstimate.total} />
+  </div>
+  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">incl. ₾2 card fee</p>}
+</div>
               </div>
             )}
 
@@ -1854,7 +1858,10 @@ const [promoApplied, setPromoApplied] = useState(false);
                       className={`p-2.5 rounded-xl border-2 transition-all text-center active:scale-95 ${active ? "border-[#00ff88] bg-[#00ff88]/10 shadow-[0_0_12px_rgba(0,255,136,0.15)]" : "border-white/8 bg-white/3 hover:border-white/20"}`}>
                       <div className="text-xl mb-0.5">{type.icon}</div>
                       <div className={`text-[10px] font-semibold leading-tight ${active ? "text-[#00ff88]" : "text-white/50"}`}>{type.name}</div>
-                      <div className={`text-[10px] mt-0.5 font-mono ${active ? "text-[#00ff88]/70" : "text-white/30"}`}>₾{est.toFixed(2)}</div>
+                      <div className={`text-[10px] mt-0.5 font-mono ${active ? "text-[#00ff88]/70" : "text-white/30"}`}>
+  ₾{est.toFixed(2)}
+  <div className="mt-0.5"><CurrencyConverter gelAmount={est} /></div>
+</div>
                     </button>
                   );
                 })}
@@ -2113,7 +2120,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     </div>
                     <div className="flex items-center gap-2 text-xs text-white/30 pt-1 border-t border-white/6">
                       <Shield className="w-3 h-3 text-[#00ff88]/60" />
-                      <span>Background checked & verified</span>
+                      <span>{t("background_checked")}</span>
                     </div>
                     <RideCommunication
                       rideId={activeRide.id}

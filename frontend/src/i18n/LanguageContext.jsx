@@ -6,9 +6,22 @@ const LanguageContext = createContext(null);
 
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguageState] = useState(() => {
+    // 1. User Preference: Did they manually pick a language last time?
     const saved = localStorage.getItem('taksi_language');
     if (saved && translations[saved]) return saved;
-    return defaultLanguage;
+
+    // 2. Auto-Detect: Look at their phone/browser settings (e.g., "de-DE" becomes "de")
+    const browserLang = typeof window !== 'undefined' && navigator.language 
+      ? navigator.language.split('-')[0].toLowerCase() 
+      : null;
+
+    // 3. Match: If we support their native language, serve it instantly
+    if (browserLang && translations[browserLang]) {
+      return browserLang;
+    }
+
+    // 4. Tourist Fallback: If we don't have their language, give them English (not Georgian)
+    return 'en';
   });
 
   const [renderKey, setRenderKey] = useState(0);
@@ -20,7 +33,7 @@ export const LanguageProvider = ({ children }) => {
   }, [language]);
 
   const t = useCallback((key) => {
-    return translations[language][key] || translations[defaultLanguage][key] || key;
+    return translations[language]?.[key] || translations[defaultLanguage]?.[key] || key;
   }, [language]);
 
   const changeLanguage = useCallback((newLanguage) => {

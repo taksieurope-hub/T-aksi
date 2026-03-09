@@ -460,18 +460,18 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
 
       <div className="flex gap-2 bg-blue-500/8 border border-blue-500/20 rounded-xl p-3">
         <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-        <p className="text-blue-300/80 text-xs leading-relaxed">Processed by admin in 1–2 business days. ₾5 reserve always maintained.</p>
+        <p className="text-blue-300/80 text-xs leading-relaxed">{t("withdrawal_info")}</p>
       </div>
 
       <Button onClick={submit} disabled={!isValid || loading}
         className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold disabled:opacity-30">
         {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Banknote className="w-5 h-5 mr-2" />}
-        {loading ? "Processing..." : `Withdraw ₾${amt > 0 ? amt.toFixed(2) : "0.00"}`}
+        {loading ? t("processing") : `${t("withdraw")} ₾${amt > 0 ? amt.toFixed(2) : "0.00"}`}
       </Button>
 
       {history.length > 0 && (
         <div className="space-y-2 pt-2">
-          <p className="text-white/30 text-[10px] uppercase tracking-widest">Recent</p>
+          <p className="text-white/30 text-[10px] uppercase tracking-widest">{t("recent")}</p>
           {history.slice(0, 5).map((w, i) => (
             <div key={i} className="flex justify-between items-center bg-white/3 rounded-xl p-3 border border-white/5">
               <div>
@@ -519,10 +519,10 @@ const CampaignsPanel = ({ driverRating }) => {
 
   return (
     <div className="space-y-4">
-      <SectionHeader icon={Award} title="Driver Campaigns" subtitle="Complete challenges, earn bonuses" />
+      <SectionHeader icon={Award} title={t("driver_campaigns")} subtitle={t("campaigns_subtitle")} />
 
       <div className="flex gap-2">
-        {[["available", "Available", available.length], ["joined", "My Progress", joined.length]].map(([k, l, n]) => (
+        {[["available", t("available"), available.length], ["joined", t("my_progress"), joined.length]].map(([k, l, n]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${tab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/40"}`}>
             {l} {n > 0 && <span className="ml-1 bg-[#00ff88]/20 text-[#00ff88] text-xs px-1.5 rounded-full">{n}</span>}
@@ -535,7 +535,7 @@ const CampaignsPanel = ({ driverRating }) => {
           {available.length === 0 && (
             <div className="text-center py-8 text-white/30">
               <Award className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>No new campaigns available</p>
+              <p>{t("no_campaigns")}</p>
             </div>
           )}
           {available.map(c => (
@@ -577,7 +577,7 @@ const CampaignsPanel = ({ driverRating }) => {
           {joined.length === 0 && (
             <div className="text-center py-8 text-white/30">
               <Target className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>Join campaigns to see your progress</p>
+              <p>{t("join_campaigns_progress")}</p>
             </div>
           )}
           {joined.map(c => {
@@ -601,7 +601,7 @@ const CampaignsPanel = ({ driverRating }) => {
                       style={{ width: `${Math.min(100, pct)}%` }} />
                   </div>
                   <div className="flex justify-between text-[10px] text-white/30">
-                    <span>{pct.toFixed(1)}% complete</span>
+                    <span>{pct.toFixed(1)}{t("percent_complete")}</span>
                     {done && <span className="text-[#00ff88]">✓ Bonus earned!</span>}
                   </div>
                 </div>
@@ -661,15 +661,15 @@ const FleetPanel = ({ registrationStatus }) => {
 
   return (
     <div className="space-y-4">
-      <SectionHeader icon={Truck} title="Fleet Management" subtitle="Manage your vehicles & drivers"
+      <SectionHeader icon={Truck} title={t("fleet_management")} subtitle={t("fleet_management")}
         action={<Button size="sm" onClick={() => setShowAdd(!showAdd)} className={`h-8 text-xs font-bold ${showAdd ? "bg-red-500/20 border border-red-500/40 text-red-400" : "bg-[#00ff88]/15 border border-[#00ff88]/40 text-[#00ff88]"}`}>
-          {showAdd ? <><X className="w-3.5 h-3.5 mr-1" /> Cancel</> : <><Plus className="w-3.5 h-3.5 mr-1" /> Add Vehicle</>}
+          {showAdd ? <><X className="w-3.5 h-3.5 mr-1" /> {t("cancel")}</> : <><Plus className="w-3.5 h-3.5 mr-1" /> {t("add_vehicle")}</>}
         </Button>}
       />
 
       {showAdd && (
         <GlassCard className="p-4 space-y-3">
-          <p className="text-white/60 text-xs uppercase tracking-wider mb-1">Vehicle Details</p>
+          <p className="text-white/60 text-xs uppercase tracking-wider mb-1">{t("vehicle_details")}</p>
           <div className="grid grid-cols-2 gap-2.5">
             {[["car_make","Make","Toyota"],["car_model","Model","Camry"],["car_year","Year","2020"],["car_color","Color","Silver"],["license_plate","Plate","AB-123-CD"],["driver_name","Driver Name","Full Name"],["driver_phone","Driver Phone","+995 555 000 000"]].map(([k,l,p]) => (
               <div key={k} className={`space-y-1 ${k === "driver_name" || k === "driver_phone" ? "col-span-2" : ""}`}>
@@ -689,7 +689,7 @@ const FleetPanel = ({ registrationStatus }) => {
           <Button onClick={addVehicle} disabled={submitting || !form.car_make || !form.license_plate || !form.driver_name}
             className="w-full bg-[#00ff88] text-black font-bold h-10">
             {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Add to Fleet
+            {t("add_vehicle")}
           </Button>
         </GlassCard>
       )}
@@ -699,7 +699,7 @@ const FleetPanel = ({ registrationStatus }) => {
       ) : vehicles.length === 0 ? (
         <div className="text-center py-10 text-white/30">
           <Truck className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p>No fleet vehicles yet</p>
+          <p>{t("no_fleet_vehicles")}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -756,17 +756,17 @@ const SupportPanel = () => {
 
   return (
     <div className="space-y-4">
-      <SectionHeader icon={Headphones} title="Support" subtitle="Get help from our team" />
+      <SectionHeader icon={Headphones} title={t("support")} subtitle={t("support_subtitle")} />
 
       <GlassCard className="p-4 space-y-3">
-        <Label className="text-white/60 text-xs uppercase tracking-wider">New Message</Label>
+        <Label className="text-white/60 text-xs uppercase tracking-wider">{t("new_message")}</Label>
         <textarea value={message} onChange={e => setMessage(e.target.value)} rows={3}
-          placeholder="Describe your issue..."
+          placeholder={t("describe_issue")}
           className="w-full bg-white/4 border border-white/10 rounded-xl p-3 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-[#00ff88]/40" />
         <Button onClick={send} disabled={!message.trim() || sending}
           className="w-full bg-[#00ff88] text-black font-bold h-10">
           {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-          {sending ? "Sending..." : "Send Message"}
+          {sending ? t("sending") : t("send_message")}
         </Button>
       </GlassCard>
 
@@ -775,11 +775,11 @@ const SupportPanel = () => {
       ) : tickets.length === 0 ? (
         <div className="text-center py-8 text-white/30">
           <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p>No tickets yet</p>
+          <p>{t("no_tickets")}</p>
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-white/30 text-[10px] uppercase tracking-widest">Previous Tickets</p>
+          <p className="text-white/30 text-[10px] uppercase tracking-widest">{t("previous_tickets")}</p>
           {tickets.map(t => (
             <GlassCard key={t.id} className="overflow-hidden">
               <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}>
@@ -797,7 +797,7 @@ const SupportPanel = () => {
                   {(t.chat_history || []).map((msg, i) => (
                     <div key={i} className={`rounded-xl p-3 text-sm ${msg.role === "user" ? "bg-[#00ff88]/8 border border-[#00ff88]/15 ml-4" : "bg-white/4 border border-white/8 mr-4"}`}>
                       <p className={`text-[10px] uppercase tracking-wider mb-1 ${msg.role === "user" ? "text-[#00ff88]/60" : msg.role === "admin" ? "text-blue-400/70" : "text-white/40"}`}>
-                        {msg.role === "user" ? "You" : msg.role === "admin" ? "Support Agent" : "System"}
+                        {msg.role === "user" ? t("you") : msg.role === "admin" ? t("support_agent") : t("system")}
                       </p>
                       <p className="text-white/80">{msg.content}</p>
                     </div>
@@ -848,17 +848,17 @@ const ReferralPanel = () => {
 
   return (
     <div className="space-y-4">
-      <SectionHeader icon={Gift} title="Referrals" subtitle="Invite drivers, earn bonuses" />
+      <SectionHeader icon={Gift} title={t("referrals")} subtitle={t("invite_friend_desc")} />
 
       {data && (
         <>
           <div className="grid grid-cols-2 gap-3">
-            <StatPill label="Referrals" value={data.referrals_count || 0} color="text-white" />
-            <StatPill label="Bonus Earned" value={`₾${(data.bonus_earned || 0).toFixed(2)}`} color="text-[#00ff88]" />
+            <StatPill label={t("referrals")} value={data.referrals_count || 0} color="text-white" />
+            <StatPill label={t("bonus_earned")} value={`₾${(data.bonus_earned || 0).toFixed(2)}`} color="text-[#00ff88]" />
           </div>
 
           <GlassCard accent className="p-4 space-y-3">
-            <p className="text-[#00ff88]/60 text-[10px] uppercase tracking-widest">Your Code</p>
+            <p className="text-[#00ff88]/60 text-[10px] uppercase tracking-widest">{t("your_code")}</p>
             <div className="flex items-center gap-3">
               <p className="text-3xl font-bold font-mono tracking-widest text-white flex-1">{data.referral_code}</p>
               <button onClick={copyCode} className="p-2.5 rounded-xl bg-[#00ff88]/15 border border-[#00ff88]/30 text-[#00ff88] hover:bg-[#00ff88]/25 transition-colors">
@@ -872,22 +872,22 @@ const ReferralPanel = () => {
           </GlassCard>
 
           <GlassCard className="p-4 space-y-3">
-            <p className="text-white/60 text-[10px] uppercase tracking-widest">Apply a Code</p>
+            <p className="text-white/60 text-[10px] uppercase tracking-widest">{t("apply_code")}</p>
             <div className="flex gap-2">
-              <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="ENTER CODE"
+              <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder={t("enter_code")}
                 className="bg-white/4 border-white/10 text-white font-mono uppercase placeholder:normal-case placeholder:text-white/20 flex-1" />
               <Button onClick={applyCode} disabled={!code.trim() || applying} className="bg-[#00ff88] text-black font-bold px-5">
-                {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}
+                {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : t("apply")}
               </Button>
             </div>
           </GlassCard>
 
           <GlassCard className="p-4">
-            <p className="text-white/60 text-xs uppercase tracking-wider mb-3">How it works</p>
-            {[["Invite a friend", "Share your code with another driver"], ["They sign up", "Friend registers with your code"], ["Both earn bonus", "₾5 for them + ₾10 for you"]].map(([t,d],i) => (
+            <p className="text-white/60 text-xs uppercase tracking-wider mb-3">{t("how_it_works")}</p>
+            {[[t("invite_friend"), t("invite_friend_desc")], [t("they_sign_up"), t("they_sign_up_desc")], [t("both_earn_bonus"), t("both_earn_bonus_desc")]].map(([title,d],i) => (
               <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
                 <div className="w-6 h-6 rounded-full bg-[#00ff88]/15 border border-[#00ff88]/30 flex items-center justify-center text-[#00ff88] text-xs font-bold shrink-0">{i+1}</div>
-                <div><p className="text-white text-sm font-medium">{t}</p><p className="text-white/40 text-xs">{d}</p></div>
+                <div><p className="text-white text-sm font-medium">{title}</p><p className="text-white/40 text-xs">{d}</p></div>
               </div>
             ))}
           </GlassCard>
@@ -2402,7 +2402,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                   <GlassCard accent className="p-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-[#00ff88]">
                       <Activity className="w-5 h-5 animate-pulse" />
-                      <span className="font-medium text-sm">Distance Traveled</span>
+                      <span className="font-medium text-sm">{t("distance_traveled")}</span>
                     </div>
                     <span className="text-[#00ff88] font-bold font-mono text-2xl">{distanceTraveled.toFixed(2)} km</span>
                   </GlassCard>
@@ -2412,7 +2412,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 <div className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${midTripWaiting ? "bg-amber-500/10 border-amber-500/30 animate-pulse" : "bg-gradient-to-r from-[#00ff88]/10 to-[#00d4ff]/10 border-[#00ff88]/20"}`}>
                   <div>
                     <span className="text-white/60 text-sm">
-                      {midTripWaiting ? "Wait charge running…" : "Current Fare"}
+                      {midTripWaiting ? t("wait_charge_running") : t("current_fare")}
                     </span>
                     {midTripWaiting && (
                       <p className="text-amber-400 text-xs mt-0.5 font-mono">
@@ -2600,13 +2600,13 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
             {!activeRide && activeTab === "nearby" && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-white/30 text-[10px] uppercase tracking-widest">Within 10km</p>
+                  <p className="text-white/30 text-[10px] uppercase tracking-widest">{t("within_10km")}</p>
                   <button onClick={fetchNearbyRides} className="text-[#00d4ff] text-xs flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Refresh</button>
                 </div>
                 {nearbyRides.length === 0 ? (
                   <div className="text-center py-8 text-white/30">
                     <MapPinned className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>No rides nearby</p>
+                    <p>{t("no_rides_nearby")}</p>
                   </div>
                 ) : nearbyRides.map(ride => (
                   <GlassCard key={ride.id} className="p-4">
@@ -2742,7 +2742,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 {rideHistory.length === 0 ? (
                   <div className="text-center py-10 text-white/30">
                     <History className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>No completed rides yet</p>
+                    <p>{t("no_completed_rides")}</p>
                   </div>
                 ) : rideHistory.map(r => (
                   <GlassCard key={r.id} className="p-4">
