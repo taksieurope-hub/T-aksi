@@ -1,0 +1,107 @@
+[
+  {
+    "test": "Health Check",
+    "success": true,
+    "message": "Status: 200, Response received",
+    "timestamp": "2026-03-08T15:45:19.107800",
+    "endpoint": "health",
+    "expected_status": 200,
+    "actual_status": 200
+  },
+  {
+    "test": "Translate API",
+    "success": false,
+    "message": "Expected 200, got 404. Error: Not Found",
+    "timestamp": "2026-03-08T15:45:19.257053",
+    "endpoint": "translate",
+    "expected_status": 200,
+    "actual_status": 404
+  },
+  {
+    "test": "Support Message API",
+    "success": false,
+    "message": "Expected 200, got 401. Error: Not authenticated",
+    "timestamp": "2026-03-08T15:45:19.362436",
+    "endpoint": "support/message",
+    "expected_status": 200,
+    "actual_status": 401
+  },
+  {
+    "test": "Rating Tags API",
+    "success": false,
+    "message": "Expected 200, got 404. Error: Not Found",
+    "timestamp": "2026-03-08T15:45:19.487897",
+    "endpoint": "rating/tags",
+    "expected_status": 200,
+    "actual_status": 404
+  },
+  {
+    "test": "Rider Registration",
+    "success": false,
+    "message": "Expected 200, got 403. Error: Phone number must be verified before registering.",
+    "timestamp": "2026-03-08T15:45:19.601576",
+    "endpoint": "auth/register/rider",
+    "expected_status": 200,
+    "actual_status": 403
+  },
+  {
+    "test": "Driver Registration",
+    "success": false,
+    "message": "Expected 200, got 403. Error: Phone number must be verified before registering.",
+    "timestamp": "2026-03-08T15:45:19.754772",
+    "endpoint": "auth/register/driver",
+    "expected_status": 200,
+    "actual_status": 403
+  },
+  {
+    "test": "SOS Alert Creation",
+    "success": true,
+    "message": "Status: 200, Response received",
+    "timestamp": "2026-03-08T15:45:20.608984",
+    "endpoint": "sos",
+    "expected_status": 200,
+    "actual_status": 200
+  },
+  {
+    "test": "Admin SOS Active",
+    "success": true,
+    "message": "Status: 401, Response received",
+    "timestamp": "2026-03-08T15:45:20.716678",
+    "endpoint": "admin/sos/active",
+    "expected_status": 401,
+    "actual_status": 401
+  },
+  {
+    "test": "Admin Support Tickets",
+    "success": true,
+    "message": "Status: 401, Response received",
+    "timestamp": "2026-03-08T15:45:20.828952",
+    "endpoint": "admin/support/tickets/escalated",
+    "expected_status": 401,
+    "actual_status": 401
+  },
+  {
+    "test": "Fare Estimation",
+    "success": true,
+    "message": "Status: 200, Response received",
+    "timestamp": "2026-03-08T15:45:20.943245",
+    "endpoint": "surge/estimate",
+    "expected_status": 200,
+    "actual_status": 200
+  },
+  {
+    "test": "Surge Status",
+    "success": true,
+    "message": "Status: 200, Response received",
+    "timestamp": "2026-03-08T15:45:21.045893",
+    "endpoint": "surge/status",
+    "expected_status": 200,
+    "actual_status": 200
+  },
+  {
+    "test": "Frontend Loading",
+    "success": true,
+    "message": "Frontend loaded successfully (Size: 1638 chars)",
+    "timestamp": "2026-03-08T15:45:21.158098"
+  }
+]

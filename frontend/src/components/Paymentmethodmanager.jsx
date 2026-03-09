@@ -1,49 +1,53 @@
 /**
  * PaymentMethodManager.jsx
  *
- * Handles PayPal card vaulting for T'aksi.
- * - Lists saved cards with brand icon + last 4 digits
- * - Lets users add a new card (one-time entry, saved forever)
- * - Set default, delete cards
- * - Used in: RiderPortal settings + checkout flow
- *
- * Usage:
- *   import PaymentMethodManager from "@/components/PaymentMethodManager"
- *
- *   // In settings:
- *   <PaymentMethodManager />
- *
- *   // At checkout (selectable mode):
- *   <PaymentMethodManager
- *     selectable
- *     onSelect={(method) => setSelectedPayment(method)}
- *   />
+ * Premium PayPal card vaulting for T'aksi - smoother than ever
+ * - Lists saved cards with animated brand icons
+ * - Smooth add card flow with skeleton loading
+ * - Set default, delete cards with confirmations
+ * - Animated success/error states
  */
 
 import { useState, useEffect, useCallback } from "react"
 import axios from "axios"
 import { PayPalScriptProvider, PayPalCardFieldsProvider, PayPalCardFieldsForm, usePayPalCardFields } from "@paypal/react-paypal-js"
-import { CreditCard, Trash2, CheckCircle2, Plus, Loader2, Star } from "lucide-react"
+import { CreditCard, Trash2, CheckCircle2, Plus, Loader2, Star, Shield, X } from "lucide-react"
 
-// ── Brand icons (text fallback — replace with SVGs if you want) ──────────────
+// ── Brand icons with modern styling ──────────────────────────────────────────
 const BRAND_COLORS = {
-  VISA:       { bg: "#1a1f71", text: "#fff",    label: "VISA" },
-  MASTERCARD: { bg: "#eb001b", text: "#fff",    label: "MC" },
-  AMEX:       { bg: "#007bc1", text: "#fff",    label: "AMEX" },
-  DISCOVER:   { bg: "#ff6600", text: "#fff",    label: "DISC" },
-  DEFAULT:    { bg: "#333",    text: "#f5c842", label: "CARD" },
+  VISA:       { bg: "linear-gradient(135deg, #1a1f71 0%, #0d1147 100%)", text: "#fff", label: "VISA" },
+  MASTERCARD: { bg: "linear-gradient(135deg, #eb001b 0%, #a00012 100%)", text: "#fff", label: "MC" },
+  AMEX:       { bg: "linear-gradient(135deg, #007bc1 0%, #005a8d 100%)", text: "#fff", label: "AMEX" },
+  DISCOVER:   { bg: "linear-gradient(135deg, #ff6600 0%, #cc5200 100%)", text: "#fff", label: "DISC" },
+  DEFAULT:    { bg: "linear-gradient(135deg, #333 0%, #1a1a1a 100%)", text: "#f5c842", label: "CARD" },
 }
 
 function BrandBadge({ brand }) {
   const b = BRAND_COLORS[brand?.toUpperCase()] || BRAND_COLORS.DEFAULT
   return (
-    <span style={{
-      background: b.bg, color: b.text, fontSize: "0.6rem",
-      fontWeight: 800, padding: "2px 6px", borderRadius: "4px",
-      letterSpacing: "0.5px", minWidth: "36px", textAlign: "center",
-    }}>
+    <span 
+      className="transition-transform duration-200 hover:scale-105"
+      style={{
+        background: b.bg, color: b.text, fontSize: "0.65rem",
+        fontWeight: 800, padding: "4px 8px", borderRadius: "6px",
+        letterSpacing: "0.5px", minWidth: "40px", textAlign: "center",
+        display: "inline-block", boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+      }}>
       {b.label}
     </span>
+  )
+}
+
+// ── Skeleton loader for smooth loading states ────────────────────────────────
+function CardSkeleton() {
+  return (
+    <div className="animate-pulse flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10 mb-2">
+      <div className="w-10 h-5 bg-white/10 rounded" />
+      <div className="flex-1 space-y-2">
+        <div className="h-4 bg-white/10 rounded w-3/4" />
+        <div className="h-3 bg-white/10 rounded w-1/2" />
+      </div>
+    </div>
   )
 }
 
@@ -174,77 +178,131 @@ export default function PaymentMethodManager({ selectable = false, onSelect, sel
     }
   }
 
-  // Styles
+  // Modern card styling
   const card = (selected, isDefault) => ({
     display: "flex", alignItems: "center", gap: "14px",
-    padding: "14px 16px",
-    background: selected ? "#1a1a0a" : "#111",
-    border: `1px solid ${selected ? "#f5c842" : isDefault ? "#3a3a2a" : "#222"}`,
-    borderRadius: "12px", cursor: selectable ? "pointer" : "default",
-    transition: "all 0.15s", marginBottom: "8px",
+    padding: "16px",
+    background: selected ? "rgba(245,200,66,0.08)" : "rgba(255,255,255,0.03)",
+    border: `1px solid ${selected ? "rgba(245,200,66,0.4)" : isDefault ? "rgba(0,255,136,0.2)" : "rgba(255,255,255,0.08)"}`,
+    borderRadius: "14px", cursor: selectable ? "pointer" : "default",
+    transition: "all 0.2s ease", marginBottom: "10px",
+    transform: selected ? "scale(1.01)" : "scale(1)",
+    boxShadow: selected ? "0 4px 20px rgba(245,200,66,0.1)" : "none",
   })
 
   return (
-    <div style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", color: "#e8e8f0" }}>
+    <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: "#e8e8f0" }}>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-        <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
-          <CreditCard size={18} color="#f5c842" />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+        <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#fff", display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ 
+            width: 32, height: 32, borderRadius: 10,
+            background: "linear-gradient(135deg, rgba(245,200,66,0.2) 0%, rgba(245,200,66,0.05) 100%)",
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <CreditCard size={16} color="#f5c842" />
+          </div>
           Payment Methods
         </h3>
         {!showAddCard && (
           <button
             onClick={startAddCard}
+            className="transition-all duration-200 hover:scale-105 active:scale-95"
             style={{
               display: "flex", alignItems: "center", gap: "6px",
-              padding: "8px 14px", background: "#f5c842", color: "#000",
-              border: "none", borderRadius: "8px", fontWeight: 700,
-              fontSize: "0.82rem", cursor: "pointer",
+              padding: "10px 16px", 
+              background: "linear-gradient(135deg, #f5c842 0%, #e6b52e 100%)", 
+              color: "#000",
+              border: "none", borderRadius: "10px", fontWeight: 600,
+              fontSize: "0.85rem", cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(245,200,66,0.25)",
             }}
           >
-            <Plus size={14} /> Add card
+            <Plus size={14} strokeWidth={2.5} /> Add card
           </button>
         )}
       </div>
 
-      {/* Feedback */}
+      {/* Feedback with animation */}
       {error && (
-        <div style={{ background: "#2a1010", border: "1px solid #5a2020", borderRadius: "8px", padding: "10px 14px", marginBottom: "12px", fontSize: "0.85rem", color: "#f07070" }}>
+        <div 
+          className="animate-in fade-in slide-in-from-top-2 duration-300"
+          style={{ 
+            background: "rgba(239,68,68,0.1)", 
+            border: "1px solid rgba(239,68,68,0.3)", 
+            borderRadius: "10px", 
+            padding: "12px 16px", 
+            marginBottom: "14px", 
+            fontSize: "0.85rem", 
+            color: "#f87171",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px"
+          }}>
+          <X size={16} />
           {error}
         </div>
       )}
       {success && (
-        <div style={{ background: "#102010", border: "1px solid #205020", borderRadius: "8px", padding: "10px 14px", marginBottom: "12px", fontSize: "0.85rem", color: "#70d070" }}>
-          ✓ {success}
+        <div 
+          className="animate-in fade-in slide-in-from-top-2 duration-300"
+          style={{ 
+            background: "rgba(34,197,94,0.1)", 
+            border: "1px solid rgba(34,197,94,0.3)", 
+            borderRadius: "10px", 
+            padding: "12px 16px", 
+            marginBottom: "14px", 
+            fontSize: "0.85rem", 
+            color: "#4ade80",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px"
+          }}>
+          <CheckCircle2 size={16} />
+          {success}
         </div>
       )}
 
-      {/* Saved cards list */}
+      {/* Saved cards list with skeleton loading */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: "24px", color: "#555" }}>
-          <Loader2 size={20} className="animate-spin" style={{ margin: "0 auto" }} />
-        </div>
+        <>
+          <CardSkeleton />
+          <CardSkeleton />
+        </>
       ) : methods.length === 0 && !showAddCard ? (
-        <div style={{ textAlign: "center", padding: "24px 0", color: "#555", fontSize: "0.88rem" }}>
-          No saved cards yet.<br />
-          <span style={{ color: "#888" }}>Add a card once, pay forever with one tap.</span>
+        <div style={{ 
+          textAlign: "center", 
+          padding: "40px 20px", 
+          background: "rgba(255,255,255,0.02)", 
+          borderRadius: "14px",
+          border: "1px dashed rgba(255,255,255,0.1)"
+        }}>
+          <Shield size={32} style={{ margin: "0 auto 12px", color: "#555" }} />
+          <p style={{ color: "#888", fontSize: "0.9rem", marginBottom: "4px" }}>No saved cards yet</p>
+          <span style={{ color: "#666", fontSize: "0.8rem" }}>Add a card once, pay forever with one tap.</span>
         </div>
       ) : (
         methods.map((method) => (
           <div
             key={method.id}
+            className="transition-all duration-200 hover:bg-white/[0.04]"
             style={card(selectedId === method.id, method.is_default)}
             onClick={() => selectable && onSelect?.(method)}
           >
             {/* Selection indicator */}
             {selectable && (
-              <div style={{
-                width: "18px", height: "18px", borderRadius: "50%",
-                border: `2px solid ${selectedId === method.id ? "#f5c842" : "#444"}`,
-                background: selectedId === method.id ? "#f5c842" : "transparent",
-                flexShrink: 0,
-              }} />
+              <div 
+                className="transition-all duration-200"
+                style={{
+                  width: "20px", height: "20px", borderRadius: "50%",
+                  border: `2px solid ${selectedId === method.id ? "#f5c842" : "rgba(255,255,255,0.2)"}`,
+                  background: selectedId === method.id ? "#f5c842" : "transparent",
+                  flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                {selectedId === method.id && <CheckCircle2 size={12} color="#000" />}
+              </div>
             )}
 
             {/* Brand badge */}

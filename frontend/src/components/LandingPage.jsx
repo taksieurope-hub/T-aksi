@@ -104,7 +104,7 @@ const LandingPage = () => {
                 className="border-white text-white hover:bg-white/10 font-bold text-lg px-8 py-6" 
                 onClick={handleShareApp}
               >
-                <Share2 className="w-5 h-5 mr-2" /> Share App
+              <Share2 className="w-5 h-5 mr-2" /> {t('share_app')}
               </Button>
 
               {/* 🔵 DOWNLOAD APP BUTTON */}
@@ -114,7 +114,7 @@ const LandingPage = () => {
                   className="bg-[#00d4ff] text-black hover:bg-[#00d4ff]/80 font-bold text-lg px-8 py-6 shadow-[0_0_15px_rgba(0,212,255,0.4)]" 
                   onClick={handleInstallApp}
                 >
-                  <DownloadCloud className="w-5 h-5 mr-2" /> Download App
+                  <DownloadCloud className="w-5 h-5 mr-2" /> {t('download_app')}
                 </Button>
               )}
 

@@ -27,7 +27,7 @@ import {
   Shield, Users, Gift, LifeBuoy, Copy, Share2, ChevronDown, ChevronUp,
   ChevronRight, Bell, Flame, Calendar, Truck, Settings, RefreshCw,
   Award, BarChart3, FileText, Heart, Headphones, AlertCircle,
-  CornerUpLeft, CornerUpRight, RotateCcw, Merge, ArrowUp,
+  CornerUpLeft, CornerUpRight, RotateCcw, Merge, ArrowUp, Eye,
 } from "lucide-react";
 
 // =============================================================================
@@ -460,18 +460,18 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
 
       <div className="flex gap-2 bg-blue-500/8 border border-blue-500/20 rounded-xl p-3">
         <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-        <p className="text-blue-300/80 text-xs leading-relaxed">Processed by admin in 1–2 business days. ₾5 reserve always maintained.</p>
+        <p className="text-blue-300/80 text-xs leading-relaxed">{t("withdrawal_info")}</p>
       </div>
 
       <Button onClick={submit} disabled={!isValid || loading}
         className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold disabled:opacity-30">
         {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Banknote className="w-5 h-5 mr-2" />}
-        {loading ? "Processing..." : `Withdraw ₾${amt > 0 ? amt.toFixed(2) : "0.00"}`}
+        {loading ? t("processing") : `${t("withdraw")} ₾${amt > 0 ? amt.toFixed(2) : "0.00"}`}
       </Button>
 
       {history.length > 0 && (
         <div className="space-y-2 pt-2">
-          <p className="text-white/30 text-[10px] uppercase tracking-widest">Recent</p>
+          <p className="text-white/30 text-[10px] uppercase tracking-widest">{t("recent")}</p>
           {history.slice(0, 5).map((w, i) => (
             <div key={i} className="flex justify-between items-center bg-white/3 rounded-xl p-3 border border-white/5">
               <div>
@@ -519,10 +519,10 @@ const CampaignsPanel = ({ driverRating }) => {
 
   return (
     <div className="space-y-4">
-      <SectionHeader icon={Award} title="Driver Campaigns" subtitle="Complete challenges, earn bonuses" />
+      <SectionHeader icon={Award} title={t("driver_campaigns")} subtitle={t("campaigns_subtitle")} />
 
       <div className="flex gap-2">
-        {[["available", "Available", available.length], ["joined", "My Progress", joined.length]].map(([k, l, n]) => (
+        {[["available", t("available"), available.length], ["joined", t("my_progress"), joined.length]].map(([k, l, n]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${tab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/40"}`}>
             {l} {n > 0 && <span className="ml-1 bg-[#00ff88]/20 text-[#00ff88] text-xs px-1.5 rounded-full">{n}</span>}
@@ -535,7 +535,7 @@ const CampaignsPanel = ({ driverRating }) => {
           {available.length === 0 && (
             <div className="text-center py-8 text-white/30">
               <Award className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>No new campaigns available</p>
+              <p>{t("no_campaigns")}</p>
             </div>
           )}
           {available.map(c => (
@@ -577,7 +577,7 @@ const CampaignsPanel = ({ driverRating }) => {
           {joined.length === 0 && (
             <div className="text-center py-8 text-white/30">
               <Target className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>Join campaigns to see your progress</p>
+              <p>{t("join_campaigns_progress")}</p>
             </div>
           )}
           {joined.map(c => {
@@ -601,7 +601,7 @@ const CampaignsPanel = ({ driverRating }) => {
                       style={{ width: `${Math.min(100, pct)}%` }} />
                   </div>
                   <div className="flex justify-between text-[10px] text-white/30">
-                    <span>{pct.toFixed(1)}% complete</span>
+                    <span>{pct.toFixed(1)}{t("percent_complete")}</span>
                     {done && <span className="text-[#00ff88]">✓ Bonus earned!</span>}
                   </div>
                 </div>
@@ -661,15 +661,15 @@ const FleetPanel = ({ registrationStatus }) => {
 
   return (
     <div className="space-y-4">
-      <SectionHeader icon={Truck} title="Fleet Management" subtitle="Manage your vehicles & drivers"
+      <SectionHeader icon={Truck} title={t("fleet_management")} subtitle={t("fleet_management")}
         action={<Button size="sm" onClick={() => setShowAdd(!showAdd)} className={`h-8 text-xs font-bold ${showAdd ? "bg-red-500/20 border border-red-500/40 text-red-400" : "bg-[#00ff88]/15 border border-[#00ff88]/40 text-[#00ff88]"}`}>
-          {showAdd ? <><X className="w-3.5 h-3.5 mr-1" /> Cancel</> : <><Plus className="w-3.5 h-3.5 mr-1" /> Add Vehicle</>}
+          {showAdd ? <><X className="w-3.5 h-3.5 mr-1" /> {t("cancel")}</> : <><Plus className="w-3.5 h-3.5 mr-1" /> {t("add_vehicle")}</>}
         </Button>}
       />
 
       {showAdd && (
         <GlassCard className="p-4 space-y-3">
-          <p className="text-white/60 text-xs uppercase tracking-wider mb-1">Vehicle Details</p>
+          <p className="text-white/60 text-xs uppercase tracking-wider mb-1">{t("vehicle_details")}</p>
           <div className="grid grid-cols-2 gap-2.5">
             {[["car_make","Make","Toyota"],["car_model","Model","Camry"],["car_year","Year","2020"],["car_color","Color","Silver"],["license_plate","Plate","AB-123-CD"],["driver_name","Driver Name","Full Name"],["driver_phone","Driver Phone","+995 555 000 000"]].map(([k,l,p]) => (
               <div key={k} className={`space-y-1 ${k === "driver_name" || k === "driver_phone" ? "col-span-2" : ""}`}>
@@ -689,7 +689,7 @@ const FleetPanel = ({ registrationStatus }) => {
           <Button onClick={addVehicle} disabled={submitting || !form.car_make || !form.license_plate || !form.driver_name}
             className="w-full bg-[#00ff88] text-black font-bold h-10">
             {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Add to Fleet
+            {t("add_vehicle")}
           </Button>
         </GlassCard>
       )}
@@ -699,7 +699,7 @@ const FleetPanel = ({ registrationStatus }) => {
       ) : vehicles.length === 0 ? (
         <div className="text-center py-10 text-white/30">
           <Truck className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p>No fleet vehicles yet</p>
+          <p>{t("no_fleet_vehicles")}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -756,17 +756,17 @@ const SupportPanel = () => {
 
   return (
     <div className="space-y-4">
-      <SectionHeader icon={Headphones} title="Support" subtitle="Get help from our team" />
+      <SectionHeader icon={Headphones} title={t("support")} subtitle={t("support_subtitle")} />
 
       <GlassCard className="p-4 space-y-3">
-        <Label className="text-white/60 text-xs uppercase tracking-wider">New Message</Label>
+        <Label className="text-white/60 text-xs uppercase tracking-wider">{t("new_message")}</Label>
         <textarea value={message} onChange={e => setMessage(e.target.value)} rows={3}
-          placeholder="Describe your issue..."
+          placeholder={t("describe_issue")}
           className="w-full bg-white/4 border border-white/10 rounded-xl p-3 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-[#00ff88]/40" />
         <Button onClick={send} disabled={!message.trim() || sending}
           className="w-full bg-[#00ff88] text-black font-bold h-10">
           {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-          {sending ? "Sending..." : "Send Message"}
+          {sending ? t("sending") : t("send_message")}
         </Button>
       </GlassCard>
 
@@ -775,11 +775,11 @@ const SupportPanel = () => {
       ) : tickets.length === 0 ? (
         <div className="text-center py-8 text-white/30">
           <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p>No tickets yet</p>
+          <p>{t("no_tickets")}</p>
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-white/30 text-[10px] uppercase tracking-widest">Previous Tickets</p>
+          <p className="text-white/30 text-[10px] uppercase tracking-widest">{t("previous_tickets")}</p>
           {tickets.map(t => (
             <GlassCard key={t.id} className="overflow-hidden">
               <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}>
@@ -797,7 +797,7 @@ const SupportPanel = () => {
                   {(t.chat_history || []).map((msg, i) => (
                     <div key={i} className={`rounded-xl p-3 text-sm ${msg.role === "user" ? "bg-[#00ff88]/8 border border-[#00ff88]/15 ml-4" : "bg-white/4 border border-white/8 mr-4"}`}>
                       <p className={`text-[10px] uppercase tracking-wider mb-1 ${msg.role === "user" ? "text-[#00ff88]/60" : msg.role === "admin" ? "text-blue-400/70" : "text-white/40"}`}>
-                        {msg.role === "user" ? "You" : msg.role === "admin" ? "Support Agent" : "System"}
+                        {msg.role === "user" ? t("you") : msg.role === "admin" ? t("support_agent") : t("system")}
                       </p>
                       <p className="text-white/80">{msg.content}</p>
                     </div>
@@ -848,17 +848,17 @@ const ReferralPanel = () => {
 
   return (
     <div className="space-y-4">
-      <SectionHeader icon={Gift} title="Referrals" subtitle="Invite drivers, earn bonuses" />
+      <SectionHeader icon={Gift} title={t("referrals")} subtitle={t("invite_friend_desc")} />
 
       {data && (
         <>
           <div className="grid grid-cols-2 gap-3">
-            <StatPill label="Referrals" value={data.referrals_count || 0} color="text-white" />
-            <StatPill label="Bonus Earned" value={`₾${(data.bonus_earned || 0).toFixed(2)}`} color="text-[#00ff88]" />
+            <StatPill label={t("referrals")} value={data.referrals_count || 0} color="text-white" />
+            <StatPill label={t("bonus_earned")} value={`₾${(data.bonus_earned || 0).toFixed(2)}`} color="text-[#00ff88]" />
           </div>
 
           <GlassCard accent className="p-4 space-y-3">
-            <p className="text-[#00ff88]/60 text-[10px] uppercase tracking-widest">Your Code</p>
+            <p className="text-[#00ff88]/60 text-[10px] uppercase tracking-widest">{t("your_code")}</p>
             <div className="flex items-center gap-3">
               <p className="text-3xl font-bold font-mono tracking-widest text-white flex-1">{data.referral_code}</p>
               <button onClick={copyCode} className="p-2.5 rounded-xl bg-[#00ff88]/15 border border-[#00ff88]/30 text-[#00ff88] hover:bg-[#00ff88]/25 transition-colors">
@@ -872,22 +872,22 @@ const ReferralPanel = () => {
           </GlassCard>
 
           <GlassCard className="p-4 space-y-3">
-            <p className="text-white/60 text-[10px] uppercase tracking-widest">Apply a Code</p>
+            <p className="text-white/60 text-[10px] uppercase tracking-widest">{t("apply_code")}</p>
             <div className="flex gap-2">
-              <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="ENTER CODE"
+              <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder={t("enter_code")}
                 className="bg-white/4 border-white/10 text-white font-mono uppercase placeholder:normal-case placeholder:text-white/20 flex-1" />
               <Button onClick={applyCode} disabled={!code.trim() || applying} className="bg-[#00ff88] text-black font-bold px-5">
-                {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}
+                {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : t("apply")}
               </Button>
             </div>
           </GlassCard>
 
           <GlassCard className="p-4">
-            <p className="text-white/60 text-xs uppercase tracking-wider mb-3">How it works</p>
-            {[["Invite a friend", "Share your code with another driver"], ["They sign up", "Friend registers with your code"], ["Both earn bonus", "₾5 for them + ₾10 for you"]].map(([t,d],i) => (
+            <p className="text-white/60 text-xs uppercase tracking-wider mb-3">{t("how_it_works")}</p>
+            {[[t("invite_friend"), t("invite_friend_desc")], [t("they_sign_up"), t("they_sign_up_desc")], [t("both_earn_bonus"), t("both_earn_bonus_desc")]].map(([title,d],i) => (
               <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
                 <div className="w-6 h-6 rounded-full bg-[#00ff88]/15 border border-[#00ff88]/30 flex items-center justify-center text-[#00ff88] text-xs font-bold shrink-0">{i+1}</div>
-                <div><p className="text-white text-sm font-medium">{t}</p><p className="text-white/40 text-xs">{d}</p></div>
+                <div><p className="text-white text-sm font-medium">{title}</p><p className="text-white/40 text-xs">{d}</p></div>
               </div>
             ))}
           </GlassCard>
@@ -968,8 +968,14 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
     }
     watchIdRef.current = navigator.geolocation.watchPosition(
       pos => { lastLocationRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: pos.coords.heading, speed: pos.coords.speed }; },
-      err => console.error("GPS error:", err),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      err => {
+        console.error("GPS error:", err);
+        if (err.code === 1) {
+          // Permission denied
+          console.warn("Location permission denied by user");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
     intervalRef.current = setInterval(() => {
       if (lastLocationRef.current) callbackRef.current(lastLocationRef.current);
@@ -1032,21 +1038,70 @@ const LaneIndicator = ({ lanes }) => {
   );
 };
 
-const NavHUD = ({ step, nextStep, speed }) => {
+const NavHUD = ({ step, nextStep, speed, isCompact = false }) => {
   if (!step) return null;
   const { Icon, color, flip } = getManeuverInfo(step.maneuver || "", step.instructions || "");
   const nextInfo = nextStep ? getManeuverInfo(nextStep.maneuver || "", nextStep.instructions || "") : null;
+  
+  // Compact mode for cleaner driving experience
+  if (isCompact) {
+    return (
+      <div className="absolute top-3 left-3 right-3 z-30" style={{ pointerEvents: "none" }}>
+        <div className="flex items-center gap-3">
+          {/* Turn indicator */}
+          <div className="rounded-xl shadow-2xl flex items-center gap-3 px-3 py-2"
+            style={{ background: "rgba(7,7,15,0.88)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(16px)" }}>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: `${color}15`, border: `1.5px solid ${color}40` }}>
+              <Icon className="w-6 h-6" style={{ color, transform: flip ? "scaleX(-1)" : "none" }} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold leading-none" style={{ color, fontSize: "1.25rem", fontVariantNumeric: "tabular-nums" }}>
+                {step.distance?.text || ""}
+              </p>
+              <p className="text-white/70 text-xs font-medium mt-0.5 leading-tight line-clamp-1">
+                {stripHtml(step.instructions)}
+              </p>
+            </div>
+          </div>
+          
+          {/* Speed indicator - minimal */}
+          {speed != null && (
+            <div className="rounded-xl flex items-center justify-center w-12 h-12 shadow-lg"
+              style={{ background: "rgba(7,7,15,0.88)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(16px)" }}>
+              <div className="text-center">
+                <span className="text-white font-bold text-base leading-none block">{Math.round(speed * 3.6)}</span>
+                <span className="text-white/30 text-[8px] uppercase">km/h</span>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Next turn preview - minimal */}
+        {nextStep && nextInfo && (
+          <div className="mt-2 rounded-lg flex items-center gap-2 px-3 py-1.5 w-fit"
+            style={{ background: "rgba(7,7,15,0.75)", border: "1px solid rgba(255,255,255,0.05)", backdropFilter: "blur(12px)" }}>
+            <span className="text-white/30 text-[10px] uppercase">then</span>
+            <nextInfo.Icon className="w-3 h-3" style={{ color: nextInfo.color }} />
+            <span className="text-white/50 text-xs">{nextStep.distance?.text}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  // Full mode for detailed navigation
   return (
     <div className="absolute top-[72px] left-3 right-3 z-30" style={{ pointerEvents: "none" }}>
       <div className="rounded-2xl overflow-hidden shadow-2xl"
         style={{ background: "rgba(7,7,15,0.93)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(20px)" }}>
         <div className="flex items-center gap-4 px-4 py-3">
-          <div className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0"
+          <div className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
             style={{ background: `${color}18`, border: `2px solid ${color}50` }}>
-            <Icon className="w-9 h-9" style={{ color, transform: flip ? "scaleX(-1)" : "none" }} />
+            <Icon className="w-8 h-8" style={{ color, transform: flip ? "scaleX(-1)" : "none" }} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-black leading-none tracking-tight" style={{ color, fontSize: "2rem", fontVariantNumeric: "tabular-nums" }}>
+            <p className="font-black leading-none tracking-tight" style={{ color, fontSize: "1.75rem", fontVariantNumeric: "tabular-nums" }}>
               {step.distance?.text || ""}
             </p>
             <p className="text-white text-sm font-semibold mt-1 leading-tight line-clamp-2">
@@ -1066,10 +1121,10 @@ const NavHUD = ({ step, nextStep, speed }) => {
         )}
       </div>
       {speed != null && (
-        <div className="absolute right-0 flex flex-col items-center justify-center w-14 h-14 rounded-2xl shadow-lg"
-          style={{ top: "calc(100% + 8px)", background: "rgba(7,7,15,0.9)", border: "1.5px solid rgba(255,255,255,0.12)", backdropFilter: "blur(16px)" }}>
-          <span className="text-white font-black text-lg leading-none">{Math.round(speed * 3.6)}</span>
-          <span className="text-white/35 text-[9px] uppercase tracking-wider">km/h</span>
+        <div className="absolute right-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl shadow-lg"
+          style={{ top: "calc(100% + 8px)", background: "rgba(7,7,15,0.9)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(16px)" }}>
+          <span className="text-white font-bold text-base leading-none">{Math.round(speed * 3.6)}</span>
+          <span className="text-white/30 text-[8px] uppercase tracking-wider">km/h</span>
         </div>
       )}
     </div>
@@ -1077,33 +1132,31 @@ const NavHUD = ({ step, nextStep, speed }) => {
 };
 
 // =============================================================================
-// MAP STYLES
+// MAP STYLES - Clean, modern, minimal for driving
 // =============================================================================
 const MAP_STYLES = [
-  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ visibility: "off" }] },
-  { featureType: "poi", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
-  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#2f3948" }] },
-  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
-  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] },
+  { elementType: "geometry", stylers: [{ color: "#1a1f2e" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#1a1f2e" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#6b7280" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#c9a96e" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#2d3748" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#1a202c" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#4a5568" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#2d3748" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f5c842" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#4a5568" }] },
 ];
 
 // =============================================================================
-// DRIVER SMART MAP — Bolt-quality
-// NEW: ETA countdown pill, pickup/destination pins, auto-fit on accept,
-//      dragstart unfollow, re-centre button.
-// PRESERVED: NavHUD turn-by-turn, tilt/heading, speed, Waze/Google nav.
+// DRIVER SMART MAP — Waze-quality with buttery-smooth animation
+// - Auto-rotate map to face direction of travel
+// - Smooth marker interpolation (no jumps)
+// - Clean, minimal UI for driving
+// - Full-screen map experience
 // =============================================================================
 const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const mapRef               = useRef(null);
@@ -1115,14 +1168,18 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const directionsServiceRef = useRef(null);
   const headingRef           = useRef(0);
   const rafRef               = useRef(null);
+  const positionRafRef       = useRef(null);
   const etaIntervalRef       = useRef(null);
   const prevRideIdRef        = useRef(null);
+  const lastPositionRef      = useRef(null);
+  const targetPositionRef    = useRef(null);
 
-  const [isFollowing, setIsFollowing] = useState(true);
-  const [routeSteps,  setRouteSteps]  = useState([]);
-  const [stepIdx,     setStepIdx]     = useState(0);
-  const [speed,       setSpeed]       = useState(null);
-  const [etaSeconds,  setEtaSeconds]  = useState(null);
+  const [isFollowing, setIsFollowing]     = useState(true);
+  const [routeSteps,  setRouteSteps]      = useState([]);
+  const [stepIdx,     setStepIdx]         = useState(0);
+  const [speed,       setSpeed]           = useState(null);
+  const [etaSeconds,  setEtaSeconds]      = useState(null);
+  const [isCompactHUD, setIsCompactHUD]   = useState(true); // Clean mode by default
 
   const getSafe = (v) => { const n = parseFloat(v); return !isNaN(n) && n !== 0 ? n : null; };
   const hvKm = (lat1, lo1, lat2, lo2) => {
@@ -1137,22 +1194,37 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
   };
 
-  // SVG pin helpers
+  // Smooth position interpolation
+  const lerp = (start, end, t) => start + (end - start) * t;
+
+  // SVG pin helpers - cleaner design
   const makePickupIcon = () => ({
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z" fill="#00ff88"/><circle cx="16" cy="16" r="6" fill="#07070f"/></svg>')}`,
-    scaledSize: new window.google.maps.Size(28, 37),
-    anchor: new window.google.maps.Point(14, 37),
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44"><defs><filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/></filter></defs><path d="M18 2C10 2 4 8 4 16c0 10 14 26 14 26S32 26 32 16C32 8 26 2 18 2z" fill="#00ff88" filter="url(#shadow)"/><circle cx="18" cy="16" r="5" fill="#07070f"/></svg>')}`,
+    scaledSize: new window.google.maps.Size(32, 40),
+    anchor: new window.google.maps.Point(16, 40),
   });
 
   const makeDestIcon = () => ({
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z" fill="#ff4444"/><circle cx="16" cy="16" r="6" fill="#07070f"/></svg>')}`,
-    scaledSize: new window.google.maps.Size(28, 37),
-    anchor: new window.google.maps.Point(14, 37),
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44"><defs><filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/></filter></defs><path d="M18 2C10 2 4 8 4 16c0 10 14 26 14 26S32 26 32 16C32 8 26 2 18 2z" fill="#ef4444" filter="url(#shadow)"/><circle cx="18" cy="16" r="5" fill="#07070f"/></svg>')}`,
+    scaledSize: new window.google.maps.Size(32, 40),
+    anchor: new window.google.maps.Point(16, 40),
   });
-  const makeDriverIcon = () => ({
-    url: '/driver-arrow.png', // <-- Make sure this matches your actual arrow image name!
-    scaledSize: new window.google.maps.Size(35, 35), // This shrinks it to mobile size
-    anchor: new window.google.maps.Point(17.5, 17.5), // Centers the arrow exactly on the GPS dot
+
+  // Modern driver arrow SVG - points upward (direction of travel)
+  const makeDriverIcon = (heading = 0) => ({
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+      <defs>
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <circle cx="24" cy="24" r="20" fill="#00ff88" opacity="0.15"/>
+      <circle cx="24" cy="24" r="16" fill="#00ff88" filter="url(#glow)"/>
+      <path d="M24 10 L30 24 L24 20 L18 24 Z" fill="#07070f"/>
+    </svg>`)}`,
+    scaledSize: new window.google.maps.Size(48, 48),
+    anchor: new window.google.maps.Point(24, 24),
   });
 
   const upsertPin = (ref, position, icon) => {
@@ -1178,56 +1250,91 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }, 1000);
   };
 
-  useEffect(() => () => { if (etaIntervalRef.current) clearInterval(etaIntervalRef.current); }, []);
+  useEffect(() => () => { 
+    if (etaIntervalRef.current) clearInterval(etaIntervalRef.current);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (positionRafRef.current) cancelAnimationFrame(positionRafRef.current);
+  }, []);
 
+  // Smooth heading animation with easing
   const animateHeading = useCallback((targetHeading) => {
     if (!mapInstanceRef.current) return;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     const tick = () => {
       const current = headingRef.current;
-      const next = lerpAngle(current, targetHeading, 0.12);
+      const next = lerpAngle(current, targetHeading, 0.08); // Smoother easing
       headingRef.current = next;
       mapInstanceRef.current.setHeading(next);
-      if (Math.abs(((next - targetHeading + 540) % 360) - 180) > 0.5) {
+      if (Math.abs(((next - targetHeading + 540) % 360) - 180) > 0.3) {
         rafRef.current = requestAnimationFrame(tick);
       }
     };
     rafRef.current = requestAnimationFrame(tick);
   }, []);
 
-  // Map init
+  // Smooth position animation for marker
+  const animateMarkerPosition = useCallback((targetLat, targetLng) => {
+    if (!markerRef.current) return;
+    
+    const startPos = lastPositionRef.current || { lat: targetLat, lng: targetLng };
+    const startTime = performance.now();
+    const duration = 300; // 300ms smooth transition
+
+    const animatePos = (currentTime) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic for smooth deceleration
+      const eased = 1 - Math.pow(1 - progress, 3);
+      
+      const lat = lerp(startPos.lat, targetLat, eased);
+      const lng = lerp(startPos.lng, targetLng, eased);
+      
+      markerRef.current.setPosition({ lat, lng });
+      
+      if (progress < 1) {
+        positionRafRef.current = requestAnimationFrame(animatePos);
+      } else {
+        lastPositionRef.current = { lat: targetLat, lng: targetLng };
+      }
+    };
+    
+    if (positionRafRef.current) cancelAnimationFrame(positionRafRef.current);
+    positionRafRef.current = requestAnimationFrame(animatePos);
+  }, []);
+
+  // Map init - cleaner, full-screen experience
   useEffect(() => {
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 41.7151, lng: 44.8271 },
-      zoom: 17,
-      tilt: 45,
+      zoom: 18,
+      tilt: 55, // More immersive tilt
       heading: 0,
       disableDefaultUI: true,
       gestureHandling: "greedy",
-      backgroundColor: "#07070f",
+      backgroundColor: "#0a0a12",
       styles: MAP_STYLES,
-      padding: { bottom: 200, left: 0, right: 0, top: 0 },
+      mapTypeControl: false,
+      fullscreenControl: false,
+      streetViewControl: false,
+      zoomControl: false,
     });
     routeRendererRef.current = new window.google.maps.DirectionsRenderer({
       map,
-      suppressMarkers: true,   // We draw our own pins
+      suppressMarkers: true,
       preserveViewport: true,
       polylineOptions: {
         strokeColor: "#00ff88",
-        strokeWeight: 7,
-        strokeOpacity: 0.8,
-        strokeLineCap: "round",
-        strokeLineJoin: "round",
+        strokeWeight: 6,
+        strokeOpacity: 0.9,
       },
     });
     directionsServiceRef.current = new window.google.maps.DirectionsService();
-    // dragstart → stop following so re-centre button appears
     map.addListener("dragstart", () => setIsFollowing(false));
     mapInstanceRef.current = map;
   }, []);
 
-  // Driver position update — heading rotation, step advance
+  // Driver position update — smooth animation, auto-rotate map to face forward
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
     const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
@@ -1236,41 +1343,42 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     const heading = parseFloat(driverLocation.heading) || 0;
     setSpeed(driverLocation.speed ?? null);
 
+    // Create or update driver marker with smooth position animation
     if (!markerRef.current) {
       markerRef.current = new window.google.maps.Marker({
-        position: pos, map: mapInstanceRef.current, zIndex: 1000,
-        icon: {
-          path: "M-2,0 L0,-5 L2,0 L0,-1.5 Z",
-          scale: 8, fillColor: "#00ff88", fillOpacity: 1,
-          strokeColor: "#ffffff", strokeWeight: 2,
-          rotation: 0, anchor: new window.google.maps.Point(0, -2.5),
-        },
+        position: pos,
+        map: mapInstanceRef.current,
+        zIndex: 1000,
+        icon: makeDriverIcon(),
       });
+      lastPositionRef.current = pos;
     } else {
-      markerRef.current.setPosition(pos);
-      const icon = markerRef.current.getIcon();
-      markerRef.current.setIcon({ ...icon, rotation: 0 });
+      // Smooth position interpolation
+      animateMarkerPosition(lat, lng);
     }
 
+    // Auto-rotate map to face direction of travel (Waze-style)
     if (isFollowing) {
-  // 1. Center the car on the screen
-  mapInstanceRef.current.panTo(pos);
-  
-  // 2. Rotate the map to face forward (Heading)
-  // We use the 'heading' from the GPS (0-360 degrees)
-  mapInstanceRef.current.setHeading(heading);
-  
-  // 3. Keep the 3D tilt for that 'Driving' view
-  mapInstanceRef.current.setTilt(45);
-}
+      // Smooth pan to driver position
+      mapInstanceRef.current.panTo(pos);
+      
+      // Animate heading rotation smoothly
+      animateHeading(heading);
+      
+      // Maintain immersive 3D tilt
+      if (mapInstanceRef.current.getTilt() !== 55) {
+        mapInstanceRef.current.setTilt(55);
+      }
+    }
 
+    // Advance to next navigation step when close enough
     if (routeSteps.length > 0 && stepIdx < routeSteps.length) {
       const step = routeSteps[stepIdx];
       if (step.end_location && hvKm(lat, lng, step.end_location.lat(), step.end_location.lng()) < 0.04) {
         setStepIdx(p => p + 1);
       }
     }
-  }, [driverLocation, isFollowing, routeSteps, stepIdx, animateHeading]);
+  }, [driverLocation, isFollowing, routeSteps, stepIdx, animateHeading, animateMarkerPosition]);
 
   // Auto-fit on new ride accept — zoom to show driver + pickup
   useEffect(() => {
@@ -1379,72 +1487,82 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     <div className="fixed inset-0 w-full h-full z-0">
       <div ref={mapRef} className="w-full h-full" />
 
-      {/* Turn-by-turn HUD */}
-      {activeRide && <NavHUD step={curStep} nextStep={nextStep} speed={speed} />}
+      {/* Compact Turn-by-turn HUD - minimal and clean */}
+      {activeRide && <NavHUD step={curStep} nextStep={nextStep} speed={speed} isCompact={isCompactHUD} />}
 
-      {/* ETA countdown pill */}
+      {/* ETA countdown - floating minimal pill */}
       {activeRide && etaSeconds != null && etaSeconds > 0 && (
-        <div className="absolute z-20 pointer-events-none" style={{ top: 72 + 88 + 16, left: "50%", transform: "translateX(-50%)" }}>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full shadow-xl"
-            style={{ background: "rgba(7,7,15,0.92)", border: "1px solid rgba(0,212,255,0.35)", backdropFilter: "blur(16px)" }}>
-            <Timer className="w-3.5 h-3.5 text-[#00d4ff]" />
-            <span className="text-[#00d4ff] font-bold text-sm font-mono">{fmtEta(etaSeconds)}</span>
-            <span className="text-white/35 text-xs">{etaLabel}</span>
+        <div className="absolute z-20 pointer-events-none" style={{ top: isCompactHUD ? 80 : 180, left: "50%", transform: "translateX(-50%)" }}>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full shadow-xl"
+            style={{ background: "rgba(7,7,15,0.85)", border: "1px solid rgba(0,212,255,0.25)", backdropFilter: "blur(12px)" }}>
+            <Timer className="w-3 h-3 text-[#00d4ff]" />
+            <span className="text-[#00d4ff] font-bold text-xs font-mono">{fmtEta(etaSeconds)}</span>
+            <span className="text-white/30 text-[10px]">{etaLabel}</span>
           </div>
         </div>
       )}
 
-      {/* Re-centre button */}
+      {/* Re-centre button - appears when user pans away */}
       {!isFollowing && driverLocation && (
         <button onClick={() => {
             setIsFollowing(true);
             const lat = parseFloat(driverLocation.lat), lng = parseFloat(driverLocation.lng);
             if (!isNaN(lat) && !isNaN(lng)) {
               mapInstanceRef.current?.panTo({ lat, lng });
-              mapInstanceRef.current?.setTilt(45);
-              headingRef.current = parseFloat(driverLocation.heading) || headingRef.current;
+              mapInstanceRef.current?.setTilt(55);
+              animateHeading(parseFloat(driverLocation.heading) || 0);
             }
           }}
-          className="absolute z-20 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-2xl transition-all active:scale-95"
-          style={{ bottom: "calc(72vh + 16px)", left: "50%", transform: "translateX(-50%)", background: "rgba(0,204,119,0.95)" }}>
-          <Crosshair className="w-4 h-4 text-white animate-pulse" />
-          <span className="text-white text-sm font-bold">Re-centre</span>
+          className="absolute z-20 flex items-center gap-2 px-4 py-2 rounded-full shadow-2xl transition-all active:scale-95"
+          style={{ bottom: 100, left: "50%", transform: "translateX(-50%)", background: "rgba(0,255,136,0.95)" }}>
+          <Crosshair className="w-4 h-4 text-black" />
+          <span className="text-black text-sm font-bold">Re-centre</span>
         </button>
       )}
 
-      {/* Controls column: zoom, north, waze, google */}
-      <div className="absolute flex flex-col gap-2 z-10" style={{ right: 16, top: "50%", transform: "translateY(-50%)" }}>
+      {/* Minimal control buttons - right edge */}
+      <div className="absolute flex flex-col gap-1.5 z-10" style={{ right: 12, top: "40%" }}>
         <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)+1)}
-          className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-800 text-xl font-bold shadow-lg active:scale-95 transition-transform"
-          style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>+</button>
+          className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-700 text-lg font-bold shadow-lg active:scale-95 transition-transform"
+          style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }}>+</button>
         <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)-1)}
-          className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-800 text-xl font-bold shadow-lg active:scale-95 transition-transform"
-          style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>−</button>
+          className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-700 text-lg font-bold shadow-lg active:scale-95 transition-transform"
+          style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }}>−</button>
         <button 
-  onClick={() => { 
-    mapInstanceRef.current?.setHeading(0); 
-    headingRef.current = 0; 
-    setIsFollowing(true); // 👈 This re-activates the auto-rotate logic
-  }}
-  className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-  style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }} 
-  title="Reset north"
->
-  <Navigation className="w-4 h-4 text-gray-700" />
-</button>
-        {activeRide && <div style={{ height: 1, background: "rgba(200,200,200,0.4)", margin: "2px 4px" }} />}
+          onClick={() => { 
+            animateHeading(0);
+            setIsFollowing(true);
+          }}
+          className="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+          style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }} 
+          title="Reset north">
+          <Navigation className="w-4 h-4 text-gray-600" />
+        </button>
+        
+        {/* HUD toggle */}
+        <button 
+          onClick={() => setIsCompactHUD(!isCompactHUD)}
+          className="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-transform mt-1"
+          style={{ background: isCompactHUD ? "rgba(0,255,136,0.2)" : "rgba(255,255,255,0.9)", border: isCompactHUD ? "1px solid rgba(0,255,136,0.4)" : "none", backdropFilter: "blur(8px)" }} 
+          title="Toggle HUD size">
+          <Eye className="w-4 h-4" style={{ color: isCompactHUD ? "#00ff88" : "#666" }} />
+        </button>
+
+        {activeRide && <div className="h-px bg-white/20 my-1" />}
+        
+        {/* External nav buttons */}
         {activeRide && (
           <button onClick={() => handleNav("waze")}
-            className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-            style={{ background: "rgba(0,212,255,0.9)", backdropFilter: "blur(8px)" }} title="Open in Waze">
-            <Zap className="w-5 h-5 text-white" />
+            className="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+            style={{ background: "rgba(51,181,229,0.9)", backdropFilter: "blur(8px)" }} title="Open in Waze">
+            <Zap className="w-4 h-4 text-white" />
           </button>
         )}
         {activeRide && (
           <button onClick={() => handleNav("google")}
-            className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-            style={{ background: "rgba(0,204,119,0.9)", backdropFilter: "blur(8px)" }} title="Open in Google Maps">
-            <MapPinned className="w-5 h-5 text-white" />
+            className="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+            style={{ background: "rgba(52,168,83,0.9)", backdropFilter: "blur(8px)" }} title="Open in Google Maps">
+            <MapPinned className="w-4 h-4 text-white" />
           </button>
         )}
       </div>
@@ -1567,19 +1685,19 @@ const DriverAuth = () => {
         <div className="text-center mb-8">
           <div className="absolute top-4 right-4"><LanguageSelector variant="ghost" /></div>
           <button onClick={() => navigate("/")} className="flex items-center gap-2 text-white/40 hover:text-white text-sm mb-8 mx-auto transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Back
+            <ArrowLeft className="w-4 h-4" /> {t("back")}
           </button>
           <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#00ff88] to-[#00d4ff] flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_rgba(0,255,136,0.3)]">
             <Car className="w-10 h-10 text-black" />
           </div>
-          <h1 className="text-3xl font-bold text-white">{isLogin ? "Sign In" : "Register"}</h1>
-          <p className="text-white/40 text-sm mt-1">{isLogin ? "Welcome back, pilot" : "Join the T'aksi fleet"}</p>
+          <h1 className="text-3xl font-bold text-white">{isLogin ? t("sign_in") : t("register")}</h1>
+          <p className="text-white/40 text-sm mt-1">{isLogin ? t("welcome_back") : t("become_pilot_title")}</p>
         </div>
 
         <form onSubmit={submit} className="space-y-3">
           {!isLogin && (
             <div className="grid grid-cols-2 gap-3">
-              {[["name","First Name"],["surname","Last Name"]].map(([k,l]) => (
+              {[["name", t("first_name")],["surname", t("last_name")]].map(([k,l]) => (
                 <div key={k} className="space-y-1.5">
                   <Label className="text-white/50 text-xs">{l}</Label>
                   <Input value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })}
@@ -1589,7 +1707,7 @@ const DriverAuth = () => {
             </div>
           )}
           <div className="space-y-1.5">
-            <Label className="text-white/50 text-xs">Phone Number</Label>
+            <Label className="text-white/50 text-xs">{t("phone_number")}</Label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
@@ -1602,11 +1720,11 @@ const DriverAuth = () => {
               {!isLogin && otpStep === "form" && (
                 <Button type="button" onClick={handleSendOtp} disabled={loading || !form.cellphone}
                   className="h-11 px-3 bg-white/10 text-white text-xs rounded-xl border border-white/10 hover:bg-white/15">
-                  Verify
+                  {t("verify")}
                 </Button>
               )}
               {!isLogin && otpStep === "done" && (
-                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">✓ Verified</div>
+                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">✓ {t("verified")}</div>
               )}
             </div>
           </div>
@@ -1614,24 +1732,24 @@ const DriverAuth = () => {
           {/* OTP confirmation step */}
           {!isLogin && otpStep === "otp" && (
             <div className="space-y-1.5">
-              <Label className="text-white/50 text-xs">Enter 4-digit code</Label>
+              <Label className="text-white/50 text-xs">{t("enter_otp_code")}</Label>
               <div className="flex gap-2">
                 <Input value={otpCode} onChange={e => setOtpCode(e.target.value)} maxLength={4}
                   placeholder="0000"
                   className="bg-white/5 border-white/10 text-white h-11 text-center text-lg tracking-widest flex-1" />
                 <Button type="button" onClick={handleVerifyOtp} disabled={loading || otpCode.length < 4}
                   className="h-11 px-4 bg-[#00d4ff] text-black font-bold rounded-xl text-sm">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm"}
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : t("confirm")}
                 </Button>
               </div>
               <button type="button" onClick={handleSendOtp} className="text-white/30 text-xs hover:text-white/60">
-                Resend code
+                {t("resend_code")}
               </button>
             </div>
           )}
 
           <div className="space-y-1.5">
-            <Label className="text-white/50 text-xs">Password</Label>
+            <Label className="text-white/50 text-xs">{t("password")}</Label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
               <Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
@@ -1641,12 +1759,12 @@ const DriverAuth = () => {
           <Button type="submit" disabled={loading || (!isLogin ? otpStep !== "done" : false)}
             className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-base mt-2">
             {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-            {isLogin ? "Sign In" : "Create Account"}
+            {isLogin ? t("sign_in") : t("register")}
           </Button>
         </form>
 
         <button onClick={() => setIsLogin(!isLogin)} className="w-full text-center text-white/40 hover:text-white text-sm mt-4 transition-colors">
-          {isLogin ? "Don't have an account? Register" : "Already have an account? Sign In"}
+          {isLogin ? t("need_account") : t("have_account")}
         </button>
       </div>
     </div>
@@ -1759,10 +1877,19 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   // ===========================================================================
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
-    loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error("VITE_GOOGLE_MAPS_API_KEY is not set");
+      toast.error(t("maps_api_key_missing") || "Maps API key missing");
+      return;
+    }
+    loadGoogleMaps(apiKey)
       .then(() => setMapsLoaded(true))
-      .catch(() => toast.error("Failed to load Google Maps"));
-  }, []);
+      .catch((err) => {
+        console.error("Maps load error:", err);
+        toast.error(t("maps_load_error") || "Failed to load Google Maps. Check API key restrictions.");
+      });
+  }, [t]);
 
   useEffect(() => { setIsMinimized(false); }, [activeRide?.status]);
 
@@ -2275,7 +2402,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                   <GlassCard accent className="p-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-[#00ff88]">
                       <Activity className="w-5 h-5 animate-pulse" />
-                      <span className="font-medium text-sm">Distance Traveled</span>
+                      <span className="font-medium text-sm">{t("distance_traveled")}</span>
                     </div>
                     <span className="text-[#00ff88] font-bold font-mono text-2xl">{distanceTraveled.toFixed(2)} km</span>
                   </GlassCard>
@@ -2285,7 +2412,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 <div className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${midTripWaiting ? "bg-amber-500/10 border-amber-500/30 animate-pulse" : "bg-gradient-to-r from-[#00ff88]/10 to-[#00d4ff]/10 border-[#00ff88]/20"}`}>
                   <div>
                     <span className="text-white/60 text-sm">
-                      {midTripWaiting ? "Wait charge running…" : "Current Fare"}
+                      {midTripWaiting ? t("wait_charge_running") : t("current_fare")}
                     </span>
                     {midTripWaiting && (
                       <p className="text-amber-400 text-xs mt-0.5 font-mono">
@@ -2473,13 +2600,13 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
             {!activeRide && activeTab === "nearby" && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-white/30 text-[10px] uppercase tracking-widest">Within 10km</p>
+                  <p className="text-white/30 text-[10px] uppercase tracking-widest">{t("within_10km")}</p>
                   <button onClick={fetchNearbyRides} className="text-[#00d4ff] text-xs flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Refresh</button>
                 </div>
                 {nearbyRides.length === 0 ? (
                   <div className="text-center py-8 text-white/30">
                     <MapPinned className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>No rides nearby</p>
+                    <p>{t("no_rides_nearby")}</p>
                   </div>
                 ) : nearbyRides.map(ride => (
                   <GlassCard key={ride.id} className="p-4">
@@ -2615,7 +2742,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 {rideHistory.length === 0 ? (
                   <div className="text-center py-10 text-white/30">
                     <History className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>No completed rides yet</p>
+                    <p>{t("no_completed_rides")}</p>
                   </div>
                 ) : rideHistory.map(r => (
                   <GlassCard key={r.id} className="p-4">

@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import api from "@/api";
 import { useAuth } from "@/config"; 
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [amount, setAmount] = useState(20);
   const [custom, setCustom] = useState("");
   const [loading, setLoading] = useState(false);
@@ -58,8 +60,8 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
               <Wallet className="w-5 h-5 text-[#00ff88]" />
             </div>
             <div>
-              <h2 className="text-white text-lg font-bold">Top Up Wallet</h2>
-              <p className="text-white/40 text-sm">Add funds to your T'aksi wallet</p>
+              <h2 className="text-white text-lg font-bold">{t('top_up_wallet')}</h2>
+              <p className="text-white/40 text-sm">{t('add_funds_desc')}</p>
             </div>
           </div>
 
@@ -72,7 +74,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             ))}
           </div>
 
-          <Input type="number" placeholder="Custom amount (₾)" value={custom} min="1" max="1000"
+          <Input type="number" placeholder={t('custom_amount')} value={custom} min="1" max="1000"
             onChange={e => setCustom(e.target.value)}
             className="bg-white/5 border-white/10 text-white text-center h-11 rounded-xl mb-4 placeholder:text-white/25" />
 
@@ -93,7 +95,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
               
               <div className="flex items-center gap-3 py-2">
                 <div className="h-[1px] bg-white/10 flex-1" />
-                <span className="text-white/20 text-[10px] uppercase font-bold">Or use another method</span>
+                <span className="text-white/20 text-[10px] uppercase font-bold">{t('or_use_another')}</span>
                 <div className="h-[1px] bg-white/10 flex-1" />
               </div>
             </div>
@@ -152,7 +154,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             </div>
           )}
           
-          <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose} disabled={loading}>{t('cancel')}</Button>
         </div>
       </div>
     </PayPalScriptProvider>

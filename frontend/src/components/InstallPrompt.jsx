@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Share, PlusSquare, X, Download, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useLanguage } from '@/i18n/LanguageContext';
 
 const InstallPrompt = () => {
+  const { t } = useLanguage();
   const [isReadyForInstall, setIsReadyForInstall] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(true); // Assume installed until proven otherwise
@@ -84,9 +86,9 @@ const InstallPrompt = () => {
           <Smartphone className="w-10 h-10 text-black -rotate-3" />
         </div>
 
-        <h2 className="text-2xl font-bold text-white mb-2">Install Taksi App</h2>
+        <h2 className="text-2xl font-bold text-white mb-2">{t('install_app')}</h2>
         <p className="text-gray-400 text-sm mb-8 px-4">
-          For the fastest, smoothest experience, install the app directly to your phone's home screen.
+          {t('install_app_desc')}
         </p>
 
         {/* ANDROID / CHROME BUTTON */}
@@ -95,23 +97,23 @@ const InstallPrompt = () => {
             onClick={handleInstallClick}
             className="w-full h-14 text-lg font-bold bg-[#00ff88] text-black hover:bg-[#00cc6a] rounded-xl mb-2"
           >
-            <Download className="w-5 h-5 mr-2" /> Install Now
+            <Download className="w-5 h-5 mr-2" /> {t('install_now')}
           </Button>
         )}
 
         {/* IOS / SAFARI INSTRUCTIONS */}
         {isIOS && (
           <div className="w-full bg-black/50 border border-gray-700 rounded-xl p-4 flex flex-col items-center">
-            <p className="text-[#00ff88] font-bold mb-4">How to install on iPhone:</p>
+            <p className="text-[#00ff88] font-bold mb-4">{t('how_to_install_ios')}</p>
             
             <div className="flex items-center text-sm text-white mb-4 w-full justify-center">
               <span className="bg-gray-800 rounded-full w-6 h-6 flex items-center justify-center mr-3 font-bold text-xs">1</span>
-              Tap the <Share className="w-5 h-5 mx-2 text-blue-400" /> Share button below
+              {t('tap_to_rate')} <Share className="w-5 h-5 mx-2 text-blue-400" />
             </div>
             
             <div className="flex items-center text-sm text-white w-full justify-center">
               <span className="bg-gray-800 rounded-full w-6 h-6 flex items-center justify-center mr-3 font-bold text-xs">2</span>
-              Select <PlusSquare className="w-5 h-5 mx-2 text-white" /> <strong>Add to Home Screen</strong>
+              <PlusSquare className="w-5 h-5 mx-2 text-white" /> <strong>{t('add_to_home_screen')}</strong>
             </div>
 
             {/* Bouncing arrow pointing down to Safari's share menu */}
@@ -122,7 +124,7 @@ const InstallPrompt = () => {
         )}
 
         <button onClick={dismissPrompt} className="mt-4 text-xs text-gray-500 underline">
-          Continue in browser
+          {t('continue_in_browser')}
         </button>
 
       </div>

@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
+import CurrencyConverter from "@/components/CurrencyConverter";
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
@@ -162,6 +163,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
 // MAP PICKER MODAL — UNCHANGED
 // =============================================================================
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
+  const { t } = useLanguage();
   const mapRef          = useRef(null);
   const mapInstanceRef  = useRef(null);
   const [address, setAddress]       = useState("Move map to select location...");
@@ -474,7 +476,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     }
   }, [driverLocation, isFollowing]);
 
-  const etaLabel = status === "in_progress" ? "ETA to destination" : "ETA to pickup";
+  const etaLabel = status === "in_progress" ? t("destination") : t("pickup");
 
   return (
     <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: "#0d0d1a" }}>
@@ -526,6 +528,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
 // LOCATION INPUT — UNCHANGED
 // =============================================================================
 const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name, onSaveAsFavorite, mapsLoaded }) => {
+  const { t } = useLanguage();
   const inputRef = useRef(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   useGoogleMapsAutocomplete(inputRef, (place) => onChange({ address: place.address, lat: place.lat, lng: place.lng }), mapsLoaded);
@@ -643,7 +646,7 @@ const RiderAuth = () => {
         <form onSubmit={handleSubmit} className="space-y-3">
           {!isLogin && (
             <div className="grid grid-cols-2 gap-3">
-              {[["name","First name","given-name"],["surname","Last name","family-name"]].map(([k,l,ac]) => (
+              {[['name',t("first_name"),'given-name'],['surname',t("last_name"),'family-name']].map(([k,l,ac]) => (
                 <div key={k}>
                   <label className="text-white/40 text-xs font-medium mb-1.5 block">{l}</label>
                   <Input id={`rider-${k}`} name={k} value={formData[k]} onChange={e => setFormData({ ...formData, [k]: e.target.value })}
@@ -719,6 +722,7 @@ const RiderAuth = () => {
 // WAIT TIMER — UNCHANGED
 // =============================================================================
 const WaitTimer = ({ arrivedAt, carType }) => {
+  const { t } = useLanguage();
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const startTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
@@ -777,6 +781,7 @@ const WaitTimer = ({ arrivedAt, carType }) => {
 // RECEIPT MODAL — UNCHANGED
 // =============================================================================
 const ReceiptModal = ({ isOpen, onClose, rideId }) => {
+  const { t } = useLanguage();
   const [receipt, setReceipt] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -807,7 +812,7 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
         ) : receipt ? (
           <div className="space-y-3">
             <div className="bg-white/5 rounded-2xl p-4 space-y-3 border border-white/5">
-              {[["Driver", receipt.driver_name], ["Car Type", receipt.car_type], ["Distance", `${receipt.distance_km?.toFixed(1)} km`], ["Payment", receipt.payment_method]].map(([k, v]) => (
+              {[[t("your_driver"), receipt.driver_name], [t("car_type"), receipt.car_type], [t("km"), `${receipt.distance_km?.toFixed(1)} km`], [t("payment"), receipt.payment_method]].map(([k, v]) => (
                 <div key={k} className="flex justify-between text-sm">
                   <span className="text-white/40">{k}</span>
                   <span className="text-white font-medium capitalize">{v}</span>
@@ -815,7 +820,7 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
               ))}
             </div>
             <div className="bg-white/5 rounded-2xl p-4 space-y-2.5 border border-white/5">
-              <p className="text-white/30 text-xs uppercase tracking-widest font-bold mb-3">Fare Breakdown</p>
+              <p className="text-white/30 text-xs uppercase tracking-widest font-bold mb-3">{t("fare")} Breakdown</p>
               {Object.entries(receipt.fare_breakdown || {}).filter(([k]) => !["breakdown","surge_multiplier","base_total"].includes(k) && typeof receipt.fare_breakdown[k] === "number" && receipt.fare_breakdown[k] > 0).map(([k, v]) => (
                 <div key={k} className="flex justify-between text-sm">
                   <span className="text-white/40 capitalize">{k.replace(/_/g, " ")}</span>
@@ -842,6 +847,7 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
 };
 
 const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
+  const { t } = useLanguage();
   const [tipAmount, setTipAmount] = useState(null);
   const [custom, setCustom]       = useState("");
   const TIPS = [1, 2, 3, 5];
@@ -875,7 +881,7 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
             </button>
           ))}
         </div>
-        <Input type="number" placeholder="Custom amount (₾)" value={custom}
+        <Input type="number" placeholder={t("custom_amount")} value={custom}
           onChange={e => { setCustom(e.target.value); setTipAmount(null); }}
           className="bg-white/5 border-white/10 text-white text-center h-12 rounded-xl mb-4 placeholder:text-white/25" />
         {isValidTip && <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>}
@@ -957,6 +963,7 @@ const SOSButton = ({ rideId, lat, lng }) => {
 // SHARE TRIP MODAL — UNCHANGED
 // =============================================================================
 const ShareTripModal = ({ isOpen, onClose, rideId }) => {
+  const { t } = useLanguage();
   const [shareLink, setShareLink] = useState("");
   const [loading, setLoading]     = useState(false);
   const [phone, setPhone]         = useState("");
@@ -1009,13 +1016,13 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
           </Button>
         )}
         <div className="space-y-2 mb-4">
-          <Input placeholder="Send to phone number (optional)" value={phone} onChange={e => setPhone(e.target.value)}
+          <Input placeholder={t("phone_optional")} value={phone} onChange={e => setPhone(e.target.value)}
             className="bg-white/5 border-white/10 text-white h-11 rounded-xl placeholder:text-white/25" />
-          <Input placeholder="Send to email (optional)" value={email} onChange={e => setEmail(e.target.value)}
+          <Input placeholder={t("email_optional")} value={email} onChange={e => setEmail(e.target.value)}
             className="bg-white/5 border-white/10 text-white h-11 rounded-xl placeholder:text-white/25" />
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-11" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-11" onClick={onClose}>{t("cancel")}</Button>
           <Button className="flex-1 bg-[#00d4ff] text-black font-bold rounded-xl h-11" onClick={handleShare} disabled={loading || (!phone && !email)}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
             Send Link
@@ -1030,6 +1037,7 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
 // SCHEDULED RIDE MODAL — UNCHANGED
 // =============================================================================
 const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) => {
+  const { t } = useLanguage();
   const [scheduledTime, setScheduledTime] = useState("");
   const [loading, setLoading]             = useState(false);
 
@@ -1072,7 +1080,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
             className="bg-white/5 border-white/10 text-white h-12 rounded-xl" />
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-12" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-12" onClick={onClose}>{t("cancel")}</Button>
           <Button className="flex-1 bg-yellow-500 text-black font-bold rounded-xl h-12" onClick={handleSchedule} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calendar className="w-4 h-4 mr-2" />}
             Schedule
@@ -1087,6 +1095,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
 // WALLET TOP-UP MODAL — UNCHANGED
 // =============================================================================
 const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
+  const { t } = useLanguage();
   const [amount, setAmount] = useState(20);
   const [custom, setCustom] = useState("");
   const AMOUNTS = [5, 10, 20, 50];
@@ -1105,8 +1114,8 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             <Wallet className="w-5 h-5 text-[#00ff88]" />
           </div>
           <div>
-            <h2 className="text-white text-lg font-bold">Top Up Wallet</h2>
-            <p className="text-white/40 text-sm">Add funds to your T'aksi wallet</p>
+            <h2 className="text-white text-lg font-bold">{t("top_up_wallet")}</h2>
+            <p className="text-white/40 text-sm">{t("add_funds_desc")}</p>
           </div>
         </div>
         <div className="grid grid-cols-4 gap-2 mb-3">
@@ -1117,7 +1126,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             </button>
           ))}
         </div>
-        <Input type="number" placeholder="Custom amount (₾)" value={custom} min="1" max="1000"
+        <Input type="number" placeholder={t("custom_amount")} value={custom} min="1" max="1000"
           onChange={e => setCustom(e.target.value)}
           className="bg-white/5 border-white/10 text-white text-center h-11 rounded-xl mb-4 placeholder:text-white/25" />
         {canPay && <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>}
@@ -1156,7 +1165,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
             <p className="text-white/25 text-sm">Enter ₾1 or more to show payment</p>
           </div>
         )}
-        <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose}>{t("cancel")}</Button>
       </div>
     </div>
   );
@@ -1166,6 +1175,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
 // FAVORITES PANEL — UNCHANGED
 // =============================================================================
 const FavoritesPanel = ({ onSelect }) => {
+  const { t } = useLanguage();
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading]     = useState(false);
 
@@ -1184,8 +1194,8 @@ const FavoritesPanel = ({ onSelect }) => {
   if (!favorites.length) return (
     <div className="text-center py-6">
       <Heart className="w-8 h-8 text-white/15 mx-auto mb-2" />
-      <p className="text-white/30 text-sm">No saved places yet</p>
-      <p className="text-white/20 text-xs mt-1">Tap ❤️ on a location to save it</p>
+      <p className="text-white/30 text-sm">{t("no_saved_places")}</p>
+      <p className="text-white/20 text-xs mt-1">{t("favorite_added")}</p>
     </div>
   );
 
@@ -1211,6 +1221,7 @@ const FavoritesPanel = ({ onSelect }) => {
 // SAVE FAVORITE DIALOG — UNCHANGED
 // =============================================================================
 const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
+  const { t } = useLanguage();
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("📍");
   const ICONS = ["🏠", "🏢", "🏋️", "🛒", "🏫", "🍕", "🏥", "📍"];
@@ -1240,7 +1251,7 @@ const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
         <Input placeholder="Name (e.g. Home, Work)" value={name} onChange={e => setName(e.target.value)}
           className="bg-white/5 border-white/10 text-white mb-4 h-11 rounded-xl placeholder:text-white/25" />
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-10 text-sm" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" className="flex-1 border-white/10 text-white/40 rounded-xl h-10 text-sm" onClick={onClose}>{t("cancel")}</Button>
           <Button className="flex-1 bg-pink-500 text-white font-bold rounded-xl h-10 text-sm" onClick={handleSave}>Save</Button>
         </div>
       </div>
@@ -1252,6 +1263,7 @@ const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
 // REFERRAL PANEL — UNCHANGED
 // =============================================================================
 const ReferralPanel = () => {
+  const { t } = useLanguage();
   const [referral, setReferral]   = useState(null);
   const [codeInput, setCodeInput] = useState("");
   const [applying, setApplying]   = useState(false);
@@ -1315,6 +1327,7 @@ const ReferralPanel = () => {
 // RIDE HISTORY ITEM — UNCHANGED
 // =============================================================================
 const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
+  const { t } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const sc = statusConfig[ride.status] || statusConfig.cancelled;
 
@@ -1340,10 +1353,10 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
         <div className="px-4 pb-4 pt-0 border-t border-white/6 space-y-3">
           <div className="grid grid-cols-2 gap-2 pt-3">
             {[
-              ["Car Type", ride.carType || ride.car_type || "—"],
-              ["Payment", ride.payment_method || ride.paymentMethod || "Cash"],
-              ride.driver_info?.name ? ["Driver", ride.driver_info.name] : null,
-              ride.distance_km ? ["Distance", `${parseFloat(ride.distance_km).toFixed(1)} km`] : null,
+              [t("car_type"), ride.carType || ride.car_type || "—"],
+              [t("payment"), ride.payment_method || ride.paymentMethod || t("cash")],
+              ride.driver_info?.name ? [t("your_driver"), ride.driver_info.name] : null,
+              ride.distance_km ? [t("traveled"), `${parseFloat(ride.distance_km).toFixed(1)} km`] : null,
             ].filter(Boolean).map(([k, v]) => (
               <div key={k} className="bg-white/4 rounded-xl p-2.5">
                 <p className="text-white/35 text-[10px] uppercase tracking-wider">{k}</p>
@@ -1378,7 +1391,7 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
               {!ride.tip_amount && ride.driver_id && (
                 <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-xs font-medium transition-all border border-yellow-500/20 hover:border-yellow-500/35"
                   onClick={() => onTip({ rideId: ride.id, driverName: ride.driver_info?.name || "Driver" })}>
-                  <Star className="w-3.5 h-3.5" /> Tip Driver
+                  <Star className="w-3.5 h-3.5" /> {t("tip_driver")}
                 </button>
               )}
               {!ride.rider_rating && (
@@ -1444,10 +1457,19 @@ const [promoApplied, setPromoApplied] = useState(false);
 
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
-    loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error("VITE_GOOGLE_MAPS_API_KEY is not set");
+      toast.error(t("maps_api_key_missing") || "Maps API key missing");
+      return;
+    }
+    loadGoogleMaps(apiKey)
       .then(() => setMapsLoaded(true))
-      .catch(() => toast.error("Failed to load Google Maps"));
-  }, []);
+      .catch((err) => {
+        console.error("Maps load error:", err);
+        toast.error(t("maps_load_error") || "Failed to load Google Maps. Check API key restrictions.");
+      });
+  }, [t]);
 
   useEffect(() => {
     fetchActiveRide();
@@ -1488,7 +1510,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     }
     if (ride.status === "searching") { notifiedArrived.current = false; notifiedAccepted.current = false; }
     if (ride.status === "completed") {
-      setCompletedRideData({ id: ride.id, final_fare: ride.final_fare || ride.estimated_fare, payment_method: ride.payment_method || ride.paymentMethod, driver_name: ride.driver_info?.name || "Your Driver", driver_id: ride.driver_id });
+      setCompletedRideData({ id: ride.id, final_fare: ride.final_fare || ride.estimated_fare, payment_method: ride.payment_method || ride.paymentMethod, driver_name: ride.driver_info?.name || t("your_driver"), driver_id: ride.driver_id });
       setActiveRide(null);
       setActiveTab("book");
       fetchRideHistory();
@@ -1674,10 +1696,10 @@ const [promoApplied, setPromoApplied] = useState(false);
   };
 
   const tabs = [
-    { id: "book",    label: "Book",    Icon: Rocket  },
-    { id: "active",  label: "Active",  Icon: Navigation },
-    { id: "history", label: "History", Icon: History },
-    { id: "profile", label: "Profile", Icon: User    },
+    { id: "book",    label: t("book"),    Icon: Rocket  },
+    { id: "active",  label: t("active"),  Icon: Navigation },
+    { id: "history", label: t("history"), Icon: History },
+    { id: "profile", label: t("profile"), Icon: User    },
   ];
 
   return (
@@ -1699,7 +1721,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                 <Wallet className="w-2.5 h-2.5" />
                 ₾{user?.wallet_balance?.toFixed(2) || "0.00"}
                 <span className="text-white/25">·</span>
-                <span className="text-white/40">Top Up</span>
+                <span className="text-white/40">{t("top_up")}</span>
               </button>
             </div>
           </div>
@@ -1707,9 +1729,10 @@ const [promoApplied, setPromoApplied] = useState(false);
             {activeRide && ["accepted","arrived","in_progress"].includes(activeRide.status) && (
               <button onClick={() => setActiveTab("active")}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00ff88]/15 border border-[#00ff88]/30 text-[#00ff88] text-xs font-bold mr-1 animate-pulse">
-                <Activity className="w-3 h-3" /> Live
+                <Activity className="w-3 h-3" /> {t("active")}
               </button>
             )}
+            <LanguageSelector variant="default" />
             <button className="w-8 h-8 rounded-xl flex items-center justify-center text-white/30 hover:text-white hover:bg-white/8 transition-all" onClick={() => navigate("/")}>
               <Home className="w-4 h-4" />
             </button>
@@ -1730,15 +1753,15 @@ const [promoApplied, setPromoApplied] = useState(false);
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
               <button onClick={() => setShowFavorites(v => !v)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${showFavorites ? "bg-pink-500/20 border-pink-500/35 text-pink-400" : "bg-white/4 border-white/10 text-white/40 hover:border-white/20 hover:text-white/60"}`}>
-                <Heart className="w-3.5 h-3.5" /> Saved Places
+                <Heart className="w-3.5 h-3.5" /> {t("saved_places")}
               </button>
               <button onClick={() => setShowSchedule(true)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border bg-white/4 border-white/10 text-white/40 text-xs font-semibold hover:border-white/20 hover:text-white/60 whitespace-nowrap transition-all shrink-0">
-                <Calendar className="w-3.5 h-3.5" /> Schedule
+                <Calendar className="w-3.5 h-3.5" /> {t("schedule")}
               </button>
               {scheduledRides.length > 0 && (
                 <div className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs font-semibold shrink-0">
-                  <Calendar className="w-3 h-3" /> {scheduledRides.length} scheduled
+                  <Calendar className="w-3 h-3" /> {scheduledRides.length} {t("scheduled")}
                 </div>
               )}
             </div>
@@ -1746,7 +1769,7 @@ const [promoApplied, setPromoApplied] = useState(false);
             {showFavorites && (
               <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
                 <p className="text-pink-400/80 text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <Heart className="w-3.5 h-3.5" /> Saved Places
+                  <Heart className="w-3.5 h-3.5" /> {t("saved_places")}
                 </p>
                 <FavoritesPanel onSelect={(fav) => { setDestination({ address: fav.address, lat: fav.lat, lng: fav.lng }); setShowFavorites(false); toast.success(`${fav.name} set as destination`); }} />
               </div>
@@ -1756,42 +1779,42 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="p-4 space-y-3">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wider">Pickup</label>
+                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wider">{t('pickup')}</label>
                     <button className="flex items-center gap-1 text-[#00ff88] text-xs font-medium hover:text-[#00d4ff] transition-colors disabled:opacity-50"
                       onClick={getCurrentLocation} disabled={locationLoading}>
                       {locationLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Crosshair className="w-3 h-3" />}
-                      My location
+                      {t("use_my_location")}
                     </button>
                   </div>
                   <LocationInput id="pickup-input" name="pickup" value={pickup} onChange={setPickup}
-                    placeholder="Where should we pick you up?" icon={MapPin} iconColor="text-[#00ff88]"
+                    placeholder={t("where_pickup")} icon={MapPin} iconColor="text-[#00ff88]"
                     onSaveAsFavorite={pickup.lat ? () => setShowSaveFav(pickup) : null} mapsLoaded={mapsLoaded} />
                 </div>
 
                 {stops.map((stop, idx) => (
                   <div key={idx}>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-yellow-400/70 text-xs font-semibold uppercase tracking-wider">Stop {idx + 1}</label>
+                      <label className="text-yellow-400/70 text-xs font-semibold uppercase tracking-wider">{t("stops")} {idx + 1}</label>
                       <button className="text-white/25 hover:text-red-400 transition-colors" onClick={() => removeStop(idx)}>
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                     <LocationInput id={`stop-${idx}`} name={`stop_${idx}`} value={stop}
-                      onChange={(data) => updateStop(idx, data)} placeholder="Stop address"
+                      onChange={(data) => updateStop(idx, data)} placeholder={t("stop_address")}
                       icon={MapPin} iconColor="text-yellow-400/70" mapsLoaded={mapsLoaded} />
                   </div>
                 ))}
 
                 <div>
-                  <label className="text-white/40 text-xs font-semibold uppercase tracking-wider block mb-2">Destination</label>
+                  <label className="text-white/40 text-xs font-semibold uppercase tracking-wider block mb-2">{t("destination")}</label>
                   <LocationInput id="destination-input" name="destination" value={destination} onChange={setDestination}
-                    placeholder="Where to?" icon={Navigation} iconColor="text-[#00d4ff]"
+                    placeholder={t("where_going")} icon={Navigation} iconColor="text-[#00d4ff]"
                     onSaveAsFavorite={destination.lat ? () => setShowSaveFav(destination) : null} mapsLoaded={mapsLoaded} />
                 </div>
 
                 {stops.length < 3 && (
                   <button className="w-full flex items-center justify-center gap-2 py-2 text-xs text-white/25 hover:text-white/50 border border-dashed border-white/10 rounded-xl hover:border-white/20 transition-all" onClick={addStop}>
-                    <Plus className="w-3 h-3" /> Add stop (free)
+                    <Plus className="w-3 h-3" /> {t("add_stop_free")}
                   </button>
                 )}
               </div>
@@ -1810,7 +1833,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <TrendingUp className="w-4 h-4 text-orange-400" />
                   </div>
                   <div>
-                    <p className="text-orange-300 font-semibold text-sm">High Demand</p>
+                    <p className="text-orange-300 font-semibold text-sm">{t("surge_active")}</p>
                     <p className="text-orange-400/60 text-xs">{surgeInfo.surge_reason}</p>
                   </div>
                 </div>
@@ -1822,17 +1845,20 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="bg-white/3 border border-white/8 rounded-2xl px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-white/40 text-sm">
                   <RouteIcon className="w-4 h-4" />
-                  <span>{routeInfo.distance} km · {routeInfo.duration} min</span>
+                  <span>{routeInfo.distance} {t("km")} · {routeInfo.duration} {t("min")}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[#00ff88] font-bold text-2xl">₾{fareEstimate.total.toFixed(2)}</span>
-                  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">incl. ₾2 card fee</p>}
-                </div>
+  <div className="flex items-baseline justify-end">
+    <span className="text-[#00ff88] font-bold text-2xl">₾{fareEstimate.total.toFixed(2)}</span>
+    <CurrencyConverter gelAmount={fareEstimate.total} />
+  </div>
+  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">incl. ₾2 card fee</p>}
+</div>
               </div>
             )}
 
             <div>
-              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Choose vehicle</p>
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">{t("vehicle_class")}</p>
               <div className="grid grid-cols-5 gap-1.5">
                 {carTypes.map((type) => {
                   const est = routeInfo
@@ -1844,7 +1870,10 @@ const [promoApplied, setPromoApplied] = useState(false);
                       className={`p-2.5 rounded-xl border-2 transition-all text-center active:scale-95 ${active ? "border-[#00ff88] bg-[#00ff88]/10 shadow-[0_0_12px_rgba(0,255,136,0.15)]" : "border-white/8 bg-white/3 hover:border-white/20"}`}>
                       <div className="text-xl mb-0.5">{type.icon}</div>
                       <div className={`text-[10px] font-semibold leading-tight ${active ? "text-[#00ff88]" : "text-white/50"}`}>{type.name}</div>
-                      <div className={`text-[10px] mt-0.5 font-mono ${active ? "text-[#00ff88]/70" : "text-white/30"}`}>₾{est.toFixed(2)}</div>
+                      <div className={`text-[10px] mt-0.5 font-mono ${active ? "text-[#00ff88]/70" : "text-white/30"}`}>
+  ₾{est.toFixed(2)}
+  <div className="mt-0.5"><CurrencyConverter gelAmount={est} /></div>
+</div>
                     </button>
                   );
                 })}
@@ -1852,16 +1881,16 @@ const [promoApplied, setPromoApplied] = useState(false);
             </div>
 
             <div>
-              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Payment method</p>
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">{t("payment_method")}</p>
               <div className="flex gap-2">
                 {[
-                  { val: "cash",   label: "Cash",   Icon: null },
-                  { val: "wallet", label: `₾${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: "Wallet", Icon: Wallet },
-                  { val: "card",   label: "Card",   Icon: CreditCard },
+                  { val: "cash",   label: t("cash"),   Icon: null },
+                  { val: "wallet", label: `₾${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: t("wallet"), Icon: Wallet },
+                  { val: "card",   label: t("card"),   Icon: CreditCard },
                 ].map(({ val, label, subLabel, Icon }) => (
                   <button key={val}
                     onClick={() => {
-                      if (val === "wallet" && (user?.wallet_balance || 0) <= 0) { toast.error("Wallet empty"); setShowTopUp(true); return; }
+                      if (val === "wallet" && (user?.wallet_balance || 0) <= 0) { toast.error(t("wallet_empty")); setShowTopUp(true); return; }
                       setPaymentMethod(val); setShowPayPal(false);
                     }}
                     className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${paymentMethod === val ? "border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]" : "border-white/8 bg-white/3 text-white/40 hover:border-white/20 hover:text-white/60"}`}>
@@ -1881,7 +1910,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     </div>
     <input
       type="text"
-      placeholder="Have a promo code?"
+      placeholder={t("have_promo_code")}
       value={promoCode}
       onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
       className="flex-1 bg-transparent px-3 py-4 text-sm font-bold text-white outline-none placeholder:text-white/20 placeholder:font-normal uppercase tracking-wider"
@@ -1901,10 +1930,10 @@ const [promoApplied, setPromoApplied] = useState(false);
     <div className="flex items-center justify-between px-2 animate-in slide-in-from-top-1">
        <p className="text-[#00ff88] text-[11px] font-bold flex items-center gap-1.5">
         <Sparkles className="w-3.5 h-3.5" /> 
-        Beta Bonus: ₾{fareEstimate.discount.toFixed(2)} off!
+        {t("promo_discount")}: ₾{fareEstimate.discount.toFixed(2)}!
       </p>
       <p className="text-white/30 text-[10px] font-medium uppercase tracking-tighter">
-        1 of 2 uses left
+        {t("uses_left")}
       </p>
     </div>
   )}
@@ -1920,12 +1949,12 @@ const [promoApplied, setPromoApplied] = useState(false);
   {loading ? (
     <div className="flex items-center">
       <Loader2 className="w-5 h-5 animate-spin mr-2" />
-      <span>Finding your ride...</span>
+      <span>{t("searching_drivers")}</span>
     </div>
   ) : (
     <div className="flex items-center">
       <Rocket className="w-5 h-5 mr-2" />
-      <span>Request {carType} · ₾{fareEstimate?.total.toFixed(2)}</span>
+      <span>{t("request_ride")} {carType} · ₾{fareEstimate?.total.toFixed(2)}</span>
     </div>
   )}
 </Button>
@@ -1961,7 +1990,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed."); setShowPayPal(false); }}
                     onCancel={() => { toast.info("Payment cancelled."); setShowPayPal(false); }}
                   />
-                  <button className="w-full text-center text-white/25 text-xs mt-3 hover:text-white/50 transition-colors" onClick={() => setShowPayPal(false)}>Cancel</button>
+                  <button className="w-full text-center text-white/25 text-xs mt-3 hover:text-white/50 transition-colors" onClick={() => setShowPayPal(false)}>{t("cancel")}</button>
                 </div>
               );
             })()}
@@ -1969,7 +1998,7 @@ const [promoApplied, setPromoApplied] = useState(false);
             {scheduledRides.length > 0 && (
               <div className="bg-yellow-500/5 border border-yellow-500/15 rounded-2xl p-4">
                 <p className="text-yellow-400/80 text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Calendar className="w-3.5 h-3.5" /> Scheduled Rides
+                  <Calendar className="w-3.5 h-3.5" /> {t("schedule")}
                 </p>
                 {scheduledRides.slice(0, 2).map(r => (
                   <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-yellow-500/8 last:border-0">
@@ -2017,7 +2046,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                       <div className="bg-[#07070f]/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
                         <p className="text-xs text-white font-semibold">
-                          {activeRide.status === "in_progress" ? "Live Trip" : "Driver Arriving"}
+                          {activeRide.status === "in_progress" ? t("ride_started") : t("driver_coming")}
                         </p>
                       </div>
                     </div>
@@ -2103,7 +2132,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     </div>
                     <div className="flex items-center gap-2 text-xs text-white/30 pt-1 border-t border-white/6">
                       <Shield className="w-3 h-3 text-[#00ff88]/60" />
-                      <span>Background checked & verified</span>
+                      <span>{t("background_checked")}</span>
                     </div>
                     <RideCommunication
                       rideId={activeRide.id}
@@ -2115,7 +2144,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     {activeRide.status === "in_progress" && (
                       <button onClick={() => setShowTip({ rideId: activeRide.id, driverName: activeRide.driver_info?.name || "Driver" })}
                         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm font-semibold hover:bg-yellow-500/20 transition-all">
-                        <Star className="w-4 h-4" /> Tip Driver
+                        <Star className="w-4 h-4" /> {t("tip_driver")}
                       </button>
                     )}
                   </div>
@@ -2207,15 +2236,15 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="grid grid-cols-3 gap-2">
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
                   <p className="text-[#00ff88] text-xl font-bold font-mono">{user?.total_rides || 0}</p>
-                  <p className="text-white/30 text-xs mt-0.5">Rides</p>
+                  <p className="text-white/30 text-xs mt-0.5">{t("rides")}</p>
                 </div>
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
                   <p className="text-yellow-400 text-xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p>
-                  <p className="text-white/30 text-xs mt-0.5">Rating ⭐</p>
+                  <p className="text-white/30 text-xs mt-0.5">{t("rating")} ⭐</p>
                 </div>
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
                   <p className="text-[#00d4ff] text-xl font-bold font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
-                  <p className="text-white/30 text-xs mt-0.5">Wallet</p>
+                  <p className="text-white/30 text-xs mt-0.5">{t("wallet")}</p>
                 </div>
               </div>
             </div>
@@ -2227,20 +2256,20 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <Wallet className="w-4 h-4 text-[#00ff88]" />
                   </div>
                   <div>
-                    <p className="text-white font-semibold text-sm">T'aksi Wallet</p>
-                    <p className="text-white/30 text-xs">Pay faster with wallet</p>
+                    <p className="text-white font-semibold text-sm">{t("top_up_wallet")}</p>
+                    <p className="text-white/30 text-xs">{t("add_funds_desc")}</p>
                   </div>
                 </div>
                 <span className="text-[#00ff88] font-bold text-2xl font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</span>
               </div>
               <Button className="w-full bg-[#00ff88] text-black font-bold rounded-xl h-11 text-sm" onClick={() => setShowTopUp(true)}>
-                <Plus className="w-4 h-4 mr-1.5" /> Add Funds
+                <Plus className="w-4 h-4 mr-1.5" /> {t("top_up")}
               </Button>
             </div>
 
             <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
               <p className="text-white font-semibold text-sm flex items-center gap-2 mb-4">
-                <Heart className="w-4 h-4 text-pink-400" /> Saved Places
+                <Heart className="w-4 h-4 text-pink-400" /> {t("saved_places")}
               </p>
               <FavoritesPanel onSelect={(fav) => { setDestination({ address: fav.address, lat: fav.lat, lng: fav.lng }); setActiveTab("book"); toast.success(`${fav.name} set as destination`); }} />
             </div>
@@ -2252,8 +2281,8 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <Gift className="w-4 h-4 text-[#00d4ff]" />
                   </div>
                   <div>
-                    <p className="text-white font-semibold text-sm">Refer & Earn</p>
-                    <p className="text-white/30 text-xs">Share your code, get bonuses</p>
+                    <p className="text-white font-semibold text-sm">{t("share_and_earn")}</p>
+                    <p className="text-white/30 text-xs">{t("invite_friend_desc")}</p>
                   </div>
                 </div>
                 {showReferral ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
@@ -2266,12 +2295,12 @@ const [promoApplied, setPromoApplied] = useState(false);
             </div>
 
             <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
-              <p className="text-white font-semibold text-sm mb-3">Language</p>
+              <p className="text-white font-semibold text-sm mb-3">{t("language")}</p>
               <LanguageSelector variant="outline" onSelect={(lang) => api.post(`/user/language?lang=${lang}`).catch(() => {})} />
             </div>
 
             <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border border-red-500/20 text-red-400/70 text-sm font-medium hover:bg-red-500/10 hover:border-red-500/35 hover:text-red-400 transition-all">
-              <LogOut className="w-4 h-4" /> Sign Out
+              <LogOut className="w-4 h-4" /> {t("logout")}
             </button>
           </div>
         )}
@@ -2368,13 +2397,11 @@ const RiderPortal = () => {
   );
 };
 
-// This wraps the portal in its own providers so it can never be 'null'
+// AuthProvider only — LanguageProvider comes from the app root
 const RiderPortalWithProviders = () => (
-  <LanguageProvider>
-    <AuthProvider>
-      <RiderPortal />
-    </AuthProvider>
-  </LanguageProvider>
+  <AuthProvider>
+    <RiderPortal />
+  </AuthProvider>
 );
 
 export default RiderPortalWithProviders;
