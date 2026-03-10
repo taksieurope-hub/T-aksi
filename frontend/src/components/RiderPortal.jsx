@@ -1534,21 +1534,46 @@ const [promoApplied, setPromoApplied] = useState(false);
   const stopsSignature  = useMemo(() => stops.map(s => `${s.lat},${s.lng}`).join("|"), [stops]);
   const validStopsCount = useMemo(() => stops.filter(s => s.lat && s.lng).length, [stops]);
 
+  // FIX 1: Instantly clear the old route/price when the user changes a location
+  useEffect(() => {
+    setRouteInfo(null);
+  }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stopsSignature]);
+
   const calculateRoute = useCallback(() => {
-    if (!window.google || !pickup.lat || !destination.lat) return;
+    // Also clear if locations are suddenly missing
+    if (!window.google || !pickup.lat || !destination.lat) {
+      setRouteInfo(null);
+      return;
+    }
+    
     const waypoints = stops.filter(s => s.lat && s.lng).map(s => ({ location: { lat: parseFloat(s.lat), lng: parseFloat(s.lng) }, stopover: true }));
+    
     new window.google.maps.DirectionsService().route(
-      { origin: { lat: parseFloat(pickup.lat), lng: parseFloat(pickup.lng) }, destination: { lat: parseFloat(destination.lat), lng: parseFloat(destination.lng) }, waypoints, travelMode: window.google.maps.TravelMode.DRIVING },
+      { 
+        origin: { lat: parseFloat(pickup.lat), lng: parseFloat(pickup.lng) }, 
+        destination: { lat: parseFloat(destination.lat), lng: parseFloat(destination.lng) }, 
+        waypoints, 
+        travelMode: window.google.maps.TravelMode.DRIVING 
+      },
       (res, status) => {
         if (status === "OK" && res.routes[0]?.legs) {
           let d = 0, t = 0;
           res.routes[0].legs.forEach(l => { d += l.distance.value; t += l.duration.value; });
           setRouteInfo({ distance: Math.round(d / 100) / 10, duration: Math.round(t / 60) });
+        } else {
+          // FIX 2: If Google fails to find a road, wipe the price so it doesn't get stuck
+          setRouteInfo(null);
         }
       }
     );
   }, [pickup.lat, pickup.lng, destination.lat, destination.lng, stopsSignature]); // eslint-disable-line
 
+  // FIX 3: Wait 800ms after they stop typing before calculating (stops the lag)
+  useEffect(() => {
+    if (!mapsLoaded || !pickup.lat || !destination.lat) return;
+    const timer = setTimeout(calculateRoute, 800);
+    return () => clearTimeout(timer);
+  }, [mapsLoaded, calculateRoute]);
   useEffect(() => {
     if (!mapsLoaded || !pickup.lat || !destination.lat) return;
     const timer = setTimeout(calculateRoute, 500);
@@ -1702,6 +1727,21 @@ const [promoApplied, setPromoApplied] = useState(false);
     { id: "profile", label: t("profile"), Icon: User    },
   ];
 
+  const mapDisplay = useMemo(() => {
+    if (!mapsLoaded || !pickup.lat || !destination.lat) return null;
+    return (
+      <div className="border-t border-white/6">
+        <LiveTrackingMap 
+           pickup={pickup} 
+           destination={destination} 
+           stops={stops} 
+           status="preview" 
+           driverLocation={null} 
+        />
+      </div>
+    );
+  }, [mapsLoaded, pickup.lat, pickup.lng, destination.lat, destination.lng, stopsSignature]);
+
   return (
     <div className="min-h-screen text-white" style={{ background: "#07070f" }}>
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
@@ -1819,11 +1859,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                 )}
               </div>
 
-              {mapsLoaded && pickup.lat && destination.lat && (
-                <div className="border-t border-white/6">
-                  <LiveTrackingMap pickup={pickup} destination={destination} stops={stops} status="preview" driverLocation={null} />
-                </div>
-              )}
+              {mapDisplay}
             </div>
 
             {surgeInfo?.is_surge && (
