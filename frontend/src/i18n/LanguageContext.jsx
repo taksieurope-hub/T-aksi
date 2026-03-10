@@ -43,14 +43,6 @@ export const LanguageProvider = ({ children }) => {
       availableLanguages: Object.keys(translations),
       _renderKey: renderKey 
     }}>
-      {/* TEMP DEBUG — remove after fixing */}
-      <div style={{
-        position: 'fixed', bottom: 0, left: 0, zIndex: 99999,
-        background: 'red', color: 'white', fontSize: 12, padding: '2px 8px',
-        fontFamily: 'monospace', pointerEvents: 'none'
-      }}>
-        LANG: {language} | KEY: {renderKey}
-      </div>
       {children}
     </LanguageContext.Provider>
   );
