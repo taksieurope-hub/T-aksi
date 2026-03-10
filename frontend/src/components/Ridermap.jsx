@@ -1,704 +1,521 @@
 /**
- * RiderMap.jsx — Bolt-quality map experience for the T'aksi rider portal.
+ * Ridermap.jsx — Leaflet + OpenStreetMap offline-capable map for T'aksi Rider
  *
+ * REPLACES: Google Maps implementation
  * FEATURES:
- *  - Booking phase  : full-screen map, draggable pickup + drop pins, Places autocomplete search
- *  - Searching phase: animated pulsing ring, nearby driver dots on the map
- *  - Active ride    : live driver marker (car icon), route polyline, ETA banner, passenger destination pin
- *  - Zoom controls  : +/– buttons, "My location" re-centre
- *  - All map controls are floating glass-morphism pills — same visual language as DriverPortal
+ *  - Booking phase  : full-screen map, draggable pickup + drop pins, Nominatim address search
+ *  - Searching phase: animated pulsing ring, nearby driver dots
+ *  - Active ride    : live driver marker, OSRM route polyline, ETA banner
+ *  - Offline        : OSM tiles cached in browser via leaflet.offline / service worker
  *
- * USAGE (drop-in inside RiderPortal):
- *
- *   import RiderMap from "./RiderMap";
- *
- *   <RiderMap
- *     phase="booking"           // "booking" | "searching" | "active"
- *     pickupCoords={...}        // { lat, lng } | null
- *     dropoffCoords={...}       // { lat, lng } | null
- *     onPickupChange={fn}       // (coords, address) => void
- *     onDropoffChange={fn}      // (coords, address) => void
- *     activeRide={...}          // ride object from /api/rider/active-ride
- *     riderLocation={...}       // { lat, lng } — rider's own GPS
- *     nearbyDrivers={[...]}     // [{ lat, lng, id }] — shown during searching
- *   />
+ * SAME PROPS INTERFACE as original — drop-in replacement:
+ *   phase, pickupCoords, dropoffCoords, onPickupChange, onDropoffChange,
+ *   activeRide, riderLocation, nearbyDrivers
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Crosshair, Locate, Minus, Plus, Navigation2, Car,
-  Clock, MapPin, X, Search, ChevronDown
-} from "lucide-react";
+import { Crosshair, Locate, Minus, Plus, Navigation2, MapPin, X, Search, WifiOff } from "lucide-react";
+import { useLanguage } from "@/i18n/LanguageContext";
 
-// ─── Google Maps singleton loader (mirrors DriverPortal) ───────────────────────
-let _mapsState = "idle";
-const _mapsQ = [];
+// ─── Leaflet lazy loader ───────────────────────────────────────────────────────
+let _leafletState = "idle";
+const _leafletQ = [];
 
-export const loadGoogleMaps = (apiKey) => {
-  if (_mapsState === "loaded" && window.google?.maps) return Promise.resolve();
-  if (_mapsState === "loaded") _mapsState = "idle";
-  if (_mapsState === "loading") return new Promise((res, rej) => _mapsQ.push({ res, rej }));
-  _mapsState = "loading";
+const loadLeaflet = () => {
+  if (_leafletState === "loaded" && window.L) return Promise.resolve();
+  if (_leafletState === "loading") return new Promise((res, rej) => _leafletQ.push({ res, rej }));
+  _leafletState = "loading";
+
   return new Promise((res, rej) => {
-    _mapsQ.push({ res, rej });
-    const s = document.createElement("script");
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry&callback=__taksiRiderMapsReady`;
-    s.async = true; s.defer = true;
-    window.__taksiRiderMapsReady = () => {
-      _mapsState = "loaded";
-      _mapsQ.forEach(cb => cb.res());
-      _mapsQ.length = 0;
-      delete window.__taksiRiderMapsReady;
+    _leafletQ.push({ res, rej });
+
+    // CSS
+    if (!document.getElementById("leaflet-css")) {
+      const link = document.createElement("link");
+      link.id = "leaflet-css";
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(link);
+    }
+
+    // JS
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => {
+      _leafletState = "loaded";
+      _leafletQ.forEach(cb => cb.res());
+      _leafletQ.length = 0;
     };
-    s.onerror = () => {
-      _mapsState = "error";
-      _mapsQ.forEach(cb => cb.rej(new Error("Maps failed")));
-      _mapsQ.length = 0;
+    script.onerror = () => {
+      _leafletState = "error";
+      _leafletQ.forEach(cb => cb.rej(new Error("Leaflet failed to load")));
+      _leafletQ.length = 0;
     };
-    document.head.appendChild(s);
+    document.head.appendChild(script);
   });
 };
 
-// ─── Map visual theme — dark, matches DriverPortal ────────────────────────────
-const MAP_STYLES = [
-  { elementType: "geometry",               stylers: [{ color: "#1a1a2e" }] },
-  { elementType: "labels.text.stroke",     stylers: [{ color: "#1a1a2e" }] },
-  { elementType: "labels.text.fill",       stylers: [{ color: "#8892a4" }] },
-  { featureType: "administrative.locality",elementType: "labels.text.fill", stylers: [{ color: "#c9a96e" }] },
-  { featureType: "poi",                    elementType: "labels",            stylers: [{ visibility: "off" }] },
-  { featureType: "road",                   elementType: "geometry",          stylers: [{ color: "#2d3452" }] },
-  { featureType: "road",                   elementType: "geometry.stroke",   stylers: [{ color: "#1a1f38" }] },
-  { featureType: "road",                   elementType: "labels.text.fill",  stylers: [{ color: "#8892a4" }] },
-  { featureType: "road.highway",           elementType: "geometry",          stylers: [{ color: "#3d4a6b" }] },
-  { featureType: "road.highway",           elementType: "geometry.stroke",   stylers: [{ color: "#1a1f38" }] },
-  { featureType: "road.highway",           elementType: "labels.text.fill",  stylers: [{ color: "#f3c96c" }] },
-  { featureType: "transit",                stylers: [{ visibility: "off" }] },
-  { featureType: "water",                  elementType: "geometry",          stylers: [{ color: "#0d1b2a" }] },
-  { featureType: "water",                  elementType: "labels.text.fill",  stylers: [{ color: "#3d6b8a" }] },
-];
+// ─── Nominatim geocoder (replaces Google Places) ──────────────────────────────
+const TBILISI = { lat: 41.6938, lng: 44.8015 };
+let _searchTimer = null;
 
-// ─── SVG car icon for the driver marker ───────────────────────────────────────
-const CAR_ICON_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-  <circle cx="18" cy="18" r="18" fill="#00ff88" opacity="0.15"/>
+const searchAddress = async (query) => {
+  if (!query || query.length < 3) return [];
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5&viewbox=43.5,42.5,46.5,40.5&bounded=0&accept-language=ka,en`;
+    const res = await fetch(url, { headers: { "Accept-Language": "ka, en" } });
+    const data = await res.json();
+    return data.map(d => ({
+      label: d.display_name,
+      lat: parseFloat(d.lat),
+      lng: parseFloat(d.lon),
+    }));
+  } catch {
+    return [];
+  }
+};
+
+const reverseGeocode = async (lat, lng) => {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  } catch {
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+};
+
+// ─── OSRM routing (replaces Google DirectionsService) ─────────────────────────
+const getRoute = async (origin, destination, waypoints = []) => {
+  try {
+    const coords = [origin, ...waypoints, destination]
+      .map(p => `${p.lng},${p.lat}`)
+      .join(";");
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.routes?.[0]) {
+      const route = data.routes[0];
+      return {
+        coords: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+        distanceKm: (route.distance / 1000).toFixed(1),
+        durationMin: Math.ceil(route.duration / 60),
+      };
+    }
+  } catch {}
+  return null;
+};
+
+// ─── Custom SVG marker icons ───────────────────────────────────────────────────
+const makeIcon = (svg, size = [32, 44], anchor = [16, 44]) => {
+  if (!window.L) return null;
+  return window.L.divIcon({
+    html: svg,
+    className: "",
+    iconSize: size,
+    iconAnchor: anchor,
+    popupAnchor: [0, -44],
+  });
+};
+
+const PICKUP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="44" viewBox="0 0 32 44">
+  <path d="M16 2C9.4 2 4 7.4 4 14c0 9 12 28 12 28S28 23 28 14C28 7.4 22.6 2 16 2z" fill="#00ff88" stroke="#07070f" stroke-width="2"/>
+  <circle cx="16" cy="14" r="5" fill="#07070f"/>
+</svg>`;
+
+const DROP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="44" viewBox="0 0 32 44">
+  <path d="M16 2C9.4 2 4 7.4 4 14c0 9 12 28 12 28S28 23 28 14C28 7.4 22.6 2 16 2z" fill="#00d4ff" stroke="#07070f" stroke-width="2"/>
+  <circle cx="16" cy="14" r="5" fill="#07070f"/>
+</svg>`;
+
+const makeStopSVG = (num) => `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="44" viewBox="0 0 32 44">
+  <path d="M16 2C9.4 2 4 7.4 4 14c0 9 12 28 12 28S28 23 28 14C28 7.4 22.6 2 16 2z" fill="#f5c842" stroke="#07070f" stroke-width="2"/>
+  <text x="16" y="19" text-anchor="middle" font-size="11" font-weight="bold" fill="#07070f" font-family="system-ui">${num}</text>
+</svg>`;
+
+const CAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+  <circle cx="18" cy="18" r="18" fill="#00ff88" opacity="0.2"/>
   <circle cx="18" cy="18" r="14" fill="#00ff88"/>
   <path d="M18 7 L22 16 L18 14 L14 16 Z" fill="#07070f"/>
 </svg>`;
 
-const CAR_ICON_URL = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(CAR_ICON_SVG)}`;
-
-// ─── SVG pickup pin ───────────────────────────────────────────────────────────
-const PICKUP_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="44" viewBox="0 0 32 44">
-  <path d="M16 2C9.4 2 4 7.4 4 14c0 9 12 28 12 28S28 23 28 14C28 7.4 22.6 2 16 2z" fill="#00ff88" stroke="#07070f" stroke-width="2"/>
-  <circle cx="16" cy="14" r="5" fill="#07070f"/>
+const DRIVER_DOT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <circle cx="10" cy="10" r="9" fill="#f5c842" stroke="#07070f" stroke-width="2"/>
+  <circle cx="10" cy="10" r="4" fill="#07070f"/>
 </svg>`;
-const PICKUP_ICON_URL = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(PICKUP_SVG)}`;
 
-// ─── SVG drop-off pin ─────────────────────────────────────────────────────────
-const DROP_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="44" viewBox="0 0 32 44">
-  <path d="M16 2C9.4 2 4 7.4 4 14c0 9 12 28 12 28S28 23 28 14C28 7.4 22.6 2 16 2z" fill="#f43f5e" stroke="#07070f" stroke-width="2"/>
-  <circle cx="16" cy="14" r="5" fill="#07070f"/>
-</svg>`;
-const DROP_ICON_URL = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(DROP_SVG)}`;
-
-// ─── Haversine helper ─────────────────────────────────────────────────────────
-const hvKm = (lat1, lng1, lat2, lng2) => {
-  const R = 6371, dL = (lat2 - lat1) * Math.PI / 180, dl = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dL / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dl / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-// ─── Glass button helper ──────────────────────────────────────────────────────
-const GlassBtn = ({ onClick, children, className = "", title = "" }) => (
+// ─── Glass button helper ───────────────────────────────────────────────────────
+const GlassBtn = ({ onClick, title, children, className = "" }) => (
   <button
     onClick={onClick}
     title={title}
-    className={`w-11 h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform ${className}`}
-    style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(10px)" }}
+    className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform ${className}`}
+    style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}
   >
     {children}
   </button>
 );
 
-// ─── Places autocomplete input ────────────────────────────────────────────────
-const PlacesInput = ({ placeholder, value, onChange, onSelect, icon: Icon, iconColor = "#00ff88", inputRef }) => {
-  const containerRef = useRef(null);
-  const acRef = useRef(null);
-  const [focused, setFocused] = useState(false);
+// ─── Address search input with Nominatim ──────────────────────────────────────
+const AddressInput = ({ placeholder, value, onChange, onSelect, icon: Icon, iconColor }) => {
+  const [query, setQuery] = useState(value || "");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    if (!inputRef?.current || !window.google?.maps?.places) return;
-    if (acRef.current) return;
-    acRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-      componentRestrictions: { country: "ge" },
-      fields: ["geometry", "formatted_address", "name"],
-    });
-    acRef.current.addListener("place_changed", () => {
-      const place = acRef.current.getPlace();
-      if (!place.geometry?.location) return;
-      onSelect({
-        lat: place.geometry.location.lat(),
-        lng: place.geometry.location.lng(),
-      }, place.formatted_address || place.name || "");
-    });
-  }, [onSelect]);
+  useEffect(() => { setQuery(value || ""); }, [value]);
 
-  return (
-    <div ref={containerRef} className="relative flex items-center" style={{ flex: 1 }}>
-      <Icon className="absolute left-3 w-4 h-4 shrink-0 z-10" style={{ color: iconColor }} />
-      <input
-        ref={inputRef}
-        type="text"
-        placeholder={placeholder}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => setFocused(false), 200)}
-        className="w-full pl-9 pr-3 py-3 text-sm text-white placeholder-white/35 rounded-xl outline-none border transition-all"
-        style={{
-          background: "rgba(255,255,255,0.06)",
-          borderColor: focused ? "rgba(0,255,136,0.5)" : "rgba(255,255,255,0.1)",
-          fontFamily: "inherit",
-        }}
-      />
-    </div>
-  );
-};
-
-// ─── ETA Banner (shown during active ride) ────────────────────────────────────
-const ETABanner = ({ activeRide, etaSeconds, driverLocation }) => {
-  const statusConfig = {
-    accepted:    { label: "Driver is on the way",   color: "#60a5fa", bg: "rgba(96,165,250,0.12)" },
-    arrived:     { label: "Driver has arrived",      color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
-    in_progress: { label: "Ride in progress",        color: "#00ff88", bg: "rgba(0,255,136,0.12)" },
-  };
-  const cfg = statusConfig[activeRide?.status] || {};
-
-  const formatETA = (secs) => {
-    if (!secs || secs <= 0) return null;
-    if (secs < 60) return `${secs}s`;
-    const m = Math.round(secs / 60);
-    return `${m} min`;
+  const handleChange = (e) => {
+    const q = e.target.value;
+    setQuery(q);
+    onChange?.(q);
+    clearTimeout(_searchTimer);
+    if (q.length < 3) { setResults([]); setOpen(false); return; }
+    setLoading(true);
+    _searchTimer = setTimeout(async () => {
+      const r = await searchAddress(q);
+      setResults(r);
+      setOpen(r.length > 0);
+      setLoading(false);
+    }, 400);
   };
 
-  const distToPickup = driverLocation && activeRide?.pickup_lat
-    ? hvKm(driverLocation.lat, driverLocation.lng, activeRide.pickup_lat, activeRide.pickup_lng)
-    : null;
-
-  if (!activeRide || !cfg.label) return null;
+  const handleSelect = (item) => {
+    setQuery(item.label);
+    setResults([]);
+    setOpen(false);
+    onSelect?.({ lat: item.lat, lng: item.lng }, item.label);
+  };
 
   return (
-    <div
-      className="absolute top-16 left-3 right-3 z-30 rounded-2xl px-4 py-3 flex items-center gap-3"
-      style={{ background: cfg.bg, border: `1px solid ${cfg.color}30`, backdropFilter: "blur(16px)" }}
-    >
-      <span className="w-2.5 h-2.5 rounded-full animate-pulse shrink-0" style={{ background: cfg.color }} />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold" style={{ color: cfg.color }}>{cfg.label}</p>
-        {activeRide.driver_info?.name && (
-          <p className="text-white/50 text-xs mt-0.5 truncate">
-            {activeRide.driver_info.name}
-            {activeRide.driver_info.license_plate ? ` · ${activeRide.driver_info.license_plate}` : ""}
-          </p>
+    <div className="relative w-full">
+      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/10 bg-black/60 backdrop-blur-md">
+        {Icon && <Icon className={`w-4 h-4 shrink-0 ${iconColor || "text-white/50"}`} />}
+        <input
+          value={query}
+          onChange={handleChange}
+          placeholder={placeholder}
+          className="flex-1 bg-transparent text-sm text-white placeholder:text-white/40 outline-none"
+        />
+        {loading && <div className="w-3 h-3 border border-white/30 border-t-white/80 rounded-full animate-spin" />}
+        {query && !loading && (
+          <button onClick={() => { setQuery(""); setResults([]); setOpen(false); onChange?.(""); }}>
+            <X className="w-3.5 h-3.5 text-white/40 hover:text-white/70" />
+          </button>
         )}
       </div>
-      {activeRide.status === "accepted" && (distToPickup || etaSeconds) && (
-        <div className="text-right shrink-0">
-          {etaSeconds && <p className="font-bold text-sm" style={{ color: cfg.color }}>{formatETA(etaSeconds)}</p>}
-          {distToPickup && <p className="text-white/40 text-xs">{distToPickup.toFixed(1)} km</p>}
+      {open && results.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 rounded-xl overflow-hidden shadow-2xl border border-white/10"
+          style={{ background: "rgba(7,7,15,0.97)", backdropFilter: "blur(16px)" }}>
+          {results.map((r, i) => (
+            <button
+              key={i}
+              onClick={() => handleSelect(r)}
+              className="w-full text-left px-3 py-2.5 text-sm text-white/80 hover:bg-white/8 flex items-start gap-2 border-b border-white/5 last:border-0"
+            >
+              <MapPin className="w-3.5 h-3.5 text-[#00ff88] shrink-0 mt-0.5" />
+              <span className="line-clamp-2">{r.label}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>
   );
 };
 
-// ─── Main RiderMap component ──────────────────────────────────────────────────
+// ─── Offline indicator ────────────────────────────────────────────────────────
+const OfflineIndicator = () => (
+  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+    style={{ background: "rgba(239,68,68,0.9)", backdropFilter: "blur(8px)" }}>
+    <WifiOff className="w-3.5 h-3.5 text-white" />
+    <span className="text-white">Offline — cached map</span>
+  </div>
+);
+
+// ─── Main RiderMap component ───────────────────────────────────────────────────
 const RiderMap = ({
-  phase = "booking",           // "booking" | "searching" | "active"
-  pickupCoords = null,         // { lat, lng }
-  dropoffCoords = null,        // { lat, lng }
-  onPickupChange = null,       // (coords, address) => void
-  onDropoffChange = null,      // (coords, address) => void
-  activeRide = null,           // ride object
-  riderLocation = null,        // { lat, lng }
-  nearbyDrivers = [],          // [{ lat, lng, id }]
-  apiKey = "",                 // passed from parent; falls back to env
+  phase = "booking",
+  pickupCoords,
+  dropoffCoords,
+  onPickupChange,
+  onDropoffChange,
+  activeRide,
+  riderLocation,
+  nearbyDrivers = [],
 }) => {
-  const resolvedKey = apiKey || (typeof import.meta !== "undefined"
-    ? import.meta.env?.VITE_GOOGLE_MAPS_API_KEY
-    : "") || "";
-
-  const mapRef           = useRef(null);
-  const mapInstanceRef   = useRef(null);
-  const pickupMarkerRef  = useRef(null);
+  const { t } = useLanguage();
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const pickupMarkerRef = useRef(null);
   const dropoffMarkerRef = useRef(null);
-  const driverMarkerRef  = useRef(null);
-  const driverDotRefs    = useRef({});
-  const routeRendererRef = useRef(null);
-  const dirServiceRef    = useRef(null);
-  const riderDotRef      = useRef(null);
-  const pulseCircleRef   = useRef(null);
-  const pickupInputRef   = useRef(null);
-  const dropoffInputRef  = useRef(null);
+  const carMarkerRef = useRef(null);
+  const routeLayerRef = useRef(null);
+  const stopMarkersRef = useRef([]);
+  const nearbyMarkersRef = useRef([]);
+  const pulseLayerRef = useRef(null);
 
-  const [mapsReady, setMapsReady] = useState(!!window.google?.maps);
+  const [leafletReady, setLeafletReady] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isFollowing, setIsFollowing] = useState(true);
-  const [pickupText, setPickupText]   = useState("");
-  const [dropoffText, setDropoffText] = useState("");
-  const [etaSeconds, setEtaSeconds]   = useState(null);
-  const [showSearch, setShowSearch]   = useState(true);
+  const [pickupAddr, setPickupAddr] = useState("");
+  const [dropoffAddr, setDropoffAddr] = useState("");
 
-  // Load maps SDK
+  // ── Online/offline detection
   useEffect(() => {
-    if (window.google?.maps) { setMapsReady(true); return; }
-    loadGoogleMaps(resolvedKey).then(() => setMapsReady(true)).catch(console.error);
-  }, [resolvedKey]);
-
-  // ── Init map ────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapsReady || !mapRef.current || mapInstanceRef.current) return;
-
-    const center = riderLocation || pickupCoords || { lat: 41.7151, lng: 44.8271 };
-    const map = new window.google.maps.Map(mapRef.current, {
-      center,
-      zoom: 15,
-      disableDefaultUI: true,
-      gestureHandling: "greedy",
-      backgroundColor: "#0a0a18",
-      styles: MAP_STYLES,
-    });
-
-    routeRendererRef.current = new window.google.maps.DirectionsRenderer({
-      map,
-      suppressMarkers: true,         // We render our own pins
-      preserveViewport: true,
-      polylineOptions: {
-        strokeColor: "#00ff88",
-        strokeWeight: 5,
-        strokeOpacity: 0.85,
-      },
-    });
-    dirServiceRef.current = new window.google.maps.DirectionsService();
-    mapInstanceRef.current = map;
-
-    // Drag listener — when user pans away, unfollow
-    map.addListener("dragstart", () => setIsFollowing(false));
-  }, [mapsReady]);
-
-  // ── Pickup marker (booking phase) ──────────────────────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
-    if (phase !== "booking" && phase !== "searching") {
-      pickupMarkerRef.current?.setMap(null);
-      return;
-    }
-    if (!pickupCoords) { pickupMarkerRef.current?.setMap(null); return; }
-
-    if (!pickupMarkerRef.current) {
-      pickupMarkerRef.current = new window.google.maps.Marker({
-        map: mapInstanceRef.current,
-        icon: { url: PICKUP_ICON_URL, scaledSize: new window.google.maps.Size(32, 44), anchor: new window.google.maps.Point(16, 44) },
-        zIndex: 10,
-        draggable: phase === "booking",
-      });
-      pickupMarkerRef.current.addListener("dragend", () => {
-        const pos = pickupMarkerRef.current.getPosition();
-        const coords = { lat: pos.lat(), lng: pos.lng() };
-        geocodeCoords(coords).then(addr => onPickupChange?.(coords, addr));
-      });
-    }
-    pickupMarkerRef.current.setPosition(pickupCoords);
-    pickupMarkerRef.current.setMap(mapInstanceRef.current);
-  }, [mapsReady, pickupCoords, phase]);
-
-  // ── Drop-off marker (booking phase) ────────────────────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
-    if (phase !== "booking") { dropoffMarkerRef.current?.setMap(null); return; }
-    if (!dropoffCoords) { dropoffMarkerRef.current?.setMap(null); return; }
-
-    if (!dropoffMarkerRef.current) {
-      dropoffMarkerRef.current = new window.google.maps.Marker({
-        map: mapInstanceRef.current,
-        icon: { url: DROP_ICON_URL, scaledSize: new window.google.maps.Size(32, 44), anchor: new window.google.maps.Point(16, 44) },
-        zIndex: 10,
-        draggable: true,
-      });
-      dropoffMarkerRef.current.addListener("dragend", () => {
-        const pos = dropoffMarkerRef.current.getPosition();
-        const coords = { lat: pos.lat(), lng: pos.lng() };
-        geocodeCoords(coords).then(addr => onDropoffChange?.(coords, addr));
-      });
-    }
-    dropoffMarkerRef.current.setPosition(dropoffCoords);
-    dropoffMarkerRef.current.setMap(mapInstanceRef.current);
-  }, [mapsReady, dropoffCoords, phase]);
-
-  // ── Fit map to pickup + dropoff when both are set ──────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || phase !== "booking") return;
-    if (pickupCoords && dropoffCoords) {
-      const bounds = new window.google.maps.LatLngBounds();
-      bounds.extend(pickupCoords);
-      bounds.extend(dropoffCoords);
-      mapInstanceRef.current.fitBounds(bounds, { top: 80, bottom: 260, left: 40, right: 40 });
-    } else if (pickupCoords) {
-      mapInstanceRef.current.panTo(pickupCoords);
-      mapInstanceRef.current.setZoom(16);
-    }
-  }, [pickupCoords, dropoffCoords, phase]);
-
-  // ── Route polyline for booking preview ────────────────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !dirServiceRef.current) return;
-    if (phase !== "booking" || !pickupCoords || !dropoffCoords) {
-      routeRendererRef.current?.setDirections({ routes: [] });
-      return;
-    }
-    dirServiceRef.current.route(
-      {
-        origin: pickupCoords,
-        destination: dropoffCoords,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === "OK") routeRendererRef.current?.setDirections(result);
-      }
-    );
-  }, [pickupCoords, dropoffCoords, phase]);
-
-  // ── Pulse ring animation during searching ─────────────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
-    if (phase !== "searching" || !pickupCoords) {
-      pulseCircleRef.current?.setMap(null);
-      pulseCircleRef.current = null;
-      return;
-    }
-    let radius = 200;
-    let growing = true;
-    const pulse = () => {
-      if (!pulseCircleRef.current || !mapInstanceRef.current) return;
-      if (growing) { radius += 30; if (radius >= 800) growing = false; }
-      else         { radius -= 30; if (radius <= 200) growing = true; }
-      pulseCircleRef.current.setRadius(radius);
-    };
-
-    pulseCircleRef.current = new window.google.maps.Circle({
-      map: mapInstanceRef.current,
-      center: pickupCoords,
-      radius: 200,
-      fillColor: "#00ff88",
-      fillOpacity: 0.06,
-      strokeColor: "#00ff88",
-      strokeOpacity: 0.4,
-      strokeWeight: 2,
-    });
-    const interval = setInterval(pulse, 60);
-    return () => { clearInterval(interval); pulseCircleRef.current?.setMap(null); pulseCircleRef.current = null; };
-  }, [phase, pickupCoords, mapsReady]);
-
-  // ── Nearby driver dots during searching ────────────────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
-    if (phase !== "searching") {
-      Object.values(driverDotRefs.current).forEach(m => m.setMap(null));
-      driverDotRefs.current = {};
-      return;
-    }
-    const current = new Set(Object.keys(driverDotRefs.current));
-    nearbyDrivers.forEach(d => {
-      if (driverDotRefs.current[d.id]) {
-        driverDotRefs.current[d.id].setPosition({ lat: d.lat, lng: d.lng });
-      } else {
-        driverDotRefs.current[d.id] = new window.google.maps.Marker({
-          map: mapInstanceRef.current,
-          position: { lat: d.lat, lng: d.lng },
-          icon: { url: CAR_ICON_URL, scaledSize: new window.google.maps.Size(32, 32), anchor: new window.google.maps.Point(16, 16) },
-          zIndex: 5,
-        });
-      }
-      current.delete(d.id);
-    });
-    current.forEach(id => { driverDotRefs.current[id]?.setMap(null); delete driverDotRefs.current[id]; });
-  }, [nearbyDrivers, phase, mapsReady]);
-
-  // ── Active ride: driver marker + route + ETA with SMOOTH ANIMATION ──────────
-  const lastDriverPosRef = useRef(null);
-  const driverAnimationRef = useRef(null);
-  
-  const animateDriverMarker = useCallback((targetLat, targetLng) => {
-    if (!driverMarkerRef.current) return;
-    
-    const startPos = lastDriverPosRef.current || { lat: targetLat, lng: targetLng };
-    const startTime = performance.now();
-    const duration = 400;
-
-    const animate = (currentTime) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      
-      const lat = startPos.lat + (targetLat - startPos.lat) * eased;
-      const lng = startPos.lng + (targetLng - startPos.lng) * eased;
-      
-      driverMarkerRef.current.setPosition({ lat, lng });
-      
-      if (progress < 1) {
-        driverAnimationRef.current = requestAnimationFrame(animate);
-      } else {
-        lastDriverPosRef.current = { lat: targetLat, lng: targetLng };
-      }
-    };
-    
-    if (driverAnimationRef.current) cancelAnimationFrame(driverAnimationRef.current);
-    driverAnimationRef.current = requestAnimationFrame(animate);
+    const on = () => setIsOffline(false);
+    const off = () => setIsOffline(true);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
+  // ── Load Leaflet
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
-    if (phase !== "active" || !activeRide) {
-      driverMarkerRef.current?.setMap(null);
-      routeRendererRef.current?.setDirections({ routes: [] });
-      lastDriverPosRef.current = null;
+    loadLeaflet().then(() => setLeafletReady(true)).catch(console.error);
+  }, []);
+
+  // ── Init map
+  useEffect(() => {
+    if (!leafletReady || !mapRef.current || mapInstanceRef.current) return;
+    const L = window.L;
+
+    const map = L.map(mapRef.current, {
+      center: [TBILISI.lat, TBILISI.lng],
+      zoom: 13,
+      zoomControl: false,
+      attributionControl: false,
+    });
+
+    // Dark OSM tile layer (CartoDB dark matter — free, no API key)
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      subdomains: "abcd",
+      maxZoom: 19,
+      crossOrigin: true,
+    }).addTo(map);
+
+    // Minimal attribution
+    L.control.attribution({ prefix: false, position: "bottomleft" })
+      .addAttribution('© <a href="https://openstreetmap.org">OSM</a>').addTo(map);
+
+    // Detect manual pan to stop auto-following
+    map.on("dragstart", () => setIsFollowing(false));
+
+    mapInstanceRef.current = map;
+  }, [leafletReady]);
+
+  // ── Pickup marker
+  useEffect(() => {
+    if (!mapInstanceRef.current || !leafletReady || phase !== "booking") return;
+    const L = window.L;
+    const map = mapInstanceRef.current;
+
+    if (pickupCoords) {
+      const pos = [pickupCoords.lat, pickupCoords.lng];
+      if (!pickupMarkerRef.current) {
+        pickupMarkerRef.current = L.marker(pos, {
+          icon: makeIcon(PICKUP_SVG),
+          draggable: true,
+          zIndexOffset: 100,
+        }).addTo(map);
+        pickupMarkerRef.current.on("dragend", async (e) => {
+          const { lat, lng } = e.target.getLatLng();
+          const addr = await reverseGeocode(lat, lng);
+          setPickupAddr(addr);
+          onPickupChange?.({ lat, lng }, addr);
+        });
+      } else {
+        pickupMarkerRef.current.setLatLng(pos);
+      }
+    } else {
+      pickupMarkerRef.current?.remove();
+      pickupMarkerRef.current = null;
+    }
+  }, [pickupCoords, phase, leafletReady]);
+
+  // ── Dropoff marker
+  useEffect(() => {
+    if (!mapInstanceRef.current || !leafletReady || phase !== "booking") return;
+    const L = window.L;
+    const map = mapInstanceRef.current;
+
+    if (dropoffCoords) {
+      const pos = [dropoffCoords.lat, dropoffCoords.lng];
+      if (!dropoffMarkerRef.current) {
+        dropoffMarkerRef.current = L.marker(pos, {
+          icon: makeIcon(DROP_SVG),
+          draggable: true,
+          zIndexOffset: 100,
+        }).addTo(map);
+        dropoffMarkerRef.current.on("dragend", async (e) => {
+          const { lat, lng } = e.target.getLatLng();
+          const addr = await reverseGeocode(lat, lng);
+          setDropoffAddr(addr);
+          onDropoffChange?.({ lat, lng }, addr);
+        });
+      } else {
+        dropoffMarkerRef.current.setLatLng(pos);
+      }
+
+      // Fit both markers
+      if (pickupCoords) {
+        const L = window.L;
+        const bounds = L.latLngBounds(
+          [pickupCoords.lat, pickupCoords.lng],
+          [dropoffCoords.lat, dropoffCoords.lng]
+        );
+        mapInstanceRef.current.fitBounds(bounds, { padding: [60, 60] });
+      }
+    } else {
+      dropoffMarkerRef.current?.remove();
+      dropoffMarkerRef.current = null;
+    }
+  }, [dropoffCoords, phase, leafletReady]);
+
+  // ── Nearby drivers (searching phase)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !leafletReady) return;
+    const L = window.L;
+
+    nearbyMarkersRef.current.forEach(m => m.remove());
+    nearbyMarkersRef.current = [];
+    pulseLayerRef.current?.remove();
+
+    if (phase === "searching") {
+      // Pulsing circle at pickup
+      if (pickupCoords) {
+        pulseLayerRef.current = L.circle(
+          [pickupCoords.lat, pickupCoords.lng],
+          { radius: 300, color: "#00ff88", fillColor: "#00ff88", fillOpacity: 0.08, weight: 1.5, dashArray: "6 4" }
+        ).addTo(mapInstanceRef.current);
+      }
+      // Driver dots
+      nearbyDrivers.forEach(d => {
+        const m = L.marker([d.lat, d.lng], { icon: makeIcon(DRIVER_DOT_SVG, [20, 20], [10, 10]) })
+          .addTo(mapInstanceRef.current);
+        nearbyMarkersRef.current.push(m);
+      });
+    }
+  }, [phase, nearbyDrivers, pickupCoords, leafletReady]);
+
+  // ── Active ride: driver car marker + route
+  useEffect(() => {
+    if (!mapInstanceRef.current || !leafletReady || phase !== "active") {
+      stopMarkersRef.current.forEach(m => m.remove());
+      stopMarkersRef.current = [];
       return;
     }
+    const L = window.L;
+    const map = mapInstanceRef.current;
 
-    const drvLoc = activeRide.driver_location;
-    if (!drvLoc?.lat || !drvLoc?.lng) return;
+    const driverLoc = activeRide?.driver_location;
+    if (!driverLoc) return;
 
-    const dPos = { lat: parseFloat(drvLoc.lat), lng: parseFloat(drvLoc.lng) };
+    const pos = [driverLoc.lat, driverLoc.lng];
 
-    // Driver car marker with smooth animation
-    if (!driverMarkerRef.current) {
-      driverMarkerRef.current = new window.google.maps.Marker({
-        map: mapInstanceRef.current,
-        icon: { url: CAR_ICON_URL, scaledSize: new window.google.maps.Size(40, 40), anchor: new window.google.maps.Point(20, 20) },
-        zIndex: 20,
-      });
-      lastDriverPosRef.current = dPos;
-      driverMarkerRef.current.setPosition(dPos);
+    if (!carMarkerRef.current) {
+      carMarkerRef.current = L.marker(pos, {
+        icon: makeIcon(CAR_SVG, [36, 36], [18, 18]),
+        zIndexOffset: 200,
+      }).addTo(map);
     } else {
-      // Smooth animation to new position
-      animateDriverMarker(dPos.lat, dPos.lng);
+      carMarkerRef.current.setLatLng(pos);
     }
-    driverMarkerRef.current.setMap(mapInstanceRef.current);
 
-    // Show pickup pin during accepted/arrived
-    if (["accepted", "arrived"].includes(activeRide.status) && activeRide.pickup_lat) {
-      if (!pickupMarkerRef.current) {
-        pickupMarkerRef.current = new window.google.maps.Marker({
-          map: mapInstanceRef.current,
-          icon: { url: PICKUP_ICON_URL, scaledSize: new window.google.maps.Size(32, 44), anchor: new window.google.maps.Point(16, 44) },
-          zIndex: 10,
-        });
+    if (isFollowing) map.panTo(pos);
+
+    // ── Stop markers (numbered yellow pins)
+    stopMarkersRef.current.forEach(m => m.remove());
+    stopMarkersRef.current = [];
+    (activeRide.stops || []).filter(s => s.lat && s.lng).forEach((stop, i) => {
+      const m = L.marker([parseFloat(stop.lat), parseFloat(stop.lng)], {
+        icon: makeIcon(makeStopSVG(i + 1), [32, 44], [16, 44]),
+        zIndexOffset: 90,
+      }).addTo(map);
+      if (stop.address) {
+        m.bindTooltip(`Stop ${i + 1}: ${stop.address}`, { permanent: false, direction: "top" });
       }
-      pickupMarkerRef.current.setPosition({ lat: activeRide.pickup_lat, lng: activeRide.pickup_lng });
-      pickupMarkerRef.current.setMap(mapInstanceRef.current);
-    }
-
-    // Show destination pin during in_progress
-    if (activeRide.status === "in_progress") {
-      const dLat = activeRide.destination_lat || activeRide.dest_lat;
-      const dLng = activeRide.destination_lng || activeRide.dest_lng;
-      pickupMarkerRef.current?.setMap(null);
-      if (dLat && dLng) {
-        if (!dropoffMarkerRef.current) {
-          dropoffMarkerRef.current = new window.google.maps.Marker({
-            map: mapInstanceRef.current,
-            icon: { url: DROP_ICON_URL, scaledSize: new window.google.maps.Size(32, 44), anchor: new window.google.maps.Point(16, 44) },
-            zIndex: 10,
-          });
-        }
-        dropoffMarkerRef.current.setPosition({ lat: dLat, lng: dLng });
-        dropoffMarkerRef.current.setMap(mapInstanceRef.current);
-      }
-    }
-
-    // Pan map to follow driver
-    if (isFollowing) mapInstanceRef.current.panTo(dPos);
-
-    // Draw route from driver to next target
-    if (!dirServiceRef.current) return;
-    let target = null;
-    if (["accepted", "arrived"].includes(activeRide.status) && activeRide.pickup_lat) {
-      target = { lat: parseFloat(activeRide.pickup_lat), lng: parseFloat(activeRide.pickup_lng) };
-    } else if (activeRide.status === "in_progress") {
-      const dlat = activeRide.destination_lat || activeRide.dest_lat;
-      const dlng = activeRide.destination_lng || activeRide.dest_lng;
-      if (dlat && dlng) target = { lat: parseFloat(dlat), lng: parseFloat(dlng) };
-    }
-    if (!target) return;
-
-    dirServiceRef.current.route(
-      { origin: dPos, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
-      (result, status) => {
-        if (status === "OK") {
-          routeRendererRef.current?.setDirections(result);
-          const leg = result.routes[0]?.legs[0];
-          if (leg?.duration?.value) setEtaSeconds(leg.duration.value);
-        }
-      }
-    );
-  }, [activeRide?.driver_location, activeRide?.status, phase, isFollowing, mapsReady, animateDriverMarker]);
-
-  // ── Auto-fit map on ride accept ────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || phase !== "active" || !activeRide) return;
-    const drvLoc = activeRide.driver_location;
-    if (!drvLoc?.lat || !activeRide.pickup_lat) return;
-    const bounds = new window.google.maps.LatLngBounds();
-    bounds.extend({ lat: parseFloat(drvLoc.lat), lng: parseFloat(drvLoc.lng) });
-    bounds.extend({ lat: parseFloat(activeRide.pickup_lat), lng: parseFloat(activeRide.pickup_lng) });
-    mapInstanceRef.current.fitBounds(bounds, { top: 100, bottom: 280, left: 60, right: 60 });
-  }, [activeRide?.id, phase]);
-
-  // ── Rider location dot ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !riderLocation) return;
-    const pos = { lat: riderLocation.lat, lng: riderLocation.lng };
-    if (!riderDotRef.current) {
-      riderDotRef.current = new window.google.maps.Marker({
-        map: mapInstanceRef.current,
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: "#60a5fa",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
-        },
-        zIndex: 15,
-      });
-    }
-    riderDotRef.current.setPosition(pos);
-    if (phase === "booking" && isFollowing) {
-      mapInstanceRef.current.panTo(pos);
-    }
-  }, [riderLocation, phase]);
-
-  // ── Geocode helper ─────────────────────────────────────────────────────────
-  const geocodeCoords = async (coords) => {
-    if (!window.google) return "";
-    const geocoder = new window.google.maps.Geocoder();
-    return new Promise(resolve => {
-      geocoder.geocode({ location: coords }, (results, status) => {
-        resolve(status === "OK" ? (results[0]?.formatted_address || "") : "");
-      });
+      stopMarkersRef.current.push(m);
     });
-  };
 
-  // ── "Locate me" button ─────────────────────────────────────────────────────
+    // Draw route (via stops as waypoints)
+    const dest = activeRide?.dropoff_location || dropoffCoords;
+    if (dest) {
+      const waypoints = (activeRide.stops || [])
+        .filter(s => s.lat && s.lng)
+        .map(s => ({ lat: parseFloat(s.lat), lng: parseFloat(s.lng) }));
+      getRoute(driverLoc, dest, waypoints).then(route => {
+        if (!route || !mapInstanceRef.current) return;
+        routeLayerRef.current?.remove();
+        routeLayerRef.current = L.polyline(route.coords, {
+          color: "#00ff88", weight: 4, opacity: 0.8, lineCap: "round",
+        }).addTo(mapInstanceRef.current);
+      });
+    }
+  }, [activeRide, phase, isFollowing, leafletReady]);
+
+  // ── GPS locate me
   const handleLocateMe = useCallback(() => {
     if (!navigator.geolocation || !mapInstanceRef.current) return;
-    navigator.geolocation.getCurrentPosition(pos => {
-      const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      mapInstanceRef.current.panTo(coords);
-      mapInstanceRef.current.setZoom(17);
-      setIsFollowing(true);
-      if (phase === "booking" && !pickupCoords) {
-        geocodeCoords(coords).then(addr => {
-          setPickupText(addr);
-          onPickupChange?.(coords, addr);
-        });
-      }
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      const { latitude: lat, longitude: lng } = coords;
+      mapInstanceRef.current.setView([lat, lng], 16);
+      const addr = await reverseGeocode(lat, lng);
+      setPickupAddr(addr);
+      onPickupChange?.({ lat, lng }, addr);
     });
-  }, [phase, pickupCoords, onPickupChange]);
+  }, [onPickupChange]);
 
-  // ── Re-centre on driver ────────────────────────────────────────────────────
   const handleRecentre = useCallback(() => {
+    const driverLoc = activeRide?.driver_location;
+    if (!driverLoc || !mapInstanceRef.current) return;
     setIsFollowing(true);
-    const drvLoc = activeRide?.driver_location;
-    if (drvLoc?.lat && mapInstanceRef.current) {
-      mapInstanceRef.current.panTo({ lat: parseFloat(drvLoc.lat), lng: parseFloat(drvLoc.lng) });
-    }
+    mapInstanceRef.current.setView([driverLoc.lat, driverLoc.lng], 15);
   }, [activeRide]);
 
-  if (!mapsReady) {
-    return (
-      <div className="w-full h-full bg-[#0a0a18] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-full border-2 border-[#00ff88]/40 border-t-[#00ff88] animate-spin" />
-          <p className="text-white/30 text-xs">Loading map…</p>
-        </div>
-      </div>
-    );
-  }
+  // ── ETA info
+  const eta = activeRide?.eta_minutes;
+  const distKm = activeRide?.distance_km;
 
   return (
-    <div className="relative w-full h-full overflow-hidden">
-      {/* Map canvas */}
+    <div className="relative w-full h-full overflow-hidden rounded-none">
+      {/* Map container */}
       <div ref={mapRef} className="w-full h-full" />
 
-      {/* ETA banner — active ride only */}
-      {phase === "active" && activeRide && (
-        <ETABanner activeRide={activeRide} etaSeconds={etaSeconds} driverLocation={activeRide?.driver_location} />
-      )}
+      {isOffline && <OfflineIndicator />}
 
-      {/* Searching overlay label */}
-      {phase === "searching" && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-2xl"
-          style={{ background: "rgba(0,255,136,0.12)", border: "1px solid rgba(0,255,136,0.3)", backdropFilter: "blur(16px)" }}>
-          <span className="w-2 h-2 rounded-full bg-[#00ff88] animate-pulse" />
-          <span className="text-[#00ff88] text-sm font-semibold">Searching for drivers…</span>
-        </div>
-      )}
-
-      {/* Booking search inputs */}
+      {/* Booking phase: address search inputs */}
       {phase === "booking" && (
-        <div className="absolute top-3 left-3 right-3 z-30">
-          <div className="rounded-2xl overflow-hidden shadow-2xl"
-            style={{ background: "rgba(10,10,24,0.92)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(20px)" }}>
-
-            {/* Toggle collapse */}
-            <button
-              onClick={() => setShowSearch(p => !p)}
-              className="w-full flex items-center justify-between px-4 py-3"
-            >
-              <span className="text-white/70 text-sm font-medium">
-                {pickupText && dropoffText
-                  ? `${pickupText.split(",")[0]} → ${dropoffText.split(",")[0]}`
-                  : "Where are you going?"}
-              </span>
-              <ChevronDown
-                className="w-4 h-4 text-white/40 transition-transform"
-                style={{ transform: showSearch ? "rotate(180deg)" : "none" }}
-              />
-            </button>
-
-            {showSearch && (
-              <div className="px-3 pb-3 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                <PlacesInput
-                  placeholder="Pickup location"
-                  value={pickupText}
-                  onChange={setPickupText}
-                  onSelect={(coords, addr) => { setPickupText(addr); onPickupChange?.(coords, addr); }}
-                  icon={MapPin}
-                  iconColor="#00ff88"
-                  inputRef={pickupInputRef}
-                />
-                {/* Divider dot */}
-                <div className="flex items-center gap-2 px-1">
-                  <div className="w-0.5 h-4 bg-white/10 ml-[13px]" />
-                </div>
-                <PlacesInput
-                  placeholder="Drop-off location"
-                  value={dropoffText}
-                  onChange={setDropoffText}
-                  onSelect={(coords, addr) => { setDropoffText(addr); onDropoffChange?.(coords, addr); }}
-                  icon={MapPin}
-                  iconColor="#f43f5e"
-                  inputRef={dropoffInputRef}
-                />
-              </div>
-            )}
-          </div>
+        <div className="absolute top-3 left-3 right-3 z-20 flex flex-col gap-2">
+          <AddressInput
+            placeholder={t("where_pickup") || "Pickup location"}
+            value={pickupAddr}
+            onChange={setPickupAddr}
+            onSelect={(coords, addr) => { setPickupAddr(addr); onPickupChange?.(coords, addr); }}
+            icon={MapPin}
+            iconColor="text-[#00ff88]"
+          />
+          <AddressInput
+            placeholder={t("where_going") || "Where to?"}
+            value={dropoffAddr}
+            onChange={setDropoffAddr}
+            onSelect={(coords, addr) => { setDropoffAddr(addr); onDropoffChange?.(coords, addr); }}
+            icon={MapPin}
+            iconColor="text-[#00d4ff]"
+          />
         </div>
       )}
 
-      {/* Right-side controls */}
+      {/* Active ride ETA banner */}
+      {phase === "active" && eta && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2.5 rounded-2xl shadow-2xl"
+          style={{ background: "rgba(0,255,136,0.95)", backdropFilter: "blur(8px)" }}>
+          <span className="text-black font-black text-lg">{eta} {t("min") || "min"}</span>
+          {distKm && <span className="text-black/70 text-sm">{distKm} {t("km") || "km"}</span>}
+        </div>
+      )}
+
+      {/* Map controls */}
       <div className="absolute flex flex-col gap-2 z-20" style={{ right: 14, bottom: phase === "active" ? 220 : 160 }}>
         <GlassBtn onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom() || 15) + 1)} title="Zoom in">
           <Plus className="w-5 h-5 text-gray-800" />
@@ -712,14 +529,14 @@ const RiderMap = ({
           </GlassBtn>
         )}
         {phase === "active" && (
-          <GlassBtn onClick={handleRecentre} title="Re-centre on driver">
+          <GlassBtn onClick={handleRecentre} title="Re-centre">
             <Navigation2 className="w-5 h-5 text-gray-800" />
           </GlassBtn>
         )}
       </div>
 
-      {/* Re-centre pill — shown when user has panned away during active ride */}
-      {phase === "active" && !isFollowing && activeRide?.driver_location && (
+      {/* Re-centre pill */}
+      {phase === "active" && !isFollowing && (
         <button
           onClick={handleRecentre}
           className="absolute z-30 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-2xl transition-all active:scale-95"

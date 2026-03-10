@@ -2267,7 +2267,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden">
       {/* MAP */}
       <div className="absolute inset-0 z-0">
-        {mapsLoaded && <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />}
+        <DriverMap activeRide={activeRide} driverLocation={driverLocation} />
         {!mapsLoaded && (
           <div className="w-full h-full bg-gradient-to-b from-[#07070f] to-[#0e0e1c] flex items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-[#00ff88]/40" />
