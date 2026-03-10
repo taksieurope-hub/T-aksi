@@ -52,6 +52,17 @@ const CANCEL_REASONS = {
   in_progress: ["Client Requested Early End", "Client Behavior / Rude", "Safety Concern", "Wrong Destination", "Vehicle Breakdown"],
 };
 
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return 9999;
+  const R = 6371; 
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
 // =============================================================================
 // DESIGN TOKENS
 // =============================================================================
@@ -1998,8 +2009,33 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const fetchRideHistory = async () => {
     try { const r = await api.get("/driver/history"); setRideHistory(r.data.rides || []); } catch (_) {}
   };
-  const fetchNearbyRides = async () => {
-    try { const r = await api.get("/driver/rides/nearby?radius=10"); setNearbyRides(r.data.rides || []); } catch (_) {}
+ const fetchNearbyRides = async () => {
+    try { 
+      const r = await api.get("/driver/rides/nearby?radius=10"); 
+      const allRides = r.data.rides || [];
+
+      // 🛡️ THE GEOFENCE SHIELD 🛡️
+      // We double-check the distance on the frontend using your live GPS
+      const strictlyNearbyRides = allRides.filter((ride) => {
+          // Check if we have both coordinates to compare
+          // Note: If your state variable for the driver's location is named something else 
+          // (like 'currentLocation' or 'location'), change 'driverLocation' below to match it!
+          if (typeof driverLocation !== 'undefined' && driverLocation?.lat && ride.pickup_lat) {
+              const realDistance = calculateDistance(
+                  driverLocation.lat, driverLocation.lng, 
+                  ride.pickup_lat, ride.pickup_lng
+              );
+              
+              // Only allow the ride through if it's actually within 10km
+              return realDistance <= 10; 
+          }
+          
+          // Fallback just in case
+          return ride.distance_to_pickup <= 10;
+      });
+
+      setNearbyRides(strictlyNearbyRides); 
+    } catch (_) {}
   };
   const refreshUser = async () => {
     try { const r = await api.get("/auth/me"); updateUser(r.data); } catch (_) {}
