@@ -476,7 +476,53 @@ export const translations = {
     rate_your_driver: "Rate your driver",
     maybe_later: "Maybe later",
     
-    // Add any other keys you see leaking later
+      en: {
+    // Common
+    app_name: "T'aksi",
+    app_tagline: "GALACTIC",
+    loading: "Loading...",
+    error: "Error",
+    success: "Success",
+    cancel: "Cancel",
+    confirm: "Confirm",
+    save: "Save",
+    back: "Back",
+    next: "Next",
+    submit: "Submit",
+    close: "Close",
+
+    // Home + Hero (already working)
+    hero_title: "Your Ride",
+    hero_subtitle: "Across the Galaxy",
+    hero_desc: "Experience the future of transportation. Fast, reliable, and out of this world.",
+    book_ride: "Book a Ride",
+    become_pilot: "Become a Pilot",
+
+    // Vehicle cards (THE MISSING ONES)
+    choose_spacecraft: "Choose Your Spacecraft",
+    share_app: "Share T'aksi with friends",
+    vehicle_economy: "Economy",
+    vehicle_economy_desc: "Fast and affordable galactic transport",
+    vehicle_comfort: "Comfort",
+    vehicle_comfort_desc: "Premium ride with extra space and comfort",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "More space for up to 6 passengers",
+    vehicle_personal: "Personal",
+    vehicle_personal_desc: "Private & exclusive ride",
+    vehicle_jumpstart: "Jumpstart",
+    vehicle_jumpstart_desc: "Electric boost for long trips",
+
+    // All other keys you already had (kept for safety)
+    lightning_fast: "Lightning Fast",
+    lightning_fast_desc: "Get matched with nearby drivers in seconds.",
+    fair_pricing: "Fair Pricing",
+    fair_pricing_desc: "Transparent fares with no hidden fees.",
+    safe_secure: "Safe & Secure",
+    safe_secure_desc: "All drivers verified. Real-time tracking.",
+    driver_earnings: "Your Earnings",
+    sos_alert: "Emergency SOS Activated",
+    // ... (your existing en keys stay exactly as they are below this)
+  },
   },
   
   ru: {
