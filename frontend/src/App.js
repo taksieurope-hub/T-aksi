@@ -112,9 +112,28 @@ const Home = () => {
 };
 
 function App() {
+  // 🛡️ THE CACHE BUSTER 🛡️
+  // This listens for the exact errors that cause the "Black Screen of Death"
+  useEffect(() => {
+    const handleGlobalError = (event) => {
+      const errorMsg = event.message || "";
+      if (
+        errorMsg.includes("Failed to fetch dynamically imported module") || 
+        errorMsg.includes("Importing a module script failed") ||
+        errorMsg.includes("ChunkLoadError")
+      ) {
+        console.warn("Old cache detected. Forcing a silent hard reload...");
+        // This forces the user's phone to instantly wipe the old cache and reload
+        window.location.reload(true); 
+      }
+    };
+
+    window.addEventListener('error', handleGlobalError);
+    return () => window.removeEventListener('error', handleGlobalError);
+  }, []);
+
   return <Home />;
 }
 
 export default App;
-
 
