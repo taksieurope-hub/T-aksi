@@ -67,23 +67,30 @@ const LandingPage = () => {
         <div className="absolute inset-0 bg-gradient-to-b from-[#00ff88]/10 via-transparent to-black pointer-events-none" />
         
         <header className="relative z-10 flex items-center justify-between p-6 max-w-7xl mx-auto">
-          <div className="flex items-center space-x-4">
-            {/* 👇 CHANGED: Made the logo bigger (w-20 h-20) and added shrink-0 */}
-            <div className="w-20 h-20 shrink-0 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
-              <img src="/logo.png" alt="T'aksi Logo" className="w-full h-full object-cover" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-3xl font-black tracking-tight leading-none">{t('app_name')}</span>
-              <span className="text-xs text-[#00ff88] uppercase tracking-[0.2em] mt-1">{t('app_tagline')}</span>
-            </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <LanguageSelector variant="ghost" />
-            <Button variant="ghost" className="text-[#00d4ff] hover:text-white" onClick={() => navigate("/admin")}>
-              <Shield className="w-4 h-4 mr-2" /> {t('admin')}
-            </Button>
-          </div>
-        </header>
+  <div className="flex items-center space-x-4">
+    {/* 👇 Logo stays exactly as you had it */}
+    <div className="w-20 h-20 shrink-0 overflow-hidden rounded-full border-2 border-[#00ff88]/30">
+      <img src="/logo.png" alt="T'aksi Logo" className="w-full h-full object-cover" />
+    </div>
+    <div className="flex flex-col">
+      <span className="text-3xl font-black tracking-tight leading-none">{t('app_name')}</span>
+      <span className="text-xs text-[#00ff88] uppercase tracking-[0.2em] mt-1">{t('app_tagline')}</span>
+    </div>
+  </div>
+
+  {/* FIXED LANGUAGE SELECTOR + ADMIN BUTTON */}
+  <div className="flex items-center gap-3">
+    <LanguageSelector variant="default" />   {/* ← THIS WAS THE FIX (ghost → default) */}
+
+    <Button 
+      variant="ghost" 
+      className="text-[#00d4ff] hover:text-white hidden md:flex items-center gap-2"
+      onClick={() => navigate("/admin")}
+    >
+      <Shield className="w-4 h-4" /> {t('admin')}
+    </Button>
+  </div>
+</header>
 
         <main className="relative z-10 max-w-7xl mx-auto px-6 py-16">
           <div className="text-center mb-16">
