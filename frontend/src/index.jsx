@@ -1,17 +1,16 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import "@/index.css";
+// src/index.jsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+
+// === Use the BARREL export (cleanest & avoids duplicates) ===
+import { LanguageProvider } from './i18n';           // ← this pulls from i18n/index.js
 import App from './App.jsx';
-import { LanguageProvider } from './i18n/LanguageContext';
+import './index.css';
 
-// FIXED PATH: Points to the i18n folder
-import { LanguageProvider } from "./i18n/LanguageContext"; 
-
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(
+ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <LanguageProvider>
+    <LanguageProvider>     {/* ← wraps everything - required for i18n */}
       <App />
     </LanguageProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
 );
