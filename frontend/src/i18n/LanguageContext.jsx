@@ -8,11 +8,8 @@ export const LanguageProvider = ({ children }) => {
   const [language, setLanguageState] = useState(() => {
     const saved = localStorage.getItem('taksi_language');
     if (saved && translations[saved]) return saved;
-    const browserLang = typeof window !== 'undefined' && navigator.language 
-      ? navigator.language.split('-')[0].toLowerCase() 
-      : null;
-    if (browserLang && translations[browserLang]) return browserLang;
-    return 'en';
+    // FORCE Georgian for Georgia users
+    return defaultLanguage; // 'ka'
   });
 
   const [renderKey, setRenderKey] = useState(0);
@@ -24,7 +21,13 @@ export const LanguageProvider = ({ children }) => {
   }, [language]);
 
   const t = useCallback((key) => {
-    return translations[language]?.[key] || translations[defaultLanguage]?.[key] || key;
+    if (!key) return '';
+    return (
+      translations[language]?.[key] ||
+      translations[defaultLanguage]?.[key] ||
+      translations.en?.[key] ||  // extra English safety net
+      key
+    );
   }, [language]);
 
   const changeLanguage = useCallback((newLanguage) => {
@@ -53,5 +56,3 @@ export const useLanguage = () => {
   if (!context) throw new Error('useLanguage must be used within a LanguageProvider');
   return context;
 };
-
-export default LanguageContext;
