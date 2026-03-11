@@ -2404,26 +2404,28 @@ if (!PAYPAL_CLIENT_ID) {
 }
 
 const RiderPortal = () => {
-  const { user } = useAuth();
-  
-  // 🔍 DEBUG: This will show us exactly what React sees
-  console.log("Current Auth State:", user);
+  // Grab the auth state
+  const { user, loading } = useAuth(); 
 
-  // 🛡️ THE NEW BOUNCER: Simple and impossible to fail
-  // If there is no user logged in, just show the Auth screen.
+  // 1. If loading on refresh, show spinner instead of white screen
+  if (loading) {
+    return (
+      <div style={{ backgroundColor: '#07070f', height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#00ff88', fontFamily: 'system-ui' }}>
+        <div style={{ width: '50px', height: '50px', border: '4px solid #333', borderTop: '4px solid #00ff88', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <h2 style={{ marginTop: '20px' }}>Loading T'aksi...</h2>
+        <style>{"@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"}</style>
+      </div>
+    );
+  }
+
+  // 2. If not logged in, show Auth screen
   if (!user) {
     return <RiderAuth />;
   }
 
-  // ✅ IF YOU MAKE IT HERE, YOU ARE LOGGED IN. SHOW THE DASHBOARD.
+  // 3. Logged in -> Show Dashboard
   return (
-    <PayPalScriptProvider 
-      options={{ 
-        "client-id": PAYPAL_CLIENT_ID || "sb", 
-        currency: "USD", 
-        vault: true 
-      }}
-    >
+    <PayPalScriptProvider options={{ "client-id": PAYPAL_CLIENT_ID || "sb", currency: "USD", vault: true }}>
       <Routes>
         <Route path="/" element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<RiderDashboard />} />
@@ -2433,7 +2435,6 @@ const RiderPortal = () => {
   );
 };
 
-// AuthProvider only — LanguageProvider comes from the app root
 const RiderPortalWithProviders = () => (
   <AuthProvider>
     <RiderPortal />
