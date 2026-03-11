@@ -4161,26 +4161,30 @@ async def share_ride(
         "ride_id": ride_id,
     }
 
+
 # =============================================================================
-# SERVE VITE ASSETS (JS, CSS, Images)
+# THE ULTIMATE REACT SPA CATCH-ALL (Prevents White Screen on Refresh)
 # =============================================================================
-# This tells FastAPI to serve the actual JS/CSS files from the 'dist' folder
 import os
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-if os.path.exists("dist/assets"):
-    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
-
-# =============================================================================
-# REACT SPA CATCH-ALL ROUTE (Prevents White Screen on Refresh)
-# =============================================================================
-# ⚠️ This MUST be the last route in the file!
+# ⚠️ This MUST be the very last route in the file!
 @app.get("/{catchall:path}")
 async def serve_react_app(catchall: str):
-    # If the request is for an API route that doesn't exist, let it fail normally
+    # 1. Let API requests pass through normally (so your backend doesn't break)
     if catchall.startswith("api/"):
         return {"error": "API route not found"}
         
-    # Otherwise, it's a frontend refresh. Send them the React index file!
-    return FileResponse("dist/index.html")
+    # 2. If the browser asks for a specific asset (like JS, CSS, or images)
+    # e.g., "assets/index-123.js" or "vite.svg"
+    file_path = os.path.join("dist", catchall)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+        
+    # 3. If it's a page route (like /rider or /driver), hand them the React app!
+    index_path = os.path.join("dist", "index.html")
+    if os.path.isfile(index_path):
+        return FileResponse(index_path)
+        
+    # 4. Fallback if the build folder is completely missing
+    return {"error": "Frontend build not found. Did the Vite build run?"}
