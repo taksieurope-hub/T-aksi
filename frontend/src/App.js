@@ -4,8 +4,9 @@ import axios from "axios";
 import { useLanguagePreference } from "@/hooks/useLanguagePreference";
 import { getTranslation, SUPPORTED_LANGUAGES } from "@/lib/i18n";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+// 🚀 THE FIX: We removed the environment variables! 
+// Since frontend and backend are on the exact same server, we just use a relative path.
+const API = "/api";
 
 const Home = () => {
   const { language, setLanguage, isRtl } = useLanguagePreference();
@@ -14,30 +15,42 @@ const Home = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const helloWorldApi = async () => {
-    setIsLoading(true);
-    setErrorMessage("");
-
-    try {
-      const response = await axios.get(`${API}/`, {
-        params: { lang: language },
-        headers: {
-          "Accept-Language": language,
-        },
-      });
-
-      setBackendMessage(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-      setErrorMessage(t.backendError);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    helloWorldApi();
-  }, [language]);
+    let isMounted = true; // Prevents glitches if users switch languages quickly
+
+    const fetchHelloWorld = async () => {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      try {
+        const response = await axios.get(`${API}/`, {
+          params: { lang: language },
+          headers: {
+            "Accept-Language": language,
+          },
+        });
+
+        if (isMounted) {
+          setBackendMessage(response.data.message);
+        }
+      } catch (e) {
+        console.error(e, `errored out requesting /api`);
+        if (isMounted) {
+          setErrorMessage(t.backendError);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchHelloWorld();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language, t.backendError]);
 
   return (
     <main className={`app-shell ${isRtl ? "rtl" : ""}`} data-testid="home-page">
@@ -136,4 +149,3 @@ function App() {
 }
 
 export default App;
-
