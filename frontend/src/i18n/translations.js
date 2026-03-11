@@ -475,6 +475,17 @@ export const translations = {
     thank_your_driver: "Thank your driver",
     rate_your_driver: "Rate your driver",
     maybe_later: "Maybe later",
+        // === VEHICLE CARD KEYS (add these to BOTH ka and en) ===
+    vehicle_economy: "ეკონომი",
+    vehicle_economy_desc: "სწრაფი და ხელმისაწვდომი გალაქტიკური ტრანსპორტი",
+    vehicle_comfort: "კომფორტი",
+    vehicle_comfort_desc: "პრემიუმ მგზავრობა დამატებითი სივრცით",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "მეტი სივრცე 6 მგზავრამდე",
+    vehicle_personal: "პერსონალური",
+    vehicle_personal_desc: "პირადი და ექსკლუზიური მგზავრობა",
+    vehicle_jumpstart: "ჯამპსტარტი",
+    vehicle_jumpstart_desc: "ელექტრო ბუსტი გრძელი მოგზაურობებისთვის",
     
       en: {
     // Common
@@ -522,6 +533,17 @@ export const translations = {
     driver_earnings: "Your Earnings",
     sos_alert: "Emergency SOS Activated",
     // ... (your existing en keys stay exactly as they are below this)
+        // === VEHICLE CARD KEYS (add these to BOTH ka and en) ===
+    vehicle_economy: "Economy",
+    vehicle_economy_desc: "Fast and affordable galactic transport",
+    vehicle_comfort: "Comfort",
+    vehicle_comfort_desc: "Premium ride with extra space and comfort",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "More space for up to 6 passengers",
+    vehicle_personal: "Personal",
+    vehicle_personal_desc: "Private & exclusive ride",
+    vehicle_jumpstart: "Jumpstart",
+    vehicle_jumpstart_desc: "Electric boost for long trips",
   },
   },
   
@@ -768,7 +790,19 @@ export const translations = {
     describe_issue: "Опишите проблему...",
     referrals: "Рефералы",
     distance_traveled: "Пройденное расстояние",
-    current_fare: "Текущий тариф"
+    current_fare: "Текущий тариф",
+    choose_spacecraft: "Выберите свой космический корабль",
+    share_app: "Поделитесь T'aksi с друзьями",
+    vehicle_economy: "Эконом",
+    vehicle_economy_desc: "Быстрый и доступный галактический транспорт",
+    vehicle_comfort: "Комфорт",
+    vehicle_comfort_desc: "Премиум поездка с дополнительным пространством",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "Больше места до 6 пассажиров",
+    vehicle_personal: "Персональный",
+    vehicle_personal_desc: "Приватная и эксклюзивная поездка",
+    vehicle_jumpstart: "Jumpstart",
+    vehicle_jumpstart_desc: "Электрический буст для длинных поездок",
   },
   
   hi: {
@@ -949,7 +983,19 @@ export const translations = {
     describe_issue: "अपनी समस्या बताएं...",
     referrals: "रेफरल",
     distance_traveled: "तय की गई दूरी",
-    current_fare: "वर्तमान किराया"
+    current_fare: "वर्तमान किराया",
+        choose_spacecraft: "अपना स्पेसक्राफ्ट चुनें",
+    share_app: "T'aksi को दोस्तों के साथ शेयर करें",
+    vehicle_economy: "इकोनॉमी",
+    vehicle_economy_desc: "तेज़ और सस्ता गैलेक्टिक ट्रांसपोर्ट",
+    vehicle_comfort: "कम्फर्ट",
+    vehicle_comfort_desc: "प्रीमियम राइड एक्स्ट्रा स्पेस के साथ",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "6 पैसेंजर्स तक ज्यादा जगह",
+    vehicle_personal: "पर्सनल",
+    vehicle_personal_desc: "प्राइवेट और एक्सक्लूसिव राइड",
+    vehicle_jumpstart: "Jumpstart",
+    vehicle_jumpstart_desc: "लंबी यात्राओं के लिए इलेक्ट्रिक बूस्ट",
   },
   
   zh: {
@@ -1130,7 +1176,19 @@ export const translations = {
     describe_issue: "描述您的问题...",
     referrals: "推荐",
     distance_traveled: "行驶距离",
-    current_fare: "当前费用"
+    current_fare: "当前费用",
+        choose_spacecraft: "选择您的太空船",
+    share_app: "与朋友分享 T'aksi",
+    vehicle_economy: "经济型",
+    vehicle_economy_desc: "快速且实惠的银河运输",
+    vehicle_comfort: "舒适型",
+    vehicle_comfort_desc: "额外空间的豪华乘坐体验",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "最多容纳 6 名乘客",
+    vehicle_personal: "私人型",
+    vehicle_personal_desc: "私密专属乘坐",
+    vehicle_jumpstart: "Jumpstart",
+    vehicle_jumpstart_desc: "长途旅行的电动助力",
   },
   
   nl: {
@@ -1331,7 +1389,20 @@ export const translations = {
     describe_issue: "Beschrijf uw probleem...",
     referrals: "Doorverwijzingen",
     distance_traveled: "Afgelegde afstand",
-    current_fare: "Huidig tarief"
+    current_fare: "Huidig tarief",
+        // === VEHICLE CARD KEYS ===
+    choose_spacecraft: "Kies uw ruimteschip",
+    share_app: "Deel T'aksi met vrienden",
+    vehicle_economy: "Economy",
+    vehicle_economy_desc: "Snel en betaalbaar galactisch transport",
+    vehicle_comfort: "Comfort",
+    vehicle_comfort_desc: "Premium rit met extra ruimte",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "Meer ruimte voor maximaal 6 passagiers",
+    vehicle_personal: "Persoonlijk",
+    vehicle_personal_desc: "Privé en exclusieve rit",
+    vehicle_jumpstart: "Starthulp",
+    vehicle_jumpstart_desc: "Elektrische boost voor lange reizen",
   },
   
   fr: {
@@ -1512,7 +1583,20 @@ export const translations = {
     describe_issue: "Décrivez votre problème...",
     referrals: "Parrainages",
     distance_traveled: "Distance parcourue",
-    current_fare: "Tarif actuel"
+    current_fare: "Tarif actuel",
+        // === VEHICLE CARD KEYS ===
+    choose_spacecraft: "Choisissez votre vaisseau spatial",
+    share_app: "Partagez T'aksi avec vos amis",
+    vehicle_economy: "Économique",
+    vehicle_economy_desc: "Transport galactique rapide et abordable",
+    vehicle_comfort: "Confort",
+    vehicle_comfort_desc: "Trajet premium avec espace supplémentaire",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "Plus d'espace pour jusqu'à 6 passagers",
+    vehicle_personal: "Personnel",
+    vehicle_personal_desc: "Trajet privé et exclusif",
+    vehicle_jumpstart: "Démarrage",
+    vehicle_jumpstart_desc: "Boost électrique pour longs trajets",
   },
   
   de: {
@@ -1693,7 +1777,20 @@ export const translations = {
     describe_issue: "Beschreiben Sie Ihr Problem...",
     referrals: "Empfehlungen",
     distance_traveled: "Zurückgelegte Strecke",
-    current_fare: "Aktueller Fahrpreis"
+    current_fare: "Aktueller Fahrpreis",
+        // === VEHICLE CARD KEYS ===
+    choose_spacecraft: "Wählen Sie Ihr Raumschiff",
+    share_app: "Teilen Sie T'aksi mit Freunden",
+    vehicle_economy: "Economy",
+    vehicle_economy_desc: "Schneller und günstiger galaktischer Transport",
+    vehicle_comfort: "Komfort",
+    vehicle_comfort_desc: "Premium-Fahrt mit extra Platz",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "Mehr Platz für bis zu 6 Passagiere",
+    vehicle_personal: "Persönlich",
+    vehicle_personal_desc: "Private und exklusive Fahrt",
+    vehicle_jumpstart: "Starthilfe",
+    vehicle_jumpstart_desc: "Elektrischer Boost für lange Strecken",
   },
 
   // Polish
@@ -1895,7 +1992,20 @@ export const translations = {
     describe_issue: "Opisz swój problem...",
     referrals: "Polecenia",
     distance_traveled: "Pokonany dystans",
-    current_fare: "Bieżąca opłata"
+    current_fare: "Bieżąca opłata",
+        // === VEHICLE CARD KEYS ===
+    choose_spacecraft: "Wybierz swój statek kosmiczny",
+    share_app: "Udostępnij T'aksi znajomym",
+    vehicle_economy: "Ekonomiczny",
+    vehicle_economy_desc: "Szybki i tani transport galaktyczny",
+    vehicle_comfort: "Komfort",
+    vehicle_comfort_desc: "Premium przejazd z dodatkową przestrzenią",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "Więcej miejsca dla maksymalnie 6 pasażerów",
+    vehicle_personal: "Osobisty",
+    vehicle_personal_desc: "Prywatny i ekskluzywny przejazd",
+    vehicle_jumpstart: "Rozruch",
+    vehicle_jumpstart_desc: "Elektryczny boost na długie trasy",
   },
 
   // Afrikaans
@@ -2097,7 +2207,20 @@ export const translations = {
     describe_issue: "Beskryf u probleem...",
     referrals: "Verwysings",
     distance_traveled: "Afgelegde afstand",
-    current_fare: "Huidige tarief"
+    current_fare: "Huidige tarief",
+        // === VEHICLE CARD KEYS ===
+    choose_spacecraft: "Kies jou ruimteskip",
+    share_app: "Deel T'aksi met vriende",
+    vehicle_economy: "Ekonomie",
+    vehicle_economy_desc: "Vinnig en bekostigbaar galaktiese vervoer",
+    vehicle_comfort: "Gemak",
+    vehicle_comfort_desc: "Premium rit met ekstra ruimte",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "Meer ruimte vir tot 6 passasiers",
+    vehicle_personal: "Persoonlik",
+    vehicle_personal_desc: "Privaat en eksklusiewe rit",
+    vehicle_jumpstart: "Aanjaag",
+    vehicle_jumpstart_desc: "Elektriese hupstoot vir lang reise",
   },
 
   // Zulu
@@ -2299,7 +2422,20 @@ export const translations = {
     describe_issue: "Chaza inkinga yakho...",
     referrals: "Izincomo",
     distance_traveled: "Ibanga elihambiwe",
-    current_fare: "Intengo yamanje"
+    current_fare: "Intengo yamanje",
+        // === VEHICLE CARD KEYS ===
+    choose_spacecraft: "Khetha umkhumbi wakho wasemkhathini",
+    share_app: "Yabelana nge-T'aksi nabangane",
+    vehicle_economy: "Ongabizi",
+    vehicle_economy_desc: "Ukuhamba okusheshayo futhi okungabizi",
+    vehicle_comfort: "Okuntofontofon",
+    vehicle_comfort_desc: "Uhambo oluphambili olunendawo eyengeziwe",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "Indawo eyengeziwe kuze kube yizihambi eziyisi-6",
+    vehicle_personal: "Siqu",
+    vehicle_personal_desc: "Uhambo oluyimfihlo nolukhethekile",
+    vehicle_jumpstart: "Qalisa",
+    vehicle_jumpstart_desc: "Ukusiza ngogesi ohambweni olude",
   },
 
   // Xhosa
@@ -2501,7 +2637,20 @@ export const translations = {
     describe_issue: "Chaza ingxaki yakho...",
     referrals: "Izikhombo",
     distance_traveled: "Umgama ohambiweyo",
-    current_fare: "Intengo yangoku"
+    current_fare: "Intengo yangoku",
+        // === VEHICLE CARD KEYS ===
+    choose_spacecraft: "Khetha isiphekepheke sakho",
+    share_app: "Yabelana nge-T'aksi nabahlobo",
+    vehicle_economy: "Engabizi",
+    vehicle_economy_desc: "Ukuhamba okukhawulezayo nokufikelelekayo",
+    vehicle_comfort: "Intuthuzelo",
+    vehicle_comfort_desc: "Uhambo oluphambili olunendawo eyongezelelweyo",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "Indawo eyongezelelweyo ukuya kuthi 6 abakhweli",
+    vehicle_personal: "Buqu",
+    vehicle_personal_desc: "Uhambo lwabucala nolukhethekileyo",
+    vehicle_jumpstart: "Qalisa",
+    vehicle_jumpstart_desc: "Ukunceda nge-elektroni kuhambo olude",
   }
 };
 
