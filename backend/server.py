@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 import firebase_admin
 from firebase_admin import credentials, firestore, storage, messaging
 
+from fastapi.responses import FileResponse
 from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form, Body, Response, Cookie, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
@@ -4158,3 +4159,17 @@ async def share_ride(
         "message": "Share this link to let others track your ride",
         "ride_id": ride_id,
     }
+
+# =============================================================================
+# REACT SPA CATCH-ALL ROUTE (Prevents White Screen on Refresh)
+# =============================================================================
+# ⚠️ This MUST be the last route in the file!
+@app.get("/{catchall:path}")
+async def serve_react_app(catchall: str):
+    # If the request is for an API route that doesn't exist, let it fail normally
+    if catchall.startswith("api/"):
+        return {"error": "API route not found"}
+        
+    # Otherwise, it's a frontend refresh. Send them the React index file!
+    # Note: Make sure "dist/index.html" matches the folder where your Vite build lives.
+    return FileResponse("dist/index.html")
