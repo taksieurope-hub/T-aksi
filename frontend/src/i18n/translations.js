@@ -331,7 +331,31 @@ export const translations = {
     describe_issue: "აღწერე პრობლემა",
     referrals: "რეფერალები",
     distance_traveled: "გავლილი მანძილი",
-    current_fare: "მიმდინარე ტარიფი"
+    current_fare: "მიმდინარე ტარიფი",
+        choose_spacecraft: "აირჩიეთ თქვენი კოსმოსური ხომალდი",
+    share_app: "გაუზიარეთ T'aksi მეგობრებს",
+    vehicle_economy: "ეკონომი",
+    vehicle_economy_desc: "სწრაფი და ხელმისაწვდომი გალაქტიკური ტრანსპორტი",
+    vehicle_comfort: "კომფორტი",
+    vehicle_comfort_desc: "პრემიუმ მგზავრობა დამატებითი სივრცით",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "მეტი სივრცე 6 მგზავრამდე",
+    vehicle_personal: "პერსონალური",
+    vehicle_personal_desc: "პირადი და ექსკლუზიური მგზავრობა",
+    vehicle_jumpstart: "ჯამპსტარტი",
+    vehicle_jumpstart_desc: "ელექტრო ბუსტი გრძელი მოგზაურობებისთვის",
+        choose_spacecraft: "აირჩიეთ თქვენი კოსმოსური ხომალდი",
+    share_app: "გაუზიარეთ T'aksi მეგობრებს",
+    vehicle_economy: "ეკონომი",
+    vehicle_economy_desc: "სწრაფი და ხელმისაწვდომი გალაქტიკური ტრანსპორტი",
+    vehicle_comfort: "კომფორტი",
+    vehicle_comfort_desc: "პრემიუმ მგზავრობა დამატებითი სივრცით",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "მეტი სივრცე 6 მგზავრამდე",
+    vehicle_personal: "პერსონალური",
+    vehicle_personal_desc: "პირადი და ექსკლუზიური მგზავრობა",
+    vehicle_jumpstart: "ჯამპსტარტი",
+    vehicle_jumpstart_desc: "ელექტრო ბუსტი გრძელი მოგზაურობებისთვის",
   },
   
     en: {
@@ -475,17 +499,7 @@ export const translations = {
     thank_your_driver: "Thank your driver",
     rate_your_driver: "Rate your driver",
     maybe_later: "Maybe later",
-        // === VEHICLE CARD KEYS (add these to BOTH ka and en) ===
-    vehicle_economy: "ეკონომი",
-    vehicle_economy_desc: "სწრაფი და ხელმისაწვდომი გალაქტიკური ტრანსპორტი",
-    vehicle_comfort: "კომფორტი",
-    vehicle_comfort_desc: "პრემიუმ მგზავრობა დამატებითი სივრცით",
-    vehicle_xl: "XL / SUV",
-    vehicle_xl_desc: "მეტი სივრცე 6 მგზავრამდე",
-    vehicle_personal: "პერსონალური",
-    vehicle_personal_desc: "პირადი და ექსკლუზიური მგზავრობა",
-    vehicle_jumpstart: "ჯამპსტარტი",
-    vehicle_jumpstart_desc: "ელექტრო ბუსტი გრძელი მოგზაურობებისთვის",
+
     
       en: {
     // Common
@@ -534,6 +548,19 @@ export const translations = {
     sos_alert: "Emergency SOS Activated",
     // ... (your existing en keys stay exactly as they are below this)
         // === VEHICLE CARD KEYS (add these to BOTH ka and en) ===
+    vehicle_economy: "Economy",
+    vehicle_economy_desc: "Fast and affordable galactic transport",
+    vehicle_comfort: "Comfort",
+    vehicle_comfort_desc: "Premium ride with extra space and comfort",
+    vehicle_xl: "XL / SUV",
+    vehicle_xl_desc: "More space for up to 6 passengers",
+    vehicle_personal: "Personal",
+    vehicle_personal_desc: "Private & exclusive ride",
+    vehicle_jumpstart: "Jumpstart",
+    vehicle_jumpstart_desc: "Electric boost for long trips",
+        // === VEHICLE CARD KEYS (add exactly this) ===
+    choose_spacecraft: "Choose Your Spacecraft",
+    share_app: "Share T'aksi with friends",
     vehicle_economy: "Economy",
     vehicle_economy_desc: "Fast and affordable galactic transport",
     vehicle_comfort: "Comfort",
