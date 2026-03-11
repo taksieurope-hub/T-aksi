@@ -4160,31 +4160,3 @@ async def share_ride(
         "message": "Share this link to let others track your ride",
         "ride_id": ride_id,
     }
-
-
-# =============================================================================
-# THE ULTIMATE REACT SPA CATCH-ALL (Prevents White Screen on Refresh)
-# =============================================================================
-import os
-from fastapi.responses import FileResponse
-
-# ⚠️ This MUST be the very last route in the file!
-@app.get("/{catchall:path}")
-async def serve_react_app(catchall: str):
-    # 1. Let API requests pass through normally (so your backend doesn't break)
-    if catchall.startswith("api/"):
-        return {"error": "API route not found"}
-        
-    # 2. If the browser asks for a specific asset (like JS, CSS, or images)
-    # e.g., "assets/index-123.js" or "vite.svg"
-    file_path = os.path.join("dist", catchall)
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
-        
-    # 3. If it's a page route (like /rider or /driver), hand them the React app!
-    index_path = os.path.join("dist", "index.html")
-    if os.path.isfile(index_path):
-        return FileResponse(index_path)
-        
-    # 4. Fallback if the build folder is completely missing
-    return {"error": "Frontend build not found. Did the Vite build run?"}

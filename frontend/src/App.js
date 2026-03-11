@@ -6,7 +6,7 @@ import { getTranslation, SUPPORTED_LANGUAGES } from "@/lib/i18n";
 
 // 🚀 THE FIX: We removed the environment variables! 
 // Since frontend and backend are on the exact same server, we just use a relative path.
-const API = "/api";
+const API = "https://your-real-python-backend-url.onrender.com/api";
 
 const Home = () => {
   const { language, setLanguage, isRtl } = useLanguagePreference();
