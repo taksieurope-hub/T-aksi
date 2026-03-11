@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 import firebase_admin
 from firebase_admin import credentials, firestore, storage, messaging
 
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi import FastAPI, HTTPException, Query, Header, Depends, BackgroundTasks, File, UploadFile, Form, Body, Response, Cookie, Request
 from fastapi.responses import JSONResponse
@@ -4161,6 +4162,17 @@ async def share_ride(
     }
 
 # =============================================================================
+# SERVE VITE ASSETS (JS, CSS, Images)
+# =============================================================================
+# This tells FastAPI to serve the actual JS/CSS files from the 'dist' folder
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+if os.path.exists("dist/assets"):
+    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+
+# =============================================================================
 # REACT SPA CATCH-ALL ROUTE (Prevents White Screen on Refresh)
 # =============================================================================
 # ⚠️ This MUST be the last route in the file!
@@ -4171,5 +4183,4 @@ async def serve_react_app(catchall: str):
         return {"error": "API route not found"}
         
     # Otherwise, it's a frontend refresh. Send them the React index file!
-    # Note: Make sure "dist/index.html" matches the folder where your Vite build lives.
     return FileResponse("dist/index.html")
