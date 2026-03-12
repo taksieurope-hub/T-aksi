@@ -1725,7 +1725,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     { id: "active",  label: t("active"),  Icon: Navigation },
     { id: "history", label: t("history"), Icon: History },
     { id: "profile", label: t("profile"), Icon: User    },
-    { id: "support", icon: Headphones, label: "Support" },
+    { id: "support", Icon: Headphones, label: "Support" },
 ];
 
   const mapDisplay = useMemo(() => {
