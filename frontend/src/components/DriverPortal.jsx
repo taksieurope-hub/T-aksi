@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import Drivermap from './Drivermap';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -2303,7 +2304,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden">
       {/* MAP */}
       <div className="absolute inset-0 z-0">
-        <DriverMap activeRide={activeRide} driverLocation={driverLocation} />
+        <Drivermap activeRide={activeRide} driverLocation={driverLocation} />
         {!mapsLoaded && (
           <div className="w-full h-full bg-gradient-to-b from-[#07070f] to-[#0e0e1c] flex items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-[#00ff88]/40" />
