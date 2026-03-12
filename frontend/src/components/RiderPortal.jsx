@@ -2448,10 +2448,7 @@ const RiderPortal = () => {
 const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
 
 const RiderPortal = () => {
-  // Safely grab auth state no matter what your hook names the variables
-  const auth = useAuth();
-  const user = auth.user || auth.currentUser;
-  const loading = auth.loading || auth.isLoading;
+  const { user, loading } = useAuth(); 
 
   // 1. If Firebase is thinking on refresh, show the spinner
   if (loading) {
@@ -2464,9 +2461,9 @@ const RiderPortal = () => {
     );
   }
 
-  // 2. If not logged in, send them back to your actual login page
+  // 2. If not logged in, send them back to the Auth screen
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <RiderAuth />;
   }
 
   // 3. Logged in -> Show Dashboard
