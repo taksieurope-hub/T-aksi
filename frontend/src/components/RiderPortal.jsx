@@ -2443,7 +2443,7 @@ const RiderPortal = () => {
 
 
 // =============================================================================
-// SUPPORT PANEL FOR RIDER — MINIMAL VERSION (no new imports needed)
+// SUPPORT PANEL FOR RIDER — MINIMAL (no extra components, no crash)
 // =============================================================================
 const SupportPanel = () => {
   const { t } = useLanguage();
@@ -2488,3 +2488,11 @@ const SupportPanel = () => {
     </div>
   );
 };
+
+const RiderPortalWithProviders = () => (
+  <AuthProvider>
+    <RiderPortal />
+  </AuthProvider>
+);
+
+export default RiderPortalWithProviders;
