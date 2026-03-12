@@ -93,6 +93,7 @@ const RideCommunication = ({
   currentUserId,
   isDriver,
 }) => {
+  const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");

@@ -375,6 +375,7 @@ const RatePassengerModal = ({ rideId, riderName, onDone }) => {
 // WITHDRAWAL PANEL
 // =============================================================================
 const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
+  const { t } = useLanguage();
   const [amount, setAmount] = useState("");
   const [bankDetails, setBankDetails] = useState("");
   const [bankType, setBankType] = useState("iban");
@@ -503,6 +504,7 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
 // CAMPAIGNS PANEL
 // =============================================================================
 const CampaignsPanel = ({ driverRating }) => {
+  const { t } = useLanguage();
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(null);
@@ -630,6 +632,7 @@ const CampaignsPanel = ({ driverRating }) => {
 // FLEET PANEL
 // =============================================================================
 const FleetPanel = ({ registrationStatus }) => {
+  const { t } = useLanguage();
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -742,6 +745,7 @@ const FleetPanel = ({ registrationStatus }) => {
 // SUPPORT PANEL
 // =============================================================================
 const SupportPanel = () => {
+  const { t } = useLanguage();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -828,6 +832,7 @@ const SupportPanel = () => {
 // REFERRAL PANEL
 // =============================================================================
 const ReferralPanel = () => {
+  const { t } = useLanguage();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [code, setCode] = useState("");
@@ -913,6 +918,7 @@ const ReferralPanel = () => {
 // MORE PANEL
 // =============================================================================
 const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocation }) => {
+  const { t } = useLanguage();
   const [view, setView] = useState("menu");
 
   const menuItems = [
