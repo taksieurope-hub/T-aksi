@@ -2443,49 +2443,41 @@ const RiderPortal = () => {
 
 
 // =============================================================================
-// SUPPORT PANEL FOR RIDER — MINIMAL (no extra components, no crash)
+// PORTAL ROUTER
 // =============================================================================
-const SupportPanel = () => {
-  const { t } = useLanguage();
-  const [tickets, setTickets] = useState([]);
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
+const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
 
-  const send = async () => {
-    if (!message.trim()) return;
-    setSending(true);
-    try {
-      await api.post("/support/message", { message: message.trim() });
-      toast.success("Support ticket sent. We'll reply soon.");
-      setMessage("");
-      const r = await api.get("/support/history");
-      setTickets(r.data.tickets || []);
-    } catch (_) {
-      toast.error("Failed to send");
-    } finally { setSending(false); }
-  };
+const RiderPortal = () => {
+  // Safely grab auth state no matter what your hook names the variables
+  const auth = useAuth();
+  const user = auth.user || auth.currentUser;
+  const loading = auth.loading || auth.isLoading;
 
+  // 1. If Firebase is thinking on refresh, show the spinner
+  if (loading) {
+    return (
+      <div style={{ backgroundColor: '#07070f', height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#00ff88', fontFamily: 'system-ui' }}>
+        <div style={{ width: '50px', height: '50px', border: '4px solid #333', borderTop: '4px solid #00ff88', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <h2 style={{ marginTop: '20px' }}>Loading T'aksi...</h2>
+        <style>{"@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"}</style>
+      </div>
+    );
+  }
+
+  // 2. If not logged in, send them back to your actual login page
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // 3. Logged in -> Show Dashboard
   return (
-    <div className="space-y-4">
-      <div className="text-white font-semibold text-lg flex items-center gap-2 mb-3">
-        <Headphones className="w-5 h-5" /> {t("support")}
-      </div>
-      <div className="bg-white/4 border border-white/10 rounded-2xl p-4 space-y-3">
-        <Label className="text-white/60 text-xs uppercase tracking-wider">{t("new_message")}</Label>
-        <textarea 
-          value={message} 
-          onChange={e => setMessage(e.target.value)} 
-          rows={3}
-          placeholder={t("describe_issue")}
-          className="w-full bg-white/4 border border-white/10 rounded-xl p-3 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-[#00ff88]/40" 
-        />
-        <Button onClick={send} disabled={!message.trim() || sending} className="w-full bg-[#00ff88] text-black font-bold h-10">
-          {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-          {sending ? t("sending") : t("send_message")}
-        </Button>
-      </div>
-      {tickets.length > 0 && <div className="text-white/30 text-xs">Previous tickets will appear here</div>}
-    </div>
+    <PayPalScriptProvider options={{ "client-id": PAYPAL_CLIENT_ID || "sb", currency: "USD", vault: true }}>
+      <Routes>
+        <Route path="/" element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard" element={<RiderDashboard />} />
+        <Route path="*" element={<Navigate to="dashboard" replace />} />
+      </Routes>
+    </PayPalScriptProvider>
   );
 };
 
