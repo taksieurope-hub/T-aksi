@@ -2414,41 +2414,6 @@ if (!PAYPAL_CLIENT_ID) {
 const RiderPortal = () => {
   const { user, loading } = useAuth(); 
 
-  if (loading) {
-    return (
-      <div style={{ backgroundColor: '#07070f', height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#00ff88', fontFamily: 'system-ui' }}>
-        <div style={{ width: '50px', height: '50px', border: '4px solid #333', borderTop: '4px solid #00ff88', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-        <h2 style={{ marginTop: '20px' }}>Loading T'aksi...</h2>
-        <style>{"@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"}</style>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <RiderAuth />;
-  }
-
-  return (
-    <PayPalScriptProvider options={{ "client-id": PAYPAL_CLIENT_ID || "sb", currency: "USD", vault: true }}>
-      <Routes>
-        <Route path="/" element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard" element={<RiderDashboard />} />
-        <Route path="*" element={<Navigate to="dashboard" replace />} />
-      </Routes>
-    </PayPalScriptProvider>
-  );
-};
-
-
-
-// =============================================================================
-// PORTAL ROUTER
-// =============================================================================
-const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
-
-const RiderPortal = () => {
-  const { user, loading } = useAuth(); 
-
   // 1. If Firebase is thinking on refresh, show the spinner
   if (loading) {
     return (
