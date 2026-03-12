@@ -15,7 +15,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
 import CurrencyConverter from "@/components/CurrencyConverter";
-import SupportPanel from "./SupportPanel";
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
@@ -1727,7 +1726,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     { id: "active",  label: t("active"),  Icon: Navigation },
     { id: "history", label: t("history"), Icon: History },
     { id: "profile", label: t("profile"), Icon: User    },
-    { id: "support", icon: Headphones, label: "Support" },   // ← ADD THIS LINE
+    { id: "support", icon: Headphones, label: "Support" },
 ];
 
   const mapDisplay = useMemo(() => {
@@ -2441,8 +2440,10 @@ const RiderPortal = () => {
   );
 };
 
+
+
 // =============================================================================
-// SUPPORT PANEL FOR RIDER (only ONE of these — kept the original)
+// SUPPORT PANEL FOR RIDER — ONLY ONE (this is the correct one)
 // =============================================================================
 const SupportPanel = () => {
   const { t } = useLanguage();
