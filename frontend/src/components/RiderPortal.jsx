@@ -270,6 +270,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 // - Driver marker with heading rotation
 // =============================================================================
 const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, status }) => {
+  const { t } = useLanguage();
   const stopMarkersRef = useRef([]);
   const mapRef                = useRef(null);
   const mapInstanceRef        = useRef(null);
@@ -1725,8 +1726,8 @@ const [promoApplied, setPromoApplied] = useState(false);
     { id: "active",  label: t("active"),  Icon: Navigation },
     { id: "history", label: t("history"), Icon: History },
     { id: "profile", label: t("profile"), Icon: User    },
-    { id: "support", Icon: Headphones, label: "Support" },
-];
+    { id: "support", label: "Support",    Icon: Headphones }
+  ];
 
   const mapDisplay = useMemo(() => {
     if (!mapsLoaded || !pickup.lat || !destination.lat) return null;
@@ -2344,9 +2345,14 @@ const [promoApplied, setPromoApplied] = useState(false);
         )}
 
         {/* ================================================================ */}
-        {/* SUPPORT TAB — ADDED FOR YOU                                       */}
+        {/* SUPPORT TAB                                                      */}
         {/* ================================================================ */}
-        {activeTab === "support" && <SupportPanel />}
+        {activeTab === "support" && (
+          <div className="flex flex-col items-center justify-center py-24 text-white/40">
+            <Headphones className="w-12 h-12 mb-4 opacity-20" />
+            <p>Support Panel Coming Soon</p>
+          </div>
+        )}
 
       </main>
 
