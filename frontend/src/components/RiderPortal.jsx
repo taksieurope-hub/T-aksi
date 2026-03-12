@@ -1721,7 +1721,6 @@ const [promoApplied, setPromoApplied] = useState(false);
   };
 
   const tabs = [
-    { id: "support", label: "Support", Icon: Headphones },
     { id: "book",    label: t("book"),    Icon: Rocket  },
     { id: "active",  label: t("active"),  Icon: Navigation },
     { id: "history", label: t("history"), Icon: History },
