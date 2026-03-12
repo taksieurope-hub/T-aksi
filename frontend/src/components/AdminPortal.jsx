@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/config";
 import api from "@/api";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import DisputeManager from "./DisputeManager";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -24,7 +25,7 @@ import {
   Shield, Users, Car, Home, LogOut, Lock, ArrowLeft, Loader2,
   CheckCircle2, XCircle, TrendingUp, UserCheck, Banknote, BarChart3,
   PlusCircle, CreditCard, MessageSquare, ArrowRightLeft, FileWarning,
-  AlertTriangle, RefreshCw, Eye, ChevronRight, Siren,
+  AlertTriangle, RefreshCw, Eye, ChevronRight, Siren, Wallet, Search, X,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,7 +69,7 @@ const StatCard = ({ icon: Icon, label, value, color }) => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADD BALANCE DIALOG (reusable)
+// ADD BALANCE DIALOG — single user
 // ─────────────────────────────────────────────────────────────────────────────
 const AddBalanceDialog = ({ user, userType, onSuccess, children }) => {
   const [open, setOpen] = useState(false);
@@ -96,9 +97,7 @@ const AddBalanceDialog = ({ user, userType, onSuccess, children }) => {
     } finally { setLoading(false); }
   };
 
-  const balance = userType === "driver"
-    ? user?.earnings?.balance
-    : user?.wallet_balance;
+  const balance = userType === "driver" ? user?.earnings?.balance : user?.wallet_balance;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -139,7 +138,114 @@ const AddBalanceDialog = ({ user, userType, onSuccess, children }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// USER DETAIL DRAWER (side panel)
+// BULK ADD BALANCE DIALOG — multiple drivers
+// ─────────────────────────────────────────────────────────────────────────────
+const BulkAddBalanceDialog = ({ drivers, onSuccess, children }) => {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState(null);
+
+  const totalAmount = drivers.length * parseFloat(amount || 0);
+
+  const handle = async () => {
+    if (!amount || isNaN(amount) || Number(amount) <= 0) return toast.error("Enter a valid amount");
+    if (drivers.length === 0) return toast.error("No drivers selected");
+    setLoading(true);
+    setResults(null);
+    const settled = await Promise.allSettled(
+      drivers.map(d => api.post(`/admin/add-balance/${d.id}`, {
+        amount: parseFloat(amount),
+        reason: reason || "Bulk admin adjustment",
+      }))
+    );
+    const succeeded = settled.filter(r => r.status === "fulfilled").length;
+    const failed    = settled.filter(r => r.status === "rejected").length;
+    setResults({ succeeded, failed });
+    setLoading(false);
+    if (succeeded > 0) { toast.success(`${fmt(amount)} added to ${succeeded} driver${succeeded > 1 ? "s" : ""}`); onSuccess?.(); }
+    if (failed > 0) toast.error(`Failed for ${failed} driver${failed > 1 ? "s" : ""}`);
+  };
+
+  const handleClose = () => { setOpen(false); setAmount(""); setReason(""); setResults(null); };
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); else setOpen(true); }}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent className="bg-[#0a0a12] border border-sky-500/30 max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-sky-400 flex items-center gap-2">
+            <Wallet className="w-5 h-5" /> Bulk Add Balance
+          </DialogTitle>
+          <DialogDescription className="text-gray-500">
+            Adding to <span className="text-sky-400 font-semibold">{drivers.length} driver{drivers.length !== 1 ? "s" : ""}</span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="rounded-lg bg-black/40 border border-white/10 max-h-40 overflow-y-auto">
+          {drivers.map(d => (
+            <div key={d.id} className="flex items-center justify-between px-3 py-2 border-b border-white/5 last:border-0">
+              <div>
+                <p className="text-white text-sm font-medium">{d.name} {d.surname}</p>
+                <p className="text-gray-600 text-xs">{d.cellphone}</p>
+              </div>
+              <p className="text-sky-400 text-sm font-semibold">{fmt(d.earnings?.balance)}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <Label className="text-sky-400">Amount per driver (₾)</Label>
+            <Input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+              className="bg-black/50 border-white/10 text-white mt-1" placeholder="0.00" />
+          </div>
+          <div>
+            <Label className="text-sky-400">Reason</Label>
+            <Input value={reason} onChange={e => setReason(e.target.value)}
+              className="bg-black/50 border-white/10 text-white mt-1" placeholder="e.g. Weekly bonus" />
+          </div>
+          {amount && !isNaN(amount) && Number(amount) > 0 && (
+            <div className="rounded-lg bg-sky-500/10 border border-sky-500/20 p-3 flex justify-between items-center">
+              <p className="text-sky-300 text-sm">Total payout</p>
+              <p className="text-sky-400 text-xl font-bold">{fmt(totalAmount)}</p>
+            </div>
+          )}
+          {results && (
+            <div className="rounded-lg bg-black/40 border border-white/10 p-3 space-y-1">
+              {results.succeeded > 0 && (
+                <p className="text-emerald-400 text-sm flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" /> {results.succeeded} succeeded
+                </p>
+              )}
+              {results.failed > 0 && (
+                <p className="text-red-400 text-sm flex items-center gap-2">
+                  <XCircle className="w-4 h-4" /> {results.failed} failed
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={handleClose} className="text-gray-500">{results ? "Close" : "Cancel"}</Button>
+          {!results && (
+            <Button onClick={handle} disabled={loading || !amount || Number(amount) <= 0}
+              className="bg-sky-500 hover:bg-sky-600 text-white font-semibold">
+              {loading
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Processing…</>
+                : <><PlusCircle className="w-4 h-4 mr-2" /> Add to {drivers.length} Driver{drivers.length !== 1 ? "s" : ""}</>}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER DETAIL DRAWER
 // ─────────────────────────────────────────────────────────────────────────────
 const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
   const [data, setData] = useState(null);
@@ -174,7 +280,6 @@ const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
         ) : data ? (
           <ScrollArea className="flex-1 p-5">
             <div className="space-y-5">
-              {/* Identity */}
               <div className="rounded-xl bg-white/5 p-4 space-y-1">
                 <p className="text-xl font-bold text-white">{data.name} {data.surname}</p>
                 <p className="text-gray-400 text-sm">{data.cellphone}</p>
@@ -189,7 +294,6 @@ const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
                 </div>
               </div>
 
-              {/* Financials */}
               <div className="rounded-xl bg-white/5 p-4">
                 <p className="text-xs uppercase text-gray-500 tracking-widest mb-3">Financials</p>
                 {userType === "driver" ? (
@@ -214,7 +318,6 @@ const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
                 )}
               </div>
 
-              {/* Vehicle (driver only) */}
               {userType === "driver" && data.driver_info?.vehicles?.length > 0 && (
                 <div className="rounded-xl bg-white/5 p-4">
                   <p className="text-xs uppercase text-gray-500 tracking-widest mb-3">Vehicles</p>
@@ -224,16 +327,13 @@ const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
                       <p className="text-gray-400 text-sm">{v.car_color} · {v.license_plate}</p>
                       <div className="flex gap-2 mt-1">
                         <StatusBadge status={v.status || "pending"} />
-                        <span className="px-2 py-0.5 text-[11px] rounded border bg-purple-500/20 text-purple-400 border-purple-500/30 uppercase">
-                          {v.tier}
-                        </span>
+                        <span className="px-2 py-0.5 text-[11px] rounded border bg-purple-500/20 text-purple-400 border-purple-500/30 uppercase">{v.tier}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Stats */}
               <div className="rounded-xl bg-white/5 p-4">
                 <p className="text-xs uppercase text-gray-500 tracking-widest mb-3">Stats</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -248,7 +348,6 @@ const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="space-y-2">
                 <AddBalanceDialog user={data} userType={userType} onSuccess={onRefresh}>
                   <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white">
@@ -257,15 +356,12 @@ const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
                 </AddBalanceDialog>
                 {userType === "driver" && data.registration_status?.includes("pending") && (
                   <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={() => { api.post(`/admin/drivers/${data.id}/approve`).then(() => { toast.success("Approved"); onRefresh?.(); onClose(); }).catch(() => toast.error("Failed")); }}
-                    >
+                    <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={() => { api.post(`/admin/drivers/${data.id}/approve`).then(() => { toast.success("Approved"); onRefresh?.(); onClose(); }).catch(() => toast.error("Failed")); }}>
                       <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
                     </Button>
                     <Button variant="destructive"
-                      onClick={() => { api.post(`/admin/drivers/${data.id}/reject`).then(() => { toast.success("Rejected"); onRefresh?.(); onClose(); }).catch(() => toast.error("Failed")); }}
-                    >
+                      onClick={() => { api.post(`/admin/drivers/${data.id}/reject`).then(() => { toast.success("Rejected"); onRefresh?.(); onClose(); }).catch(() => toast.error("Failed")); }}>
                       <XCircle className="w-4 h-4 mr-1" /> Reject
                     </Button>
                   </div>
@@ -280,14 +376,14 @@ const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SOS ALERTS PANEL
+// SOS PANEL
 // ─────────────────────────────────────────────────────────────────────────────
 const SOSPanel = () => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState(null);
 
-  const fetch = useCallback(() => {
+  const fetchAlerts = useCallback(() => {
     setLoading(true);
     api.get("/admin/sos/active")
       .then(r => setAlerts(r.data.alerts || []))
@@ -295,14 +391,14 @@ const SOSPanel = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetch(); const i = setInterval(fetch, 30000); return () => clearInterval(i); }, [fetch]);
+  useEffect(() => { fetchAlerts(); const i = setInterval(fetchAlerts, 30000); return () => clearInterval(i); }, [fetchAlerts]);
 
   const resolve = async (id) => {
     setResolving(id);
     try {
       await api.post(`/admin/sos/${id}/resolve`, null, { params: { notes: "Resolved by admin" } });
       toast.success("SOS resolved");
-      fetch();
+      fetchAlerts();
     } catch { toast.error("Failed to resolve"); }
     finally { setResolving(null); }
   };
@@ -321,11 +417,10 @@ const SOSPanel = () => {
             </span>
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={fetch} className="text-gray-500 hover:text-white">
+        <Button variant="ghost" size="sm" onClick={fetchAlerts} className="text-gray-500 hover:text-white">
           <RefreshCw className="w-4 h-4 mr-1" /> Refresh
         </Button>
       </div>
-
       {alerts.length === 0 ? (
         <Card className="bg-black/40 border border-white/10 py-16 text-center">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
@@ -345,28 +440,20 @@ const SOSPanel = () => {
                   </div>
                   <p className="text-red-300 font-medium">{alert.message}</p>
                   {alert.lat && alert.lng && (
-                    <a
-                      href={`https://www.google.com/maps?q=${alert.lat},${alert.lng}`}
+                    <a href={`https://www.google.com/maps?q=${alert.lat},${alert.lng}`}
                       target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 text-sm underline"
-                    >
+                      className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 text-sm underline">
                       📍 {Number(alert.lat).toFixed(5)}, {Number(alert.lng).toFixed(5)} — Open in Maps
                     </a>
                   )}
-                  {alert.ride_id && (
-                    <p className="text-gray-500 text-xs font-mono">Ride: {alert.ride_id}</p>
-                  )}
+                  {alert.ride_id && <p className="text-gray-500 text-xs font-mono">Ride: {alert.ride_id}</p>}
                   <p className="text-gray-600 text-xs">{timeAgo(alert.created_at)}</p>
                 </div>
-                <Button
-                  onClick={() => resolve(alert.id)}
-                  disabled={resolving === alert.id}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
-                >
+                <Button onClick={() => resolve(alert.id)} disabled={resolving === alert.id}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0">
                   {resolving === alert.id
                     ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <><CheckCircle2 className="w-4 h-4 mr-1" /> Resolve</>
-                  }
+                    : <><CheckCircle2 className="w-4 h-4 mr-1" /> Resolve</>}
                 </Button>
               </div>
             </CardContent>
@@ -379,8 +466,6 @@ const SOSPanel = () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN LOGIN
-// FIX: Removed ADMIN_PASSWORD constant and client-side password check.
-// All authentication now goes through the backend /api/admin/login endpoint.
 // ─────────────────────────────────────────────────────────────────────────────
 const AdminLogin = () => {
   const { login } = useAuth();
@@ -392,21 +477,17 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      // All admin auth goes through the backend — never validated on the client
       const res = await api.post("/admin/login", { password });
       login(res.data.token, res.data.user);
       toast.success("Welcome to Command Center");
       navigate("/admin/dashboard");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Invalid credentials");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#050508] p-4">
-      {/* subtle grid bg */}
       <div className="fixed inset-0 opacity-[0.03]"
         style={{ backgroundImage: "linear-gradient(#a855f7 1px, transparent 1px), linear-gradient(90deg, #a855f7 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
       <Card className="w-full max-w-sm bg-[#0a0a12]/90 backdrop-blur-xl border border-purple-500/20 relative z-10">
@@ -451,7 +532,6 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
 
-  // Data
   const [stats, setStats] = useState(null);
   const [riders, setRiders] = useState([]);
   const [drivers, setDrivers] = useState([]);
@@ -460,13 +540,15 @@ const AdminDashboard = () => {
   const [pendingTopups, setPendingTopups] = useState([]);
   const [sosCount, setSosCount] = useState(0);
 
-  // Detail panel
   const [detailUserId, setDetailUserId] = useState(null);
   const [detailUserType, setDetailUserType] = useState(null);
 
-  // Dispute form
   const [dispute, setDispute] = useState({ driverId: "", riderId: "", amount: "", reason: "" });
   const [isRefunding, setIsRefunding] = useState(false);
+
+  // ── Driver search + bulk selection ──
+  const [driverSearch, setDriverSearch] = useState("");
+  const [selectedDriverIds, setSelectedDriverIds] = useState(new Set());
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -493,7 +575,42 @@ const AdminDashboard = () => {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Quick approve/reject helpers
+  // ── Filtered drivers (search by name, phone, or ID) ──
+  const filteredDrivers = useMemo(() => {
+    const q = driverSearch.trim().toLowerCase();
+    if (!q) return drivers;
+    return drivers.filter(d =>
+      `${d.name} ${d.surname}`.toLowerCase().includes(q) ||
+      d.cellphone?.includes(q) ||
+      d.id?.toLowerCase().includes(q)
+    );
+  }, [drivers, driverSearch]);
+
+  const selectedDrivers = useMemo(
+    () => drivers.filter(d => selectedDriverIds.has(d.id)),
+    [drivers, selectedDriverIds]
+  );
+
+  const allFilteredSelected =
+    filteredDrivers.length > 0 && filteredDrivers.every(d => selectedDriverIds.has(d.id));
+
+  const toggleDriver = (id) =>
+    setSelectedDriverIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleAllFiltered = () =>
+    setSelectedDriverIds(prev => {
+      const next = new Set(prev);
+      if (allFilteredSelected) filteredDrivers.forEach(d => next.delete(d.id));
+      else filteredDrivers.forEach(d => next.add(d.id));
+      return next;
+    });
+
+  const clearSelection = () => setSelectedDriverIds(new Set());
+
   const quickAction = async (url, successMsg) => {
     try { await api.post(url); toast.success(successMsg); fetchAll(); }
     catch (e) { toast.error(e.response?.data?.detail || "Action failed"); }
@@ -518,8 +635,7 @@ const AdminDashboard = () => {
     finally { setIsRefunding(false); }
   };
 
-  const alertCount = (pendingDrivers.length + pendingTopups.length);
-  const totalBadge = alertCount + pendingWithdrawals.length + sosCount;
+  const alertCount = pendingDrivers.length + pendingTopups.length;
 
   if (loading) return (
     <div className="min-h-screen bg-[#050508] flex items-center justify-center">
@@ -532,7 +648,6 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-[#050508]">
-      {/* Fixed grid background */}
       <div className="fixed inset-0 opacity-[0.025] pointer-events-none"
         style={{ backgroundImage: "linear-gradient(#a855f7 1px,transparent 1px),linear-gradient(90deg,#a855f7 1px,transparent 1px)", backgroundSize: "40px 40px" }} />
 
@@ -568,7 +683,6 @@ const AdminDashboard = () => {
         </div>
       </header>
 
-      {/* Detail Panel */}
       {detailUserId && (
         <UserDetailPanel
           userId={detailUserId}
@@ -580,19 +694,18 @@ const AdminDashboard = () => {
 
       <main className="max-w-7xl mx-auto px-4 py-6 relative z-10">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          {/* Tab bar */}
           <div className="overflow-x-auto mb-6">
             <TabsList className="bg-[#0a0a12] border border-white/8 p-1 gap-0.5 inline-flex w-auto min-w-full">
               {[
-                { value: "overview",    icon: BarChart3,     label: "Overview" },
-                { value: "riders",      icon: Users,         label: "Riders",    count: riders.length },
-                { value: "drivers",     icon: Car,           label: "Drivers",   count: drivers.length },
-                { value: "approvals",   icon: UserCheck,     label: "Approvals", badge: alertCount },
-                { value: "withdrawals", icon: Banknote,      label: "Withdrawals", badge: pendingWithdrawals.length },
-                { value: "campaigns",   icon: PlusCircle,    label: "Campaigns" },
-                { value: "support",     icon: MessageSquare, label: "Support" },
-                { value: "disputes",    icon: ArrowRightLeft,label: "Disputes" },
-                { value: "sos",         icon: Siren,         label: "SOS", badge: sosCount, badgeColor: "bg-red-500" },
+                { value: "overview",    icon: BarChart3,      label: "Overview" },
+                { value: "riders",      icon: Users,          label: "Riders",      count: riders.length },
+                { value: "drivers",     icon: Car,            label: "Drivers",     count: drivers.length },
+                { value: "approvals",   icon: UserCheck,      label: "Approvals",   badge: alertCount },
+                { value: "withdrawals", icon: Banknote,       label: "Withdrawals", badge: pendingWithdrawals.length },
+                { value: "campaigns",   icon: PlusCircle,     label: "Campaigns" },
+                { value: "support",     icon: MessageSquare,  label: "Support" },
+                { value: "disputes",    icon: ArrowRightLeft, label: "Disputes" },
+                { value: "sos",         icon: Siren,          label: "SOS",         badge: sosCount, badgeColor: "bg-red-500" },
               ].map(({ value, icon: Icon, label, count, badge, badgeColor }) => (
                 <TabsTrigger key={value} value={value}
                   className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-gray-500 hover:text-gray-300 relative px-3 py-2 text-xs font-medium rounded-md transition-all gap-1.5">
@@ -612,12 +725,12 @@ const AdminDashboard = () => {
           {/* ── OVERVIEW ── */}
           <TabsContent value="overview">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-              <StatCard icon={Users}       label="Riders"           value={stats?.total_riders}              color="border-emerald-500/30" />
-              <StatCard icon={Car}         label="Drivers"          value={stats?.total_drivers}             color="border-sky-500/30" />
-              <StatCard icon={TrendingUp}  label="Active Rides"     value={stats?.active_rides}              color="border-amber-500/30" />
-              <StatCard icon={UserCheck}   label="Pending Drivers"  value={stats?.pending_driver_approvals}  color="border-orange-500/30" />
-              <StatCard icon={CreditCard}  label="Pending Top-ups"  value={stats?.pending_topups}            color="border-purple-500/30" />
-              <StatCard icon={Banknote}    label="Withdrawals"      value={stats?.pending_withdrawals}       color="border-pink-500/30" />
+              <StatCard icon={Users}      label="Riders"          value={stats?.total_riders}             color="border-emerald-500/30" />
+              <StatCard icon={Car}        label="Drivers"         value={stats?.total_drivers}            color="border-sky-500/30" />
+              <StatCard icon={TrendingUp} label="Active Rides"    value={stats?.active_rides}             color="border-amber-500/30" />
+              <StatCard icon={UserCheck}  label="Pending Drivers" value={stats?.pending_driver_approvals} color="border-orange-500/30" />
+              <StatCard icon={CreditCard} label="Pending Top-ups" value={stats?.pending_topups}           color="border-purple-500/30" />
+              <StatCard icon={Banknote}   label="Withdrawals"     value={stats?.pending_withdrawals}      color="border-pink-500/30" />
             </div>
             {sosCount > 0 && (
               <Card className="bg-red-950/40 border border-red-500/40 p-4 flex items-center justify-between mb-4">
@@ -713,66 +826,137 @@ const AdminDashboard = () => {
           {/* ── DRIVERS ── */}
           <TabsContent value="drivers">
             <Card className="bg-[#0a0a12] border border-white/8">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sky-400 text-base">All Drivers <span className="text-gray-600 font-normal">({drivers.length})</span></CardTitle>
+              <CardHeader className="pb-3 space-y-3">
+
+                {/* Title row + bulk toolbar */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-sky-400 text-base">
+                    All Drivers{" "}
+                    <span className="text-gray-600 font-normal">
+                      ({filteredDrivers.length}{driverSearch ? ` of ${drivers.length}` : ""})
+                    </span>
+                  </CardTitle>
+
+                  {selectedDriverIds.size > 0 && (
+                    <div className="flex items-center gap-2 bg-sky-500/10 border border-sky-500/20 rounded-lg px-3 py-1.5">
+                      <span className="text-sky-400 text-sm font-semibold">
+                        {selectedDriverIds.size} selected
+                      </span>
+                      <BulkAddBalanceDialog
+                        drivers={selectedDrivers}
+                        onSuccess={() => { fetchAll(); clearSelection(); }}
+                      >
+                        <Button size="sm" className="h-7 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold">
+                          <Wallet className="w-3.5 h-3.5 mr-1" /> Add Balance
+                        </Button>
+                      </BulkAddBalanceDialog>
+                      <Button size="sm" variant="ghost" onClick={clearSelection}
+                        className="h-7 px-2 text-gray-500 hover:text-white text-xs">
+                        <X className="w-3.5 h-3.5 mr-1" /> Clear
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Search bar */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+                  <Input
+                    value={driverSearch}
+                    onChange={e => setDriverSearch(e.target.value)}
+                    placeholder="Search by name, phone or ID…"
+                    className="pl-9 pr-9 bg-black/50 border-white/10 text-white placeholder:text-gray-600 focus:border-sky-500/50 h-9"
+                  />
+                  {driverSearch && (
+                    <button onClick={() => setDriverSearch("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </CardHeader>
+
               <CardContent>
-                <ScrollArea className="h-[560px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-white/5 hover:bg-transparent">
-                        {["Name", "Phone", "Balance", "Status", "Vehicle", "Rides", "Actions"].map(h => (
-                          <TableHead key={h} className="text-gray-500 text-xs uppercase tracking-wider">{h}</TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {drivers.map(driver => {
-                        const vehicles = driver.driver_info?.vehicles || [];
-                        const activeVehicle = vehicles.find(v => v.id === driver.driver_info?.active_vehicle_id) || vehicles[0];
-                        return (
-                          <TableRow key={driver.id} className="border-white/5 hover:bg-white/3">
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <div className={`w-1.5 h-1.5 rounded-full ${driver.is_online ? "bg-emerald-400" : "bg-gray-600"}`} />
-                                <div>
-                                  <p className="text-white text-sm font-medium">{driver.name} {driver.surname}</p>
-                                  <p className="text-gray-600 text-[10px] font-mono">{driver.id}</p>
+                {filteredDrivers.length === 0 ? (
+                  <div className="text-center py-16 text-gray-600">
+                    <Search className="w-8 h-8 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm">No drivers match <span className="text-gray-400 font-medium">"{driverSearch}"</span></p>
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[520px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-white/5 hover:bg-transparent">
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={allFilteredSelected}
+                              onCheckedChange={toggleAllFiltered}
+                              className="border-white/20 data-[state=checked]:bg-sky-500 data-[state=checked]:border-sky-500"
+                            />
+                          </TableHead>
+                          {["Name", "Phone", "Balance", "Status", "Vehicle", "Rides", "Actions"].map(h => (
+                            <TableHead key={h} className="text-gray-500 text-xs uppercase tracking-wider">{h}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredDrivers.map(driver => {
+                          const vehicles = driver.driver_info?.vehicles || [];
+                          const activeVehicle = vehicles.find(v => v.id === driver.driver_info?.active_vehicle_id) || vehicles[0];
+                          const isSelected = selectedDriverIds.has(driver.id);
+
+                          return (
+                            <TableRow key={driver.id}
+                              className={`border-white/5 hover:bg-white/3 transition-colors ${isSelected ? "bg-sky-500/5" : ""}`}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => toggleDriver(driver.id)}
+                                  className="border-white/20 data-[state=checked]:bg-sky-500 data-[state=checked]:border-sky-500"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${driver.is_online ? "bg-emerald-400" : "bg-gray-600"}`} />
+                                  <div>
+                                    <p className="text-white text-sm font-medium">{driver.name} {driver.surname}</p>
+                                    <p className="text-gray-600 text-[10px] font-mono">{driver.id}</p>
+                                  </div>
                                 </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-gray-400 text-sm">{driver.cellphone}</TableCell>
-                            <TableCell className="text-sky-400 font-semibold text-sm">{fmt(driver.earnings?.balance)}</TableCell>
-                            <TableCell><StatusBadge status={driver.registration_status} /></TableCell>
-                            <TableCell className="text-gray-400 text-xs">
-                              {activeVehicle ? `${activeVehicle.car_year} ${activeVehicle.car_make} ${activeVehicle.car_model}` : "—"}
-                            </TableCell>
-                            <TableCell className="text-gray-400 text-sm">{driver.total_rides || 0}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-1.5 flex-wrap">
-                                {driver.registration_status?.includes("pending") && (
-                                  <Button size="sm" className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-                                    onClick={() => quickAction(`/admin/drivers/${driver.id}/approve`, "Driver approved")}>
-                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Approve
+                              </TableCell>
+                              <TableCell className="text-gray-400 text-sm">{driver.cellphone}</TableCell>
+                              <TableCell className="text-sky-400 font-semibold text-sm">{fmt(driver.earnings?.balance)}</TableCell>
+                              <TableCell><StatusBadge status={driver.registration_status} /></TableCell>
+                              <TableCell className="text-gray-400 text-xs">
+                                {activeVehicle ? `${activeVehicle.car_year} ${activeVehicle.car_make} ${activeVehicle.car_model}` : "—"}
+                              </TableCell>
+                              <TableCell className="text-gray-400 text-sm">{driver.total_rides || 0}</TableCell>
+                              <TableCell>
+                                <div className="flex gap-1.5 flex-wrap">
+                                  {driver.registration_status?.includes("pending") && (
+                                    <Button size="sm" className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                                      onClick={() => quickAction(`/admin/drivers/${driver.id}/approve`, "Driver approved")}>
+                                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Approve
+                                    </Button>
+                                  )}
+                                  <Button size="sm" variant="ghost" className="h-7 px-2 text-gray-500 hover:text-white"
+                                    onClick={() => { setDetailUserId(driver.id); setDetailUserType("driver"); }}>
+                                    <Eye className="w-3.5 h-3.5 mr-1" /> View
                                   </Button>
-                                )}
-                                <Button size="sm" variant="ghost" className="h-7 px-2 text-gray-500 hover:text-white"
-                                  onClick={() => { setDetailUserId(driver.id); setDetailUserType("driver"); }}>
-                                  <Eye className="w-3.5 h-3.5 mr-1" /> View
-                                </Button>
-                                <AddBalanceDialog user={driver} userType="driver" onSuccess={fetchAll}>
-                                  <Button size="sm" variant="outline" className="h-7 px-2 border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
-                                    <PlusCircle className="w-3.5 h-3.5 mr-1" /> Add
-                                  </Button>
-                                </AddBalanceDialog>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
+                                  <AddBalanceDialog user={driver} userType="driver" onSuccess={fetchAll}>
+                                    <Button size="sm" variant="outline" className="h-7 px-2 border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
+                                      <PlusCircle className="w-3.5 h-3.5 mr-1" /> Add
+                                    </Button>
+                                  </AddBalanceDialog>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -780,7 +964,6 @@ const AdminDashboard = () => {
           {/* ── APPROVALS ── */}
           <TabsContent value="approvals">
             <div className="space-y-5">
-              {/* Driver approvals */}
               <Card className="bg-[#0a0a12] border border-amber-500/20">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-amber-400 text-base">
@@ -834,7 +1017,6 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
 
-              {/* Top-up approvals */}
               <Card className="bg-[#0a0a12] border border-purple-500/20">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-purple-400 text-base">
@@ -997,7 +1179,6 @@ const AdminDashboard = () => {
           </TabsContent>
         </Tabs>
 
-        {/* ── DRIVER PENALTY MANAGER ── */}
         <div className="mt-12 mb-8 border-t border-purple-500/30 pt-6">
           <DisputeManager />
         </div>
@@ -1010,32 +1191,31 @@ const AdminDashboard = () => {
 // ROUTER
 // ─────────────────────────────────────────────────────────────────────────────
 const AdminPortal = () => {
-    const { user, token } = useAuth();   // ← also grab token
-    const location = useLocation();
+  const { user, token } = useAuth();
+  const location = useLocation();
 
-    // If we have a token, decode it to check role without waiting for user object
-    const isAdmin = (() => {
-      if (user?.user_type === "admin") return true;
-      if (!token) return false;
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        return payload.role === "admin";
-      } catch { return false; }
-    })();
+  const isAdmin = (() => {
+    if (user?.user_type === "admin") return true;
+    if (!token) return false;
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.role === "admin";
+    } catch { return false; }
+  })();
 
-    if (!isAdmin) {
-      return location.pathname === "/admin" || location.pathname === "/admin/"
-        ? <AdminLogin />
-        : <Navigate to="/admin" replace />;
-    }
+  if (!isAdmin) {
+    return location.pathname === "/admin" || location.pathname === "/admin/"
+      ? <AdminLogin />
+      : <Navigate to="/admin" replace />;
+  }
 
-    return (
-      <Routes>
-        <Route path="/" element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard" element={<AdminDashboard />} />
-        <Route path="*" element={<Navigate to="dashboard" replace />} />
-      </Routes>
-    );
-  };
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="dashboard" replace />} />
+      <Route path="dashboard" element={<AdminDashboard />} />
+      <Route path="*" element={<Navigate to="dashboard" replace />} />
+    </Routes>
+  );
+};
 
 export default AdminPortal;
