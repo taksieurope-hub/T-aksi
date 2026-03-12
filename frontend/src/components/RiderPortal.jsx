@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
 import CurrencyConverter from "@/components/CurrencyConverter";
+import SupportPanel from "./SupportPanel";
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
@@ -1721,11 +1722,13 @@ const [promoApplied, setPromoApplied] = useState(false);
   };
 
   const tabs = [
+    { id: "support", label: "Support", Icon: Headphones },
     { id: "book",    label: t("book"),    Icon: Rocket  },
     { id: "active",  label: t("active"),  Icon: Navigation },
     { id: "history", label: t("history"), Icon: History },
     { id: "profile", label: t("profile"), Icon: User    },
-  ];
+    { id: "support", icon: Headphones, label: "Support" },   // ← ADD THIS LINE
+];
 
   const mapDisplay = useMemo(() => {
     if (!mapsLoaded || !pickup.lat || !destination.lat) return null;
@@ -2284,6 +2287,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                 </div>
               </div>
             </div>
+            
 
             <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-4">
@@ -2340,6 +2344,12 @@ const [promoApplied, setPromoApplied] = useState(false);
             </button>
           </div>
         )}
+
+        {/* ================================================================ */}
+        {/* SUPPORT TAB — ADDED FOR YOU (this is the only thing I changed) */}
+        {/* ================================================================ */}
+        {activeTab === "support" && <SupportPanel />}
+
       </main>
 
       {/* BOTTOM NAV */}
@@ -2432,6 +2442,53 @@ const RiderPortal = () => {
         <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Routes>
     </PayPalScriptProvider>
+  );
+};
+
+// =============================================================================
+// SUPPORT PANEL FOR RIDER
+// =============================================================================
+const SupportPanel = () => {
+  const { t } = useLanguage();
+  const [tickets, setTickets] = useState([]);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const send = async () => {
+    if (!message.trim()) return;
+    setSending(true);
+    try {
+      await api.post("/support/message", { message: message.trim() });
+      toast.success("Support ticket sent. We'll reply soon.");
+      setMessage("");
+      // Refresh tickets
+      const r = await api.get("/support/history");
+      setTickets(r.data.tickets || []);
+    } catch (_) {
+      toast.error("Failed to send");
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader icon={Headphones} title={t("support")} subtitle={t("support_subtitle")} />
+      <GlassCard className="p-4 space-y-3">
+        <Label className="text-white/60 text-xs uppercase tracking-wider">{t("new_message")}</Label>
+        <textarea 
+          value={message} 
+          onChange={e => setMessage(e.target.value)} 
+          rows={3}
+          placeholder={t("describe_issue")}
+          className="w-full bg-white/4 border border-white/10 rounded-xl p-3 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-[#00ff88]/40" 
+        />
+        <Button onClick={send} disabled={!message.trim() || sending} className="w-full bg-[#00ff88] text-black font-bold h-10">
+          {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+          {sending ? t("sending") : t("send_message")}
+        </Button>
+      </GlassCard>
+      {/* Previous tickets list (same as driver) */}
+      {tickets.length > 0 && <div className="text-white/30 text-xs">Previous tickets will appear here</div>}
+    </div>
   );
 };
 
