@@ -10,13 +10,11 @@ import RiderPortal from './RiderPortal';
 import DriverPortal from './DriverPortal';
 import AdminPortal from './AdminPortal';
 
-// === EXTRA PAGES / FALLBACKS (if you have them) ===
 import { useEffect } from 'react';
 
-// Optional: Simple auth check (Firebase already used in portals)
-const ProtectedRoute = ({ children, requiredRole }) => {
-  // You can enhance this later with real Firebase auth
-  const isAuthenticated = localStorage.getItem('firebaseUser') || true; // placeholder
+const ProtectedRoute = ({ children }) => {
+  // Placeholder – replace with real Firebase auth later
+  const isAuthenticated = localStorage.getItem('firebaseUser') || true;
   if (!isAuthenticated) return <Navigate to="/" replace />;
   return children;
 };
@@ -29,8 +27,8 @@ const App = () => {
   }, [t]);
 
   return (
-    <div className="app-container" key={_renderKey}>
-      <Routes>
+    <div className="app-container">
+      <Routes key={_renderKey}>   {/* ← THIS IS THE KEY FIX (moved to Routes) */}
         {/* PUBLIC LANDING */}
         <Route path="/" element={<LandingPage />} />
 
@@ -44,7 +42,7 @@ const App = () => {
           }
         />
 
-        {/* DRIVER / PILOT PORTAL */}
+        {/* DRIVER PORTAL */}
         <Route
           path="/driver"
           element={
@@ -58,25 +56,18 @@ const App = () => {
         <Route
           path="/admin"
           element={
-            <ProtectedRoute requiredRole="admin">
+            <ProtectedRoute>
               <AdminPortal />
             </ProtectedRoute>
           }
         />
 
-        {/* FUTURE ROUTES (add more here) */}
-        {/* <Route path="/chat" element={<ChatWidget />} /> */}
-        {/* <Route path="/support" element={<SupportChatWidget />} /> */}
-
-        {/* 404 FALLBACK */}
+        {/* 404 */}
         <Route
           path="*"
           element={
             <div className="min-h-screen flex items-center justify-center text-white text-center">
-              <div>
-                <h1 className="text-6xl font-bold mb-4">404</h1>
-                <p className="text-xl">{t('error')} – {t('back')}</p>
-              </div>
+              <h1 className="text-6xl font-bold">404</h1>
             </div>
           }
         />
