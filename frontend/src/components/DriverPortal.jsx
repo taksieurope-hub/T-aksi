@@ -1792,7 +1792,7 @@ const [totalWaitData, setTotalWaitData] = useState({ minutes: 0, earned: 0 });
 const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, _renderKey } = useLanguage();   
   const handleStopFinished = (minutes) => {
   setTotalStopMinutes(prev => prev + minutes);
 };
@@ -2301,7 +2301,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const waitDisplaySec = Math.round((waitTimer - waitDisplayMin) * 60);
 
   return (
-    <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden">
+  <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden" key={_renderKey}>
       {/* MAP */}
       <div className="absolute inset-0 z-0">
         <Drivermap activeRide={activeRide} driverLocation={driverLocation} />
