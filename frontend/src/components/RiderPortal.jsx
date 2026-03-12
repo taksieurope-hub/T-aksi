@@ -2443,7 +2443,7 @@ const RiderPortal = () => {
 
 
 // =============================================================================
-// SUPPORT PANEL FOR RIDER — ONLY ONE COPY
+// SUPPORT PANEL FOR RIDER — MINIMAL VERSION (no new imports needed)
 // =============================================================================
 const SupportPanel = () => {
   const { t } = useLanguage();
@@ -2467,8 +2467,10 @@ const SupportPanel = () => {
 
   return (
     <div className="space-y-4">
-      <SectionHeader icon={Headphones} title={t("support")} subtitle={t("support_subtitle")} />
-      <GlassCard className="p-4 space-y-3">
+      <div className="text-white font-semibold text-lg flex items-center gap-2 mb-3">
+        <Headphones className="w-5 h-5" /> {t("support")}
+      </div>
+      <div className="bg-white/4 border border-white/10 rounded-2xl p-4 space-y-3">
         <Label className="text-white/60 text-xs uppercase tracking-wider">{t("new_message")}</Label>
         <textarea 
           value={message} 
@@ -2481,16 +2483,8 @@ const SupportPanel = () => {
           {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
           {sending ? t("sending") : t("send_message")}
         </Button>
-      </GlassCard>
+      </div>
       {tickets.length > 0 && <div className="text-white/30 text-xs">Previous tickets will appear here</div>}
     </div>
   );
 };
-
-const RiderPortalWithProviders = () => (
-  <AuthProvider>
-    <RiderPortal />
-  </AuthProvider>
-);
-
-export default RiderPortalWithProviders;
