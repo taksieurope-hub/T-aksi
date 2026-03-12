@@ -2262,7 +2262,6 @@ const [promoApplied, setPromoApplied] = useState(false);
         {/* ================================================================ */}
         {activeTab === "profile" && (
           <div className="space-y-4">
-            {/* your exact profile code — unchanged */}
             <div className="bg-white/3 border border-white/8 rounded-2xl p-5">
               <div className="flex items-center gap-4 mb-5">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#00ff88]/20 to-[#00d4ff]/20 border border-white/10 flex items-center justify-center shrink-0">
@@ -2288,9 +2287,57 @@ const [promoApplied, setPromoApplied] = useState(false);
                 </div>
               </div>
             </div>
+            
 
-            {/* rest of your profile code unchanged — all the way to the logout button */}
-            {/* ... (I kept everything exactly as you sent) */}
+            <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-[#00ff88]/15 flex items-center justify-center">
+                    <Wallet className="w-4 h-4 text-[#00ff88]" />
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold text-sm">{t("top_up_wallet")}</p>
+                    <p className="text-white/30 text-xs">{t("add_funds_desc")}</p>
+                  </div>
+                </div>
+                <span className="text-[#00ff88] font-bold text-2xl font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</span>
+              </div>
+              <Button className="w-full bg-[#00ff88] text-black font-bold rounded-xl h-11 text-sm" onClick={() => setShowTopUp(true)}>
+                <Plus className="w-4 h-4 mr-1.5" /> {t("top_up")}
+              </Button>
+            </div>
+
+            <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
+              <p className="text-white font-semibold text-sm flex items-center gap-2 mb-4">
+                <Heart className="w-4 h-4 text-pink-400" /> {t("saved_places")}
+              </p>
+              <FavoritesPanel onSelect={(fav) => { setDestination({ address: fav.address, lat: fav.lat, lng: fav.lng }); setActiveTab("book"); toast.success(`${fav.name} set as destination`); }} />
+            </div>
+
+            <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+              <button className="w-full flex items-center justify-between px-4 py-4" onClick={() => setShowReferral(v => !v)}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#00d4ff]/15 flex items-center justify-center">
+                    <Gift className="w-4 h-4 text-[#00d4ff]" />
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold text-sm">{t("share_and_earn")}</p>
+                    <p className="text-white/30 text-xs">{t("invite_friend_desc")}</p>
+                  </div>
+                </div>
+                {showReferral ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
+              </button>
+              {showReferral && (
+                <div className="px-4 pb-4 border-t border-white/6 pt-4">
+                  <ReferralPanel />
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
+              <p className="text-white font-semibold text-sm mb-3">{t("language")}</p>
+              <LanguageSelector variant="outline" onSelect={(lang) => api.post(`/user/language?lang=${lang}`).catch(() => {})} />
+            </div>
 
             <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border border-red-500/20 text-red-400/70 text-sm font-medium hover:bg-red-500/10 hover:border-red-500/35 hover:text-red-400 transition-all">
               <LogOut className="w-4 h-4" /> {t("logout")}
@@ -2327,7 +2374,6 @@ const [promoApplied, setPromoApplied] = useState(false);
       </nav>
 
       {/* MODALS */}
-      {/* (your exact modals code — unchanged) */}
       <RiderTripCompletionModal
         isOpen={!!completedRideData}
         onClose={() => setCompletedRideData(null)}
@@ -2396,7 +2442,7 @@ const RiderPortal = () => {
 };
 
 // =============================================================================
-// SUPPORT PANEL FOR RIDER (only ONE of these — this is the correct one)
+// SUPPORT PANEL FOR RIDER (only ONE of these — kept the original)
 // =============================================================================
 const SupportPanel = () => {
   const { t } = useLanguage();
