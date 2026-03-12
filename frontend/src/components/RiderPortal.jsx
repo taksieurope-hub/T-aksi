@@ -2450,46 +2450,7 @@ const RiderPortal = () => {
 // =============================================================================
 const SupportPanel = () => {
   const { t } = useLanguage();
-  const [tickets, setTickets] = useState([]);
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
-
-  const send = async () => {
-    if (!message.trim()) return;
-    setSending(true);
-    try {
-      await api.post("/support/message", { message: message.trim() });
-      toast.success("Support ticket sent. We'll reply soon.");
-      setMessage("");
-      // Refresh tickets
-      const r = await api.get("/support/history");
-      setTickets(r.data.tickets || []);
-    } catch (_) {
-      toast.error("Failed to send");
-    } finally { setSending(false); }
-  };
-
-  return (
-    <div className="space-y-4">
-      <SectionHeader icon={Headphones} title={t("support")} subtitle={t("support_subtitle")} />
-      <GlassCard className="p-4 space-y-3">
-        <Label className="text-white/60 text-xs uppercase tracking-wider">{t("new_message")}</Label>
-        <textarea 
-          value={message} 
-          onChange={e => setMessage(e.target.value)} 
-          rows={3}
-          placeholder={t("describe_issue")}
-          className="w-full bg-white/4 border border-white/10 rounded-xl p-3 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-[#00ff88]/40" 
-        />
-        <Button onClick={send} disabled={!message.trim() || sending} className="w-full bg-[#00ff88] text-black font-bold h-10">
-          {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-          {sending ? t("sending") : t("send_message")}
-        </Button>
-      </GlassCard>
-      {/* Previous tickets list (same as driver) */}
-      {tickets.length > 0 && <div className="text-white/30 text-xs">Previous tickets will appear here</div>}
-    </div>
-  );
+  // ... (the rest of your SupportPanel code)
 };
 
 const RiderPortalWithProviders = () => (
