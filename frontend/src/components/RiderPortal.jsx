@@ -2443,7 +2443,7 @@ const RiderPortal = () => {
 
 
 // =============================================================================
-// SUPPORT PANEL FOR RIDER — ONLY ONE (this is the correct one)
+// SUPPORT PANEL FOR RIDER — ONLY ONE COPY
 // =============================================================================
 const SupportPanel = () => {
   const { t } = useLanguage();
