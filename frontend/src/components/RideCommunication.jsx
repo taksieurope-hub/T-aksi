@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api from "@/api";
 import { toast } from "sonner";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 // ─────────────────────────────────────────────────────────────
 // Quick-reply presets — different sets for driver vs rider
