@@ -1,6 +1,7 @@
 // src/App.jsx
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useLanguage } from './i18n/LanguageContext';
+import { useEffect } from 'react';
 
 // === PUBLIC PAGES ===
 import LandingPage from './LandingPage';
@@ -10,8 +11,6 @@ import RiderPortal from './RiderPortal';
 import DriverPortal from './DriverPortal';
 import AdminPortal from './AdminPortal';
 
-import { useEffect } from 'react';
-
 const ProtectedRoute = ({ children }) => {
   // Placeholder – replace with real Firebase auth later
   const isAuthenticated = localStorage.getItem('firebaseUser') || true;
@@ -20,7 +19,7 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const App = () => {
-  const { _renderKey, t } = useLanguage();
+  const { t } = useLanguage();
 
   useEffect(() => {
     document.title = t('app_name') + " – " + t('app_tagline');
@@ -28,7 +27,10 @@ const App = () => {
 
   return (
     <div className="app-container">
-      <Routes key={_renderKey}>   {/* ← THIS IS THE KEY FIX (moved to Routes) */}
+      {/* No key= on Routes — language changes should never remount portals.
+          Each portal subscribes to useLanguage() directly and re-renders
+          on its own when the context value (language) changes. */}
+      <Routes>
         {/* PUBLIC LANDING */}
         <Route path="/" element={<LandingPage />} />
 
