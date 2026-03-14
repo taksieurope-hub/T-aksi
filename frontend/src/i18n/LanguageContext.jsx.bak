@@ -1,4 +1,4 @@
-﻿// src/i18n/LanguageContext.jsx
+// src/i18n/LanguageContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { translations, defaultLanguage, languageNames } from './translations';
 
@@ -17,6 +17,9 @@ export const LanguageProvider = ({ children }) => {
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
   }, [language]);
 
+  // t() is rebuilt whenever `language` changes, so every component that calls
+  // useLanguage() automatically re-renders with fresh translations.
+  // No renderKey / remount hack needed.
   const t = useCallback((key) => {
     if (!key) return '';
     return (
@@ -33,6 +36,8 @@ export const LanguageProvider = ({ children }) => {
     }
   }, []);
 
+  // useMemo so the context object reference only changes when language changes —
+  // this is what triggers re-renders in every subscribed portal/component.
   const value = useMemo(() => ({
     language,
     setLanguage: changeLanguage,
