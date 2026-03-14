@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
 import CurrencyConverter from "@/components/CurrencyConverter";
+import FeedbackPanel from "@/components/FeedbackPanel";
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
@@ -23,7 +24,7 @@ import {
   Plus, TrendingUp, Timer, CreditCard, Target, Route as RouteIcon, Wallet,
   Share2, Calendar, Heart, AlertCircle, Gift, Copy, ChevronRight,
   Receipt, DollarSign, Bell, Bookmark, Send, ChevronDown, ChevronUp, Map,
-  ArrowRight, MoreHorizontal, Headphones, Sparkles
+  ArrowRight, MoreHorizontal, Headphones, Sparkles, ThumbsUp
 } from "lucide-react";
 
 
@@ -1452,6 +1453,7 @@ const RiderDashboard = () => {
   const [showSaveFav,   setShowSaveFav]   = useState(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [showReferral,  setShowReferral]  = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const [promoCode, setPromoCode] = useState("");
 const [promoApplied, setPromoApplied] = useState(false);
@@ -2315,7 +2317,29 @@ const [promoApplied, setPromoApplied] = useState(false);
 
             <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
               <button className="w-full flex items-center justify-between px-4 py-4" onClick={() => setShowReferral(v => !v)}>
-                <div className="flex items-center gap-3">
+                <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+  <button 
+    className="w-full flex items-center justify-between px-4 py-4" 
+    onClick={() => setShowFeedback(v => !v)}
+  >
+    <div className="flex items-center gap-3">
+      <div className="w-9 h-9 rounded-xl bg-[#00ff88]/15 flex items-center justify-center">
+        <ThumbsUp className="w-4 h-4 text-[#00ff88]" />
+      </div>
+      <div>
+        <p className="text-white font-semibold text-sm">Beta Feedback</p>
+        <p className="text-white/30 text-xs">Help us improve T'aksi</p>
+      </div>
+    </div>
+    {showFeedback ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
+  </button>
+  {showFeedback && (
+    <div className="px-4 pb-4 border-t border-white/6 pt-4">
+      <FeedbackPanel userType="rider" />
+    </div>
+  )}
+</div>
+<div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-[#00d4ff]/15 flex items-center justify-center">
                     <Gift className="w-4 h-4 text-[#00d4ff]" />
                   </div>

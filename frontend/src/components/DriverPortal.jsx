@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import Drivermap from './Drivermap';
+import FeedbackPanel from "@/components/FeedbackPanel";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -28,7 +29,7 @@ import {
   Shield, Users, Gift, LifeBuoy, Copy, Share2, ChevronDown, ChevronUp,
   ChevronRight, Bell, Flame, Calendar, Truck, Settings, RefreshCw,
   Award, BarChart3, FileText, Heart, Headphones, AlertCircle,
-  CornerUpLeft, CornerUpRight, RotateCcw, Merge, ArrowUp, Eye,
+  CornerUpLeft, CornerUpRight, RotateCcw, Merge, ArrowUp, Eye, ThumbsUp
 } from "lucide-react";
 
 // =============================================================================
@@ -926,6 +927,15 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
     { id: "fleet",     label: "Fleet",      icon: Truck,      desc: "Manage your vehicles",  color: "text-blue-400",    bg: "bg-blue-400/10",   border: "border-blue-400/20" },
     { id: "referrals", label: "Referrals",  icon: Gift,       desc: "Invite & earn",         color: "text-purple-400",  bg: "bg-purple-400/10", border: "border-purple-400/20" },
     { id: "support",   label: "Support",    Icon: Headphones, desc: "Get help",              color: "text-[#00d4ff]",   bg: "bg-[#00d4ff]/10",  border: "border-[#00d4ff]/20" },
+    { 
+  id: "feedback", 
+  label: "Feedback", 
+  icon: ThumbsUp, 
+  desc: "Share your thoughts", 
+  color: "text-[#00ff88]", 
+  bg: "bg-[#00ff88]/10", 
+  border: "border-[#00ff88]/20" 
+},
   ];
 
   if (view !== "menu") {
@@ -934,6 +944,7 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
     if (view === "fleet")     return <div><BackButton onClick={back} /><FleetPanel registrationStatus={registrationStatus} /></div>;
     if (view === "referrals") return <div><BackButton onClick={back} /><ReferralPanel /></div>;
     if (view === "support")   return <div><BackButton onClick={back} /><SupportPanel /></div>;
+    if (view === "feedback")  return <div><BackButton onClick={back} /><FeedbackPanel userType="driver" /></div>;
   }
 
   return (

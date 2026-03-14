@@ -1,6 +1,7 @@
 // src/i18n/LanguageSelector.jsx
 import { useLanguage } from './LanguageContext';
 import { Globe } from 'lucide-react';
+import LanguageSelector from './i18n/LanguageSelector';
 import {
   DropdownMenu,
   DropdownMenuContent,
