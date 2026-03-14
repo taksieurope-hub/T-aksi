@@ -7,7 +7,7 @@ const LanguageContext = createContext(null);
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguageState] = useState(() => {
     const saved = localStorage.getItem('taksi_language');
-    if (saved && translations[saved]) return saved;
+    if (saved && translations[saved] && saved !== 'en') return saved;
     return defaultLanguage; // 'ka'
   });
 
