@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
 import CurrencyConverter from "@/components/CurrencyConverter";
-import FeedbackPanel from "@/components/FeedbackPanel";
+//import FeedbackPanel from "@/components/FeedbackPanel";
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
