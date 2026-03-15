@@ -10,24 +10,24 @@ import {
 import { Button } from "@/components/ui/button";
 
 const flagEmojis = {
-  ka: '🇬🇪',
-  en: '🇺🇸',
-  ru: '🇷🇺',
-  hi: '🇮🇳',
-  zh: '🇨🇳',
-  nl: '🇳🇱',
-  fr: '🇫🇷',
-  de: '🇩🇪',
-  pl: '🇵🇱',
-  af: '🇿🇦',
-  zu: '🇿🇦',
-  xh: '🇿🇦'
+  ka: '????',
+  en: '????',
+  ru: '????',
+  hi: '????',
+  zh: '????',
+  nl: '????',
+  fr: '????',
+  de: '????',
+  pl: '????',
+  af: '????',
+  zu: '????',
+  xh: '????'
 };
 
 const LanguageSelector = ({ variant = "default" }) => {
   const { language, setLanguage, languages, t } = useLanguage();
 
-  const flag = flagEmojis[language] || '🌍';
+  const flag = flagEmojis[language] || '??';
 
   return (
     <DropdownMenu>
@@ -59,7 +59,7 @@ const LanguageSelector = ({ variant = "default" }) => {
           >
             <span className="mr-2">{flagEmojis[code]}</span>
             {name}
-            {language === code && <span className="ml-auto">✓</span>}
+            {language === code && <span className="ml-auto">?</span>}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
