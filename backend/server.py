@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from contextlib import asynccontextmanager
 import math
 import os
@@ -357,7 +357,7 @@ async def upload_file_to_storage(file: UploadFile, path: str) -> Optional[str]:
     if not file:
         return None
     if not FIREBASE_STORAGE_BUCKET:
-        logger.warning("FIREBASE_STORAGE_BUCKET not set � file upload skipped")
+        logger.warning("FIREBASE_STORAGE_BUCKET not set ? file upload skipped")
         return None
     try:
         bucket = storage.bucket()
@@ -3397,7 +3397,7 @@ async def match_drivers_to_ride(ride_id: str):
                 send_push_notification(
                     driver["id"],
                     title="New Ride Request ??",
-                    body=f"Pickup {round(driver['distance'], 1)}km away � ?{ride_data.get('estimated_fare', 0):.0f}",
+                    body=f"Pickup {round(driver['distance'], 1)}km away ? ?{ride_data.get('estimated_fare', 0):.0f}",
                     data={
                         "type": "ride_request",
                         "ride_id": ride_id,
@@ -3464,7 +3464,7 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
     balance = driver_data.get("earnings", {}).get("balance", 0)
     held_commission = (ride_data.get("estimated_fare", 0) or 0) * commission_rate
 
-    # Balance check � driver must have enough to cover commission
+    # Balance check ? driver must have enough to cover commission
     if balance < held_commission:
         raise HTTPException(
             400,
@@ -3501,7 +3501,7 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
         "driver_info": {
             "id": user_id,
             "name": f"{driver_data.get('name', '')} {driver_data.get('surname', '')}".strip(),
-            "cellphone": driver_data.get("cellphone"),
+            "cellphone": driver_data.get("cellphone_norm") or driver_data.get("cellphone"),
             "car_make": vehicle.get("car_make"),
             "car_model": vehicle.get("car_model"),
             "car_color": vehicle.get("car_color"),
@@ -3668,7 +3668,7 @@ async def mid_trip_wait(
         ride_ref.update({"mid_trip_wait_start": firestore.SERVER_TIMESTAMP})
         return {"message": "Wait timer started"}
 
-    # action == "stop" � bank elapsed time, recalculate fare
+    # action == "stop" ? bank elapsed time, recalculate fare
     start_ts = ride_data.get("mid_trip_wait_start")
     elapsed_min = 0.0
 
@@ -3716,7 +3716,7 @@ async def mid_trip_wait(
 async def complete_ride(
     ride_id: str,
     final_distance: Optional[float] = 0.0,
-    total_wait_minutes: Optional[float] = None,   # float � fractional minutes from driver client
+    total_wait_minutes: Optional[float] = None,   # float ? fractional minutes from driver client
     dropoff_lat: Optional[float] = None,
     dropoff_lng: Optional[float] = None,
     user_id: Optional[str] = Depends(get_current_user_id),
@@ -4037,7 +4037,7 @@ async def rate_driver(
     return {"message": "Driver rated successfully"}
 
 
-# --- FIX 1: CHAT � sender_role saved with every message -----------------------
+# --- FIX 1: CHAT ? sender_role saved with every message -----------------------
 # Each message now stores sender_role = "rider" or "driver"
 # Frontend uses this field to align chat bubbles (left = other, right = you)
 # FCM push notification sent to the OTHER party so they get notified
@@ -4072,7 +4072,7 @@ async def send_chat_message(
     message_doc = {
         "ride_id":     ride_id,
         "sender_id":   user_id,
-        "sender_role": sender_role,   # ? "rider" or "driver" � frontend uses this
+        "sender_role": sender_role,   # ? "rider" or "driver" ? frontend uses this
         "message":     msg.message,
         "timestamp":   firestore.SERVER_TIMESTAMP,
         "read":        False,
@@ -4152,7 +4152,7 @@ async def send_tip(
     return {"message": "Tip processed"}
 
 
-# --- FIX 2: SHARE RIDE � uses FRONTEND_URL instead of hardcoded taksi.ge ------
+# --- FIX 2: SHARE RIDE ? uses FRONTEND_URL instead of hardcoded taksi.ge ------
 # The old code had: share_link = f"https://taksi.ge/track/{ride_id}"
 # taksi.ge/track doesn't exist ? "server cannot be found" error on the recipient's phone
 # Now uses FRONTEND_URL env var (defaults to t-aksi-frontend.onrender.com)
