@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+ï»¿import { useState, useEffect, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/config";
 import api from "@/api";
@@ -34,7 +34,7 @@ import {
 // -----------------------------------------------------------------------------
 const fmt = (n) => `?${Number(n || 0).toFixed(2)}`;
 const timeAgo = (iso) => {
-  if (!iso) return "—";
+  if (!iso) return "ï¿½";
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return "just now";
@@ -70,7 +70,7 @@ const StatCard = ({ icon: Icon, label, value, color }) => (
 );
 
 // -----------------------------------------------------------------------------
-// ADD BALANCE DIALOG — single user
+// ADD BALANCE DIALOG ï¿½ single user
 // -----------------------------------------------------------------------------
 const AddBalanceDialog = ({ user, userType, onSuccess, children }) => {
   const [open, setOpen] = useState(false);
@@ -107,7 +107,7 @@ const AddBalanceDialog = ({ user, userType, onSuccess, children }) => {
         <DialogHeader>
           <DialogTitle className={accent.split(" ")[0]}>Add Balance</DialogTitle>
           <DialogDescription className="text-gray-500">
-            {user?.name} {user?.surname} · {user?.cellphone}
+            {user?.name} {user?.surname} ï¿½ {user?.cellphone}
           </DialogDescription>
         </DialogHeader>
         <div className={`rounded-lg p-3 bg-black/40 border ${accent.split(" ")[1]} mb-2`}>
@@ -139,7 +139,7 @@ const AddBalanceDialog = ({ user, userType, onSuccess, children }) => {
 };
 
 // -----------------------------------------------------------------------------
-// BULK ADD BALANCE DIALOG — multiple drivers
+// BULK ADD BALANCE DIALOG ï¿½ multiple drivers
 // -----------------------------------------------------------------------------
 const BulkAddBalanceDialog = ({ drivers, onSuccess, children }) => {
   const [open, setOpen] = useState(false);
@@ -235,7 +235,7 @@ const BulkAddBalanceDialog = ({ drivers, onSuccess, children }) => {
             <Button onClick={handle} disabled={loading || !amount || Number(amount) <= 0}
               className="bg-sky-500 hover:bg-sky-600 text-white font-semibold">
               {loading
-                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Processing…</>
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Processingï¿½</>
                 : <><PlusCircle className="w-4 h-4 mr-2" /> Add to {drivers.length} Driver{drivers.length !== 1 ? "s" : ""}</>}
             </Button>
           )}
@@ -325,7 +325,7 @@ const UserDetailPanel = ({ userId, userType, onClose, onRefresh }) => {
                   {data.driver_info.vehicles.map((v, i) => (
                     <div key={i} className="border border-white/10 rounded-lg p-3 mb-2">
                       <p className="text-white font-semibold">{v.car_year} {v.car_make} {v.car_model}</p>
-                      <p className="text-gray-400 text-sm">{v.car_color} · {v.license_plate}</p>
+                      <p className="text-gray-400 text-sm">{v.car_color} ï¿½ {v.license_plate}</p>
                       <div className="flex gap-2 mt-1">
                         <StatusBadge status={v.status || "pending"} />
                         <span className="px-2 py-0.5 text-[11px] rounded border bg-purple-500/20 text-purple-400 border-purple-500/30 uppercase">{v.tier}</span>
@@ -444,7 +444,7 @@ const SOSPanel = () => {
                     <a href={`https://www.google.com/maps?q=${alert.lat},${alert.lng}`}
                       target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 text-sm underline">
-                      ?? {Number(alert.lat).toFixed(5)}, {Number(alert.lng).toFixed(5)} — Open in Maps
+                      ?? {Number(alert.lat).toFixed(5)}, {Number(alert.lng).toFixed(5)} ï¿½ Open in Maps
                     </a>
                   )}
                   {alert.ride_id && <p className="text-gray-500 text-xs font-mono">Ride: {alert.ride_id}</p>}
@@ -642,7 +642,7 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-[#050508] flex items-center justify-center">
       <div className="text-center space-y-3">
         <Loader2 className="w-12 h-12 animate-spin text-purple-500 mx-auto" />
-        <p className="text-gray-500 text-sm">Loading Command Center…</p>
+        <p className="text-gray-500 text-sm">Loading Command Centerï¿½</p>
       </div>
     </div>
   );
@@ -754,7 +754,7 @@ const AdminDashboard = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-amber-400 font-semibold">{alertCount} Pending Approvals</p>
-                      <p className="text-amber-700 text-xs mt-0.5">{pendingDrivers.length} drivers · {pendingTopups.length} top-ups</p>
+                      <p className="text-amber-700 text-xs mt-0.5">{pendingDrivers.length} drivers ï¿½ {pendingTopups.length} top-ups</p>
                     </div>
                     <ChevronRight className="w-5 h-5 text-amber-600" />
                   </div>
@@ -866,7 +866,7 @@ const AdminDashboard = () => {
                   <Input
                     value={driverSearch}
                     onChange={e => setDriverSearch(e.target.value)}
-                    placeholder="Search by name, phone or ID…"
+                    placeholder="Search by name, phone or IDï¿½"
                     className="pl-9 pr-9 bg-black/50 border-white/10 text-white placeholder:text-gray-600 focus:border-sky-500/50 h-9"
                   />
                   {driverSearch && (
@@ -930,7 +930,7 @@ const AdminDashboard = () => {
                               <TableCell className="text-sky-400 font-semibold text-sm">{fmt(driver.earnings?.balance)}</TableCell>
                               <TableCell><StatusBadge status={driver.registration_status} /></TableCell>
                               <TableCell className="text-gray-400 text-xs">
-                                {activeVehicle ? `${activeVehicle.car_year} ${activeVehicle.car_make} ${activeVehicle.car_model}` : "—"}
+                                {activeVehicle ? `${activeVehicle.car_year} ${activeVehicle.car_make} ${activeVehicle.car_model}` : "ï¿½"}
                               </TableCell>
                               <TableCell className="text-gray-400 text-sm">{driver.total_rides || 0}</TableCell>
                               <TableCell>
@@ -992,7 +992,7 @@ const AdminDashboard = () => {
                               {v && (
                                 <div className="flex gap-2 flex-wrap mt-1">
                                   <span className="text-sky-400 text-xs">{v.car_year} {v.car_make} {v.car_model}</span>
-                                  <span className="text-gray-500 text-xs">{v.car_color} · {v.license_plate}</span>
+                                  <span className="text-gray-500 text-xs">{v.car_color} ï¿½ {v.license_plate}</span>
                                   {v.tier && <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-500/20 border border-purple-500/30 text-purple-400 uppercase">{v.tier}</span>}
                                 </div>
                               )}
@@ -1081,7 +1081,7 @@ const AdminDashboard = () => {
                         <div className="space-y-1 flex-1">
                           <p className="text-white font-semibold">{wd.driver_name || "Driver"}</p>
                           <p className="text-gray-500 text-sm">Bank: {wd.bank_details}</p>
-                          {wd.fee > 0 && <p className="text-gray-600 text-xs">Fee: {fmt(wd.fee)} · Total deducted: {fmt(wd.total_deducted)}</p>}
+                          {wd.fee > 0 && <p className="text-gray-600 text-xs">Fee: {fmt(wd.fee)} ï¿½ Total deducted: {fmt(wd.total_deducted)}</p>}
                           <p className="text-gray-700 text-xs">{timeAgo(wd.created_at || wd.requested_at)}</p>
                         </div>
                         <div className="text-right shrink-0">
@@ -1213,6 +1213,8 @@ const AdminPortal = () => {
       ? <AdminLogin />
       : <Navigate to="/admin" replace />;
   }
+
+  
 
   return (
     <Routes>
