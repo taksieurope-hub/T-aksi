@@ -1993,9 +1993,10 @@ async def get_all_rides(
         logger.error(f"Error fetching rides: {e}")
         return {"rides": [], "count": 0}
 
-        @app.get("/api/admin/feedback", tags=["Admin"])
-        async def get_all_feedback(admin_id: str = Depends(get_admin_user)):
-            db = get_db()
+        # 1. FIX THE FEEDBACK 404 ERROR
+@app.get("/api/admin/feedback", tags=["Admin"])
+async def get_all_feedback(admin_id: str = Depends(get_admin_user)):
+    db = get_db()
     try:
         # Try to get the newest feedback first
         docs = list(
@@ -2010,6 +2011,28 @@ async def get_all_rides(
         
     result = [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in docs]
     return {"feedback": result}
+
+# 2. FIX THE CAMPAIGN TEMPLATES 405 ERROR
+@app.get("/api/admin/campaigns/templates", tags=["Admin"])
+async def get_campaign_templates(admin_id: str = Depends(get_admin_user)):
+    # Providing default templates so the frontend stops crashing
+    templates = [
+        {
+            "id": "t1", 
+            "title": "Weekend Warrior", 
+            "description": "Complete 10 rides this weekend.", 
+            "target_value": 10, 
+            "reward": 20
+        },
+        {
+            "id": "t2", 
+            "title": "5-Star Driver", 
+            "description": "Maintain a 5-star rating for 20 rides.", 
+            "target_value": 20, 
+            "reward": 50
+        }
+    ]
+    return {"templates": templates}
 
 
 @app.get("/api/admin/support/tickets/escalated", tags=["Admin"])
