@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
@@ -2710,8 +2710,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Total Earned</p>
                     <p className="text-3xl font-bold font-mono text-white">GEL {totalEarned.toFixed(2)}</p>
                   </GlassCard>
-                  <StatPill label="Commission Paid" value={`?${commissionPaid.toFixed(2)}`} color="text-red-400" />
-                  <StatPill label="Withdrawn" value={`?${totalWithdrawn.toFixed(2)}`} color="text-white/60" />
+                  <StatPill label={t("commission_paid")} value={`GEL ${commissionPaid.toFixed(2)}`} color="text-red-400" />
+                  <StatPill label={t("withdrawn")} value={`GEL ${totalWithdrawn.toFixed(2)}`} color="text-white/60" />
                 </div>
 
                 <div className="flex gap-2">
