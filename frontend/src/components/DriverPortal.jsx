@@ -485,7 +485,7 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
       <Button onClick={submit} disabled={!isValid || loading}
         className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold disabled:opacity-30">
         {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Banknote className="w-5 h-5 mr-2" />}
-        {loading ? t("processing") : `${t("withdraw")} ?${amt > 0 ? amt.toFixed(2) : "0.00"}`}
+        {loading ? t("processing") : `${t("withdraw")} GEL ${amt > 0 ? amt.toFixed(2) : "0.00"}`}
       </Button>
 
       {history.length > 0 && (
@@ -2715,7 +2715,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 </div>
 
                 <div className="flex gap-2">
-                  {[["overview","Overview"],["topup","Top Up"],["withdraw","Withdraw"]].map(([k,l]) => (
+                  {[ ["overview", t("overview")], ["topup", t("top_up")], ["withdraw", t("withdraw")] ].map(([k,l]) => (
                     <button key={k} onClick={() => setEarningsTab(k)}
                       className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${earningsTab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/30 hover:text-white/60"}`}>
                       {l}
