@@ -1074,7 +1074,7 @@ def calculate_fare(
 
 
 @app.post("/api/feedback")
-async def submit_feedback(req: Request, user_id: str = Depends(get_current_user_id)):
+async def submit_feedback(req: Request, user_id: Optional[str] = Depends(get_current_user_id)):
     data = await req.json()
     db.collection("feedback").add({
         "user_id": user_id,
