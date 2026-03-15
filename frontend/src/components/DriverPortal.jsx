@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
@@ -969,10 +969,6 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
         <LanguageSelector variant="ghost" />
       </div>
       </div>
-
-      <div className="bg-white/3 border border-white/8 rounded-2xl p-4 flex items-center justify-between">
-        <p className="text-white font-semibold text-sm">Language</p>
-        <LanguageSelector variant="ghost" />
       </div>
 
       <GlassCard className="p-4">
@@ -1726,7 +1722,6 @@ const DriverAuth = () => {
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#07070f" }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="absolute top-4 right-4"><LanguageSelector variant="ghost" /></div>
           <button onClick={() => navigate("/")} className="flex items-center gap-2 text-white/40 hover:text-white text-sm mb-8 mx-auto transition-colors">
             <ArrowLeft className="w-4 h-4" /> {t("back")}
           </button>
