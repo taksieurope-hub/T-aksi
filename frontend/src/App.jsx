@@ -1,20 +1,22 @@
-﻿import { useMemo, lazy, Suspense } from "react";
+﻿import { useMemo, lazy, Suspense, useEffect } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
 import InstallPrompt from '@/components/InstallPrompt';
 
+// Capacitor Native Push Imports
+import { PushNotifications } from '@capacitor/push-notifications';
+
 // Providers
 import { AuthProvider, API } from "@/config";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 
-// CODE SPLITTING (This is perfect!)
+// CODE SPLITTING
 const LandingPage    = lazy(() => import("@/components/LandingPage"));
 const RiderPortal    = lazy(() => import("@/components/RiderPortal"));
 const DriverPortal   = lazy(() => import("@/components/DriverPortal"));
 const AdminPortal    = lazy(() => import("@/components/AdminPortal"));
-
 
 const PortalLoader = () => (
   <div style={{
@@ -65,6 +67,57 @@ const StarsBackground = () => {
 };
 
 function App() {
+  
+  useEffect(() => {
+    // Initialize Push Notifications only if running on a native platform
+    const initPush = async () => {
+      try {
+        // 1. Request Permission
+        let permStatus = await PushNotifications.checkPermissions();
+
+        if (permStatus.receive === 'prompt') {
+          permStatus = await PushNotifications.requestPermissions();
+        }
+
+        if (permStatus.receive !== 'granted') {
+          console.warn("User denied push permissions.");
+          return;
+        }
+
+        // 2. Register with Apple/Google
+        await PushNotifications.register();
+
+        // 3. Listener: Registration Success (The Token)
+        await PushNotifications.addListener('registration', (token) => {
+          console.log('Push Registration Success. Token:', token.value);
+          // Send this to your backend so it knows where to send rides/alerts
+          axios.post("/api/user/push-token", { token: token.value })
+            .catch(err => console.error("Backend failed to save push token", err));
+        });
+
+        // 4. Listener: Registration Error
+        await PushNotifications.addListener('registrationError', (error) => {
+          console.error('Push Registration Error:', JSON.stringify(error));
+        });
+
+        // 5. Listener: Notification Received (App is open)
+        await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          console.log('Push received while app open:', notification);
+        });
+
+        // 6. Listener: Notification Action (User clicked alert)
+        await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+          console.log('User clicked notification:', notification);
+        });
+
+      } catch (e) {
+        console.warn("Push Notifications not supported in this environment (likely browser).");
+      }
+    };
+
+    initPush();
+  }, []);
+
   return (
     <LanguageProvider>
       <AuthProvider>
