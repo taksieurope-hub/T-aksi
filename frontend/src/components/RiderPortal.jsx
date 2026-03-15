@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import { LanguageProvider, useLanguage } from "@/i18n/LanguageContext";
@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
 import CurrencyConverter from "@/components/CurrencyConverter";
-import FeedbackPanel from "@/components/FeedbackPanel";
+import FeedbackPanel from "@/components/Feedbackpanel";
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
@@ -30,7 +30,7 @@ import {
 
 
 // =============================================================================
-// PRICING RULES � Must match server.py exactly
+// PRICING RULES ? Must match server.py exactly
 // =============================================================================
 const PRICING_RULES = {
   economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "??", desc: "Affordable everyday rides" },
@@ -78,12 +78,12 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// trim() only called on submit, NOT on every keystroke � otherwise spacebar is swallowed
+// trim() only called on submit, NOT on every keystroke ? otherwise spacebar is swallowed
 const sanitiseAddress = (str = "") => str.slice(0, 300);
 const sanitiseAddressForSubmit = (str = "") => str.trim().slice(0, 300);
 
 // =============================================================================
-// GOOGLE MAPS LOADER � singleton, never double-loads
+// GOOGLE MAPS LOADER ? singleton, never double-loads
 // =============================================================================
 let mapsLoadState = "idle";
 const mapsReadyCallbacks = [];
@@ -115,7 +115,7 @@ const loadGoogleMaps = (apiKey) => {
 };
 
 // =============================================================================
-// GOOGLE MAPS AUTOCOMPLETE HOOK � UNCHANGED
+// GOOGLE MAPS AUTOCOMPLETE HOOK ? UNCHANGED
 // =============================================================================
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
   const callbackRef = useRef(onPlaceSelect);
@@ -161,7 +161,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
 };
 
 // =============================================================================
-// MAP PICKER MODAL � UNCHANGED
+// MAP PICKER MODAL ? UNCHANGED
 // =============================================================================
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const { t } = useLanguage();
@@ -263,7 +263,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 };
 
 // =============================================================================
-// LIVE TRACKING MAP � UPGRADED
+// LIVE TRACKING MAP ? UPGRADED
 // - ETA countdown pill (live ticking)
 // - Pickup pin (green) + Destination pin (red) as SVG markers
 // - Auto-fit bounds when ride is accepted (driver + pickup)
@@ -381,7 +381,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     }
   }, [pickup?.lat, destination?.lat, JSON.stringify(stops), status, driverLocation?.lat]);
 
-  // Auto-fit when ride is first accepted � show driver + pickup
+  // Auto-fit when ride is first accepted ? show driver + pickup
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
     if (status !== "accepted") return;
@@ -403,7 +403,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     setTimeout(() => setIsFollowing(true), 3000);
   }, [status, driverLocation?.lat, pickup?.lat]);
 
-  // ETA countdown � starts fresh whenever a new Directions result comes in
+  // ETA countdown ? starts fresh whenever a new Directions result comes in
   useEffect(() => {
     return () => { if (etaIntervalRef.current) clearInterval(etaIntervalRef.current); };
   }, []);
@@ -452,7 +452,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     if (ref.current) { ref.current.setMap(null); ref.current = null; }
   };
 
-  // Driver marker � follows live location AND rotates the map
+  // Driver marker ? follows live location AND rotates the map
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
     
@@ -527,7 +527,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
 };
 
 // =============================================================================
-// LOCATION INPUT � UNCHANGED
+// LOCATION INPUT ? UNCHANGED
 // =============================================================================
 const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name, onSaveAsFavorite, mapsLoaded }) => {
   const { t } = useLanguage();
@@ -721,7 +721,7 @@ const RiderAuth = () => {
 };
 
 // =============================================================================
-// WAIT TIMER � UNCHANGED
+// WAIT TIMER ? UNCHANGED
 // =============================================================================
 const WaitTimer = ({ arrivedAt, carType }) => {
   const { t } = useLanguage();
@@ -780,7 +780,7 @@ const WaitTimer = ({ arrivedAt, carType }) => {
 };
 
 // =============================================================================
-// RECEIPT MODAL � UNCHANGED
+// RECEIPT MODAL ? UNCHANGED
 // =============================================================================
 const ReceiptModal = ({ isOpen, onClose, rideId }) => {
   const { t } = useLanguage();
@@ -886,7 +886,7 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
         <Input type="number" placeholder={t("custom_amount")} value={custom}
           onChange={e => { setCustom(e.target.value); setTipAmount(null); }}
           className="bg-white/5 border-white/10 text-white text-center h-12 rounded-xl mb-4 placeholder:text-white/25" />
-        {isValidTip && <p className="text-white/30 text-xs text-center mb-4">?{finalAmount.toFixed(2)} GEL � ${usdAmount} USD</p>}
+        {isValidTip && <p className="text-white/30 text-xs text-center mb-4">?{finalAmount.toFixed(2)} GEL ? ${usdAmount} USD</p>}
         {isValidTip ? (
           <div className="mb-4">
             <PayPalButtons
@@ -935,7 +935,7 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
 };
 
 // =============================================================================
-// SOS BUTTON � UNCHANGED
+// SOS BUTTON ? UNCHANGED
 // =============================================================================
 const SOSButton = ({ rideId, lat, lng }) => {
   const [loading, setLoading]     = useState(false);
@@ -948,7 +948,7 @@ const SOSButton = ({ rideId, lat, lng }) => {
       await api.post("/sos", { ride_id: rideId, lat: lat || 0, lng: lng || 0, message: "Rider triggered SOS during trip" });
       setTriggered(true);
       toast.error("?? SOS Triggered! Help is on the way.", { duration: 10000 });
-    } catch { toast.error("SOS failed � call emergency services directly"); }
+    } catch { toast.error("SOS failed ? call emergency services directly"); }
     finally { setLoading(false); }
   };
 
@@ -962,7 +962,7 @@ const SOSButton = ({ rideId, lat, lng }) => {
 };
 
 // =============================================================================
-// SHARE TRIP MODAL � UNCHANGED
+// SHARE TRIP MODAL ? UNCHANGED
 // =============================================================================
 const ShareTripModal = ({ isOpen, onClose, rideId }) => {
   const { t } = useLanguage();
@@ -1036,7 +1036,7 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
 };
 
 // =============================================================================
-// SCHEDULED RIDE MODAL � UNCHANGED
+// SCHEDULED RIDE MODAL ? UNCHANGED
 // =============================================================================
 const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) => {
   const { t } = useLanguage();
@@ -1094,7 +1094,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
 };
 
 // =============================================================================
-// WALLET TOP-UP MODAL � UNCHANGED
+// WALLET TOP-UP MODAL ? UNCHANGED
 // =============================================================================
 const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   const { t } = useLanguage();
@@ -1131,7 +1131,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
         <Input type="number" placeholder={t("custom_amount")} value={custom} min="1" max="1000"
           onChange={e => setCustom(e.target.value)}
           className="bg-white/5 border-white/10 text-white text-center h-11 rounded-xl mb-4 placeholder:text-white/25" />
-        {canPay && <p className="text-white/30 text-xs text-center mb-4">?{finalAmount.toFixed(2)} GEL � ${usdAmount} USD</p>}
+        {canPay && <p className="text-white/30 text-xs text-center mb-4">?{finalAmount.toFixed(2)} GEL ? ${usdAmount} USD</p>}
         {canPay ? (
           <PayPalButtons
             fundingSource="card"
@@ -1174,7 +1174,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
 };
 
 // =============================================================================
-// FAVORITES PANEL � UNCHANGED
+// FAVORITES PANEL ? UNCHANGED
 // =============================================================================
 const FavoritesPanel = ({ onSelect }) => {
   const { t } = useLanguage();
@@ -1220,7 +1220,7 @@ const FavoritesPanel = ({ onSelect }) => {
 };
 
 // =============================================================================
-// SAVE FAVORITE DIALOG � UNCHANGED
+// SAVE FAVORITE DIALOG ? UNCHANGED
 // =============================================================================
 const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
   const { t } = useLanguage();
@@ -1262,7 +1262,7 @@ const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
 };
 
 // =============================================================================
-// REFERRAL PANEL � UNCHANGED
+// REFERRAL PANEL ? UNCHANGED
 // =============================================================================
 const ReferralPanel = () => {
   const { t } = useLanguage();
@@ -1326,7 +1326,7 @@ const ReferralPanel = () => {
 };
 
 // =============================================================================
-// RIDE HISTORY ITEM � UNCHANGED
+// RIDE HISTORY ITEM ? UNCHANGED
 // =============================================================================
 const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
   const { t } = useLanguage();
@@ -1340,13 +1340,13 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${sc.color}`}>{sc.label}</span>
-              <span className="text-white/25 text-xs">{ride.created_at ? new Date(ride.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" }) : "�"}</span>
+              <span className="text-white/25 text-xs">{ride.created_at ? new Date(ride.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" }) : "?"}</span>
             </div>
             <p className="text-white text-sm font-medium truncate">{ride.pickup}</p>
             {ride.destination && <p className="text-white/40 text-xs truncate mt-0.5 flex items-center gap-1"><ArrowRight className="w-3 h-3 shrink-0" />{ride.destination}</p>}
           </div>
           <div className="text-right shrink-0 flex flex-col items-end gap-2">
-            <span className="text-[#00ff88] font-bold text-lg font-mono">?{(ride.final_fare || ride.estimated_fare)?.toFixed(2) ?? "�"}</span>
+            <span className="text-[#00ff88] font-bold text-lg font-mono">?{(ride.final_fare || ride.estimated_fare)?.toFixed(2) ?? "?"}</span>
             {expanded ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
           </div>
         </div>
@@ -1355,7 +1355,7 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
         <div className="px-4 pb-4 pt-0 border-t border-white/6 space-y-3">
           <div className="grid grid-cols-2 gap-2 pt-3">
             {[
-              [t("car_type"), ride.carType || ride.car_type || "�"],
+              [t("car_type"), ride.carType || ride.car_type || "?"],
               [t("payment"), ride.payment_method || ride.paymentMethod || t("cash")],
               ride.driver_info?.name ? [t("your_driver"), ride.driver_info.name] : null,
               ride.distance_km ? [t("traveled"), `${parseFloat(ride.distance_km).toFixed(1)} km`] : null,
@@ -1474,7 +1474,7 @@ const RiderSupportPanel = () => {
 };
 
 // =============================================================================
-// RIDER DASHBOARD � UNCHANGED logic, uses upgraded LiveTrackingMap above
+// RIDER DASHBOARD ? UNCHANGED logic, uses upgraded LiveTrackingMap above
 // =============================================================================
 const RiderDashboard = () => {
   const { user, logout, refreshUser } = useAuth();
@@ -1827,7 +1827,7 @@ const [promoApplied, setPromoApplied] = useState(false);
               <button className="flex items-center gap-1 text-[#00ff88] text-xs mt-0.5 hover:text-[#00d4ff] transition-colors" onClick={() => setShowTopUp(true)}>
                 <Wallet className="w-2.5 h-2.5" />
                 ?{user?.wallet_balance?.toFixed(2) || "0.00"}
-                <span className="text-white/25">�</span>
+                <span className="text-white/25">?</span>
                 <span className="text-white/40">{t("top_up")}</span>
               </button>
             </div>
@@ -1940,7 +1940,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <p className="text-orange-400/60 text-xs">{surgeInfo.surge_reason}</p>
                   </div>
                 </div>
-                <span className="text-orange-300 font-bold text-xl bg-orange-500/20 px-3 py-1 rounded-xl">�{surgeInfo.multiplier}</span>
+                <span className="text-orange-300 font-bold text-xl bg-orange-500/20 px-3 py-1 rounded-xl">?{surgeInfo.multiplier}</span>
               </div>
             )}
 
@@ -1948,7 +1948,7 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="bg-white/3 border border-white/8 rounded-2xl px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-white/40 text-sm">
                   <RouteIcon className="w-4 h-4" />
-                  <span>{routeInfo.distance} {t("km")} � {routeInfo.duration} {t("min")}</span>
+                  <span>{routeInfo.distance} {t("km")} ? {routeInfo.duration} {t("min")}</span>
                 </div>
                 <div className="text-right">
   <div className="flex items-baseline justify-end">
@@ -2059,7 +2059,7 @@ const [promoApplied, setPromoApplied] = useState(false);
   ) : (
     <div className="flex items-center">
       <Rocket className="w-5 h-5 mr-2" />
-      <span>{t("request_ride")} {carType} � ?{fareEstimate?.total.toFixed(2)}</span>
+      <span>{t("request_ride")} {carType} ? ?{fareEstimate?.total.toFixed(2)}</span>
     </div>
   )}
 </Button>
