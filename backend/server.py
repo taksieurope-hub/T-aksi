@@ -2033,15 +2033,31 @@ async def get_campaign_templates(admin_id: str = Depends(get_admin_user)):
     ]
     return {"templates": templates}
 
+@app.get("/api/admin/support/tickets", tags=["Admin"])
+async def get_all_support_tickets(admin_id: str = Depends(get_admin_user)):
+    db = get_db()
+    # This fetches EVERYTHING so the dashboard can show the full list
+    tickets = db.collection("support_tickets").order_by("created_at", direction=firestore.Query.DESCENDING).limit(100).stream()
+    result = [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in tickets]
+    return {"tickets": result, "count": len(result)}
 
 @app.get("/api/admin/support/tickets/escalated", tags=["Admin"])
 async def get_escalated_tickets(admin_id: str = Depends(get_admin_user)):
     db = get_db()
+    # 1. Fetch from Firestore
     tickets = db.collection("support_tickets").where("status", "==", "escalated").limit(50).stream()
     result = [serialize_firestore_data({**t.to_dict(), "id": t.id}) for t in tickets]
-    result.sort(key=lambda x: (x.get("priority", "medium"), x.get("created_at", "")))
-    return {"tickets": result, "count": len(result)}
+    
+    # 2. Map priorities to numbers so they sort correctly (0 is top priority)
+    prio_weight = {"high": 0, "medium": 1, "low": 2}
 
+    # 3. Sort by priority number, then by date
+    result.sort(key=lambda x: (
+        prio_weight.get(str(x.get("priority", "medium")).lower(), 1), 
+        str(x.get("created_at", "")) # Convert to string to prevent crashing on missing dates
+    ))
+
+    return {"tickets": result, "count": len(result)}
 
 @app.post("/api/admin/support/tickets/{ticket_id}/reply", tags=["Admin"])
 async def reply_to_ticket(
