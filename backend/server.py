@@ -1994,8 +1994,8 @@ async def get_all_rides(
         return {"rides": [], "count": 0}
 
         @app.get("/api/admin/feedback", tags=["Admin"])
-async def get_all_feedback(admin_id: str = Depends(get_admin_user)):
-    db = get_db()
+        async def get_all_feedback(admin_id: str = Depends(get_admin_user)):
+            db = get_db()
     try:
         # Try to get the newest feedback first
         docs = list(
