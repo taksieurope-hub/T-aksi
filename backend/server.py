@@ -1993,6 +1993,24 @@ async def get_all_rides(
         logger.error(f"Error fetching rides: {e}")
         return {"rides": [], "count": 0}
 
+        @app.get("/api/admin/feedback", tags=["Admin"])
+async def get_all_feedback(admin_id: str = Depends(get_admin_user)):
+    db = get_db()
+    try:
+        # Try to get the newest feedback first
+        docs = list(
+            db.collection("feedback")
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(100)
+            .stream()
+        )
+    except Exception:
+        # Fallback if Firebase hasn't built the index yet
+        docs = list(db.collection("feedback").stream())
+        
+    result = [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in docs]
+    return {"feedback": result}
+
 
 @app.get("/api/admin/support/tickets/escalated", tags=["Admin"])
 async def get_escalated_tickets(admin_id: str = Depends(get_admin_user)):
