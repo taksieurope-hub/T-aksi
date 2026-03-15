@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import Drivermap from './Drivermap';
-import FeedbackPanel from "@/components/Feedbackpanel";
+
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -945,7 +945,7 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
     if (view === "fleet")     return <div><BackButton onClick={back} /><FleetPanel registrationStatus={registrationStatus} /></div>;
     if (view === "referrals") return <div><BackButton onClick={back} /><ReferralPanel /></div>;
     if (view === "support")   return <div><BackButton onClick={back} /><SupportPanel /></div>;
-    if (view === "feedback")  return <div><BackButton onClick={back} /><FeedbackPanel userType="driver" /></div>;
+    if (view === "feedback") { const FP = require("@/components/Feedbackpanel").default; return <div><BackButton onClick={back} /><FP userType="driver" /></div>; }
   }
 
   return (
