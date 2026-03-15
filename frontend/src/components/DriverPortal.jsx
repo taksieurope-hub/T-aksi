@@ -969,7 +969,6 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
         <LanguageSelector variant="ghost" />
       </div>
       </div>
-      </div>
 
       <GlassCard className="p-4">
         <div className="flex items-center justify-between">
