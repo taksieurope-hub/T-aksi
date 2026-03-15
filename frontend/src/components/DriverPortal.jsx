@@ -1,6 +1,5 @@
 import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
-const FeedbackPanel = React.lazy(() => import("@/components/Feedbackpanel"));
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
@@ -24,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import RideCommunication from "./RideCommunication";
 import {
+
   Car, MapPin, Star, History, Home, LogOut, User, Phone, Lock,
   ArrowLeft, ArrowRight, Navigation, Wallet, Loader2, Rocket, Plus, X,
   Zap, TrendingUp, MessageSquare, Target, Crosshair, Send, Banknote,
@@ -34,6 +34,8 @@ import {
   Award, BarChart3, FileText, Heart, Headphones, AlertCircle,
   CornerUpLeft, CornerUpRight, RotateCcw, Merge, ArrowUp, Eye, ThumbsUp
 } from "lucide-react";
+
+const FeedbackPanel = React.lazy(() => import("@/components/Feedbackpanel"));
 
 // =============================================================================
 // CONSTANTS ? synced with server.py
