@@ -1,4 +1,4 @@
-// Multi-language translations for T'aksi
+﻿// Multi-language translations for T'aksi
 // Default language: Georgian (ka)
 
 export const translations = {
