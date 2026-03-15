@@ -1425,7 +1425,7 @@ async def trigger_sos(req: SOSRequest, user_id: Optional[str] = Depends(get_curr
         if user_doc.exists:
             ud = user_doc.to_dict()
             user_name = f"{ud.get('name', '')} {ud.get('surname', '')}".strip()
-            user_phone = ud.get("cellphone", "")
+            user_phone = ud.get("cellphone_norm") or ud.get("cellphone", "")
 
     sos_ref = db.collection("sos_alerts").document()
     sos_data = {
@@ -2715,7 +2715,7 @@ async def send_support_message(req: SupportMessageRequest, user_id: Optional[str
         "id": ticket_ref.id,
         "user_id": user_id,
         "user_name": f"{user_data.get('name', '')} {user_data.get('surname', '')}".strip(),
-        "user_phone": user_data.get("cellphone", ""),
+        "user_phone": user_data.get("cellphone_norm") or user_data.get("cellphone", ""),
         "user_type": user_data.get("user_type", "unknown"),
         "message": req.message,
         "status": "open",
