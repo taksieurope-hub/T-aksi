@@ -1,0 +1,58 @@
+{
+  "name": "T'aksi - Galactic Rides",
+  "short_name": "T'aksi",
+  "description": "Your Ride Across the Galaxy. Experience the future of transportation.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#00ff88",
+  "background_color": "#07070f",
+  "lang": "ka",
+  "dir": "ltr",
+  "categories": ["transportation", "travel", "lifestyle"],
+  "icons": [
+    {
+      "src": "/logo192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Book a Ride",
+      "short_name": "Ride",
+      "description": "Quick book a ride",
+      "url": "/rider",
+      "icons": [{ "src": "/logo192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Driver Portal",
+      "short_name": "Drive",
+      "description": "Access driver dashboard",
+      "url": "/driver",
+      "icons": [{ "src": "/logo192.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false,
+  "scope": "/",
+  "id": "taksi-pwa"
+}

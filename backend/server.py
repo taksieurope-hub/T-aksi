@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 from contextlib import asynccontextmanager
 import math
 import os
@@ -1075,6 +1075,9 @@ def calculate_fare(
 
 @app.post("/api/feedback")
 async def submit_feedback(req: Request, user_id: Optional[str] = Depends(get_current_user_id)):
+    # 👇 ADD THIS EXACT LINE 👇
+    db = get_db() 
+    
     data = await req.json()
     db.collection("feedback").add({
         "user_id": user_id,
@@ -1086,6 +1089,7 @@ async def submit_feedback(req: Request, user_id: Optional[str] = Depends(get_cur
         "created_at": firestore.SERVER_TIMESTAMP,
     })
     return {"status": "ok"}
+
 @app.get("/api/health", tags=["System"])
 async def health_check():
     return {"status": "ok", "timestamp": now_iso()}

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />  <title>T'aksi | Offline</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      background-color: #000000;
+      color: #ffffff;
+      font-family: 'Inter', -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+      padding: 20px;
+    }
+    .container {
+      max-width: 400px;
+    }
+    h1 { 
+      color: #f5c842; 
+      font-size: 2.5rem; 
+      margin-bottom: 10px; 
+      letter-spacing: -1px;
+    }
+    p { 
+      color: #aaaaaa; 
+      font-size: 1.1rem; 
+      line-height: 1.5; 
+      margin-bottom: 30px;
+    }
+    .retry-btn {
+      padding: 16px 32px;
+      background-color: #f5c842;
+      color: #000000;
+      border: none;
+      border-radius: 50px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: transform 0.2s ease;
+    }
+    .retry-btn:active {
+      transform: scale(0.95);
+    }
+    .icon {
+      font-size: 50px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>T'aksi</h1>
+    <p>კავშირი დაიკარგა. გთხოვთ, შეამოწმოთ თქვენი ინტერნეტი.</p>
+    <p style="font-size: 0.9rem; color: #666;">You are currently offline. Check your connection to continue driving.</p>
+    <button class="retry-btn" onclick="window.location.reload()">თავიდან ცდა / Retry</button>
+  </div>
+</body>
+</html>
