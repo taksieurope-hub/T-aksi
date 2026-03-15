@@ -2729,7 +2729,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     {[
                       [t("platform_cut"), `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
                       [t("your_share"),   `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
-                      ["Surge commission", "23-24%", "text-orange-400"],
+                      [t("surge_commission"), "23-24%", "text-orange-400"],
                     ].map(([l,v,c]) => (
                       <div key={l} className="flex justify-between items-center">
                         <span className="text-white/60 text-sm">{l}</span>
