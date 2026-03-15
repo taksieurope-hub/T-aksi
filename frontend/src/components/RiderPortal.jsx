@@ -773,7 +773,7 @@ const WaitTimer = ({ arrivedAt, carType }) => {
         <div className="font-mono text-red-300 font-bold text-2xl">
           {String(Math.floor(overtime / 60)).padStart(2, "0")}:{String(overtime % 60).padStart(2, "0")}
         </div>
-        <div className="text-red-400 text-xs font-semibold">+?{liveFee}</div>
+        <div className="text-red-400 text-xs font-semibold">+GEL {liveFee}</div>
       </div>
     </div>
   );
@@ -826,19 +826,19 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
               {Object.entries(receipt.fare_breakdown || {}).filter(([k]) => !["breakdown","surge_multiplier","base_total"].includes(k) && typeof receipt.fare_breakdown[k] === "number" && receipt.fare_breakdown[k] > 0).map(([k, v]) => (
                 <div key={k} className="flex justify-between text-sm">
                   <span className="text-white/40 capitalize">{k.replace(/_/g, " ")}</span>
-                  <span className="text-white">?{parseFloat(v).toFixed(2)}</span>
+                  <span className="text-white">GEL {parseFloat(v).toFixed(2)}</span>
                 </div>
               ))}
               {receipt.tip > 0 && (
                 <div className="flex justify-between text-sm pt-2 border-t border-white/8">
                   <span className="text-yellow-400/80 flex items-center gap-1"><Star className="w-3 h-3" /> Tip</span>
-                  <span className="text-yellow-400">?{parseFloat(receipt.tip).toFixed(2)}</span>
+                  <span className="text-yellow-400">GEL {parseFloat(receipt.tip).toFixed(2)}</span>
                 </div>
               )}
               <div className="h-px bg-white/10 my-1" />
               <div className="flex justify-between font-bold text-base pt-1">
                 <span className="text-white">Total</span>
-                <span className="text-[#00ff88]">?{parseFloat(receipt.total || 0).toFixed(2)}</span>
+                <span className="text-[#00ff88]">GEL {parseFloat(receipt.total || 0).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -879,14 +879,14 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
           {TIPS.map(amt => (
             <button key={amt} onClick={() => { setTipAmount(amt); setCustom(""); }}
               className={`py-4 rounded-2xl border-2 font-bold text-base transition-all active:scale-95 ${tipAmount === amt && !custom ? "border-[#00ff88] bg-[#00ff88]/12 text-[#00ff88]" : "border-white/10 text-white bg-white/4 hover:border-white/25"}`}>
-              ?{amt}
+              GEL {amt}
             </button>
           ))}
         </div>
         <Input type="number" placeholder={t("custom_amount")} value={custom}
           onChange={e => { setCustom(e.target.value); setTipAmount(null); }}
           className="bg-white/5 border-white/10 text-white text-center h-12 rounded-xl mb-4 placeholder:text-white/25" />
-        {isValidTip && <p className="text-white/30 text-xs text-center mb-4">?{finalAmount.toFixed(2)} GEL ? ${usdAmount} USD</p>}
+        {isValidTip && <p className="text-white/30 text-xs text-center mb-4">GEL {finalAmount.toFixed(2)} GEL ? ${usdAmount} USD</p>}
         {isValidTip ? (
           <div className="mb-4">
             <PayPalButtons
@@ -1124,14 +1124,14 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
           {AMOUNTS.map(a => (
             <button key={a} onClick={() => { setAmount(a); setCustom(""); }}
               className={`py-3.5 rounded-xl border-2 font-bold transition-all active:scale-95 ${(!custom && amount === a) ? "border-[#00ff88] bg-[#00ff88]/12 text-[#00ff88]" : "border-white/10 text-white bg-white/4 hover:border-white/25"}`}>
-              ?{a}
+              GEL {a}
             </button>
           ))}
         </div>
         <Input type="number" placeholder={t("custom_amount")} value={custom} min="1" max="1000"
           onChange={e => setCustom(e.target.value)}
           className="bg-white/5 border-white/10 text-white text-center h-11 rounded-xl mb-4 placeholder:text-white/25" />
-        {canPay && <p className="text-white/30 text-xs text-center mb-4">?{finalAmount.toFixed(2)} GEL ? ${usdAmount} USD</p>}
+        {canPay && <p className="text-white/30 text-xs text-center mb-4">GEL {finalAmount.toFixed(2)} GEL ? ${usdAmount} USD</p>}
         {canPay ? (
           <PayPalButtons
             fundingSource="card"
@@ -1305,7 +1305,7 @@ const ReferralPanel = () => {
               <p className="text-white/35 text-xs mt-0.5">Friends Referred</p>
             </div>
             <div className="bg-white/4 border border-white/8 rounded-xl p-3.5 text-center">
-              <p className="text-[#00ff88] text-2xl font-bold">?{(referral.bonus_earned || 0).toFixed(2)}</p>
+              <p className="text-[#00ff88] text-2xl font-bold">GEL {(referral.bonus_earned || 0).toFixed(2)}</p>
               <p className="text-white/35 text-xs mt-0.5">Bonus Earned</p>
             </div>
           </div>
@@ -1346,7 +1346,7 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
             {ride.destination && <p className="text-white/40 text-xs truncate mt-0.5 flex items-center gap-1"><ArrowRight className="w-3 h-3 shrink-0" />{ride.destination}</p>}
           </div>
           <div className="text-right shrink-0 flex flex-col items-end gap-2">
-            <span className="text-[#00ff88] font-bold text-lg font-mono">?{(ride.final_fare || ride.estimated_fare)?.toFixed(2) ?? "?"}</span>
+            <span className="text-[#00ff88] font-bold text-lg font-mono">GEL {(ride.final_fare || ride.estimated_fare)?.toFixed(2) ?? "?"}</span>
             {expanded ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
           </div>
         </div>
@@ -1826,7 +1826,7 @@ const [promoApplied, setPromoApplied] = useState(false);
               <p className="text-white font-semibold text-sm leading-none">{user?.name} {user?.surname}</p>
               <button className="flex items-center gap-1 text-[#00ff88] text-xs mt-0.5 hover:text-[#00d4ff] transition-colors" onClick={() => setShowTopUp(true)}>
                 <Wallet className="w-2.5 h-2.5" />
-                ?{user?.wallet_balance?.toFixed(2) || "0.00"}
+                GEL {user?.wallet_balance?.toFixed(2) || "0.00"}
                 <span className="text-white/25">?</span>
                 <span className="text-white/40">{t("top_up")}</span>
               </button>
@@ -1940,7 +1940,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <p className="text-orange-400/60 text-xs">{surgeInfo.surge_reason}</p>
                   </div>
                 </div>
-                <span className="text-orange-300 font-bold text-xl bg-orange-500/20 px-3 py-1 rounded-xl">?{surgeInfo.multiplier}</span>
+                <span className="text-orange-300 font-bold text-xl bg-orange-500/20 px-3 py-1 rounded-xl">GEL {surgeInfo.multiplier}</span>
               </div>
             )}
 
@@ -1952,7 +1952,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                 </div>
                 <div className="text-right">
   <div className="flex items-baseline justify-end">
-    <span className="text-[#00ff88] font-bold text-2xl">?{fareEstimate.total.toFixed(2)}</span>
+    <span className="text-[#00ff88] font-bold text-2xl">GEL {fareEstimate.total.toFixed(2)}</span>
     <CurrencyConverter gelAmount={fareEstimate.total} />
   </div>
   {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">incl. ?2 card fee</p>}
@@ -1974,7 +1974,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                       <div className="text-xl mb-0.5">{type.icon}</div>
                       <div className={`text-[10px] font-semibold leading-tight ${active ? "text-[#00ff88]" : "text-white/50"}`}>{type.name}</div>
                       <div className={`text-[10px] mt-0.5 font-mono ${active ? "text-[#00ff88]/70" : "text-white/30"}`}>
-  ?{est.toFixed(2)}
+  GEL {est.toFixed(2)}
 </div>
 <div className={`text-[9px] leading-tight break-all ${active ? "text-[#00ff88]/50" : "text-white/20"}`}>
   <CurrencyConverter gelAmount={est} compact />
@@ -2035,7 +2035,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     <div className="flex items-center justify-between px-2 animate-in slide-in-from-top-1">
        <p className="text-[#00ff88] text-[11px] font-bold flex items-center gap-1.5">
         <Sparkles className="w-3.5 h-3.5" /> 
-        {t("promo_discount")}: ?{fareEstimate.discount.toFixed(2)}!
+        {t("promo_discount")}: GEL {fareEstimate.discount.toFixed(2)}!
       </p>
       <p className="text-white/30 text-[10px] font-medium uppercase tracking-tighter">
         {t("uses_left")}
@@ -2059,7 +2059,7 @@ const [promoApplied, setPromoApplied] = useState(false);
   ) : (
     <div className="flex items-center">
       <Rocket className="w-5 h-5 mr-2" />
-      <span>{t("request_ride")} {carType} ? ?{fareEstimate?.total.toFixed(2)}</span>
+      <span>{t("request_ride")} {carType} ? GEL {fareEstimate?.total.toFixed(2)}</span>
     </div>
   )}
 </Button>
@@ -2069,7 +2069,7 @@ const [promoApplied, setPromoApplied] = useState(false);
               const usd = (amount * 0.37).toFixed(2);
               return (
                 <div className="bg-white/3 border border-white/10 rounded-2xl p-4">
-                  <p className="text-center text-sm text-white/40 mb-3">Pay ?{amount.toFixed(2)} (${usd} USD)</p>
+                  <p className="text-center text-sm text-white/40 mb-3">Pay GEL {amount.toFixed(2)} (${usd} USD)</p>
                   <PayPalButtons
                     fundingSource="card"
                     style={{ layout: "vertical", shape: "rect" }}
@@ -2268,7 +2268,7 @@ const [promoApplied, setPromoApplied] = useState(false);
 
                 <div className="bg-[#00ff88]/5 border border-[#00ff88]/15 rounded-2xl px-4 py-3.5 flex justify-between items-center">
                   <span className="text-white/40 text-sm">Estimated fare</span>
-                  <span className="text-[#00ff88] font-bold text-2xl font-mono">?{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span>
+                  <span className="text-[#00ff88] font-bold text-2xl font-mono">GEL {(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span>
                 </div>
 
                 {["searching","accepted"].includes(activeRide.status) && (
@@ -2348,7 +2348,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                   <p className="text-white/30 text-xs mt-0.5">{t("rating")} ?</p>
                 </div>
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
-                  <p className="text-[#00d4ff] text-xl font-bold font-mono">?{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
+                  <p className="text-[#00d4ff] text-xl font-bold font-mono">GEL {user?.wallet_balance?.toFixed(2) || "0.00"}</p>
                   <p className="text-white/30 text-xs mt-0.5">{t("wallet")}</p>
                 </div>
               </div>
@@ -2366,7 +2366,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <p className="text-white/30 text-xs">{t("add_funds_desc")}</p>
                   </div>
                 </div>
-                <span className="text-[#00ff88] font-bold text-2xl font-mono">?{user?.wallet_balance?.toFixed(2) || "0.00"}</span>
+                <span className="text-[#00ff88] font-bold text-2xl font-mono">GEL {user?.wallet_balance?.toFixed(2) || "0.00"}</span>
               </div>
               <Button className="w-full bg-[#00ff88] text-black font-bold rounded-xl h-11 text-sm" onClick={() => setShowTopUp(true)}>
                 <Plus className="w-4 h-4 mr-1.5" /> {t("top_up")}

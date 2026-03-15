@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
@@ -33,14 +33,14 @@ import {
 } from "lucide-react";
 
 // =============================================================================
-// CONSTANTS — synced with server.py
+// CONSTANTS � synced with server.py
 // =============================================================================
 const PRICING_RULES = {
-  economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   icon: "🚗" },
-  comfort:   { name: "Comfort",   base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2,   icon: "🚙" },
-  suv:       { name: "SUV / XL",  base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2,   icon: "🚐" },
-  personal:  { name: "Personal",  base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2,   icon: "👤" },
-  jumpstart: { name: "Jumpstart", base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, icon: "⚡" },
+  economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   icon: "??" },
+  comfort:   { name: "Comfort",   base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2,   icon: "??" },
+  suv:       { name: "SUV / XL",  base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2,   icon: "??" },
+  personal:  { name: "Personal",  base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2,   icon: "??" },
+  jumpstart: { name: "Jumpstart", base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, icon: "?" },
 };
 
 const DRIVER_COMMISSION_RATE = 0.23;
@@ -205,7 +205,7 @@ const DriverWaitTimer = ({ arrivedAt, carType, onUpdate }) => {
     tick(); // immediate first tick
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [arrivedAt, carType]); // ← intentionally omit onUpdate (handled via ref)
+  }, [arrivedAt, carType]); // ? intentionally omit onUpdate (handled via ref)
 
   const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
   const freeWaitSec = rules.freeWait * 60;
@@ -240,7 +240,7 @@ const DriverWaitTimer = ({ arrivedAt, carType, onUpdate }) => {
         <div className="text-[#00ff88] font-mono text-2xl font-bold">
           {String(Math.floor(overtime / 60)).padStart(2, "0")}:{String(overtime % 60).padStart(2, "0")}
         </div>
-        <div className="text-[#00ff88] font-bold text-sm">+₾{earned}</div>
+        <div className="text-[#00ff88] font-bold text-sm">+?{earned}</div>
       </div>
     </div>
   );
@@ -287,12 +287,12 @@ const SOSButton = ({ activeRide, location }) => {
         ride_id: activeRide?.id || null,
         lat: location?.lat || 0,
         lng: location?.lng || 0,
-        message: `Driver SOS — Ride: ${activeRide?.id || "none"}`,
+        message: `Driver SOS � Ride: ${activeRide?.id || "none"}`,
       });
-      toast.error("🚨 SOS sent! Support team has been alerted.", { duration: 10000 });
+      toast.error("?? SOS sent! Support team has been alerted.", { duration: 10000 });
       setConfirm(false);
     } catch (_) {
-      toast.error("SOS failed — call emergency services directly");
+      toast.error("SOS failed � call emergency services directly");
     } finally {
       setLoading(false);
     }
@@ -319,7 +319,7 @@ const SOSButton = ({ activeRide, location }) => {
           <div className="flex gap-3 mt-2">
             <Button variant="ghost" onClick={() => setConfirm(false)} className="flex-1 border border-white/10 text-white/60 h-12">Cancel</Button>
             <Button onClick={trigger} disabled={loading} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold h-12">
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "🚨 Send SOS"}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "?? Send SOS"}
             </Button>
           </div>
         </DialogContent>
@@ -356,7 +356,7 @@ const RatePassengerModal = ({ rideId, riderName, onDone }) => {
         {[1,2,3,4,5].map(s => (
           <button key={s} onClick={() => setRating(s)}
             className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "bg-[#00ff88]/20 border border-[#00ff88] scale-110" : "bg-white/5 border border-white/10"}`}>
-            ⭐
+            ?
           </button>
         ))}
       </div>
@@ -399,7 +399,7 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
         driver_id: driverId, amount: amt,
         bank_details: `[${bankType.toUpperCase()}] ${bankDetails.trim()}`,
       });
-      toast.success(r.data.message || `Withdrawal of ₾${amt.toFixed(2)} requested!`);
+      toast.success(r.data.message || `Withdrawal of ?${amt.toFixed(2)} requested!`);
       setAmount(""); setBankDetails("");
       onSuccess?.();
     } catch (err) {
@@ -417,19 +417,19 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
       <div className="grid grid-cols-2 gap-3">
         <GlassCard accent className="p-4 text-center">
           <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
-          <p className="text-2xl font-bold font-mono text-[#00ff88]">₾{balance.toFixed(2)}</p>
+          <p className="text-2xl font-bold font-mono text-[#00ff88]">?{balance.toFixed(2)}</p>
         </GlassCard>
         <GlassCard className="p-4 text-center">
           <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Max Withdraw</p>
-          <p className="text-2xl font-bold font-mono text-white">₾{maxW.toFixed(2)}</p>
-          <p className="text-white/30 text-[9px] mt-0.5">₾5 reserve + ₾1 fee</p>
+          <p className="text-2xl font-bold font-mono text-white">?{maxW.toFixed(2)}</p>
+          <p className="text-white/30 text-[9px] mt-0.5">?5 reserve + ?1 fee</p>
         </GlassCard>
       </div>
 
       <div className="space-y-1.5">
         <Label className="text-white/60 text-xs uppercase tracking-wider">Amount (GEL)</Label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">₾</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">?</span>
           <Input type="number" min="1" max={maxW} value={amount} onChange={e => setAmount(e.target.value)}
             placeholder="0.00" className="pl-7 bg-white/4 border-white/10 text-white text-lg h-12 font-mono" />
         </div>
@@ -459,14 +459,14 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
 
       {amt > 0 && (
         <GlassCard className="p-4 space-y-2 text-sm">
-          <div className="flex justify-between text-white/70"><span>Requested</span><span className="font-mono">₾{amt.toFixed(2)}</span></div>
-          <div className="flex justify-between text-red-400"><span>Processing fee</span><span className="font-mono">−₾{WITHDRAWAL_FEE.toFixed(2)}</span></div>
+          <div className="flex justify-between text-white/70"><span>Requested</span><span className="font-mono">?{amt.toFixed(2)}</span></div>
+          <div className="flex justify-between text-red-400"><span>Processing fee</span><span className="font-mono">-?{WITHDRAWAL_FEE.toFixed(2)}</span></div>
           <Separator className="bg-white/10" />
-          <div className="flex justify-between text-white font-bold"><span>Total deducted</span><span className="font-mono text-red-400">−₾{(amt + WITHDRAWAL_FEE).toFixed(2)}</span></div>
+          <div className="flex justify-between text-white font-bold"><span>Total deducted</span><span className="font-mono text-red-400">-?{(amt + WITHDRAWAL_FEE).toFixed(2)}</span></div>
           <div className="flex justify-between">
             <span className="text-white/50">Balance after</span>
             <span className={`font-mono font-bold ${balance - amt - WITHDRAWAL_FEE >= WITHDRAWAL_RESERVE ? "text-[#00ff88]" : "text-red-400"}`}>
-              ₾{(balance - amt - WITHDRAWAL_FEE).toFixed(2)}
+              ?{(balance - amt - WITHDRAWAL_FEE).toFixed(2)}
             </span>
           </div>
         </GlassCard>
@@ -480,7 +480,7 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
       <Button onClick={submit} disabled={!isValid || loading}
         className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold disabled:opacity-30">
         {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Banknote className="w-5 h-5 mr-2" />}
-        {loading ? t("processing") : `${t("withdraw")} ₾${amt > 0 ? amt.toFixed(2) : "0.00"}`}
+        {loading ? t("processing") : `${t("withdraw")} ?${amt > 0 ? amt.toFixed(2) : "0.00"}`}
       </Button>
 
       {history.length > 0 && (
@@ -489,8 +489,8 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
           {history.slice(0, 5).map((w, i) => (
             <div key={i} className="flex justify-between items-center bg-white/3 rounded-xl p-3 border border-white/5">
               <div>
-                <p className="text-white font-mono font-bold">₾{w.amount?.toFixed(2)}</p>
-                <p className="text-white/30 text-xs">{w.created_at ? new Date(w.created_at).toLocaleDateString() : "—"}</p>
+                <p className="text-white font-mono font-bold">?{w.amount?.toFixed(2)}</p>
+                <p className="text-white/30 text-xs">{w.created_at ? new Date(w.created_at).toLocaleDateString() : "�"}</p>
               </div>
               <StatusBadge status={w.status === "approved" ? "approved_w" : w.status === "rejected" ? "rejected_w" : "pending"} />
             </div>
@@ -557,14 +557,14 @@ const CampaignsPanel = ({ driverRating }) => {
             <GlassCard key={c.id} className="p-4">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-start gap-3">
-                  <span className="text-2xl">{c.emoji || "🎯"}</span>
+                  <span className="text-2xl">{c.emoji || "??"}</span>
                   <div>
                     <p className="text-white font-semibold">{c.title}</p>
                     <p className="text-white/50 text-xs mt-0.5">{c.description}</p>
                   </div>
                 </div>
                 <div className="text-right shrink-0 ml-2">
-                  <p className="text-[#00ff88] font-bold font-mono">+₾{c.bonus_amount}</p>
+                  <p className="text-[#00ff88] font-bold font-mono">+?{c.bonus_amount}</p>
                   <p className="text-white/30 text-[10px]">bonus</p>
                 </div>
               </div>
@@ -602,13 +602,13 @@ const CampaignsPanel = ({ driverRating }) => {
               <GlassCard key={c.id} className={`p-4 ${done ? "border-[#00ff88]/30" : ""}`}>
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-start gap-3">
-                    <span className="text-2xl">{c.emoji || "🎯"}</span>
+                    <span className="text-2xl">{c.emoji || "??"}</span>
                     <div>
                       <p className="text-white font-semibold">{c.title}</p>
                       <p className="text-white/50 text-xs">{c.progress?.current}/{c.progress?.target} {c.campaign_type === "rides_count" ? "rides" : "completed"}</p>
                     </div>
                   </div>
-                  {done ? <StatusBadge status="approved" /> : <p className="text-[#00ff88] font-bold font-mono">+₾{c.bonus_amount}</p>}
+                  {done ? <StatusBadge status="approved" /> : <p className="text-[#00ff88] font-bold font-mono">+?{c.bonus_amount}</p>}
                 </div>
                 <div className="space-y-1.5">
                   <div className="h-2 bg-white/8 rounded-full overflow-hidden">
@@ -617,7 +617,7 @@ const CampaignsPanel = ({ driverRating }) => {
                   </div>
                   <div className="flex justify-between text-[10px] text-white/30">
                     <span>{pct.toFixed(1)}{t("percent_complete")}</span>
-                    {done && <span className="text-[#00ff88]">✓ Bonus earned!</span>}
+                    {done && <span className="text-[#00ff88]">? Bonus earned!</span>}
                   </div>
                 </div>
               </GlassCard>
@@ -728,7 +728,7 @@ const FleetPanel = ({ registrationStatus }) => {
                     <StatusBadge status={v.status || "active"} />
                   </div>
                   <p className="text-white/40 text-sm font-mono">{v.license_plate}</p>
-                  <p className="text-white/50 text-xs mt-1.5">🧑 {v.driver_name} · {v.driver_phone}</p>
+                  <p className="text-white/50 text-xs mt-1.5">?? {v.driver_name} � {v.driver_phone}</p>
                 </div>
                 <button onClick={() => removeVehicle(v.id)} className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
                   <X className="w-4 h-4" />
@@ -804,7 +804,7 @@ const SupportPanel = () => {
                   <p className="text-white text-sm line-clamp-1 font-medium">{t.message}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <StatusBadge status={t.status === "in_progress" ? "in_progress_ticket" : t.status} />
-                    <span className="text-white/30 text-[10px]">{t.created_at ? new Date(t.created_at).toLocaleDateString() : "—"}</span>
+                    <span className="text-white/30 text-[10px]">{t.created_at ? new Date(t.created_at).toLocaleDateString() : "�"}</span>
                   </div>
                 </div>
                 {expandedId === t.id ? <ChevronUp className="w-4 h-4 text-white/30 shrink-0" /> : <ChevronDown className="w-4 h-4 text-white/30 shrink-0" />}
@@ -872,7 +872,7 @@ const ReferralPanel = () => {
         <>
           <div className="grid grid-cols-2 gap-3">
             <StatPill label={t("referrals")} value={data.referrals_count || 0} color="text-white" />
-            <StatPill label={t("bonus_earned")} value={`₾${(data.bonus_earned || 0).toFixed(2)}`} color="text-[#00ff88]" />
+            <StatPill label={t("bonus_earned")} value={`?${(data.bonus_earned || 0).toFixed(2)}`} color="text-[#00ff88]" />
           </div>
 
           <GlassCard accent className="p-4 space-y-3">
@@ -1181,7 +1181,7 @@ const MAP_STYLES = [
 ];
 
 // =============================================================================
-// DRIVER SMART MAP — Waze-quality with buttery-smooth animation
+// DRIVER SMART MAP � Waze-quality with buttery-smooth animation
 // - Auto-rotate map to face direction of travel
 // - Smooth marker interpolation (no jumps)
 // - Clean, minimal UI for driving
@@ -1363,7 +1363,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     mapInstanceRef.current = map;
   }, []);
 
-  // Driver position update — smooth animation, auto-rotate map to face forward
+  // Driver position update � smooth animation, auto-rotate map to face forward
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
     const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
@@ -1409,7 +1409,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }
   }, [driverLocation, isFollowing, routeSteps, stepIdx, animateHeading, animateMarkerPosition]);
 
-  // Auto-fit on new ride accept — zoom to show driver + pickup
+  // Auto-fit on new ride accept � zoom to show driver + pickup
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
     if (!activeRide || activeRide.status !== "accepted") return;
@@ -1556,7 +1556,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
           style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }}>+</button>
         <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)-1)}
           className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-700 text-lg font-bold shadow-lg active:scale-95 transition-transform"
-          style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }}>−</button>
+          style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }}>-</button>
         <button 
           onClick={() => { 
             animateHeading(0);
@@ -1602,7 +1602,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
 
 // =============================================================================
-// ADD-STOP INPUT — lightweight autocomplete for mid-trip stop addition
+// ADD-STOP INPUT � lightweight autocomplete for mid-trip stop addition
 // =============================================================================
 const AddStopInput = ({ value, onChange, mapsLoaded }) => {
   const inputRef = useRef(null);
@@ -1633,7 +1633,7 @@ const AddStopInput = ({ value, onChange, mapsLoaded }) => {
         ref={inputRef}
         value={value?.address || ""}
         onChange={e => onChange({ ...value, address: e.target.value })}
-        placeholder="Search stop address…"
+        placeholder="Search stop address�"
         autoComplete="off"
         className="w-full pl-9 pr-3 h-11 bg-white/5 border border-white/10 text-white text-sm rounded-xl placeholder:text-white/25 outline-none focus:border-[#00d4ff]/40"
       />
@@ -1675,7 +1675,7 @@ const DriverAuth = () => {
       const res = await api.post("/auth/otp/verify", { cellphone: form.cellphone, code: otpCode });
       setPhoneToken(res.data.phone_token);
       setOtpStep("done");
-      toast.success("Phone verified ✓");
+      toast.success("Phone verified ?");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Incorrect code");
     } finally { setLoading(false); }
@@ -1753,7 +1753,7 @@ const DriverAuth = () => {
                 </Button>
               )}
               {!isLogin && otpStep === "done" && (
-                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">✓ {t("verified")}</div>
+                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">? {t("verified")}</div>
               )}
             </div>
           </div>
@@ -1829,7 +1829,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         // Reverse geocode it so they see a real address, not numbers
         new window.google.maps.Geocoder().geocode({ location: { lat, lng } }, (results, status) => {
           if (status === "OK" && results[0]) {
-             // 🛠️ Update your input state here
+             // ??? Update your input state here
              setNewStopAddress(results[0].formatted_address);
              setNewStopCoords({ lat, lng });
           } else {
@@ -1902,7 +1902,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const hasVehicle = !!(user?.driver_info?.vehicle);
 
   // ===========================================================================
-  // FIX: Maps — use singleton loader, not a nested useEffect
+  // FIX: Maps � use singleton loader, not a nested useEffect
   // ===========================================================================
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
@@ -1972,7 +1972,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   useLocationTracker(isOnline, handleLocationUpdate);
 
   // ===========================================================================
-  // Wait timer — anchored to server's arrived_at
+  // Wait timer � anchored to server's arrived_at
   // ===========================================================================
   useEffect(() => {
     if (activeRide?.status !== "arrived") return;
@@ -2032,7 +2032,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       const r = await api.get("/driver/rides/nearby?radius=10"); 
       const allRides = r.data.rides || [];
 
-      // 🛡️ THE GEOFENCE SHIELD 🛡️
+      // ??? THE GEOFENCE SHIELD ???
       // We double-check the distance on the frontend using your live GPS
       const strictlyNearbyRides = allRides.filter((ride) => {
           // Check if we have both coordinates to compare
@@ -2094,7 +2094,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         const cashToCollect = res.data.cash_to_collect || 0;
         toast.success(
           cashToCollect > 0
-            ? `Collect ₾${cashToCollect.toFixed(2)} cash from passenger`
+            ? `Collect ?${cashToCollect.toFixed(2)} cash from passenger`
             : "Ride complete! No cash needed.",
           { duration: 8000 }
         );
@@ -2210,9 +2210,9 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       setMidTripWaitSecs(0);
       try { await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=start`); } catch (_) {}
       const rate = PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50;
-      toast.success(`Wait timer started — ₾${rate.toFixed(2)}/min`);
+      toast.success(`Wait timer started � ?${rate.toFixed(2)}/min`);
     } else {
-      // Stop — ask backend to bank the time and recalc fare
+      // Stop � ask backend to bank the time and recalc fare
       setMidTripWaiting(false);
       try {
         const res = await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=stop`);
@@ -2227,7 +2227,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         }
         const min = Math.floor(banked);
         const sec = Math.round((banked - min) * 60);
-        toast.success(`Wait saved: ${min}m ${sec}s · resuming trip`);
+        toast.success(`Wait saved: ${min}m ${sec}s � resuming trip`);
       } catch (_) {
         setMidTripWaitBanked(prev => prev + midTripWaitSecs / 60);
         setMidTripWaitSecs(0);
@@ -2246,7 +2246,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       setLiveFare(res.data.new_estimated_fare);
       setShowAddStop(false);
       setNewStopAddress({ address: "", lat: null, lng: null });
-      toast.success(`Stop added — new fare ₾${res.data.new_estimated_fare.toFixed(2)}`);
+      toast.success(`Stop added � new fare ?${res.data.new_estimated_fare.toFixed(2)}`);
     } catch (err) { toast.error(err.response?.data?.detail || "Failed to add stop"); }
   };
 
@@ -2340,7 +2340,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
               <p className="text-white font-semibold text-sm leading-tight">{user?.name} {user?.surname}</p>
               <div className="flex items-center gap-2">
                 <StatusBadge status={registrationStatus} />
-                {user?.rating && <span className="text-yellow-400 text-xs">⭐ {user.rating?.toFixed(1)}</span>}
+                {user?.rating && <span className="text-yellow-400 text-xs">? {user.rating?.toFixed(1)}</span>}
               </div>
             </div>
           </div>
@@ -2348,7 +2348,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
           <div className="flex items-center gap-2">
             <SurgeIndicator location={driverLocation} />
             <div className="bg-[#00ff88]/10 border border-[#00ff88]/25 rounded-lg px-2.5 py-1.5">
-              <span className="text-[#00ff88] font-bold font-mono text-sm">₾{balance.toFixed(2)}</span>
+              <span className="text-[#00ff88] font-bold font-mono text-sm">?{balance.toFixed(2)}</span>
             </div>
             {registrationStatus === "approved" && (
               <button onClick={() => handleToggleOnline(!isOnline)}
@@ -2365,8 +2365,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         {isOnline && driverLocation && (
           <div className="px-4 pb-2 flex items-center gap-2 text-[10px] text-[#00ff88]/50">
             <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
-            GPS Active · {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
-            {driverLocation.speed != null && <span>· {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
+            GPS Active � {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
+            {driverLocation.speed != null && <span>� {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
           </div>
         )}
       </header>
@@ -2412,7 +2412,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                   <div>
                     <p className="text-white font-bold text-lg">Active Ride</p>
                     <p className="text-white/40 text-xs">
-                      {activeRide.carType || activeRide.car_type} · {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()]?.icon || "🚗"}
+                      {activeRide.carType || activeRide.car_type} � {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()]?.icon || "??"}
                     </p>
                   </div>
                   <StatusBadge status={activeRide.status} />
@@ -2431,7 +2431,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                       <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 mt-1 shrink-0" />
                       <div>
                         <p className="text-yellow-400/60 text-[10px] uppercase tracking-wider">Stops ({activeRide.stops.length})</p>
-                        {activeRide.stops.filter(s => s.lat).map((s, i) => <p key={i} className="text-white/70 text-xs">· {s.address}</p>)}
+                        {activeRide.stops.filter(s => s.lat).map((s, i) => <p key={i} className="text-white/70 text-xs">� {s.address}</p>)}
                       </div>
                     </div>
                   )}
@@ -2462,7 +2462,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                   </GlassCard>
                 )}
 
-                {/* ── Live Fare Card ─────────────────────────────── */}
+                {/* -- Live Fare Card ------------------------------- */}
                 <div className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${midTripWaiting ? "bg-amber-500/10 border-amber-500/30 animate-pulse" : "bg-gradient-to-r from-[#00ff88]/10 to-[#00d4ff]/10 border-[#00ff88]/20"}`}>
                   <div>
                     <span className="text-white/60 text-sm">
@@ -2470,16 +2470,16 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     </span>
                     {midTripWaiting && (
                       <p className="text-amber-400 text-xs mt-0.5 font-mono">
-                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} · ₾{((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
+                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} � ?{((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
                       </p>
                     )}
                   </div>
                   <span className={`text-2xl font-bold font-mono transition-colors ${midTripWaiting ? "text-amber-400" : "text-[#00ff88]"}`}>
-                    ₾{(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "—"}
+                    ?{(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "�"}
                   </span>
                 </div>
 
-                {/* ── Mid-trip Wait Timer ─────────────────────────── */}
+                {/* -- Mid-trip Wait Timer --------------------------- */}
                 {activeRide.status === "in_progress" && (
                   <button onClick={toggleMidTripWait}
                     className={`w-full h-12 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 ${
@@ -2488,20 +2488,20 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                         : "bg-white/5 border-white/15 text-white/60 hover:border-amber-500/40 hover:text-amber-400"
                     }`}>
                     {midTripWaiting
-                      ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting — resume trip</>
-                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (₾{(PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50).toFixed(2)}/min)</>
+                      ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting � resume trip</>
+                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (?{(PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50).toFixed(2)}/min)</>
                     }
                   </button>
                 )}
 
-                {/* ── Add Stop Mid-Trip ───────────────────────────── */}
+                {/* -- Add Stop Mid-Trip ----------------------------- */}
                 {activeRide.status === "in_progress" && (
                   <button onClick={handleAddStopAtCurrentLocation}
                     className="w-full h-11 rounded-xl border border-white/10 bg-white/4 text-white/50 text-sm font-semibold flex items-center justify-center gap-2 hover:border-[#00d4ff]/40 hover:text-[#00d4ff] transition-all active:scale-95">
                     <Plus className="w-4 h-4" /> Add stop to route
                   </button>
                 )}
-                {/* ── Add Stop Mid-Trip ───────────────────────────── */}
+                {/* -- Add Stop Mid-Trip ----------------------------- */}
                 {activeRide.status === "in_progress" && !showAddStop && (
                   <button onClick={() => setShowAddStop(true)}
                     className="w-full h-11 rounded-xl border border-white/10 bg-white/4 text-white/50 text-sm font-semibold flex items-center justify-center gap-2 hover:border-[#00d4ff]/40 hover:text-[#00d4ff] transition-all active:scale-95">
@@ -2514,7 +2514,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     <div className="flex items-center justify-between">
                       <p className="text-[#00d4ff] text-xs font-bold uppercase tracking-wider">New Stop</p>
                       
-                      {/* 🛠️ FIXED: Now uses YOUR existing function */}
+                      {/* ??? FIXED: Now uses YOUR existing function */}
                       <button 
                         onClick={handleAddStopAtCurrentLocation} 
                         className="flex items-center gap-1.5 bg-[#00d4ff]/15 text-[#00d4ff] px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#00d4ff]/25 transition-all"
@@ -2624,18 +2624,18 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                                 <ArrowRight className="w-3 h-3" /> {ride.destination || "Open Trip"}
                               </p>
                               {ride.distance_to_pickup != null && (
-                                <p className="text-[#00d4ff] text-xs mt-1">📍 {ride.distance_to_pickup} km away</p>
+                                <p className="text-[#00d4ff] text-xs mt-1">?? {ride.distance_to_pickup} km away</p>
                               )}
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="text-2xl font-bold font-mono text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
-                              <p className="text-white/40 text-xs">you get ₾{driverCut.toFixed(2)}</p>
+                              <p className="text-2xl font-bold font-mono text-[#00ff88]">?{ride.estimated_fare?.toFixed(2)}</p>
+                              <p className="text-white/40 text-xs">you get ?{driverCut.toFixed(2)}</p>
                             </div>
                           </div>
                           <div className="flex gap-2">
                             <Button className="flex-1 bg-[#00ff88] text-black font-bold h-11" disabled={loading || !canAccept}
                               onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}>
-                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : canAccept ? "Accept Ride" : `Need ₾${commission.toFixed(2)}`}
+                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : canAccept ? "Accept Ride" : `Need ?${commission.toFixed(2)}`}
                             </Button>
                             <button onClick={() => handleDeclineRide(ride.id)}
                               className="w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
@@ -2667,10 +2667,10 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <p className="text-white font-medium text-sm">{ride.pickup}</p>
-                        <p className="text-white/40 text-xs">→ {ride.destination || "Open"}</p>
-                        <p className="text-[#00d4ff] text-xs mt-1">📍 {ride.distance_to_pickup?.toFixed(1)} km</p>
+                        <p className="text-white/40 text-xs">? {ride.destination || "Open"}</p>
+                        <p className="text-[#00d4ff] text-xs mt-1">?? {ride.distance_to_pickup?.toFixed(1)} km</p>
                       </div>
-                      <p className="text-[#00ff88] font-bold font-mono">₾{ride.estimated_fare?.toFixed(2)}</p>
+                      <p className="text-[#00ff88] font-bold font-mono">?{ride.estimated_fare?.toFixed(2)}</p>
                     </div>
                     <Button className="w-full bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] font-bold h-10 text-sm"
                       onClick={async () => {
@@ -2692,14 +2692,14 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 <div className="grid grid-cols-2 gap-3">
                   <GlassCard accent className="p-4 text-center">
                     <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
-                    <p className="text-3xl font-bold font-mono text-[#00ff88]">₾{balance.toFixed(2)}</p>
+                    <p className="text-3xl font-bold font-mono text-[#00ff88]">?{balance.toFixed(2)}</p>
                   </GlassCard>
                   <GlassCard className="p-4 text-center">
                     <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Total Earned</p>
-                    <p className="text-3xl font-bold font-mono text-white">₾{totalEarned.toFixed(2)}</p>
+                    <p className="text-3xl font-bold font-mono text-white">?{totalEarned.toFixed(2)}</p>
                   </GlassCard>
-                  <StatPill label="Commission Paid" value={`₾${commissionPaid.toFixed(2)}`} color="text-red-400" />
-                  <StatPill label="Withdrawn" value={`₾${totalWithdrawn.toFixed(2)}`} color="text-white/60" />
+                  <StatPill label="Commission Paid" value={`?${commissionPaid.toFixed(2)}`} color="text-red-400" />
+                  <StatPill label="Withdrawn" value={`?${totalWithdrawn.toFixed(2)}`} color="text-white/60" />
                 </div>
 
                 <div className="flex gap-2">
@@ -2717,7 +2717,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     {[
                       ["Platform cut", `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
                       ["Your share",   `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
-                      ["Surge commission", "23–24%", "text-orange-400"],
+                      ["Surge commission", "23�24%", "text-orange-400"],
                     ].map(([l,v,c]) => (
                       <div key={l} className="flex justify-between items-center">
                         <span className="text-white/60 text-sm">{l}</span>
@@ -2732,12 +2732,12 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     <div className="space-y-1.5">
                       <Label className="text-white/60 text-xs uppercase tracking-wider">Amount (GEL)</Label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">₾</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">?</span>
                         <Input type="number" min="5" max="500" value={topupAmount} onChange={e => setTopupAmount(e.target.value)}
                           placeholder="50" className="pl-7 bg-white/4 border-white/10 text-white text-lg h-12 font-mono" />
                       </div>
                       <p className="text-white/30 text-xs">
-                        ≈ ${topupAmount && !isNaN(parseFloat(topupAmount)) ? (parseFloat(topupAmount) * 0.37).toFixed(2) : "0.00"} USD
+                        � ${topupAmount && !isNaN(parseFloat(topupAmount)) ? (parseFloat(topupAmount) * 0.37).toFixed(2) : "0.00"} USD
                       </p>
                     </div>
 
@@ -2754,7 +2754,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                             setLoading(true);
                             await actions.order.capture();
                             await api.post("/driver/wallet/topup/paypal", { order_id: data.orderID, amount: parseFloat(topupAmount) });
-                            toast.success(`₾${topupAmount} added!`);
+                            toast.success(`?${topupAmount} added!`);
                             setTopupAmount(""); setEarningsTab("overview");
                             await refreshUser();
                           } catch (_) { toast.error("Top-up failed. Contact support."); }
@@ -2765,7 +2765,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                       />
                     ) : (
                       <GlassCard className="p-4 text-center">
-                        <p className="text-white/30 text-sm">Enter ₾5 or more to show payment options</p>
+                        <p className="text-white/30 text-sm">Enter ?5 or more to show payment options</p>
                       </GlassCard>
                     )}
 
@@ -2803,17 +2803,17 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     <div className="flex justify-between items-start">
                       <div className="flex-1 pr-3">
                         <p className="text-white text-sm font-medium truncate">{r.pickup}</p>
-                        {r.destination && <p className="text-white/40 text-xs truncate">→ {r.destination}</p>}
+                        {r.destination && <p className="text-white/40 text-xs truncate">? {r.destination}</p>}
                         <div className="flex items-center gap-2 mt-1.5">
                           <StatusBadge status={r.status} />
-                          <span className="text-white/25 text-[10px]">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}</span>
+                          <span className="text-white/25 text-[10px]">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "�"}</span>
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-[#00ff88] font-bold font-mono">
-                          ₾{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "—")}
+                          ?{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "�")}
                         </p>
-                        <p className="text-white/30 text-xs capitalize">{r.carType || r.car_type || "—"}</p>
+                        <p className="text-white/30 text-xs capitalize">{r.carType || r.car_type || "�"}</p>
                       </div>
                     </div>
                   </GlassCard>
@@ -2877,7 +2877,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                   <div className="grid grid-cols-2 gap-2.5">
                     {fields.map(([k, l]) => (
                       <div key={k} className="space-y-1">
-                        <Label className="text-white/40 text-[11px]">{l} {vehicleData[k] && <span className="text-[#00ff88]">✓</span>}</Label>
+                        <Label className="text-white/40 text-[11px]">{l} {vehicleData[k] && <span className="text-[#00ff88]">?</span>}</Label>
                         <input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, [k]: e.target.files[0] })}
                           className="w-full bg-white/4 border border-white/10 text-white rounded-lg p-2 text-xs file:bg-[#00ff88]/15 file:text-[#00ff88] file:border-0 file:rounded file:px-2 file:py-0.5 file:text-xs file:font-bold file:mr-2" />
                       </div>
@@ -2939,7 +2939,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         isOpen={!!completedRide}
         onClose={() => {
           setCompletedRide(null);
-          setShowRateModal(true); // ✅ ADD THIS: Opens rating after closing fare
+          setShowRateModal(true); // ? ADD THIS: Opens rating after closing fare
         }}
         fareAmount={completedRide?.final_fare || completedRide?.estimated_fare}
         paymentMethod={completedRide?.payment_method || completedRide?.paymentMethod || "cash"}
@@ -2947,7 +2947,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         cashToCollect={completedRide?.cash_to_collect || 0}
         onConfirm={() => {
           setCompletedRide(null);
-          setShowRateModal(true); // ✅ ADD THIS: Opens rating after confirming fare
+          setShowRateModal(true); // ? ADD THIS: Opens rating after confirming fare
         }}
       />
 
@@ -2962,7 +2962,7 @@ const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
 
 if (!PAYPAL_CLIENT_ID) {
   console.error(
-    "❌ VITE_PAYPAL_CLIENT_ID is not set. " +
+    "? VITE_PAYPAL_CLIENT_ID is not set. " +
     "Add it to your Render frontend service environment variables and redeploy."
   );
 }
@@ -2981,7 +2981,7 @@ const DriverPortal = () => {
       options={{
         "client-id": PAYPAL_CLIENT_ID || "sb",
         currency: "USD",
-        vault: true // 👈 Swapped capture for vault
+        vault: true // ?? Swapped capture for vault
       }}
     >
       <Routes>
