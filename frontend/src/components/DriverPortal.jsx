@@ -1,3 +1,4 @@
+import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 const FeedbackPanel = React.lazy(() => import("@/components/Feedbackpanel"));
 import { useState, useEffect, useRef, useCallback } from "react";
