@@ -1230,7 +1230,7 @@ async def send_otp(req: OTPSendRequest):
         raise HTTPException(422, "Invalid phone number")
 
     # 🛑 TEMPORARY BYPASS: Hardcode the OTP to "1111"
-    code = "1111" 
+    code = _generate_otp()
     expires_at = datetime.now(timezone.utc).timestamp() + OTP_TTL_SECONDS
 
     db.collection("otp_codes").document(phone_norm).set({
@@ -1242,8 +1242,7 @@ async def send_otp(req: OTPSendRequest):
     })
 
     # 🛑 TEMPORARY BYPASS: Comment out the real SMS sender
-    # _send_otp_code(phone_norm, code)
-    print(f"⚠️ BETA MODE: {phone_norm} is registering. Tell them to use code 1111.")
+    _send_otp_code(phone_norm, code)
 
     return {"status": "sent", "expires_in": OTP_TTL_SECONDS}
 
@@ -3358,6 +3357,14 @@ async def match_drivers_to_ride(ride_id: str):
             if driver_balance < required_commission:
                 continue
 
+
+            ride_car_type = (ride_data.get("carType") or "economy").lower()
+            ELIGIBLE_TYPES = {"economy":{"economy","jumpstart","personal"},"comfort":{"comfort","economy","jumpstart","personal"},"suv":{"suv","comfort","economy","jumpstart","personal"},"jumpstart":{"economy","comfort","suv","personal","jumpstart"},"personal":{"economy","comfort","suv","personal","jumpstart"}}
+            allowed = ELIGIBLE_TYPES.get(ride_car_type, {"economy"})
+            dv = driver_data.get("driver_info",{}).get("vehicles",[])
+            da = driver_data.get("driver_info",{}).get("active_vehicle_id")
+            dveh = next((v for v in dv if v.get("id")==da), dv[0] if dv else {})
+            if dveh.get("tier","economy").lower() not in allowed: continue
             driver_location = driver_data.get("current_location")
             if driver_location and driver_location.get("lat") and driver_location.get("lng"):
                 distance = haversine_distance(
@@ -3465,6 +3472,13 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
             f"Current balance: ₾{balance:.2f}. Please top up your wallet."
         )
 
+
+    _rct = (ride_data.get("carType") or "economy").lower()
+    _E = {"economy":{"economy","jumpstart","personal"},"comfort":{"comfort","economy","jumpstart","personal"},"suv":{"suv","comfort","economy","jumpstart","personal"},"jumpstart":{"economy","comfort","suv","personal","jumpstart"},"personal":{"economy","comfort","suv","personal","jumpstart"}}
+    _dv = driver_data.get("driver_info",{}).get("vehicles",[])
+    _da = driver_data.get("driver_info",{}).get("active_vehicle_id")
+    _dav = next((v for v in _dv if v.get("id")==_da), _dv[0] if _dv else {})
+    if _dav.get("tier","economy").lower() not in _E.get(_rct,{"economy"}): raise __import__("fastapi").HTTPException(403,"Wrong vehicle type for this ride.")
     new_balance = balance - held_commission
     db.collection("users").document(user_id).update({
         "earnings.balance": new_balance,
