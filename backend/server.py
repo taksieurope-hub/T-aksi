@@ -2012,7 +2012,6 @@ async def get_all_feedback(admin_id: str = Depends(get_admin_user)):
     result = [serialize_firestore_data({**d.to_dict(), "id": d.id}) for d in docs]
     return {"feedback": result}
 
-# 2. FIX THE CAMPAIGN TEMPLATES 405 ERROR
 @app.get("/api/admin/campaigns/templates", tags=["Admin"])
 async def get_campaign_templates(admin_id: str = Depends(get_admin_user)):
     # Providing default templates so the frontend stops crashing
