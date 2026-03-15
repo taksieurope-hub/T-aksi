@@ -21,8 +21,8 @@ export const LanguageProvider = ({ children }) => {
     if (!key) return '';
     return (
       translations[language]?.[key] ||
-      translations[defaultLanguage]?.[key] ||
       translations.en?.[key] ||
+      translations[defaultLanguage]?.[key] ||
       key
     );
   }, [language]);
