@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import RideCommunication from "./RideCommunication";
 import CurrencyConverter from "@/components/CurrencyConverter";
-//import FeedbackPanel from "@/components/FeedbackPanel";
+import FeedbackPanel from "@/components/FeedbackPanel";
 
 import {
   Car, MapPin, History, Home, LogOut, User, Navigation, Rocket, ArrowLeft,
@@ -30,14 +30,14 @@ import {
 
 
 // =============================================================================
-// PRICING RULES — Must match server.py exactly
+// PRICING RULES � Must match server.py exactly
 // =============================================================================
 const PRICING_RULES = {
-  economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "🚗", desc: "Affordable everyday rides" },
-  comfort:   { name: "Comfort",   base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "🚙", desc: "Extra space & comfort" },
-  suv:       { name: "SUV / XL",  base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "🚐", desc: "Up to 6 passengers" },
-  personal:  { name: "Personal",  base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "👤", desc: "Premium personal driver" },
-  jumpstart: { name: "Jumpstart", base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "⚡", desc: "Flat rate battery jump" },
+  economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "??", desc: "Affordable everyday rides" },
+  comfort:   { name: "Comfort",   base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "??", desc: "Extra space & comfort" },
+  suv:       { name: "SUV / XL",  base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "??", desc: "Up to 6 passengers" },
+  personal:  { name: "Personal",  base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2,   stopFee: 0.00, icon: "??", desc: "Premium personal driver" },
+  jumpstart: { name: "Jumpstart", base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "?", desc: "Flat rate battery jump" },
 };
 
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0, paymentMethod = "cash", promoCode = "") => {
@@ -57,7 +57,7 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   
   let total = subtotal + surgeFee + serviceFee;
   
-  // 🛠️ ADD PROMO MATH
+  // ??? ADD PROMO MATH
   let discount = 0;
   if (promoCode.toUpperCase() === "BETA15") {
     discount = total * 0.15;
@@ -78,12 +78,12 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   };
 };
 
-// trim() only called on submit, NOT on every keystroke — otherwise spacebar is swallowed
+// trim() only called on submit, NOT on every keystroke � otherwise spacebar is swallowed
 const sanitiseAddress = (str = "") => str.slice(0, 300);
 const sanitiseAddressForSubmit = (str = "") => str.trim().slice(0, 300);
 
 // =============================================================================
-// GOOGLE MAPS LOADER — singleton, never double-loads
+// GOOGLE MAPS LOADER � singleton, never double-loads
 // =============================================================================
 let mapsLoadState = "idle";
 const mapsReadyCallbacks = [];
@@ -115,7 +115,7 @@ const loadGoogleMaps = (apiKey) => {
 };
 
 // =============================================================================
-// GOOGLE MAPS AUTOCOMPLETE HOOK — UNCHANGED
+// GOOGLE MAPS AUTOCOMPLETE HOOK � UNCHANGED
 // =============================================================================
 const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
   const callbackRef = useRef(onPlaceSelect);
@@ -161,7 +161,7 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
 };
 
 // =============================================================================
-// MAP PICKER MODAL — UNCHANGED
+// MAP PICKER MODAL � UNCHANGED
 // =============================================================================
 const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }) => {
   const { t } = useLanguage();
@@ -263,7 +263,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
 };
 
 // =============================================================================
-// LIVE TRACKING MAP — UPGRADED
+// LIVE TRACKING MAP � UPGRADED
 // - ETA countdown pill (live ticking)
 // - Pickup pin (green) + Destination pin (red) as SVG markers
 // - Auto-fit bounds when ride is accepted (driver + pickup)
@@ -354,7 +354,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     const sig = `${drLat},${drLng}|${pLat},${pLng}|${dLat},${dLng}|${status}`;
     if (routeDrawnForStatus.current === sig) return;
 
-    // Preview mode (booking screen): show route pickup → destination, no driver
+    // Preview mode (booking screen): show route pickup ? destination, no driver
     if (status === "preview") {
       if (pLat && pLng && dLat && dLng) {
         drawRoute({ lat: pLat, lng: pLng }, { lat: dLat, lng: dLng }, waypoints, false);
@@ -381,7 +381,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     }
   }, [pickup?.lat, destination?.lat, JSON.stringify(stops), status, driverLocation?.lat]);
 
-  // Auto-fit when ride is first accepted — show driver + pickup
+  // Auto-fit when ride is first accepted � show driver + pickup
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
     if (status !== "accepted") return;
@@ -403,7 +403,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     setTimeout(() => setIsFollowing(true), 3000);
   }, [status, driverLocation?.lat, pickup?.lat]);
 
-  // ETA countdown — starts fresh whenever a new Directions result comes in
+  // ETA countdown � starts fresh whenever a new Directions result comes in
   useEffect(() => {
     return () => { if (etaIntervalRef.current) clearInterval(etaIntervalRef.current); };
   }, []);
@@ -452,7 +452,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     if (ref.current) { ref.current.setMap(null); ref.current = null; }
   };
 
-  // Driver marker — follows live location AND rotates the map
+  // Driver marker � follows live location AND rotates the map
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation?.lat) return;
     
@@ -473,7 +473,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     
     if (isFollowing) {
       mapInstanceRef.current.panTo(pos);
-      // 🛠️ THIS SPINS THE ENTIRE MAP TO FACE FORWARD
+      // ??? THIS SPINS THE ENTIRE MAP TO FACE FORWARD
       mapInstanceRef.current.setHeading(heading);
     }
   }, [driverLocation, isFollowing]);
@@ -519,7 +519,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
         <button
           onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom() || 15) - 1)}
           className="w-9 h-9 bg-[#07070f]/90 text-white rounded-xl border border-white/15 flex items-center justify-center text-lg font-bold hover:border-white/30 active:scale-95 backdrop-blur-sm">
-          −
+          -
         </button>
       </div>
     </div>
@@ -527,7 +527,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
 };
 
 // =============================================================================
-// LOCATION INPUT — UNCHANGED
+// LOCATION INPUT � UNCHANGED
 // =============================================================================
 const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id, name, onSaveAsFavorite, mapsLoaded }) => {
   const { t } = useLanguage();
@@ -594,7 +594,7 @@ const RiderAuth = () => {
       const res = await api.post("/auth/otp/verify", { cellphone: formData.cellphone, code: otpCode });
       setPhoneToken(res.data.phone_token);
       setOtpStep("done");
-      toast.success("Phone verified ✓");
+      toast.success("Phone verified ?");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Incorrect code");
     } finally { setLoading(false); }
@@ -675,7 +675,7 @@ const RiderAuth = () => {
                 </Button>
               )}
               {!isLogin && otpStep === "done" && (
-                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">✓ Verified</div>
+                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">? Verified</div>
               )}
             </div>
           </div>
@@ -721,7 +721,7 @@ const RiderAuth = () => {
 };
 
 // =============================================================================
-// WAIT TIMER — UNCHANGED
+// WAIT TIMER � UNCHANGED
 // =============================================================================
 const WaitTimer = ({ arrivedAt, carType }) => {
   const { t } = useLanguage();
@@ -773,14 +773,14 @@ const WaitTimer = ({ arrivedAt, carType }) => {
         <div className="font-mono text-red-300 font-bold text-2xl">
           {String(Math.floor(overtime / 60)).padStart(2, "0")}:{String(overtime % 60).padStart(2, "0")}
         </div>
-        <div className="text-red-400 text-xs font-semibold">+₾{liveFee}</div>
+        <div className="text-red-400 text-xs font-semibold">+?{liveFee}</div>
       </div>
     </div>
   );
 };
 
 // =============================================================================
-// RECEIPT MODAL — UNCHANGED
+// RECEIPT MODAL � UNCHANGED
 // =============================================================================
 const ReceiptModal = ({ isOpen, onClose, rideId }) => {
   const { t } = useLanguage();
@@ -826,19 +826,19 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
               {Object.entries(receipt.fare_breakdown || {}).filter(([k]) => !["breakdown","surge_multiplier","base_total"].includes(k) && typeof receipt.fare_breakdown[k] === "number" && receipt.fare_breakdown[k] > 0).map(([k, v]) => (
                 <div key={k} className="flex justify-between text-sm">
                   <span className="text-white/40 capitalize">{k.replace(/_/g, " ")}</span>
-                  <span className="text-white">₾{parseFloat(v).toFixed(2)}</span>
+                  <span className="text-white">?{parseFloat(v).toFixed(2)}</span>
                 </div>
               ))}
               {receipt.tip > 0 && (
                 <div className="flex justify-between text-sm pt-2 border-t border-white/8">
                   <span className="text-yellow-400/80 flex items-center gap-1"><Star className="w-3 h-3" /> Tip</span>
-                  <span className="text-yellow-400">₾{parseFloat(receipt.tip).toFixed(2)}</span>
+                  <span className="text-yellow-400">?{parseFloat(receipt.tip).toFixed(2)}</span>
                 </div>
               )}
               <div className="h-px bg-white/10 my-1" />
               <div className="flex justify-between font-bold text-base pt-1">
                 <span className="text-white">Total</span>
-                <span className="text-[#00ff88]">₾{parseFloat(receipt.total || 0).toFixed(2)}</span>
+                <span className="text-[#00ff88]">?{parseFloat(receipt.total || 0).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -879,14 +879,14 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
           {TIPS.map(amt => (
             <button key={amt} onClick={() => { setTipAmount(amt); setCustom(""); }}
               className={`py-4 rounded-2xl border-2 font-bold text-base transition-all active:scale-95 ${tipAmount === amt && !custom ? "border-[#00ff88] bg-[#00ff88]/12 text-[#00ff88]" : "border-white/10 text-white bg-white/4 hover:border-white/25"}`}>
-              ₾{amt}
+              ?{amt}
             </button>
           ))}
         </div>
         <Input type="number" placeholder={t("custom_amount")} value={custom}
           onChange={e => { setCustom(e.target.value); setTipAmount(null); }}
           className="bg-white/5 border-white/10 text-white text-center h-12 rounded-xl mb-4 placeholder:text-white/25" />
-        {isValidTip && <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>}
+        {isValidTip && <p className="text-white/30 text-xs text-center mb-4">?{finalAmount.toFixed(2)} GEL � ${usdAmount} USD</p>}
         {isValidTip ? (
           <div className="mb-4">
             <PayPalButtons
@@ -909,8 +909,8 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
                     amount: finalAmount, tip_amount: finalAmount, reference_id: data.orderID,
                     vault_id: vaultId, card_last4: paymentSource?.last_digits || null, card_brand: paymentSource?.brand || null
                   });
-                  toast.success(`₾${finalAmount.toFixed(2)} tip sent! 🙏`);
-                  if (vaultId) toast.success("Card saved! 💳");
+                  toast.success(`?${finalAmount.toFixed(2)} tip sent! ??`);
+                  if (vaultId) toast.success("Card saved! ??");
                   onTipped?.();
                   onClose();
                 } catch { toast.error("Payment went through but failed to update. Contact support."); }
@@ -935,20 +935,20 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
 };
 
 // =============================================================================
-// SOS BUTTON — UNCHANGED
+// SOS BUTTON � UNCHANGED
 // =============================================================================
 const SOSButton = ({ rideId, lat, lng }) => {
   const [loading, setLoading]     = useState(false);
   const [triggered, setTriggered] = useState(false);
 
   const handleSOS = async () => {
-    if (!window.confirm("🚨 Trigger SOS? This will alert our safety team immediately.")) return;
+    if (!window.confirm("?? Trigger SOS? This will alert our safety team immediately.")) return;
     setLoading(true);
     try {
       await api.post("/sos", { ride_id: rideId, lat: lat || 0, lng: lng || 0, message: "Rider triggered SOS during trip" });
       setTriggered(true);
-      toast.error("🚨 SOS Triggered! Help is on the way.", { duration: 10000 });
-    } catch { toast.error("SOS failed — call emergency services directly"); }
+      toast.error("?? SOS Triggered! Help is on the way.", { duration: 10000 });
+    } catch { toast.error("SOS failed � call emergency services directly"); }
     finally { setLoading(false); }
   };
 
@@ -962,7 +962,7 @@ const SOSButton = ({ rideId, lat, lng }) => {
 };
 
 // =============================================================================
-// SHARE TRIP MODAL — UNCHANGED
+// SHARE TRIP MODAL � UNCHANGED
 // =============================================================================
 const ShareTripModal = ({ isOpen, onClose, rideId }) => {
   const { t } = useLanguage();
@@ -1036,7 +1036,7 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
 };
 
 // =============================================================================
-// SCHEDULED RIDE MODAL — UNCHANGED
+// SCHEDULED RIDE MODAL � UNCHANGED
 // =============================================================================
 const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) => {
   const { t } = useLanguage();
@@ -1094,7 +1094,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
 };
 
 // =============================================================================
-// WALLET TOP-UP MODAL — UNCHANGED
+// WALLET TOP-UP MODAL � UNCHANGED
 // =============================================================================
 const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
   const { t } = useLanguage();
@@ -1124,14 +1124,14 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
           {AMOUNTS.map(a => (
             <button key={a} onClick={() => { setAmount(a); setCustom(""); }}
               className={`py-3.5 rounded-xl border-2 font-bold transition-all active:scale-95 ${(!custom && amount === a) ? "border-[#00ff88] bg-[#00ff88]/12 text-[#00ff88]" : "border-white/10 text-white bg-white/4 hover:border-white/25"}`}>
-              ₾{a}
+              ?{a}
             </button>
           ))}
         </div>
         <Input type="number" placeholder={t("custom_amount")} value={custom} min="1" max="1000"
           onChange={e => setCustom(e.target.value)}
           className="bg-white/5 border-white/10 text-white text-center h-11 rounded-xl mb-4 placeholder:text-white/25" />
-        {canPay && <p className="text-white/30 text-xs text-center mb-4">₾{finalAmount.toFixed(2)} GEL ≈ ${usdAmount} USD</p>}
+        {canPay && <p className="text-white/30 text-xs text-center mb-4">?{finalAmount.toFixed(2)} GEL � ${usdAmount} USD</p>}
         {canPay ? (
           <PayPalButtons
             fundingSource="card"
@@ -1153,8 +1153,8 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
                   amount: finalAmount, reference: data.orderID,
                   vault_id: vaultId, card_last4: paymentSource?.last_digits || null, card_brand: paymentSource?.brand || null
                 });
-                toast.success(`₾${finalAmount.toFixed(2)} added to your wallet!`);
-                if (vaultId) toast.success("Card saved! 💳");
+                toast.success(`?${finalAmount.toFixed(2)} added to your wallet!`);
+                if (vaultId) toast.success("Card saved! ??");
                 onSuccess();
                 onClose();
               } catch { toast.error("Payment captured but wallet not updated. Contact support."); }
@@ -1164,7 +1164,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
           />
         ) : (
           <div className="bg-white/4 rounded-xl p-4 text-center mb-2">
-            <p className="text-white/25 text-sm">Enter ₾1 or more to show payment</p>
+            <p className="text-white/25 text-sm">Enter ?1 or more to show payment</p>
           </div>
         )}
         <Button variant="ghost" className="w-full text-white/30 mt-2 rounded-xl" onClick={onClose}>{t("cancel")}</Button>
@@ -1174,7 +1174,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
 };
 
 // =============================================================================
-// FAVORITES PANEL — UNCHANGED
+// FAVORITES PANEL � UNCHANGED
 // =============================================================================
 const FavoritesPanel = ({ onSelect }) => {
   const { t } = useLanguage();
@@ -1205,7 +1205,7 @@ const FavoritesPanel = ({ onSelect }) => {
     <div className="space-y-2">
       {favorites.map(fav => (
         <div key={fav.id} className="flex items-center gap-3 bg-white/4 border border-white/8 rounded-xl p-3 cursor-pointer hover:border-white/15 transition-all group">
-          <span className="text-2xl w-8 shrink-0">{fav.icon || "📍"}</span>
+          <span className="text-2xl w-8 shrink-0">{fav.icon || "??"}</span>
           <div className="flex-1 min-w-0" onClick={() => onSelect(fav)}>
             <p className="text-white font-semibold text-sm truncate">{fav.name}</p>
             <p className="text-white/35 text-xs truncate mt-0.5">{fav.address}</p>
@@ -1220,13 +1220,13 @@ const FavoritesPanel = ({ onSelect }) => {
 };
 
 // =============================================================================
-// SAVE FAVORITE DIALOG — UNCHANGED
+// SAVE FAVORITE DIALOG � UNCHANGED
 // =============================================================================
 const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
   const { t } = useLanguage();
   const [name, setName] = useState("");
-  const [icon, setIcon] = useState("📍");
-  const ICONS = ["🏠", "🏢", "🏋️", "🛒", "🏫", "🍕", "🏥", "📍"];
+  const [icon, setIcon] = useState("??");
+  const ICONS = ["??", "??", "???", "??", "??", "??", "??", "??"];
 
   const handleSave = async () => {
     if (!name.trim()) { toast.error("Enter a name"); return; }
@@ -1262,7 +1262,7 @@ const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
 };
 
 // =============================================================================
-// REFERRAL PANEL — UNCHANGED
+// REFERRAL PANEL � UNCHANGED
 // =============================================================================
 const ReferralPanel = () => {
   const { t } = useLanguage();
@@ -1305,7 +1305,7 @@ const ReferralPanel = () => {
               <p className="text-white/35 text-xs mt-0.5">Friends Referred</p>
             </div>
             <div className="bg-white/4 border border-white/8 rounded-xl p-3.5 text-center">
-              <p className="text-[#00ff88] text-2xl font-bold">₾{(referral.bonus_earned || 0).toFixed(2)}</p>
+              <p className="text-[#00ff88] text-2xl font-bold">?{(referral.bonus_earned || 0).toFixed(2)}</p>
               <p className="text-white/35 text-xs mt-0.5">Bonus Earned</p>
             </div>
           </div>
@@ -1326,7 +1326,7 @@ const ReferralPanel = () => {
 };
 
 // =============================================================================
-// RIDE HISTORY ITEM — UNCHANGED
+// RIDE HISTORY ITEM � UNCHANGED
 // =============================================================================
 const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
   const { t } = useLanguage();
@@ -1340,13 +1340,13 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${sc.color}`}>{sc.label}</span>
-              <span className="text-white/25 text-xs">{ride.created_at ? new Date(ride.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" }) : "—"}</span>
+              <span className="text-white/25 text-xs">{ride.created_at ? new Date(ride.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" }) : "�"}</span>
             </div>
             <p className="text-white text-sm font-medium truncate">{ride.pickup}</p>
             {ride.destination && <p className="text-white/40 text-xs truncate mt-0.5 flex items-center gap-1"><ArrowRight className="w-3 h-3 shrink-0" />{ride.destination}</p>}
           </div>
           <div className="text-right shrink-0 flex flex-col items-end gap-2">
-            <span className="text-[#00ff88] font-bold text-lg font-mono">₾{(ride.final_fare || ride.estimated_fare)?.toFixed(2) ?? "—"}</span>
+            <span className="text-[#00ff88] font-bold text-lg font-mono">?{(ride.final_fare || ride.estimated_fare)?.toFixed(2) ?? "�"}</span>
             {expanded ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
           </div>
         </div>
@@ -1355,7 +1355,7 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
         <div className="px-4 pb-4 pt-0 border-t border-white/6 space-y-3">
           <div className="grid grid-cols-2 gap-2 pt-3">
             {[
-              [t("car_type"), ride.carType || ride.car_type || "—"],
+              [t("car_type"), ride.carType || ride.car_type || "�"],
               [t("payment"), ride.payment_method || ride.paymentMethod || t("cash")],
               ride.driver_info?.name ? [t("your_driver"), ride.driver_info.name] : null,
               ride.distance_km ? [t("traveled"), `${parseFloat(ride.distance_km).toFixed(1)} km`] : null,
@@ -1410,8 +1410,71 @@ const RideHistoryItem = ({ ride, onTip, onReceipt, onRate, statusConfig }) => {
   );
 };
 
+
+const RiderSupportPanel = () => {
+  const { t } = useLanguage();
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  useEffect(() => {
+    api.get("/support/history").then(r => setTickets(r.data.tickets || [])).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+  const send = async () => {
+    if (!message.trim()) return;
+    setSending(true);
+    try {
+      await api.post("/support/message", { message: message.trim() });
+      toast.success("Message sent!");
+      setMessage("");
+      const r = await api.get("/support/history");
+      setTickets(r.data.tickets || []);
+    } catch { toast.error("Failed to send."); } finally { setSending(false); }
+  };
+  return (
+    <div className="space-y-4">
+      <div className="bg-white/3 border border-white/8 rounded-2xl p-4 space-y-3">
+        <p className="text-white/50 text-xs uppercase tracking-wider font-semibold">New Message</p>
+        <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} placeholder="Describe your issue or question..." className="w-full bg-white/4 border border-white/10 rounded-xl px-4 py-3 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-[#00d4ff]/40" />
+        <Button onClick={send} disabled={!message.trim() || sending} className="w-full bg-[#00d4ff] text-black font-bold h-11 rounded-xl">
+          {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+          {sending ? "Sending..." : "Send Message"}
+        </Button>
+      </div>
+      {loading ? <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-white/30" /></div>
+      : tickets.length === 0 ? (
+        <div className="text-center py-10">
+          <Headphones className="w-10 h-10 text-white/15 mx-auto mb-2" />
+          <p className="text-white/30 text-sm">No support tickets yet</p>
+          <p className="text-white/20 text-xs mt-1">Send a message above and we will respond here</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {tickets.map(ticket => (
+            <div key={ticket.id} className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+              <button className="w-full p-4 flex items-center justify-between" onClick={() => setExpandedId(expandedId === ticket.id ? null : ticket.id)}>
+                <div className="flex-1 min-w-0 pr-3">
+                  <p className="text-white text-sm font-medium line-clamp-1">{ticket.message}</p>
+                  <span className="text-white/30 text-[10px]">{ticket.status}</span>
+                </div>
+                {expandedId === ticket.id ? <ChevronUp className="w-4 h-4 text-white/25" /> : <ChevronDown className="w-4 h-4 text-white/25" />}
+              </button>
+              {expandedId === ticket.id && (ticket.chat_history || []).map((msg, i) => (
+                <div key={i} className={"px-4 py-2 text-sm " + (msg.role === "user" ? "text-white/70" : "text-[#00d4ff]/80")}>
+                  <span className="font-bold">{msg.role === "user" ? "You: " : "Support: "}</span>{msg.content}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // =============================================================================
-// RIDER DASHBOARD — UNCHANGED logic, uses upgraded LiveTrackingMap above
+// RIDER DASHBOARD � UNCHANGED logic, uses upgraded LiveTrackingMap above
 // =============================================================================
 const RiderDashboard = () => {
   const { user, logout, refreshUser } = useAuth();
@@ -1504,7 +1567,7 @@ const [promoApplied, setPromoApplied] = useState(false);
 
   const handleRideStatusChange = (ride) => {
     if (ride.status === "arrived" && !notifiedArrived.current) {
-      toast.success("Your driver has arrived!", { description: "Free wait timer started.", duration: 8000, icon: "🚗" });
+      toast.success("Your driver has arrived!", { description: "Free wait timer started.", duration: 8000, icon: "??" });
       notifiedArrived.current = true;
     }
     if (ride.status === "accepted" && ride.driver_info && !notifiedAccepted.current) {
@@ -1587,7 +1650,7 @@ const [promoApplied, setPromoApplied] = useState(false);
   if (!routeInfo) return;
   setFareEstimate(calculateFare(carType, routeInfo.distance, 0, 0, validStopsCount, surgeInfo?.multiplier || 1.0, paymentMethod, promoCode));
   setPromoApplied(promoCode.toUpperCase() === "BETA15");
-}, [routeInfo, carType, validStopsCount, surgeInfo, paymentMethod, promoCode]); // 🛠️ Added promoCode
+}, [routeInfo, carType, validStopsCount, surgeInfo, paymentMethod, promoCode]); // ??? Added promoCode
 
   const getCurrentLocation = () => {
     if (!navigator.geolocation) { toast.error("Geolocation not supported."); return; }
@@ -1624,7 +1687,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     if (paymentMethod === "wallet") {
       const balance = user?.wallet_balance || 0;
       const estimate = fareEstimate?.total || 0;
-      if (balance < estimate) { toast.error(`Insufficient balance (₾${balance.toFixed(2)})`); return; }
+      if (balance < estimate) { toast.error(`Insufficient balance (?${balance.toFixed(2)})`); return; }
     }
     if (paymentMethod === "card") { setShowPayPal(true); return; }
     processRideRequest(null);
@@ -1649,7 +1712,7 @@ const [promoApplied, setPromoApplied] = useState(false);
         carType, 
         paymentMethod,
         
-        // 🛠️ THE CRITICAL ADDITION: Pass the promo code to the server
+        // ??? THE CRITICAL ADDITION: Pass the promo code to the server
         promo_code: promoApplied ? "BETA15" : null, 
         
         ...(paypalOrderId && { paymentOrderId: paypalOrderId }),
@@ -1763,8 +1826,8 @@ const [promoApplied, setPromoApplied] = useState(false);
               <p className="text-white font-semibold text-sm leading-none">{user?.name} {user?.surname}</p>
               <button className="flex items-center gap-1 text-[#00ff88] text-xs mt-0.5 hover:text-[#00d4ff] transition-colors" onClick={() => setShowTopUp(true)}>
                 <Wallet className="w-2.5 h-2.5" />
-                ₾{user?.wallet_balance?.toFixed(2) || "0.00"}
-                <span className="text-white/25">·</span>
+                ?{user?.wallet_balance?.toFixed(2) || "0.00"}
+                <span className="text-white/25">�</span>
                 <span className="text-white/40">{t("top_up")}</span>
               </button>
             </div>
@@ -1877,7 +1940,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <p className="text-orange-400/60 text-xs">{surgeInfo.surge_reason}</p>
                   </div>
                 </div>
-                <span className="text-orange-300 font-bold text-xl bg-orange-500/20 px-3 py-1 rounded-xl">×{surgeInfo.multiplier}</span>
+                <span className="text-orange-300 font-bold text-xl bg-orange-500/20 px-3 py-1 rounded-xl">�{surgeInfo.multiplier}</span>
               </div>
             )}
 
@@ -1885,14 +1948,14 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="bg-white/3 border border-white/8 rounded-2xl px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-white/40 text-sm">
                   <RouteIcon className="w-4 h-4" />
-                  <span>{routeInfo.distance} {t("km")} · {routeInfo.duration} {t("min")}</span>
+                  <span>{routeInfo.distance} {t("km")} � {routeInfo.duration} {t("min")}</span>
                 </div>
                 <div className="text-right">
   <div className="flex items-baseline justify-end">
-    <span className="text-[#00ff88] font-bold text-2xl">₾{fareEstimate.total.toFixed(2)}</span>
+    <span className="text-[#00ff88] font-bold text-2xl">?{fareEstimate.total.toFixed(2)}</span>
     <CurrencyConverter gelAmount={fareEstimate.total} />
   </div>
-  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">incl. ₾2 card fee</p>}
+  {paymentMethod === "card" && <p className="text-white/25 text-xs mt-0.5">incl. ?2 card fee</p>}
 </div>
               </div>
             )}
@@ -1911,7 +1974,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                       <div className="text-xl mb-0.5">{type.icon}</div>
                       <div className={`text-[10px] font-semibold leading-tight ${active ? "text-[#00ff88]" : "text-white/50"}`}>{type.name}</div>
                       <div className={`text-[10px] mt-0.5 font-mono ${active ? "text-[#00ff88]/70" : "text-white/30"}`}>
-  ₾{est.toFixed(2)}
+  ?{est.toFixed(2)}
 </div>
 <div className={`text-[9px] leading-tight break-all ${active ? "text-[#00ff88]/50" : "text-white/20"}`}>
   <CurrencyConverter gelAmount={est} compact />
@@ -1927,7 +1990,7 @@ const [promoApplied, setPromoApplied] = useState(false);
               <div className="flex gap-2">
                 {[
                   { val: "cash",   label: t("cash"),   Icon: null },
-                  { val: "wallet", label: `₾${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: t("wallet"), Icon: Wallet },
+                  { val: "wallet", label: `?${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: t("wallet"), Icon: Wallet },
                   { val: "card",   label: t("card"),   Icon: CreditCard },
                 ].map(({ val, label, subLabel, Icon }) => (
                   <button key={val}
@@ -1944,7 +2007,7 @@ const [promoApplied, setPromoApplied] = useState(false);
               </div>
             </div>
 
-            {/* 🛠️ PROMO CODE SECTION */}
+            {/* ??? PROMO CODE SECTION */}
 <div className="mt-6 mb-3 space-y-3">
   <div className={`relative flex items-center bg-white/5 border rounded-2xl transition-all duration-500 ${promoApplied ? 'border-[#00ff88]/50 bg-[#00ff88]/5 shadow-[0_0_20px_rgba(0,255,136,0.05)]' : 'border-white/10 focus-within:border-white/20'}`}>
     <div className="pl-4">
@@ -1972,7 +2035,7 @@ const [promoApplied, setPromoApplied] = useState(false);
     <div className="flex items-center justify-between px-2 animate-in slide-in-from-top-1">
        <p className="text-[#00ff88] text-[11px] font-bold flex items-center gap-1.5">
         <Sparkles className="w-3.5 h-3.5" /> 
-        {t("promo_discount")}: ₾{fareEstimate.discount.toFixed(2)}!
+        {t("promo_discount")}: ?{fareEstimate.discount.toFixed(2)}!
       </p>
       <p className="text-white/30 text-[10px] font-medium uppercase tracking-tighter">
         {t("uses_left")}
@@ -1996,7 +2059,7 @@ const [promoApplied, setPromoApplied] = useState(false);
   ) : (
     <div className="flex items-center">
       <Rocket className="w-5 h-5 mr-2" />
-      <span>{t("request_ride")} {carType} · ₾{fareEstimate?.total.toFixed(2)}</span>
+      <span>{t("request_ride")} {carType} � ?{fareEstimate?.total.toFixed(2)}</span>
     </div>
   )}
 </Button>
@@ -2006,7 +2069,7 @@ const [promoApplied, setPromoApplied] = useState(false);
               const usd = (amount * 0.37).toFixed(2);
               return (
                 <div className="bg-white/3 border border-white/10 rounded-2xl p-4">
-                  <p className="text-center text-sm text-white/40 mb-3">Pay ₾{amount.toFixed(2)} (${usd} USD)</p>
+                  <p className="text-center text-sm text-white/40 mb-3">Pay ?{amount.toFixed(2)} (${usd} USD)</p>
                   <PayPalButtons
                     fundingSource="card"
                     style={{ layout: "vertical", shape: "rect" }}
@@ -2025,7 +2088,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                         const last4 = paymentSource?.last_digits || null;
                         const brand = paymentSource?.brand || null;
                         toast.success("Payment approved! Booking...");
-                        if (vaultId) toast.success("Card saved for future rides! 💳");
+                        if (vaultId) toast.success("Card saved for future rides! ??");
                         await processRideRequest(data.orderID, vaultId, last4, brand);
                       } catch { toast.error("Payment failed during capture."); setShowPayPal(false); }
                     }}
@@ -2205,7 +2268,7 @@ const [promoApplied, setPromoApplied] = useState(false);
 
                 <div className="bg-[#00ff88]/5 border border-[#00ff88]/15 rounded-2xl px-4 py-3.5 flex justify-between items-center">
                   <span className="text-white/40 text-sm">Estimated fare</span>
-                  <span className="text-[#00ff88] font-bold text-2xl font-mono">₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span>
+                  <span className="text-[#00ff88] font-bold text-2xl font-mono">?{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span>
                 </div>
 
                 {["searching","accepted"].includes(activeRide.status) && (
@@ -2282,10 +2345,10 @@ const [promoApplied, setPromoApplied] = useState(false);
                 </div>
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
                   <p className="text-yellow-400 text-xl font-bold">{user?.rating?.toFixed(1) || "5.0"}</p>
-                  <p className="text-white/30 text-xs mt-0.5">{t("rating")} ⭐</p>
+                  <p className="text-white/30 text-xs mt-0.5">{t("rating")} ?</p>
                 </div>
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
-                  <p className="text-[#00d4ff] text-xl font-bold font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
+                  <p className="text-[#00d4ff] text-xl font-bold font-mono">?{user?.wallet_balance?.toFixed(2) || "0.00"}</p>
                   <p className="text-white/30 text-xs mt-0.5">{t("wallet")}</p>
                 </div>
               </div>
@@ -2303,7 +2366,7 @@ const [promoApplied, setPromoApplied] = useState(false);
                     <p className="text-white/30 text-xs">{t("add_funds_desc")}</p>
                   </div>
                 </div>
-                <span className="text-[#00ff88] font-bold text-2xl font-mono">₾{user?.wallet_balance?.toFixed(2) || "0.00"}</span>
+                <span className="text-[#00ff88] font-bold text-2xl font-mono">?{user?.wallet_balance?.toFixed(2) || "0.00"}</span>
               </div>
               <Button className="w-full bg-[#00ff88] text-black font-bold rounded-xl h-11 text-sm" onClick={() => setShowTopUp(true)}>
                 <Plus className="w-4 h-4 mr-1.5" /> {t("top_up")}
@@ -2374,9 +2437,17 @@ const [promoApplied, setPromoApplied] = useState(false);
         {/* SUPPORT TAB                                                      */}
         {/* ================================================================ */}
         {activeTab === "support" && (
-          <div className="flex flex-col items-center justify-center py-24 text-white/40">
-            <Headphones className="w-12 h-12 mb-4 opacity-20" />
-            <p>Support Panel Coming Soon</p>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-[#00d4ff]/15 flex items-center justify-center">
+                <Headphones className="w-5 h-5 text-[#00d4ff]" />
+              </div>
+              <div>
+                <h2 className="text-white font-bold text-lg">Support</h2>
+                <p className="text-white/40 text-xs">We are here to help</p>
+              </div>
+            </div>
+            <RiderSupportPanel />
           </div>
         )}
 
@@ -2440,7 +2511,7 @@ const [promoApplied, setPromoApplied] = useState(false);
 // =============================================================================
 const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
 if (!PAYPAL_CLIENT_ID) {
-  console.error("❌ VITE_PAYPAL_CLIENT_ID is not set.");
+  console.error("? VITE_PAYPAL_CLIENT_ID is not set.");
 }
 
 const RiderPortal = () => {
