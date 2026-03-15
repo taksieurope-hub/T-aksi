@@ -1,4 +1,4 @@
-﻿import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import Drivermap from './Drivermap';
-// import FeedbackPanel from './FeedbackPanel';
+import FeedbackPanel from "@/components/Feedbackpanel";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 
 // =============================================================================
-// CONSTANTS � synced with server.py
+// CONSTANTS ? synced with server.py
 // =============================================================================
 const PRICING_RULES = {
   economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   icon: "??" },
@@ -288,12 +288,12 @@ const SOSButton = ({ activeRide, location }) => {
         ride_id: activeRide?.id || null,
         lat: location?.lat || 0,
         lng: location?.lng || 0,
-        message: `Driver SOS � Ride: ${activeRide?.id || "none"}`,
+        message: `Driver SOS ? Ride: ${activeRide?.id || "none"}`,
       });
       toast.error("?? SOS sent! Support team has been alerted.", { duration: 10000 });
       setConfirm(false);
     } catch (_) {
-      toast.error("SOS failed � call emergency services directly");
+      toast.error("SOS failed ? call emergency services directly");
     } finally {
       setLoading(false);
     }
@@ -491,7 +491,7 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
             <div key={i} className="flex justify-between items-center bg-white/3 rounded-xl p-3 border border-white/5">
               <div>
                 <p className="text-white font-mono font-bold">?{w.amount?.toFixed(2)}</p>
-                <p className="text-white/30 text-xs">{w.created_at ? new Date(w.created_at).toLocaleDateString() : "�"}</p>
+                <p className="text-white/30 text-xs">{w.created_at ? new Date(w.created_at).toLocaleDateString() : "?"}</p>
               </div>
               <StatusBadge status={w.status === "approved" ? "approved_w" : w.status === "rejected" ? "rejected_w" : "pending"} />
             </div>
@@ -729,7 +729,7 @@ const FleetPanel = ({ registrationStatus }) => {
                     <StatusBadge status={v.status || "active"} />
                   </div>
                   <p className="text-white/40 text-sm font-mono">{v.license_plate}</p>
-                  <p className="text-white/50 text-xs mt-1.5">?? {v.driver_name} � {v.driver_phone}</p>
+                  <p className="text-white/50 text-xs mt-1.5">?? {v.driver_name} ? {v.driver_phone}</p>
                 </div>
                 <button onClick={() => removeVehicle(v.id)} className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
                   <X className="w-4 h-4" />
@@ -805,7 +805,7 @@ const SupportPanel = () => {
                   <p className="text-white text-sm line-clamp-1 font-medium">{t.message}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <StatusBadge status={t.status === "in_progress" ? "in_progress_ticket" : t.status} />
-                    <span className="text-white/30 text-[10px]">{t.created_at ? new Date(t.created_at).toLocaleDateString() : "�"}</span>
+                    <span className="text-white/30 text-[10px]">{t.created_at ? new Date(t.created_at).toLocaleDateString() : "?"}</span>
                   </div>
                 </div>
                 {expandedId === t.id ? <ChevronUp className="w-4 h-4 text-white/30 shrink-0" /> : <ChevronDown className="w-4 h-4 text-white/30 shrink-0" />}
@@ -927,7 +927,7 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
     { id: "campaigns", label: "Campaigns",  icon: Award,      desc: "Challenges & bonuses",  color: "text-yellow-400",  bg: "bg-yellow-400/10", border: "border-yellow-400/20" },
     { id: "fleet",     label: "Fleet",      icon: Truck,      desc: "Manage your vehicles",  color: "text-blue-400",    bg: "bg-blue-400/10",   border: "border-blue-400/20" },
     { id: "referrals", label: "Referrals",  icon: Gift,       desc: "Invite & earn",         color: "text-purple-400",  bg: "bg-purple-400/10", border: "border-purple-400/20" },
-    { id: "support",   label: "Support",    Icon: Headphones, desc: "Get help",              color: "text-[#00d4ff]",   bg: "bg-[#00d4ff]/10",  border: "border-[#00d4ff]/20" },
+    { id: "support",   label: "Support",    icon: Headphones, desc: "Get help",              color: "text-[#00d4ff]",   bg: "bg-[#00d4ff]/10",  border: "border-[#00d4ff]/20" },
     { 
   id: "feedback", 
   label: "Feedback", 
@@ -1182,7 +1182,7 @@ const MAP_STYLES = [
 ];
 
 // =============================================================================
-// DRIVER SMART MAP � Waze-quality with buttery-smooth animation
+// DRIVER SMART MAP ? Waze-quality with buttery-smooth animation
 // - Auto-rotate map to face direction of travel
 // - Smooth marker interpolation (no jumps)
 // - Clean, minimal UI for driving
@@ -1364,7 +1364,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     mapInstanceRef.current = map;
   }, []);
 
-  // Driver position update � smooth animation, auto-rotate map to face forward
+  // Driver position update ? smooth animation, auto-rotate map to face forward
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
     const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
@@ -1410,7 +1410,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     }
   }, [driverLocation, isFollowing, routeSteps, stepIdx, animateHeading, animateMarkerPosition]);
 
-  // Auto-fit on new ride accept � zoom to show driver + pickup
+  // Auto-fit on new ride accept ? zoom to show driver + pickup
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
     if (!activeRide || activeRide.status !== "accepted") return;
@@ -1603,7 +1603,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
 
 // =============================================================================
-// ADD-STOP INPUT � lightweight autocomplete for mid-trip stop addition
+// ADD-STOP INPUT ? lightweight autocomplete for mid-trip stop addition
 // =============================================================================
 const AddStopInput = ({ value, onChange, mapsLoaded }) => {
   const inputRef = useRef(null);
@@ -1634,7 +1634,7 @@ const AddStopInput = ({ value, onChange, mapsLoaded }) => {
         ref={inputRef}
         value={value?.address || ""}
         onChange={e => onChange({ ...value, address: e.target.value })}
-        placeholder="Search stop address�"
+        placeholder="Search stop address?"
         autoComplete="off"
         className="w-full pl-9 pr-3 h-11 bg-white/5 border border-white/10 text-white text-sm rounded-xl placeholder:text-white/25 outline-none focus:border-[#00d4ff]/40"
       />
@@ -1904,7 +1904,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const hasVehicle = !!(user?.driver_info?.vehicle);
 
   // ===========================================================================
-  // FIX: Maps � use singleton loader, not a nested useEffect
+  // FIX: Maps ? use singleton loader, not a nested useEffect
   // ===========================================================================
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return; }
@@ -1974,7 +1974,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   useLocationTracker(isOnline, handleLocationUpdate);
 
   // ===========================================================================
-  // Wait timer � anchored to server's arrived_at
+  // Wait timer ? anchored to server's arrived_at
   // ===========================================================================
   useEffect(() => {
     if (activeRide?.status !== "arrived") return;
@@ -2212,9 +2212,9 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       setMidTripWaitSecs(0);
       try { await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=start`); } catch (_) {}
       const rate = PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50;
-      toast.success(`Wait timer started � ?${rate.toFixed(2)}/min`);
+      toast.success(`Wait timer started ? ?${rate.toFixed(2)}/min`);
     } else {
-      // Stop � ask backend to bank the time and recalc fare
+      // Stop ? ask backend to bank the time and recalc fare
       setMidTripWaiting(false);
       try {
         const res = await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=stop`);
@@ -2229,7 +2229,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         }
         const min = Math.floor(banked);
         const sec = Math.round((banked - min) * 60);
-        toast.success(`Wait saved: ${min}m ${sec}s � resuming trip`);
+        toast.success(`Wait saved: ${min}m ${sec}s ? resuming trip`);
       } catch (_) {
         setMidTripWaitBanked(prev => prev + midTripWaitSecs / 60);
         setMidTripWaitSecs(0);
@@ -2248,7 +2248,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       setLiveFare(res.data.new_estimated_fare);
       setShowAddStop(false);
       setNewStopAddress({ address: "", lat: null, lng: null });
-      toast.success(`Stop added � new fare ?${res.data.new_estimated_fare.toFixed(2)}`);
+      toast.success(`Stop added ? new fare ?${res.data.new_estimated_fare.toFixed(2)}`);
     } catch (err) { toast.error(err.response?.data?.detail || "Failed to add stop"); }
   };
 
@@ -2367,8 +2367,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         {isOnline && driverLocation && (
           <div className="px-4 pb-2 flex items-center gap-2 text-[10px] text-[#00ff88]/50">
             <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
-            GPS Active � {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
-            {driverLocation.speed != null && <span>� {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
+            GPS Active ? {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
+            {driverLocation.speed != null && <span>? {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
           </div>
         )}
       </header>
@@ -2414,7 +2414,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                   <div>
                     <p className="text-white font-bold text-lg">Active Ride</p>
                     <p className="text-white/40 text-xs">
-                      {activeRide.carType || activeRide.car_type} � {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()]?.icon || "??"}
+                      {activeRide.carType || activeRide.car_type} ? {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()]?.icon || "??"}
                     </p>
                   </div>
                   <StatusBadge status={activeRide.status} />
@@ -2433,7 +2433,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                       <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 mt-1 shrink-0" />
                       <div>
                         <p className="text-yellow-400/60 text-[10px] uppercase tracking-wider">Stops ({activeRide.stops.length})</p>
-                        {activeRide.stops.filter(s => s.lat).map((s, i) => <p key={i} className="text-white/70 text-xs">� {s.address}</p>)}
+                        {activeRide.stops.filter(s => s.lat).map((s, i) => <p key={i} className="text-white/70 text-xs">? {s.address}</p>)}
                       </div>
                     </div>
                   )}
@@ -2472,12 +2472,12 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     </span>
                     {midTripWaiting && (
                       <p className="text-amber-400 text-xs mt-0.5 font-mono">
-                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} � ?{((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
+                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} ? ?{((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
                       </p>
                     )}
                   </div>
                   <span className={`text-2xl font-bold font-mono transition-colors ${midTripWaiting ? "text-amber-400" : "text-[#00ff88]"}`}>
-                    ?{(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "�"}
+                    ?{(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "?"}
                   </span>
                 </div>
 
@@ -2490,7 +2490,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                         : "bg-white/5 border-white/15 text-white/60 hover:border-amber-500/40 hover:text-amber-400"
                     }`}>
                     {midTripWaiting
-                      ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting � resume trip</>
+                      ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting ? resume trip</>
                       : <><PauseCircle className="w-4 h-4" /> Start wait timer (?{(PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50).toFixed(2)}/min)</>
                     }
                   </button>
@@ -2719,7 +2719,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     {[
                       ["Platform cut", `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
                       ["Your share",   `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
-                      ["Surge commission", "23�24%", "text-orange-400"],
+                      ["Surge commission", "23?24%", "text-orange-400"],
                     ].map(([l,v,c]) => (
                       <div key={l} className="flex justify-between items-center">
                         <span className="text-white/60 text-sm">{l}</span>
@@ -2739,7 +2739,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                           placeholder="50" className="pl-7 bg-white/4 border-white/10 text-white text-lg h-12 font-mono" />
                       </div>
                       <p className="text-white/30 text-xs">
-                        � ${topupAmount && !isNaN(parseFloat(topupAmount)) ? (parseFloat(topupAmount) * 0.37).toFixed(2) : "0.00"} USD
+                        ? ${topupAmount && !isNaN(parseFloat(topupAmount)) ? (parseFloat(topupAmount) * 0.37).toFixed(2) : "0.00"} USD
                       </p>
                     </div>
 
@@ -2808,14 +2808,14 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                         {r.destination && <p className="text-white/40 text-xs truncate">? {r.destination}</p>}
                         <div className="flex items-center gap-2 mt-1.5">
                           <StatusBadge status={r.status} />
-                          <span className="text-white/25 text-[10px]">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "�"}</span>
+                          <span className="text-white/25 text-[10px]">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "?"}</span>
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-[#00ff88] font-bold font-mono">
-                          ?{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "�")}
+                          ?{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "?")}
                         </p>
-                        <p className="text-white/30 text-xs capitalize">{r.carType || r.car_type || "�"}</p>
+                        <p className="text-white/30 text-xs capitalize">{r.carType || r.car_type || "?"}</p>
                       </div>
                     </div>
                   </GlassCard>
