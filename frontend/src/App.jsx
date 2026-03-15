@@ -5,9 +5,6 @@ import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
 import InstallPrompt from '@/components/InstallPrompt';
 
-// Capacitor Native Push Imports
-import { PushNotifications } from '@capacitor/push-notifications';
-
 // Providers
 import { AuthProvider, API } from "@/config";
 import { LanguageProvider } from "@/i18n/LanguageContext";
@@ -69,49 +66,46 @@ const StarsBackground = () => {
 function App() {
   
   useEffect(() => {
-    // Initialize Push Notifications only if running on a native platform
     const initPush = async () => {
-      try {
-        // 1. Request Permission
-        let permStatus = await PushNotifications.checkPermissions();
+      // ONLY run this if we are on a real device (Capacitor)
+      // This check prevents crashes in standard web browsers
+      if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+        try {
+          // DYNAMIC IMPORT: This fixes the Render build failure
+          const { PushNotifications } = await import('@capacitor/push-notifications');
 
-        if (permStatus.receive === 'prompt') {
-          permStatus = await PushNotifications.requestPermissions();
+          let permStatus = await PushNotifications.checkPermissions();
+
+          if (permStatus.receive === 'prompt') {
+            permStatus = await PushNotifications.requestPermissions();
+          }
+
+          if (permStatus.receive === 'granted') {
+            await PushNotifications.register();
+
+            await PushNotifications.addListener('registration', (token) => {
+              console.log('Push Registration Success. Token:', token.value);
+              axios.post("/api/user/push-token", { token: token.value })
+                .catch(err => console.error("Backend failed to save push token", err));
+            });
+
+            await PushNotifications.addListener('registrationError', (error) => {
+              console.error('Push Registration Error:', JSON.stringify(error));
+            });
+
+            await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+              console.log('Push received while app open:', notification);
+            });
+
+            await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+              console.log('User clicked notification:', notification);
+            });
+          }
+        } catch (e) {
+          console.error("Failed to load PushNotifications plugin:", e);
         }
-
-        if (permStatus.receive !== 'granted') {
-          console.warn("User denied push permissions.");
-          return;
-        }
-
-        // 2. Register with Apple/Google
-        await PushNotifications.register();
-
-        // 3. Listener: Registration Success (The Token)
-        await PushNotifications.addListener('registration', (token) => {
-          console.log('Push Registration Success. Token:', token.value);
-          // Send this to your backend so it knows where to send rides/alerts
-          axios.post("/api/user/push-token", { token: token.value })
-            .catch(err => console.error("Backend failed to save push token", err));
-        });
-
-        // 4. Listener: Registration Error
-        await PushNotifications.addListener('registrationError', (error) => {
-          console.error('Push Registration Error:', JSON.stringify(error));
-        });
-
-        // 5. Listener: Notification Received (App is open)
-        await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-          console.log('Push received while app open:', notification);
-        });
-
-        // 6. Listener: Notification Action (User clicked alert)
-        await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-          console.log('User clicked notification:', notification);
-        });
-
-      } catch (e) {
-        console.warn("Push Notifications not supported in this environment (likely browser).");
+      } else {
+        console.log("Web environment detected: Skipping Native Push initialization.");
       }
     };
 
