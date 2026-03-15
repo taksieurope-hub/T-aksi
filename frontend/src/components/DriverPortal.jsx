@@ -945,7 +945,7 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
     if (view === "fleet")     return <div><BackButton onClick={back} /><FleetPanel registrationStatus={registrationStatus} /></div>;
     if (view === "referrals") return <div><BackButton onClick={back} /><ReferralPanel /></div>;
     if (view === "support")   return <div><BackButton onClick={back} /><SupportPanel /></div>;
-    if (view === "feedback") { const FP = require("@/components/Feedbackpanel").default; return <div><BackButton onClick={back} /><FP userType="driver" /></div>; }
+    if (view === "feedback") return <div><BackButton onClick={back} /><React.Suspense fallback={null}><FeedbackPanel userType="driver" /></React.Suspense></div>;
   }
 
   return (
