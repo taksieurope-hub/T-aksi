@@ -1,4 +1,4 @@
-﻿// src/i18n/LanguageContext.jsx
+// src/i18n/LanguageContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { translations, defaultLanguage, languageNames } from './translations';
 
@@ -34,6 +34,7 @@ export const LanguageProvider = ({ children }) => {
   }, []);
 
   const value = useMemo(() => ({
+    _renderKey: language,
     language,
     setLanguage: changeLanguage,
     t,
