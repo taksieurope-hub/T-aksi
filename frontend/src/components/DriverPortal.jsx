@@ -1805,11 +1805,11 @@ const DriverAuth = () => {
 // DRIVER DASHBOARD
 // =============================================================================
 const DriverDashboard = () => {
-  usePushNotifications(user);
   // Inside your main Driver Dashboard / Portal component
 const [totalWaitData, setTotalWaitData] = useState({ minutes: 0, earned: 0 });
 const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const { user, logout, updateUser } = useAuth();
+  usePushNotifications(user);
   const navigate = useNavigate();
   const { t, _renderKey } = useLanguage();   
   const handleStopFinished = (minutes) => {
