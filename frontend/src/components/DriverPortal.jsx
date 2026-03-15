@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
@@ -245,7 +245,7 @@ const DriverWaitTimer = ({ arrivedAt, carType, onUpdate }) => {
         <div className="text-[#00ff88] font-mono text-2xl font-bold">
           {String(Math.floor(overtime / 60)).padStart(2, "0")}:{String(overtime % 60).padStart(2, "0")}
         </div>
-        <div className="text-[#00ff88] font-bold text-sm">+?{earned}</div>
+        <div className="text-[#00ff88] font-bold text-sm">+GEL {earned}</div>
       </div>
     </div>
   );
@@ -422,11 +422,11 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
       <div className="grid grid-cols-2 gap-3">
         <GlassCard accent className="p-4 text-center">
           <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
-          <p className="text-2xl font-bold font-mono text-[#00ff88]">?{balance.toFixed(2)}</p>
+          <p className="text-2xl font-bold font-mono text-[#00ff88]">GEL {balance.toFixed(2)}</p>
         </GlassCard>
         <GlassCard className="p-4 text-center">
           <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Max Withdraw</p>
-          <p className="text-2xl font-bold font-mono text-white">?{maxW.toFixed(2)}</p>
+          <p className="text-2xl font-bold font-mono text-white">GEL {maxW.toFixed(2)}</p>
           <p className="text-white/30 text-[9px] mt-0.5">?5 reserve + ?1 fee</p>
         </GlassCard>
       </div>
@@ -464,14 +464,14 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
 
       {amt > 0 && (
         <GlassCard className="p-4 space-y-2 text-sm">
-          <div className="flex justify-between text-white/70"><span>Requested</span><span className="font-mono">?{amt.toFixed(2)}</span></div>
-          <div className="flex justify-between text-red-400"><span>Processing fee</span><span className="font-mono">-?{WITHDRAWAL_FEE.toFixed(2)}</span></div>
+          <div className="flex justify-between text-white/70"><span>Requested</span><span className="font-mono">GEL {amt.toFixed(2)}</span></div>
+          <div className="flex justify-between text-red-400"><span>Processing fee</span><span className="font-mono">-GEL {WITHDRAWAL_FEE.toFixed(2)}</span></div>
           <Separator className="bg-white/10" />
-          <div className="flex justify-between text-white font-bold"><span>Total deducted</span><span className="font-mono text-red-400">-?{(amt + WITHDRAWAL_FEE).toFixed(2)}</span></div>
+          <div className="flex justify-between text-white font-bold"><span>Total deducted</span><span className="font-mono text-red-400">-GEL {(amt + WITHDRAWAL_FEE).toFixed(2)}</span></div>
           <div className="flex justify-between">
             <span className="text-white/50">Balance after</span>
             <span className={`font-mono font-bold ${balance - amt - WITHDRAWAL_FEE >= WITHDRAWAL_RESERVE ? "text-[#00ff88]" : "text-red-400"}`}>
-              ?{(balance - amt - WITHDRAWAL_FEE).toFixed(2)}
+              GEL {(balance - amt - WITHDRAWAL_FEE).toFixed(2)}
             </span>
           </div>
         </GlassCard>
@@ -494,7 +494,7 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
           {history.slice(0, 5).map((w, i) => (
             <div key={i} className="flex justify-between items-center bg-white/3 rounded-xl p-3 border border-white/5">
               <div>
-                <p className="text-white font-mono font-bold">?{w.amount?.toFixed(2)}</p>
+                <p className="text-white font-mono font-bold">GEL {w.amount?.toFixed(2)}</p>
                 <p className="text-white/30 text-xs">{w.created_at ? new Date(w.created_at).toLocaleDateString() : "?"}</p>
               </div>
               <StatusBadge status={w.status === "approved" ? "approved_w" : w.status === "rejected" ? "rejected_w" : "pending"} />
@@ -569,7 +569,7 @@ const CampaignsPanel = ({ driverRating }) => {
                   </div>
                 </div>
                 <div className="text-right shrink-0 ml-2">
-                  <p className="text-[#00ff88] font-bold font-mono">+?{c.bonus_amount}</p>
+                  <p className="text-[#00ff88] font-bold font-mono">+GEL {c.bonus_amount}</p>
                   <p className="text-white/30 text-[10px]">bonus</p>
                 </div>
               </div>
@@ -613,7 +613,7 @@ const CampaignsPanel = ({ driverRating }) => {
                       <p className="text-white/50 text-xs">{c.progress?.current}/{c.progress?.target} {c.campaign_type === "rides_count" ? "rides" : "completed"}</p>
                     </div>
                   </div>
-                  {done ? <StatusBadge status="approved" /> : <p className="text-[#00ff88] font-bold font-mono">+?{c.bonus_amount}</p>}
+                  {done ? <StatusBadge status="approved" /> : <p className="text-[#00ff88] font-bold font-mono">+GEL {c.bonus_amount}</p>}
                 </div>
                 <div className="space-y-1.5">
                   <div className="h-2 bg-white/8 rounded-full overflow-hidden">
@@ -2358,7 +2358,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
           <div className="flex items-center gap-2">
             <SurgeIndicator location={driverLocation} />
             <div className="bg-[#00ff88]/10 border border-[#00ff88]/25 rounded-lg px-2.5 py-1.5">
-              <span className="text-[#00ff88] font-bold font-mono text-sm">?{balance.toFixed(2)}</span>
+              <span className="text-[#00ff88] font-bold font-mono text-sm">GEL {balance.toFixed(2)}</span>
             </div>
 
             {registrationStatus === "approved" && (
@@ -2482,12 +2482,12 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     </span>
                     {midTripWaiting && (
                       <p className="text-amber-400 text-xs mt-0.5 font-mono">
-                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} ? ?{((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
+                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} ? GEL {((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
                       </p>
                     )}
                   </div>
                   <span className={`text-2xl font-bold font-mono transition-colors ${midTripWaiting ? "text-amber-400" : "text-[#00ff88]"}`}>
-                    ?{(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "?"}
+                    GEL {(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "?"}
                   </span>
                 </div>
 
@@ -2501,7 +2501,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     }`}>
                     {midTripWaiting
                       ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting ? resume trip</>
-                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (?{(PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50).toFixed(2)}/min)</>
+                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (GEL {(PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50).toFixed(2)}/min)</>
                     }
                   </button>
                 )}
@@ -2640,8 +2640,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                               )}
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="text-2xl font-bold font-mono text-[#00ff88]">?{ride.estimated_fare?.toFixed(2)}</p>
-                              <p className="text-white/40 text-xs">you get ?{driverCut.toFixed(2)}</p>
+                              <p className="text-2xl font-bold font-mono text-[#00ff88]">GEL {ride.estimated_fare?.toFixed(2)}</p>
+                              <p className="text-white/40 text-xs">you get GEL {driverCut.toFixed(2)}</p>
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -2682,7 +2682,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                         <p className="text-white/40 text-xs">? {ride.destination || "Open"}</p>
                         <p className="text-[#00d4ff] text-xs mt-1">?? {ride.distance_to_pickup?.toFixed(1)} km</p>
                       </div>
-                      <p className="text-[#00ff88] font-bold font-mono">?{ride.estimated_fare?.toFixed(2)}</p>
+                      <p className="text-[#00ff88] font-bold font-mono">GEL {ride.estimated_fare?.toFixed(2)}</p>
                     </div>
                     <Button className="w-full bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] font-bold h-10 text-sm"
                       onClick={async () => {
@@ -2704,11 +2704,11 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 <div className="grid grid-cols-2 gap-3">
                   <GlassCard accent className="p-4 text-center">
                     <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
-                    <p className="text-3xl font-bold font-mono text-[#00ff88]">?{balance.toFixed(2)}</p>
+                    <p className="text-3xl font-bold font-mono text-[#00ff88]">GEL {balance.toFixed(2)}</p>
                   </GlassCard>
                   <GlassCard className="p-4 text-center">
                     <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Total Earned</p>
-                    <p className="text-3xl font-bold font-mono text-white">?{totalEarned.toFixed(2)}</p>
+                    <p className="text-3xl font-bold font-mono text-white">GEL {totalEarned.toFixed(2)}</p>
                   </GlassCard>
                   <StatPill label="Commission Paid" value={`?${commissionPaid.toFixed(2)}`} color="text-red-400" />
                   <StatPill label="Withdrawn" value={`?${totalWithdrawn.toFixed(2)}`} color="text-white/60" />
@@ -2823,7 +2823,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-[#00ff88] font-bold font-mono">
-                          ?{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "?")}
+                          GEL {r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "?")}
                         </p>
                         <p className="text-white/30 text-xs capitalize">{r.carType || r.car_type || "?"}</p>
                       </div>
