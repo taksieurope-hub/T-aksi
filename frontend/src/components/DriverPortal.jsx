@@ -1,4 +1,5 @@
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+const FeedbackPanel = React.lazy(() => import("@/components/Feedbackpanel"));
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
