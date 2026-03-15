@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
@@ -2336,6 +2336,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       </div>
 
       {/* HEADER */}
+      {/* HEADER */}
       <header className="absolute top-0 left-0 right-0 z-50 bg-[#07070f]/85 backdrop-blur-2xl border-b border-white/6">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
@@ -2353,15 +2354,21 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
 
           <div className="flex items-center gap-2">
             <SurgeIndicator location={driverLocation} />
+            
+            {/* Language Selector added here */}
+            <LanguageSelector variant="ghost" />
+
             <div className="bg-[#00ff88]/10 border border-[#00ff88]/25 rounded-lg px-2.5 py-1.5">
               <span className="text-[#00ff88] font-bold font-mono text-sm">?{balance.toFixed(2)}</span>
             </div>
+
             {registrationStatus === "approved" && (
               <button onClick={() => handleToggleOnline(!isOnline)}
                 className={`relative w-14 h-7 rounded-full transition-colors duration-300 border ${isOnline ? "bg-[#00ff88]/25 border-[#00ff88]/50" : "bg-white/8 border-white/15"}`}>
                 <div className={`absolute top-0.5 w-6 h-6 rounded-full transition-transform duration-300 shadow-lg ${isOnline ? "translate-x-7 bg-[#00ff88]" : "translate-x-0.5 bg-white/40"}`} />
               </button>
             )}
+
             <button onClick={logout} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-red-400 transition-colors">
               <LogOut className="w-4 h-4" />
             </button>
@@ -2372,7 +2379,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
           <div className="px-4 pb-2 flex items-center gap-2 text-[10px] text-[#00ff88]/50">
             <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
             GPS Active ? {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
-            {driverLocation.speed != null && <span>? {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
+            {driverLocation.speed != null && <span> ? {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
           </div>
         )}
       </header>
