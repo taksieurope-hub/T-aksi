@@ -1,4 +1,4 @@
-// src/i18n/LanguageSelector.jsx
+﻿// src/i18n/LanguageSelector.jsx
 import { useLanguage } from './LanguageContext';
 import { Globe } from 'lucide-react';
 import {
@@ -10,24 +10,24 @@ import {
 import { Button } from "@/components/ui/button";
 
 const flagEmojis = {
-  ka: '????',
-  en: '????',
-  ru: '????',
-  hi: '????',
-  zh: '????',
-  nl: '????',
-  fr: '????',
-  de: '????',
-  pl: '????',
-  af: '????',
-  zu: '????',
-  xh: '????'
+  ka: '🇬🇪',
+  en: '🇺🇸',
+  ru: '🇷🇺',
+  hi: '🇮🇳',
+  zh: '🇨🇳',
+  nl: '🇳🇱',
+  fr: '🇫🇷',
+  de: '🇩🇪',
+  pl: '🇵🇱',
+  af: '🇿🇦',
+  zu: '🇿🇦',
+  xh: '🇿🇦'
 };
 
 const LanguageSelector = ({ variant = "default" }) => {
   const { language, setLanguage, languages, t } = useLanguage();
 
-  const flag = flagEmojis[language] || '??';
+  const flag = flagEmojis[language] || '🌐';
 
   return (
     <DropdownMenu>
