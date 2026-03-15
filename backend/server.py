@@ -1073,6 +1073,19 @@ def calculate_fare(
 # =========================
 
 @app.get("/api/health", tags=["System"])
+@app.post("/feedback")
+async def submit_feedback(req: Request, user_id: str = Depends(get_current_user)):
+    data = await req.json()
+    db.collection("feedback").add({
+        "user_id": user_id,
+        "user_type": data.get("user_type", "rider"),
+        "nps": data.get("nps"),
+        "category": data.get("category"),
+        "stars": data.get("stars"),
+        "comment": data.get("comment", ""),
+        "created_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"status": "ok"}
 async def health_check():
     return {"status": "ok", "timestamp": now_iso()}
 
