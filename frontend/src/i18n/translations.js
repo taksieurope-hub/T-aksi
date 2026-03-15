@@ -529,7 +529,7 @@ export const translations = {
     payment_processed: "Payment processed automatically",
     thank_your_driver: "Thank your driver",
     rate_your_driver: "Rate your driver",
-    maybe_later: "Maybe later",,
+    maybe_later: "Maybe later",
     "pilot_login": "Driver Login",
     "become_pilot_title": "Become a Driver",
     "register_driver": "Register as Driver",
