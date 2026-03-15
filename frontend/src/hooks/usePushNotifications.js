@@ -71,7 +71,7 @@ export function usePushNotifications(user, onForegroundMessage) {
         // 4. Send token to backend (only if it's new)
         const storedToken = localStorage.getItem('fcm_token');
         if (token !== storedToken) {
-          await axios.post('/api/user/fcm-token', { fcm_token: token });
+          await axios.post('/api/users/fcm-token', { fcm_token: token });
           localStorage.setItem('fcm_token', token);
         }
 
