@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from contextlib import asynccontextmanager
 import math
 import os
@@ -31,7 +31,7 @@ import secrets
 
 load_dotenv()
 
-# ─── SECURE COOKIE SETTINGS ───
+# --- SECURE COOKIE SETTINGS ---
 COOKIE_NAME = "token"
 COOKIE_MAX_AGE = 7 * 24 * 3600
 COOKIE_SECURE = True
@@ -76,11 +76,11 @@ JWT_SECRET = os.environ.get("JWT_SECRET")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 
 if not JWT_SECRET or JWT_SECRET == "taksi_galactic_secret_2025_secure_key":
-    print("🚨 FATAL ERROR: JWT_SECRET is missing or insecure! Shutting down.")
+    print("?? FATAL ERROR: JWT_SECRET is missing or insecure! Shutting down.")
     sys.exit(1)
 
 if not ADMIN_PASSWORD:
-    print("🚨 FATAL ERROR: ADMIN_PASSWORD is missing! Shutting down.")
+    print("?? FATAL ERROR: ADMIN_PASSWORD is missing! Shutting down.")
     sys.exit(1)
 
 JWT_ALGORITHM = "HS256"
@@ -98,7 +98,7 @@ else:
 
 FIREBASE_STORAGE_BUCKET = os.environ.get("FIREBASE_STORAGE_BUCKET", "")
 
-# ─── FIX: FRONTEND_URL env var controls share links ───────────────────────────
+# --- FIX: FRONTEND_URL env var controls share links ---------------------------
 # Set FRONTEND_URL=https://t-aksi-frontend.onrender.com in Render environment vars
 # Default is the onrender domain so it works without any config change
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://t-aksi-frontend.onrender.com")
@@ -118,12 +118,12 @@ def init_firebase():
         if os.path.exists(render_secret_path):
             cred = credentials.Certificate(render_secret_path)
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
-            logger.info("✅ Firebase initialized from Render Secret File.")
+            logger.info("? Firebase initialized from Render Secret File.")
             return
         if SERVICE_ACCOUNT_PATH.exists():
             cred = credentials.Certificate(str(SERVICE_ACCOUNT_PATH))
             firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_STORAGE_BUCKET})
-            logger.info(f"✅ Firebase initialized from local file: {SERVICE_ACCOUNT_PATH}")
+            logger.info(f"? Firebase initialized from local file: {SERVICE_ACCOUNT_PATH}")
             return
         firebase_admin.initialize_app()
         logger.warning("Firebase Admin initialized using default credentials.")
@@ -357,7 +357,7 @@ async def upload_file_to_storage(file: UploadFile, path: str) -> Optional[str]:
     if not file:
         return None
     if not FIREBASE_STORAGE_BUCKET:
-        logger.warning("FIREBASE_STORAGE_BUCKET not set — file upload skipped")
+        logger.warning("FIREBASE_STORAGE_BUCKET not set � file upload skipped")
         return None
     try:
         bucket = storage.bucket()
@@ -513,7 +513,7 @@ async def _check_and_dispatch_scheduled_rides():
 
             send_push_notification(
                 rider_id,
-                title="Your Scheduled Ride is Starting 🚕",
+                title="Your Scheduled Ride is Starting ??",
                 body=f"We're finding you a driver now. Pickup: {data.get('pickup_address', '')}",
                 data={"type": "scheduled_ride_dispatched", "ride_id": ride_ref.id},
             )
@@ -569,7 +569,7 @@ app.add_middleware(
 )
 
 
-# ─── FIX: Security headers middleware ─────────────────────────────────────────
+# --- FIX: Security headers middleware -----------------------------------------
 # Adds all 4 headers that were MISSING in the PWA audit report:
 #   Content-Security-Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy
 @app.middleware("http")
@@ -821,7 +821,7 @@ class FavoriteLocation(BaseModel):
     address: str
     lat: float
     lng: float
-    icon: Optional[str] = "📍"
+    icon: Optional[str] = "??"
 
 
 class ReferralApplyRequest(BaseModel):
@@ -1188,11 +1188,11 @@ async def register_driver(data: UserRegister, response: Response, x_phone_verifi
     token = create_token(user_ref.id, "driver")
     set_auth_cookie(response, token)
     
-    # ✅ Strip out password AND both timestamp sentinels
+    # ? Strip out password AND both timestamp sentinels
     safe_user = {k: v for k, v in user_data.items() if k not in ["password_hash", "created_at", "updated_at"]}
     safe_user["id"] = user_ref.id
     safe_user["created_at"] = now_iso()
-    safe_user["updated_at"] = now_iso() # ✅ Safely added back as text
+    safe_user["updated_at"] = now_iso() # ? Safely added back as text
     
     return {"token": token, "user": safe_user}
 
@@ -1229,7 +1229,7 @@ async def send_otp(req: OTPSendRequest):
     if not phone_norm:
         raise HTTPException(422, "Invalid phone number")
 
-    # 🛑 TEMPORARY BYPASS: Hardcode the OTP to "1111"
+    # ?? TEMPORARY BYPASS: Hardcode the OTP to "1111"
     code = _generate_otp()
     expires_at = datetime.now(timezone.utc).timestamp() + OTP_TTL_SECONDS
 
@@ -1241,7 +1241,7 @@ async def send_otp(req: OTPSendRequest):
         "created_at": firestore.SERVER_TIMESTAMP,
     })
 
-    # 🛑 TEMPORARY BYPASS: Comment out the real SMS sender
+    # ?? TEMPORARY BYPASS: Comment out the real SMS sender
     _send_otp_code(phone_norm, code)
 
     return {"status": "sent", "expires_in": OTP_TTL_SECONDS}
@@ -1442,7 +1442,7 @@ async def trigger_sos(req: SOSRequest, user_id: Optional[str] = Depends(get_curr
     }
     sos_ref.set(sos_data)
 
-    logger.warning(f"🚨 SOS triggered by {user_name} ({user_phone}) at {req.lat},{req.lng}")
+    logger.warning(f"?? SOS triggered by {user_name} ({user_phone}) at {req.lat},{req.lng}")
     return {"message": "SOS alert sent. Support team has been notified.", "alert_id": sos_ref.id}
 
 
@@ -1624,7 +1624,7 @@ async def approve_driver(driver_id: str, admin_id: str = Depends(get_admin_user)
     })
     send_push_notification(
         driver_id,
-        title="Account Approved! 🎉",
+        title="Account Approved! ??",
         body="Your driver account has been approved. You can now go online and accept rides.",
         data={"type": "account_approved"},
     )
@@ -1742,8 +1742,8 @@ async def approve_withdrawal(withdrawal_id: str, admin_id: str = Depends(get_adm
     if driver_id:
         send_push_notification(
             driver_id,
-            title="Withdrawal Approved ✅",
-            body=f"Your withdrawal of ₾{data.get('amount', 0):.2f} has been approved.",
+            title="Withdrawal Approved ?",
+            body=f"Your withdrawal of ?{data.get('amount', 0):.2f} has been approved.",
             data={"type": "withdrawal_approved"},
         )
     return {"message": "Withdrawal approved"}
@@ -1841,11 +1841,11 @@ async def approve_topup(topup_id: str, admin_id: str = Depends(get_admin_user)):
     if driver_id:
         send_push_notification(
             driver_id,
-            title="Top-up Approved ✅",
-            body=f"₾{amount:.2f} has been added to your wallet.",
+            title="Top-up Approved ?",
+            body=f"?{amount:.2f} has been added to your wallet.",
             data={"type": "topup_approved", "amount": str(amount)},
         )
-    return {"message": f"Top-up of ₾{amount:.2f} approved and credited"}
+    return {"message": f"Top-up of ?{amount:.2f} approved and credited"}
 
 
 @app.post("/api/admin/topups/{topup_id}/reject", tags=["Admin"])
@@ -1908,11 +1908,11 @@ async def admin_add_balance(
 
     send_push_notification(
         user_id,
-        title="Balance Updated 💳",
-        body=f"₾{req.amount:.2f} has been added to your account. Reason: {req.reason}",
+        title="Balance Updated ??",
+        body=f"?{req.amount:.2f} has been added to your account. Reason: {req.reason}",
         data={"type": "balance_added", "amount": str(req.amount)},
     )
-    return {"message": f"₾{req.amount:.2f} added to {user_type} account"}
+    return {"message": f"?{req.amount:.2f} added to {user_type} account"}
 
 
 @app.post("/api/admin/dispute/refund", tags=["Admin"])
@@ -1937,8 +1937,8 @@ async def admin_dispute_refund(req: AdminRefundRequest, admin_id: str = Depends(
             })
             send_push_notification(
                 req.rider_id,
-                title="Refund Processed ✅",
-                body=f"₾{req.amount:.2f} has been refunded to your wallet.",
+                title="Refund Processed ?",
+                body=f"?{req.amount:.2f} has been refunded to your wallet.",
                 data={"type": "refund", "amount": str(req.amount)},
             )
 
@@ -1951,7 +1951,7 @@ async def admin_dispute_refund(req: AdminRefundRequest, admin_id: str = Depends(
         "created_at": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": f"Refund of ₾{req.amount:.2f} processed"}
+    return {"message": f"Refund of ?{req.amount:.2f} processed"}
 
 
 @app.get("/api/admin/rides", tags=["Admin"])
@@ -2134,7 +2134,7 @@ async def driver_topup_paypal(req: PayPalTopUpRequest, user_id: Optional[str] = 
     if req.vault_id:
         _save_card_vault(db, user_id, req.vault_id, req.card_last4, req.card_brand)
 
-    return {"message": f"Successfully added ₾{req.amount:.2f} to wallet"}
+    return {"message": f"Successfully added ?{req.amount:.2f} to wallet"}
 
 
 @app.post("/api/driver/vehicle", tags=["Driver"])
@@ -2279,7 +2279,7 @@ async def request_topup(request: TopUpRequest, user_id: Optional[str] = Depends(
     topup_ref.set(topup_data)
 
     return {
-        "message": f"Top-up request for ₾{request.amount} submitted",
+        "message": f"Top-up request for ?{request.amount} submitted",
         "request_id": topup_ref.id,
         "amount": request.amount,
         "payment_link": "https://egreve.bog.ge//Taksi",
@@ -2317,8 +2317,8 @@ async def request_withdrawal(req: WithdrawRequest, user_id: Optional[str] = Depe
         max_withdrawal = max(0.0, earnings - MINIMUM_RESERVE - WITHDRAWAL_FEE)
         raise HTTPException(
             400,
-            f"Insufficient funds. Must keep ₾{MINIMUM_RESERVE:.2f} reserve + ₾{WITHDRAWAL_FEE:.2f} fee. "
-            f"Max withdrawal: ₾{max_withdrawal:.2f}",
+            f"Insufficient funds. Must keep ?{MINIMUM_RESERVE:.2f} reserve + ?{WITHDRAWAL_FEE:.2f} fee. "
+            f"Max withdrawal: ?{max_withdrawal:.2f}",
         )
 
     driver_ref.update({update_field: firestore.Increment(-total_deduction)})
@@ -2336,7 +2336,7 @@ async def request_withdrawal(req: WithdrawRequest, user_id: Optional[str] = Depe
         "created_at": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": f"Withdrawal of ₾{req.amount:.2f} requested. ₾{WITHDRAWAL_FEE:.2f} fee applied."}
+    return {"message": f"Withdrawal of ?{req.amount:.2f} requested. ?{WITHDRAWAL_FEE:.2f} fee applied."}
 
 
 @app.get("/api/driver/rides/available", tags=["Driver"])
@@ -2563,7 +2563,7 @@ async def request_to_join_ride(ride_id: str, user_id: Optional[str] = Depends(ge
     driver_balance = driver_data.get("earnings", {}).get("balance", 0)
 
     if driver_balance < required_commission:
-        raise HTTPException(400, f"Insufficient balance. Need ₾{required_commission:.2f}")
+        raise HTTPException(400, f"Insufficient balance. Need ?{required_commission:.2f}")
 
     db.collection("rides").document(ride_id).update({
         "notified_drivers": firestore.ArrayUnion([user_id])
@@ -2613,10 +2613,10 @@ async def get_driver_campaigns(user_id: Optional[str] = Depends(get_current_user
             min_rides = c.get("min_rides", 0)
             if driver_rating < min_rating:
                 eligible = False
-                eligibility_reason = f"Need ≥{min_rating} rating"
+                eligibility_reason = f"Need ={min_rating} rating"
             elif driver_rides < min_rides:
                 eligible = False
-                eligibility_reason = f"Need ≥{min_rides} rides"
+                eligibility_reason = f"Need ={min_rides} rides"
 
             progress_data = None
             if is_joined and doc.id in progress_map:
@@ -2821,7 +2821,7 @@ async def apply_referral_code(req: ReferralApplyRequest, user_id: Optional[str] 
         "created_at": firestore.SERVER_TIMESTAMP,
     }, merge=True)
 
-    return {"message": f"Referral code applied! You received ₾{REFERRED_BONUS:.2f}"}
+    return {"message": f"Referral code applied! You received ?{REFERRED_BONUS:.2f}"}
 
 
 # =========================
@@ -2850,7 +2850,7 @@ async def save_favorite(fav: FavoriteLocation, user_id: Optional[str] = Depends(
         "address": fav.address,
         "lat": fav.lat,
         "lng": fav.lng,
-        "icon": fav.icon or "📍",
+        "icon": fav.icon or "??",
         "created_at": firestore.SERVER_TIMESTAMP,
     })
     return {"id": doc_ref.id, "message": "Location saved"}
@@ -2930,7 +2930,7 @@ async def topup_vaulted(
     db.collection("users").document(user_id).update({
         "wallet_balance": firestore.Increment(amount_gel)
     })
-    return {"status": "success", "message": f"₾{amount_gel:.2f} added to wallet"}
+    return {"status": "success", "message": f"?{amount_gel:.2f} added to wallet"}
 
 
 @app.post("/api/rider/wallet/topup", tags=["Rider"])
@@ -2982,7 +2982,7 @@ async def rider_topup_paypal(req: PayPalTopUpRequest, user_id: Optional[str] = D
     if req.vault_id:
         _save_card_vault(db, user_id, req.vault_id, req.card_last4, req.card_brand)
 
-    return {"message": f"Successfully added ₾{req.amount:.2f} to wallet"}
+    return {"message": f"Successfully added ?{req.amount:.2f} to wallet"}
 
 
 @app.get("/api/rider/wallet/transactions", tags=["Rider"])
@@ -3396,8 +3396,8 @@ async def match_drivers_to_ride(ride_id: str):
             for driver in selected_drivers:
                 send_push_notification(
                     driver["id"],
-                    title="New Ride Request 🚕",
-                    body=f"Pickup {round(driver['distance'], 1)}km away — ₾{ride_data.get('estimated_fare', 0):.0f}",
+                    title="New Ride Request ??",
+                    body=f"Pickup {round(driver['distance'], 1)}km away � ?{ride_data.get('estimated_fare', 0):.0f}",
                     data={
                         "type": "ride_request",
                         "ride_id": ride_id,
@@ -3464,12 +3464,12 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
     balance = driver_data.get("earnings", {}).get("balance", 0)
     held_commission = (ride_data.get("estimated_fare", 0) or 0) * commission_rate
 
-    # Balance check — driver must have enough to cover commission
+    # Balance check � driver must have enough to cover commission
     if balance < held_commission:
         raise HTTPException(
             400,
-            f"Insufficient balance. Need ₾{held_commission:.2f} to accept this ride. "
-            f"Current balance: ₾{balance:.2f}. Please top up your wallet."
+            f"Insufficient balance. Need ?{held_commission:.2f} to accept this ride. "
+            f"Current balance: ?{balance:.2f}. Please top up your wallet."
         )
 
 
@@ -3519,7 +3519,7 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
         driver_name = f"{driver_data.get('name', '')} {driver_data.get('surname', '')}".strip()
         send_push_notification(
             rider_id,
-            title="Driver Found! 🚗",
+            title="Driver Found! ??",
             body=f"{driver_name} is on the way.",
             data={"type": "ride_accepted", "ride_id": ride_id},
         )
@@ -3557,7 +3557,7 @@ async def driver_arrived(ride_id: str, user_id: Optional[str] = Depends(get_curr
         if rider_id:
             send_push_notification(
                 rider_id,
-                title="Your Driver Has Arrived 📍",
+                title="Your Driver Has Arrived ??",
                 body="Your driver is waiting. Please come down.",
                 data={"type": "driver_arrived", "ride_id": ride_id},
             )
@@ -3668,7 +3668,7 @@ async def mid_trip_wait(
         ride_ref.update({"mid_trip_wait_start": firestore.SERVER_TIMESTAMP})
         return {"message": "Wait timer started"}
 
-    # action == "stop" — bank elapsed time, recalculate fare
+    # action == "stop" � bank elapsed time, recalculate fare
     start_ts = ride_data.get("mid_trip_wait_start")
     elapsed_min = 0.0
 
@@ -3716,7 +3716,7 @@ async def mid_trip_wait(
 async def complete_ride(
     ride_id: str,
     final_distance: Optional[float] = 0.0,
-    total_wait_minutes: Optional[float] = None,   # float — fractional minutes from driver client
+    total_wait_minutes: Optional[float] = None,   # float � fractional minutes from driver client
     dropoff_lat: Optional[float] = None,
     dropoff_lng: Optional[float] = None,
     user_id: Optional[str] = Depends(get_current_user_id),
@@ -3732,12 +3732,12 @@ async def complete_ride(
 
     ride_data = ride_snap.to_dict()
 
-    # ── Distance: use actual GPS-tracked distance, fall back to estimate ──────
+    # -- Distance: use actual GPS-tracked distance, fall back to estimate ------
     estimated_distance = ride_data.get("estimated_distance", 0) or 0
     billing_distance = final_distance if (final_distance and final_distance > 0) else estimated_distance
     recorded_actual_distance = billing_distance
 
-    # ── Wait minutes: trust client value if provided, else read from DB ───────
+    # -- Wait minutes: trust client value if provided, else read from DB -------
     db_pickup_wait = float(ride_data.get("pickup_wait_minutes", 0) or 0)
     db_stop_wait   = float(ride_data.get("stop_wait_minutes", 0) or 0)
 
@@ -3860,8 +3860,8 @@ async def complete_ride(
     if rider_id:
         send_push_notification(
             rider_id,
-            title="Ride Complete ✅",
-            body=f"Your trip has ended. Total: ₾{total_with_fee:.2f}",
+            title="Ride Complete ?",
+            body=f"Your trip has ended. Total: ?{total_with_fee:.2f}",
             data={"type": "ride_completed", "ride_id": ride_id},
         )
 
@@ -4003,7 +4003,7 @@ async def rate_passenger(
     return {"message": "Passenger rated", "rating": rating_data.rating}
 
 
-# ─── FIX: registered on BOTH paths so frontend works regardless of which it calls
+# --- FIX: registered on BOTH paths so frontend works regardless of which it calls
 @app.post("/api/rides/{ride_id}/rate-driver", tags=["Rides"])
 @app.post("/api/rides/{ride_id}/rate/driver", tags=["Rides"])
 async def rate_driver(
@@ -4037,7 +4037,7 @@ async def rate_driver(
     return {"message": "Driver rated successfully"}
 
 
-# ─── FIX 1: CHAT — sender_role saved with every message ───────────────────────
+# --- FIX 1: CHAT � sender_role saved with every message -----------------------
 # Each message now stores sender_role = "rider" or "driver"
 # Frontend uses this field to align chat bubbles (left = other, right = you)
 # FCM push notification sent to the OTHER party so they get notified
@@ -4060,11 +4060,11 @@ async def send_chat_message(
     if user_id == rider_id:
         sender_role = "rider"
         recipient_id = driver_id
-        notification_title = "Message from your rider 💬"
+        notification_title = "Message from your rider ??"
     elif user_id == driver_id:
         sender_role = "driver"
         recipient_id = rider_id
-        notification_title = "Message from your driver 💬"
+        notification_title = "Message from your driver ??"
     else:
         raise HTTPException(403, "You are not a participant in this ride")
 
@@ -4072,7 +4072,7 @@ async def send_chat_message(
     message_doc = {
         "ride_id":     ride_id,
         "sender_id":   user_id,
-        "sender_role": sender_role,   # ← "rider" or "driver" — frontend uses this
+        "sender_role": sender_role,   # ? "rider" or "driver" � frontend uses this
         "message":     msg.message,
         "timestamp":   firestore.SERVER_TIMESTAMP,
         "read":        False,
@@ -4152,9 +4152,9 @@ async def send_tip(
     return {"message": "Tip processed"}
 
 
-# ─── FIX 2: SHARE RIDE — uses FRONTEND_URL instead of hardcoded taksi.ge ──────
+# --- FIX 2: SHARE RIDE � uses FRONTEND_URL instead of hardcoded taksi.ge ------
 # The old code had: share_link = f"https://taksi.ge/track/{ride_id}"
-# taksi.ge/track doesn't exist → "server cannot be found" error on the recipient's phone
+# taksi.ge/track doesn't exist ? "server cannot be found" error on the recipient's phone
 # Now uses FRONTEND_URL env var (defaults to t-aksi-frontend.onrender.com)
 # To override: set FRONTEND_URL=https://taksi.ge in your Render environment variables
 @app.post("/api/rides/{ride_id}/share", tags=["Rides"])
