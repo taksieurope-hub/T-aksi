@@ -928,15 +928,15 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
   const [view, setView] = useState("menu");
 
   const menuItems = [
-    { id: "campaigns", label: "Campaigns",  icon: Award,      desc: "Challenges & bonuses",  color: "text-yellow-400",  bg: "bg-yellow-400/10", border: "border-yellow-400/20" },
-    { id: "fleet",     label: "Fleet",      icon: Truck,      desc: "Manage your vehicles",  color: "text-blue-400",    bg: "bg-blue-400/10",   border: "border-blue-400/20" },
-    { id: "referrals", label: "Referrals",  icon: Gift,       desc: "Invite & earn",         color: "text-purple-400",  bg: "bg-purple-400/10", border: "border-purple-400/20" },
-    { id: "support",   label: "Support",    icon: Headphones, desc: "Get help",              color: "text-[#00d4ff]",   bg: "bg-[#00d4ff]/10",  border: "border-[#00d4ff]/20" },
+    { id: "campaigns", label: t("campaigns"),  icon: Award,      desc: t("campaigns_subtitle"),  color: "text-yellow-400",  bg: "bg-yellow-400/10", border: "border-yellow-400/20" },
+    { id: "fleet",     label: t("fleet_management"),      icon: Truck,      desc: t("fleet_subtitle"),  color: "text-blue-400",    bg: "bg-blue-400/10",   border: "border-blue-400/20" },
+    { id: "referrals", label: t("referrals"),  icon: Gift,       desc: t("invite_friend_desc"),         color: "text-purple-400",  bg: "bg-purple-400/10", border: "border-purple-400/20" },
+    { id: "support",   label: t("support"),    icon: Headphones, desc: t("support_subtitle"),              color: "text-[#00d4ff]",   bg: "bg-[#00d4ff]/10",  border: "border-[#00d4ff]/20" },
     { 
   id: "feedback", 
-  label: "Feedback", 
+  label: t("feedback"), 
   icon: ThumbsUp, 
-  desc: "Share your thoughts", 
+  desc: t("describe_issue"), 
   color: "text-[#00ff88]", 
   bg: "bg-[#00ff88]/10", 
   border: "border-[#00ff88]/20" 
@@ -965,7 +965,7 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
           </button>
         ))}
       <div className="bg-white/3 border border-white/8 rounded-2xl p-4 flex items-center justify-between mb-3">
-        <p className="text-white font-semibold text-sm">Language</p>
+        <p className="text-white font-semibold text-sm">{t("language")}</p>
         <LanguageSelector variant="ghost" />
       </div>
       </div>
@@ -977,8 +977,8 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
               <Shield className="w-5 h-5 text-red-400" />
             </div>
             <div>
-              <p className="text-white font-semibold text-sm">Emergency SOS</p>
-              <p className="text-white/40 text-xs">Alert support instantly</p>
+              <p className="text-white font-semibold text-sm">{t("emergency_sos")}</p>
+              <p className="text-white/40 text-xs">{t("alert_support_instantly")}</p>
             </div>
           </div>
           <SOSButton activeRide={activeRide} location={driverLocation} />
@@ -2309,11 +2309,11 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   };
 
   const tabs = [
-    { id: "rides",    icon: Activity,  label: "Rides"   },
-    { id: "nearby",   icon: Crosshair, label: "Nearby"  },
-    { id: "earnings", icon: Wallet,    label: "Wallet"  },
-    { id: "history",  icon: History,   label: "History" },
-    { id: "more",     icon: Settings,  label: "More"    },
+    { id: "rides",    icon: Activity,  label: t("rides")   },
+    { id: "nearby",   icon: Crosshair, label: t("nearby")  },
+    { id: "earnings", icon: Wallet,    label: t("wallet")  },
+    { id: "history",  icon: History,   label: t("history") },
+    { id: "more",     icon: Settings,  label: t("more")    },
   ];
 
   const rideStatusConfig = {
@@ -2609,8 +2609,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                     <div className="w-16 h-16 rounded-2xl bg-[#00d4ff]/5 flex items-center justify-center mx-auto mb-3">
                       <Navigation className="w-8 h-8 text-[#00d4ff]/40 animate-pulse" />
                     </div>
-                    <p className="text-white font-semibold">Searching for rides...</p>
-                    <p className="text-white/30 text-sm mt-1">New requests will appear automatically</p>
+                    <p className="text-white font-semibold">{t("searching_for_rides")}</p>
+                    <p className="text-white/30 text-sm mt-1">{t("new_requests_will_appear")}</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -2727,8 +2727,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                   <GlassCard className="p-4 space-y-3">
                     <p className="text-white/40 text-[10px] uppercase tracking-widest">Commission Breakdown</p>
                     {[
-                      ["Platform cut", `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
-                      ["Your share",   `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
+                      [t("platform_cut"), `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
+                      [t("your_share"),   `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
                       ["Surge commission", "23?24%", "text-orange-400"],
                     ].map(([l,v,c]) => (
                       <div key={l} className="flex justify-between items-center">
