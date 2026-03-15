@@ -1912,7 +1912,9 @@ const [promoApplied, setPromoApplied] = useState(false);
                       <div className={`text-[10px] font-semibold leading-tight ${active ? "text-[#00ff88]" : "text-white/50"}`}>{type.name}</div>
                       <div className={`text-[10px] mt-0.5 font-mono ${active ? "text-[#00ff88]/70" : "text-white/30"}`}>
   ₾{est.toFixed(2)}
-  <div className="mt-0.5"><CurrencyConverter gelAmount={est} /></div>
+</div>
+<div className={`text-[9px] leading-tight break-all ${active ? "text-[#00ff88]/50" : "text-white/20"}`}>
+  <CurrencyConverter gelAmount={est} compact />
 </div>
                     </button>
                   );
