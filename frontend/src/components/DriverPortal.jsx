@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
@@ -3006,5 +3006,3 @@ const DriverPortal = () => {
 };
 
 export default DriverPortal;
-/ /   i 1 8 n   u p d a t e d  
- 
