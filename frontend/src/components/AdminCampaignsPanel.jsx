@@ -365,7 +365,7 @@ const AdminCampaignsPanel = () => {
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="e.g., Weekend Warrior"
-                className="bg-background-secondary border-border text-white"
+                className="bg-black/50 border-white/10 text-white placeholder:text-white/30"
               />
             </div>
 
@@ -375,7 +375,7 @@ const AdminCampaignsPanel = () => {
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Describe the campaign goal and reward..."
-                className="bg-background-secondary border-border text-white"
+                className="bg-black/50 border-white/10 text-white placeholder:text-white/30"
                 rows={2}
               />
             </div>
@@ -387,7 +387,7 @@ const AdminCampaignsPanel = () => {
                   value={formData.campaign_type}
                   onValueChange={(v) => setFormData({ ...formData, campaign_type: v })}
                 >
-                  <SelectTrigger className="bg-background-secondary border-border text-white">
+                  <SelectTrigger className="bg-black/50 border-white/10 text-white placeholder:text-white/30">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-background-secondary border-border">
@@ -428,7 +428,7 @@ const AdminCampaignsPanel = () => {
                   type="number"
                   value={formData.target_value}
                   onChange={(e) => setFormData({ ...formData, target_value: parseFloat(e.target.value) })}
-                  className="bg-background-secondary border-border text-white"
+                  className="bg-black/50 border-white/10 text-white placeholder:text-white/30"
                 />
                 <p className="text-xs text-muted-foreground">
                   {formData.campaign_type === "rides_count"    && "Number of rides to complete"}
@@ -443,7 +443,7 @@ const AdminCampaignsPanel = () => {
                   type="number"
                   value={formData.bonus_amount}
                   onChange={(e) => setFormData({ ...formData, bonus_amount: parseFloat(e.target.value) })}
-                  className="bg-background-secondary border-border text-white"
+                  className="bg-black/50 border-white/10 text-white placeholder:text-white/30"
                 />
               </div>
             </div>
@@ -455,7 +455,7 @@ const AdminCampaignsPanel = () => {
                   type="date"
                   value={formData.start_date}
                   onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                  className="bg-background-secondary border-border text-white"
+                  className="bg-black/50 border-white/10 text-white placeholder:text-white/30"
                 />
               </div>
               <div className="space-y-2">
@@ -464,7 +464,7 @@ const AdminCampaignsPanel = () => {
                   type="date"
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                  className="bg-background-secondary border-border text-white"
+                  className="bg-black/50 border-white/10 text-white placeholder:text-white/30"
                 />
               </div>
             </div>
@@ -480,7 +480,7 @@ const AdminCampaignsPanel = () => {
                   value={formData.min_rating || ""}
                   onChange={(e) => setFormData({ ...formData, min_rating: parseFloat(e.target.value) || null })}
                   placeholder="e.g., 4.5"
-                  className="bg-background-secondary border-border text-white"
+                  className="bg-black/50 border-white/10 text-white placeholder:text-white/30"
                 />
               </div>
             )}
