@@ -177,7 +177,7 @@ const RatingModal = ({
               placeholder={t('add_comment') || "Add a comment (optional)"}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              className="bg-white/8 border-white/15 text-white placeholder:text-white/30 resize-none focus-visible:ring-[#00ff88]/30 focus-visible:border-[#00ff88]/40"
+              className="bg-black/40 border-white/15 text-white placeholder:text-white/30 resize-none focus-visible:ring-[#00ff88]/30 focus-visible:border-[#00ff88]/40"
               rows={3}
             />
           )}
