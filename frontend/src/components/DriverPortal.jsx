@@ -1005,7 +1005,19 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
       return;
     }
     watchIdRef.current = navigator.geolocation.watchPosition(
-      pos => { lastLocationRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: pos.coords.heading, speed: pos.coords.speed }; },
+      pos => {
+        const newLat = pos.coords.latitude;
+        const newLng = pos.coords.longitude;
+        const prev = lastLocationRef.current;
+        let heading = pos.coords.heading;
+        if (prev && Math.abs(newLat - prev.lat) + Math.abs(newLng - prev.lng) > 0.00005) {
+          const dLat = newLat - prev.lat;
+          const dLng = newLng - prev.lng;
+          const calculated = (Math.atan2(dLng, dLat) * 180 / Math.PI + 360) % 360;
+          heading = (heading != null && !isNaN(heading)) ? heading * 0.3 + calculated * 0.7 : calculated;
+        }
+        lastLocationRef.current = { lat: newLat, lng: newLng, heading: heading || 0, speed: pos.coords.speed };
+      },
       err => {
         console.error("GPS error:", err);
         if (err.code === 1) {
@@ -1300,7 +1312,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     const tick = () => {
       const current = headingRef.current;
-      const next = lerpAngle(current, targetHeading, 0.08); // Smoother easing
+      const next = lerpAngle(current, targetHeading, 0.15); // Smoother easing
       headingRef.current = next;
       mapInstanceRef.current.setHeading(next);
       if (Math.abs(((next - targetHeading + 540) % 360) - 180) > 0.3) {
