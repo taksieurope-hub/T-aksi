@@ -1,4 +1,4 @@
-﻿import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
+import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
 import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -362,7 +362,7 @@ const RatePassengerModal = ({ rideId, riderName, onDone }) => {
         {[1,2,3,4,5].map(s => (
           <button key={s} onClick={() => setRating(s)}
             className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "bg-[#00ff88]/20 border border-[#00ff88] scale-110" : "bg-white/5 border border-white/10"}`}>
-            ⭐
+            ?
           </button>
         ))}
       </div>
