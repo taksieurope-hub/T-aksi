@@ -1257,6 +1257,24 @@ async def verify_firebase_phone(req: Request):
         return {"status": "verified", "phone_token": phone_token, "phone_norm": phone_norm}
     except Exception as e:
         raise HTTPException(400, f"Invalid Firebase token: {str(e)}")
+
+AGORA_APP_ID = "952b4fa249fe44e08b64836a9f6c2a43"
+AGORA_APP_CERTIFICATE = os.environ.get("AGORA_APP_CERTIFICATE", "")
+
+@app.get("/api/agora/token", tags=["Calls"])
+async def get_agora_token(channel: str, user_id: str = Depends(get_current_user_id)):
+    if not AGORA_APP_CERTIFICATE:
+        # No certificate - return app ID only (testing mode)
+        return {"token": AGORA_APP_ID, "app_id": AGORA_APP_ID, "channel": channel}
+    try:
+        from agora_token_builder import RtcTokenBuilder, Role_Publisher
+        expire = int(time.time()) + 3600
+        token = RtcTokenBuilder.buildTokenWithUid(
+            AGORA_APP_ID, AGORA_APP_CERTIFICATE, channel, 0, Role_Publisher, expire
+        )
+        return {"token": token, "app_id": AGORA_APP_ID, "channel": channel}
+    except Exception as e:
+        return {"token": AGORA_APP_ID, "app_id": AGORA_APP_ID, "channel": channel}
 @app.post("/api/auth/otp/send", tags=["Auth"])
 async def send_otp(req: OTPSendRequest):
     db = get_db()

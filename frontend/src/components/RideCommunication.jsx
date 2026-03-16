@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+ï»¿import React, { useState, useEffect, useRef, useCallback } from "react";
+import { startCall, endCall, isCalling } from "@/hooks/useAgoraCall";
 import { Phone, MessageSquare, X, Send, Loader2, CheckCheck, Mic, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +8,7 @@ import { toast } from "sonner";
 
 
 // -------------------------------------------------------------
-// Quick-reply presets — different sets for driver vs rider
+// Quick-reply presets â€” different sets for driver vs rider
 // -------------------------------------------------------------
 const QUICK_REPLIES_DRIVER = [
   "On my way! ??",
@@ -118,6 +119,31 @@ const RideCommunication = ({
   const otherLabel = otherPartyName || (isDriver ? "Rider" : "Driver");
 
   // -- Scroll to bottom -------------------------------------
+  const [isInCall, setIsInCall] = useState(false);
+  const [callStatus, setCallStatus] = useState("");
+
+  const handleCall = async () => {
+    if (isInCall) {
+      await endCall();
+      setIsInCall(false);
+      setCallStatus("");
+    } else {
+      setCallStatus("Connecting...");
+      const result = await startCall(
+        rideId,
+        () => setCallStatus("Connected"),
+        () => { setIsInCall(false); setCallStatus(""); }
+      );
+      if (result.success) {
+        setIsInCall(true);
+        setCallStatus("Connected");
+      } else {
+        setCallStatus("");
+        alert("Call failed: " + result.error);
+      }
+    }
+  };
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
@@ -231,7 +257,7 @@ const RideCommunication = ({
   };
 
   // ---------------------------------------------------------
-  // RENDER — trigger row
+  // RENDER â€” trigger row
   // ---------------------------------------------------------
   return (
     <>
@@ -239,7 +265,7 @@ const RideCommunication = ({
       <div className="flex gap-2 mt-3 w-full">
         {/* Call */}
         <a
-          href={`tel:${otherPartyPhone}`}
+          onClick={handleCall}
           className={`flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border font-semibold text-sm transition-all duration-200 ${accentBorder} ${accentText} hover:${accentBg} hover:text-black active:scale-95`}
           style={{ borderColor: accent, color: accent }}
           onMouseEnter={(e) => { e.currentTarget.style.background = accent; e.currentTarget.style.color = "#000"; }}
@@ -317,13 +343,13 @@ const RideCommunication = ({
                 <div>
                   <p className="text-white font-bold leading-none">{otherLabel}</p>
                   <p className="text-xs mt-0.5" style={{ color: `${accent}90` }}>
-                    {isTyping ? "typing…" : "In ride • Live chat"}
+                    {isTyping ? "typingâ€¦" : "In ride â€¢ Live chat"}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <a
-                  href={`tel:${otherPartyPhone}`}
+                  onClick={handleCall}
                   className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
                   style={{ background: `${accent}18`, color: accent }}
                   title="Call"
@@ -446,7 +472,7 @@ const RideCommunication = ({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Message…"
+                placeholder="Messageâ€¦"
                 className="flex-1 bg-gray-900/80 border border-gray-800 text-white text-sm px-4 h-10 rounded-full outline-none transition-colors placeholder:text-gray-600"
                 style={{ "--focus-ring": accent }}
                 onFocus={(e) => { e.target.style.borderColor = `${accent}60`; }}
