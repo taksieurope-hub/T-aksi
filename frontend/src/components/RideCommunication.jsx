@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Phone, MessageSquare, X, Send, Loader2, CheckCheck, Mic, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,29 +6,29 @@ import api from "@/api";
 import { toast } from "sonner";
 
 
-// ─────────────────────────────────────────────────────────────
-// Quick-reply presets — different sets for driver vs rider
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
+// Quick-reply presets � different sets for driver vs rider
+// -------------------------------------------------------------
 const QUICK_REPLIES_DRIVER = [
-  "On my way! 🚗",
-  "I've arrived ✅",
-  "2 mins away ⏱️",
+  "On my way! ??",
+  "I've arrived ?",
+  "2 mins away ??",
   "Please come outside",
   "I'm in a black car",
   "Wait for me, stuck in traffic",
 ];
 const QUICK_REPLIES_RIDER = [
-  "I'm coming down now 🏃",
-  "Please wait 2 mins ⏱️",
+  "I'm coming down now ??",
+  "Please wait 2 mins ??",
   "I'm at the main entrance",
   "Can't find you, call me?",
   "On my way out!",
-  "Thanks! 👍",
+  "Thanks! ??",
 ];
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Soft notification sound via Web Audio API (no network request)
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 const playPing = () => {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -45,9 +45,9 @@ const playPing = () => {
   } catch (_) {}
 };
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Tiny timestamp formatter
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 const formatTime = (ts) => {
   if (!ts) return "";
   try {
@@ -60,9 +60,9 @@ const formatTime = (ts) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Typing indicator (three bouncing dots)
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 const TypingIndicator = ({ color }) => (
   <div className="flex items-center gap-1 px-3 py-2 bg-gray-800/80 rounded-2xl rounded-tl-none w-fit">
     {[0, 1, 2].map((i) => (
@@ -84,9 +84,9 @@ const TypingIndicator = ({ color }) => (
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // MAIN COMPONENT
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 const RideCommunication = ({
   rideId,
   otherPartyPhone,
@@ -117,7 +117,7 @@ const RideCommunication = ({
   const quickReplies = isDriver ? QUICK_REPLIES_DRIVER : QUICK_REPLIES_RIDER;
   const otherLabel = otherPartyName || (isDriver ? "Rider" : "Driver");
 
-  // ── Scroll to bottom ─────────────────────────────────────
+  // -- Scroll to bottom -------------------------------------
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
@@ -128,14 +128,14 @@ const RideCommunication = ({
     }
   }, [messages.length, isOpen, scrollToBottom]);
 
-  // ── Focus input when opened ───────────────────────────────
+  // -- Focus input when opened -------------------------------
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 150);
     }
   }, [isOpen]);
 
-  // ── Polling ───────────────────────────────────────────────
+  // -- Polling -----------------------------------------------
   const fetchMessages = useCallback(async () => {
     if (!rideId) return;
     try {
@@ -145,7 +145,7 @@ const RideCommunication = ({
       if (newMsgs.length > prevCountRef.current) {
         const diff = newMsgs.length - prevCountRef.current;
         const latest = newMsgs[newMsgs.length - 1];
-        const isMe = String(latest.sender_id) === String(currentUserId);
+        const isMe = latest.sender_id && currentUserId ? String(latest.sender_id) === String(currentUserId) : (isDriver ? latest.sender_type === "driver" : latest.sender_type === "rider");
 
         if (!isMe) {
           playPing();
@@ -154,7 +154,7 @@ const RideCommunication = ({
 
           if (!isOpen) {
             setUnreadCount((c) => c + diff);
-            toast.info(`💬 ${otherLabel}: "${latest.message}"`, {
+            toast.info(`?? ${otherLabel}: "${latest.message}"`, {
               duration: 4000,
               style: { background: "#111", color: "#fff", border: `1px solid ${accent}` },
             });
@@ -179,7 +179,7 @@ const RideCommunication = ({
     return () => clearInterval(pollRef.current);
   }, [fetchMessages]);
 
-  // ── Open / close ──────────────────────────────────────────
+  // -- Open / close ------------------------------------------
   const handleOpen = () => {
     setIsOpen(true);
     setUnreadCount(0);
@@ -191,7 +191,7 @@ const RideCommunication = ({
     setShowQuickReplies(false);
   };
 
-  // ── Send message ──────────────────────────────────────────
+  // -- Send message ------------------------------------------
   const handleSend = async (text) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
@@ -230,12 +230,12 @@ const RideCommunication = ({
     }
   };
 
-  // ─────────────────────────────────────────────────────────
-  // RENDER — trigger row
-  // ─────────────────────────────────────────────────────────
+  // ---------------------------------------------------------
+  // RENDER � trigger row
+  // ---------------------------------------------------------
   return (
     <>
-      {/* ── Trigger buttons ─────────────────────────────── */}
+      {/* -- Trigger buttons ------------------------------- */}
       <div className="flex gap-2 mt-3 w-full">
         {/* Call */}
         <a
@@ -286,7 +286,7 @@ const RideCommunication = ({
         }
       `}</style>
 
-      {/* ── Chat panel ──────────────────────────────────── */}
+      {/* -- Chat panel ------------------------------------ */}
       {isOpen && (
         <div
           className="fixed inset-0 z-[10500] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm"
@@ -317,7 +317,7 @@ const RideCommunication = ({
                 <div>
                   <p className="text-white font-bold leading-none">{otherLabel}</p>
                   <p className="text-xs mt-0.5" style={{ color: `${accent}90` }}>
-                    {isTyping ? "typing…" : "In ride • Live chat"}
+                    {isTyping ? "typing�" : "In ride � Live chat"}
                   </p>
                 </div>
               </div>
@@ -357,7 +357,7 @@ const RideCommunication = ({
               ) : (
                 <>
                   {messages.map((msg, i) => {
-                    const isMe = String(msg.sender_id) === String(currentUserId);
+                    const isMe = msg.sender_id && currentUserId ? String(msg.sender_id) === String(currentUserId) : (isDriver ? msg.sender_type === "driver" : msg.sender_type === "rider");
                     const showTime = i === 0 ||
                       formatTime(msg.timestamp) !== formatTime(messages[i - 1]?.timestamp);
 
@@ -446,7 +446,7 @@ const RideCommunication = ({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Message…"
+                placeholder="Message�"
                 className="flex-1 bg-gray-900/80 border border-gray-800 text-white text-sm px-4 h-10 rounded-full outline-none transition-colors placeholder:text-gray-600"
                 style={{ "--focus-ring": accent }}
                 onFocus={(e) => { e.target.style.borderColor = `${accent}60`; }}
