@@ -324,7 +324,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 41.7151, lng: 44.8271 }, zoom: 15,
-      disableDefaultUI: true, zoomControl: false, gestureHandling: "greedy", backgroundColor: "#0d0d1a",
+      disableDefaultUI: true, zoomControl: false, gestureHandling: "cooperative", backgroundColor: "#0d0d1a",
       styles: [
         { elementType: "geometry", stylers: [{ color: "#0d0d1a" }] },
         { elementType: "labels.text.stroke", stylers: [{ color: "#0d0d1a" }] },

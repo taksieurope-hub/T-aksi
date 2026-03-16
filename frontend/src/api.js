@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import { tokenStorage } from './config'; // Make sure this path is correct for your app
 
 // Your dynamic URL configuration - robust and perfectly handles the slashes
@@ -32,8 +32,8 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      const isTripRoute = error.config.url?.includes('/trips/');
-      if (!isTripRoute) {
+      const isTripRoute = error.config.url?.includes('/trips/') || error.config.url?.includes('/messages') || error.config.url?.includes('/chat') || error.config.url?.includes('/ride_messages');
+      if (!skipLogout) {
         window.dispatchEvent(new CustomEvent('auth:expired'));
       }
     }
