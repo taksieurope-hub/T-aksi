@@ -487,7 +487,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
 
       {/* ETA pill */}
       {etaSeconds != null && etaSeconds > 0 && status !== "preview" && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
           <div className="bg-[#07070f]/90 backdrop-blur-sm px-4 py-2 rounded-full border border-[#00d4ff]/30 flex items-center gap-2 shadow-xl">
             <Timer className="w-3.5 h-3.5 text-[#00d4ff]" />
             <span className="text-[#00d4ff] font-bold text-sm font-mono">{fmtEta(etaSeconds)}</span>
