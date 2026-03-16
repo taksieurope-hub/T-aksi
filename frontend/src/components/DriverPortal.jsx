@@ -1921,6 +1921,10 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const [topupAmount, setTopupAmount] = useState("");
 
   const balance = user?.earnings?.balance ?? user?.wallet_balance ?? 0;
+  const signupBonus = user?.earnings?.signup_bonus ?? 0;
+  const signupBonusUsed = user?.earnings?.signup_bonus_used ?? 0;
+  const remainingBonus = Math.max(0, signupBonus - signupBonusUsed);
+  const withdrawableBalance = Math.max(0, balance - remainingBonus);
   const totalEarned = user?.earnings?.total_earned ?? 0;
   const totalWithdrawn = user?.earnings?.total_withdrawn ?? 0;
   const commissionPaid = user?.earnings?.total_commission_paid ?? 0;

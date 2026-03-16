@@ -1201,6 +1201,18 @@ async def register_driver(data: UserRegister, response: Response, x_phone_verifi
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP,
     }
+    # Signup bonus tier
+    total_registered = len(list(db.collection("users").where("user_type", "==", "driver").stream()))
+    if total_registered < 10:
+        signup_bonus = 50.0
+    elif total_registered < 50:
+        signup_bonus = 20.0
+    elif total_registered < 100:
+        signup_bonus = 10.0
+    else:
+        signup_bonus = 0.0
+    user_data["earnings"]["signup_bonus"] = signup_bonus
+    user_data["earnings"]["signup_bonus_used"] = 0.0
     user_ref.set(user_data)
 
     token = create_token(user_ref.id, "driver")
@@ -2421,9 +2433,13 @@ async def request_withdrawal(req: WithdrawRequest, user_id: Optional[str] = Depe
     WITHDRAWAL_FEE = 1.0
     MINIMUM_RESERVE = 5.0
     total_deduction = req.amount + WITHDRAWAL_FEE
+    signup_bonus = data.get("earnings", {}).get("signup_bonus", 0.0)
+    signup_bonus_used = data.get("earnings", {}).get("signup_bonus_used", 0.0)
+    remaining_bonus = max(0.0, signup_bonus - signup_bonus_used)
+    withdrawable_balance = max(0.0, earnings - remaining_bonus)
 
-    if earnings - total_deduction < MINIMUM_RESERVE:
-        max_withdrawal = max(0.0, earnings - MINIMUM_RESERVE - WITHDRAWAL_FEE)
+    if withdrawable_balance - total_deduction < MINIMUM_RESERVE:
+        max_withdrawal = max(0.0, withdrawable_balance - MINIMUM_RESERVE - WITHDRAWAL_FEE)
         raise HTTPException(
             400,
             f"Insufficient funds. Must keep ?{MINIMUM_RESERVE:.2f} reserve + ?{WITHDRAWAL_FEE:.2f} fee. "
