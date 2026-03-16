@@ -1,3 +1,4 @@
+import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
@@ -580,23 +581,27 @@ const RiderAuth = () => {
     if (!formData.cellphone) return toast.error("Enter your phone number first");
     setLoading(true);
     try {
-      await api.post("/auth/otp/send", { cellphone: formData.cellphone });
+      const phone = formData.cellphone.startsWith("+") ? formData.cellphone : "+995" + formData.cellphone.replace(/^0/, "");
+      const result = await sendFirebaseOTP(phone);
+      if (!result.success) throw new Error(result.error);
       toast.success("Verification code sent!");
       setOtpStep("otp");
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to send code");
+      toast.error(err.message || "Failed to send code");
     } finally { setLoading(false); }
   };
 
   const handleVerifyOtp = async () => {
     setLoading(true);
     try {
-      const res = await api.post("/auth/otp/verify", { cellphone: formData.cellphone, code: otpCode });
+      const result = await verifyFirebaseOTP(otpCode);
+      if (!result.success) throw new Error(result.error);
+      const res = await api.post("/auth/firebase-phone/verify", { id_token: result.idToken });
       setPhoneToken(res.data.phone_token);
       setOtpStep("done");
-      toast.success("Phone verified ?");
+      toast.success("Phone verified!");
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Incorrect code");
+      toast.error(err.message || "Incorrect code");
     } finally { setLoading(false); }
   };
 

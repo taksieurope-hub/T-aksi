@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from contextlib import asynccontextmanager
 import math
 import os
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import firebase_admin
-from firebase_admin import credentials, firestore, storage, messaging
+from firebase_admin import credentials, firestore, storage, messaging, auth as firebase_auth
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -1075,7 +1075,7 @@ def calculate_fare(
 
 @app.post("/api/feedback")
 async def submit_feedback(req: Request, user_id: Optional[str] = Depends(get_current_user_id)):
-    # 👇 ADD THIS EXACT LINE 👇
+    # ?? ADD THIS EXACT LINE ??
     db = get_db() 
     
     data = await req.json()
@@ -1240,6 +1240,23 @@ async def login(data: UserLogin, response: Response):
     return {"token": token, "user": serialize_firestore_data(safe_user)}
 
 
+
+@app.post("/api/auth/firebase-phone/verify", tags=["Auth"])
+async def verify_firebase_phone(req: Request):
+    data = await req.json()
+    id_token = data.get("id_token")
+    if not id_token:
+        raise HTTPException(400, "Missing id_token")
+    try:
+        decoded = firebase_auth.verify_id_token(id_token)
+        phone = decoded.get("phone_number")
+        if not phone:
+            raise HTTPException(400, "No phone number in token")
+        phone_norm = normalize_phone(phone)
+        phone_token = create_token(phone_norm, "phone_verified")
+        return {"status": "verified", "phone_token": phone_token, "phone_norm": phone_norm}
+    except Exception as e:
+        raise HTTPException(400, f"Invalid Firebase token: {str(e)}")
 @app.post("/api/auth/otp/send", tags=["Auth"])
 async def send_otp(req: OTPSendRequest):
     db = get_db()
