@@ -8,7 +8,7 @@ export const LanguageProvider = ({ children }) => {
   const [language, setLanguageState] = useState(() => {
     const saved = localStorage.getItem('taksi_language');
     if (saved && translations[saved]) return saved;
-    return defaultLanguage; // 'ka'
+    return 'en'; // default to English for new users
   });
 
   useEffect(() => {
@@ -30,6 +30,7 @@ export const LanguageProvider = ({ children }) => {
   const changeLanguage = useCallback((newLanguage) => {
     if (translations[newLanguage]) {
       setLanguageState(newLanguage);
+      localStorage.setItem('taksi_language', newLanguage);
     }
   }, []);
 
