@@ -2166,6 +2166,14 @@ async def get_escalated_tickets(admin_id: str = Depends(get_admin_user)):
 
     return {"tickets": result, "count": len(result)}
 
+@app.post("/api/admin/support/tickets/{ticket_id}/respond", tags=["Admin"])
+async def respond_support_ticket(ticket_id: str, response: str = Query(default=""), resolve: bool = Query(default=False), admin_id: str = Depends(get_admin_user)):
+    db = get_db()
+    ref = db.collection("support_tickets").document(ticket_id)
+    update = {"status": "resolved" if resolve else "in_progress", "admin_reply": response, "replied_at": firestore.SERVER_TIMESTAMP}
+    ref.update(update)
+    return {"status": "ok"}
+
 @app.post("/api/admin/support/tickets/{ticket_id}/reply", tags=["Admin"])
 async def reply_to_ticket(
     ticket_id: str,
@@ -2196,6 +2204,13 @@ async def reply_to_ticket(
         )
     return {"message": "Reply sent"}
 
+
+@app.post("/api/admin/support/tickets/{ticket_id}/resolve", tags=["Admin"])
+async def resolve_support_ticket(ticket_id: str, notes: str = Query(default="Resolved by admin"), admin_id: str = Depends(get_admin_user)):
+    db = get_db()
+    ref = db.collection("support_tickets").document(ticket_id)
+    ref.update({"status": "resolved", "resolved_at": firestore.SERVER_TIMESTAMP, "resolution_notes": notes})
+    return {"status": "resolved"}
 
 @app.post("/api/admin/support/tickets/{ticket_id}/close", tags=["Admin"])
 async def close_ticket(ticket_id: str, admin_id: str = Depends(get_admin_user)):

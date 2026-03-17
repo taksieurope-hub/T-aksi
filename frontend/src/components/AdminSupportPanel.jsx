@@ -146,7 +146,7 @@ export default function AdminSupportPanel() {
   const openTicket = async (ticket) => {
     setSelected(ticket);
     try {
-      const r = await api.get(`/support/tickets/${ticket.id}`);
+      const r = await api.get(`/admin/support/tickets/${ticket.id}`);
       const msgs = r.data.messages || [];
       if (msgs.length > 0) {
         setSelected(prev => prev ? { ...prev, chat_history: msgs } : null);
