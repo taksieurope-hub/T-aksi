@@ -1234,23 +1234,58 @@ const CompetitionPayoutPanel = () => {
   return (
     <div style={{background:"rgba(255,215,0,0.04)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:16,padding:20,marginBottom:16}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-        <span style={{fontSize:24}}>🏆</span>
+        <span style={{fontSize:24}}>&#x1F3C6;</span>
         <div>
           <div style={{color:"#ffd700",fontWeight:900,fontSize:16}}>Competition Payouts</div>
           <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>
-            {status ? (status.active ? "Competition week is ACTIVE" : "Break week — ready to pay out last competition") : "Loading..."}
+            {status ? (status.active ? "Competition week is ACTIVE" : "Break week - ready to pay out last competition") : "Loading..."}
           </div>
         </div>
         <button onClick={runPayout} disabled={loading} style={{marginLeft:"auto",background:"linear-gradient(135deg,#ffd700,#ff8c00)",color:"#000",fontWeight:900,border:"none",borderRadius:10,padding:"10px 20px",cursor:"pointer",opacity:loading?0.6:1}}>
           {loading ? "Processing..." : "Run Payout"}
         </button>
       </div>
+      {/* Schedule Timeline */}
+      {status && (() => {
+        const weekEnd = new Date(status.week_end);
+        const now = new Date();
+        const daysLeft = Math.ceil((weekEnd - now) / 86400000);
+        const hoursLeft = Math.ceil((weekEnd - now) / 3600000);
+        const fmt = (d) => new Date(d).toLocaleDateString("en-GB", {weekday:"short",day:"numeric",month:"short"});
+        return (
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            {status.active ? (<>
+              <div style={{background:"rgba(0,255,136,0.08)",border:"1px solid rgba(0,255,136,0.2)",borderRadius:10,padding:10}}>
+                <div style={{color:"#00ff88",fontSize:10,fontWeight:700,marginBottom:4}}>COMPETITION ACTIVE</div>
+                <div style={{color:"white",fontSize:13,fontWeight:700}}>Ends {fmt(status.week_end)}</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>{daysLeft > 1 ? `${daysLeft} days left` : `${hoursLeft} hours left`}</div>
+              </div>
+              <div style={{background:"rgba(255,140,0,0.08)",border:"1px solid rgba(255,140,0,0.2)",borderRadius:10,padding:10}}>
+                <div style={{color:"#ff8c00",fontSize:10,fontWeight:700,marginBottom:4}}>PAYOUT DUE</div>
+                <div style={{color:"white",fontSize:13,fontWeight:700}}>{fmt(status.week_end)}</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>Run payout after competition ends</div>
+              </div>
+            </>) : (<>
+              <div style={{background:"rgba(255,215,0,0.08)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:10,padding:10}}>
+                <div style={{color:"#ffd700",fontSize:10,fontWeight:700,marginBottom:4}}>BREAK WEEK</div>
+                <div style={{color:"white",fontSize:13,fontWeight:700}}>Next comp: {fmt(status.week_end)}</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>Starts Monday 00:00</div>
+              </div>
+              <div style={{background:"rgba(255,60,60,0.08)",border:"1px solid rgba(255,60,60,0.2)",borderRadius:10,padding:10}}>
+                <div style={{color:"#ff4444",fontSize:10,fontWeight:700,marginBottom:4}}>PAY OUT NOW</div>
+                <div style={{color:"white",fontSize:13,fontWeight:700}}>Last competition ended</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>Click Run Payout to pay winners</div>
+              </div>
+            </>)}
+          </div>
+        );
+      })()}
       {result && (
         <div style={{background:"rgba(0,255,136,0.08)",borderRadius:10,padding:12,marginBottom:12}}>
           <div style={{color:"#00ff88",fontWeight:700,marginBottom:8}}>Last Payout Results:</div>
           {result.results?.map(r => (
             <div key={r.rank} style={{display:"flex",justifyContent:"space-between",color:"white",fontSize:13,padding:"4px 0"}}>
-              <span>#{r.rank} {r.name} — {r.trips} trips</span>
+              <span>#{r.rank} {r.name} â€” {r.trips} trips</span>
               <span style={{color:"#ffd700",fontWeight:700}}>+{r.prize} GEL</span>
             </div>
           ))}
@@ -1261,7 +1296,7 @@ const CompetitionPayoutPanel = () => {
           <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginBottom:6}}>PAYOUT HISTORY</div>
           {history.slice(0,5).map(h => (
             <div key={h.week_key} style={{color:"rgba(255,255,255,0.5)",fontSize:12,padding:"3px 0"}}>
-              Week of {h.week_key} — {h.results?.length || 0} drivers paid
+              Week of {h.week_key} â€” {h.results?.length || 0} drivers paid
             </div>
           ))}
         </div>
