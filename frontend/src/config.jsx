@@ -78,6 +78,7 @@ const tokenStorage = {
     } else {
       sessionStorage.removeItem("user");
     }
+    sessionStorage.setItem("logged_out", "true");
   },
 };
 
@@ -86,8 +87,9 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     // Restore user profile from session/local storage on page load.
+    const wasLoggedOut = sessionStorage.getItem("logged_out") === "true";
     const userData = tokenStorage.getUser();
-    if (userData) setUser(userData);
+    if (userData && !wasLoggedOut) setUser(userData);
 
     // Listen for global auth:expired events fired by the axios interceptor.
     const handleExpired = () => {
@@ -99,6 +101,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = (token, userData) => {
+    sessionStorage.removeItem("logged_out");
     tokenStorage.setSession(token, userData);
     setUser(userData);
   };
