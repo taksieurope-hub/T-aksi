@@ -4050,7 +4050,22 @@ async def complete_ride(
             wallet_change = driver_share - cash_to_collect + commission_refund
 
             driver_doc_ref = db.collection("users").document(driver_id)
-            if driver_doc_ref.get().exists:
+            # Signup bonus: for cash trips, deduct commission from bonus first
+            _driver_data = driver_doc_ref.get().to_dict() or {}
+            _earnings = _driver_data.get("earnings", {})
+            _bonus = float(_earnings.get("signup_bonus", 0.0))
+            _bonus_used = float(_earnings.get("signup_bonus_used", 0.0))
+            _remaining_bonus = max(0.0, _bonus - _bonus_used)
+            _is_cash = not is_card and not is_wallet
+            if _is_cash and _remaining_bonus > 0:
+                _comm_from_bonus = min(actual_commission, _remaining_bonus)
+                driver_doc_ref.update({
+                    "earnings.signup_bonus_used": firestore.Increment(_comm_from_bonus),
+                    "earnings.balance": firestore.Increment(wallet_change),
+                    "earnings.total_earned": firestore.Increment(driver_share),
+                    "total_rides": firestore.Increment(1),
+                })
+            else:
                 driver_doc_ref.update({
                     "earnings.balance": firestore.Increment(wallet_change),
                     "earnings.total_earned": firestore.Increment(driver_share),
