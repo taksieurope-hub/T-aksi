@@ -361,7 +361,7 @@ const RatePassengerModal = ({ rideId, riderName, onDone }) => {
       <div className="flex justify-center gap-3">
         {[1,2,3,4,5].map(s => (
           <button key={s} onClick={() => setRating(s)}
-            className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "bg-[#00ff88]/20 border border-[#00ff88] scale-110" : "bg-white/5 border border-white/10"}`}>
+            className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "â˜…" : "â˜†"}`}>
             ?
           </button>
         ))}
@@ -2374,7 +2374,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
               <p className="text-white font-semibold text-sm leading-tight">{user?.name} {user?.surname}</p>
               <div className="flex items-center gap-2">
                 <StatusBadge status={registrationStatus} />
-                {user?.rating && <span className="text-yellow-400 text-xs">? {user.rating?.toFixed(1)}</span>}
+                {user?.rating && <span className="text-yellow-400 text-xs">★ {user.rating?.toFixed(1)}</span>}
               </div>
             </div>
           </div>
