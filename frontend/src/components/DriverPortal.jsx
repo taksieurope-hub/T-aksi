@@ -7,6 +7,8 @@ import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
+import TermsAndConditions from "@/components/TermsAndConditions";
+import TermsAndConditions from "@/components/TermsAndConditions";
 import LanguageSelector from "@/i18n/LanguageSelector";
 import { DriverTripCompletionModal } from "@/components/TripCompletionModal";
 import { toast } from "sonner";
@@ -361,7 +363,7 @@ const RatePassengerModal = ({ rideId, riderName, onDone }) => {
       <div className="flex justify-center gap-3">
         {[1,2,3,4,5].map(s => (
           <button key={s} onClick={() => setRating(s)}
-            className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "Ã¢Ëœâ€¦" : "Ã¢Ëœâ€ "}`}>
+            className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" : "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â "}`}>
             ?
           </button>
         ))}
@@ -976,7 +978,7 @@ const BankDetailsPanel = ({ onSaved }) => {
     <div className="space-y-4">
       <div style={{background:"rgba(255,215,0,0.05)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:16,padding:16,marginBottom:4}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-          <span style={{fontSize:22}}>ðŸ¦</span>
+          <span style={{fontSize:22}}>ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</span>
           <div>
             <div style={{color:"#ffd700",fontWeight:700,fontSize:14}}>Saved Bank Details</div>
             <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>Saved once, auto-fills every withdrawal</div>
@@ -986,7 +988,7 @@ const BankDetailsPanel = ({ onSaved }) => {
 
       {saved?.bank_account && (
         <div style={{background:"rgba(0,255,136,0.06)",border:"1px solid rgba(0,255,136,0.25)",borderRadius:12,padding:14,display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:20}}>âœ…</span>
+          <span style={{fontSize:20}}>ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦</span>
           <div style={{flex:1}}>
             <div style={{color:"#00ff88",fontWeight:700,fontSize:13}}>Current saved account</div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
@@ -1833,6 +1835,8 @@ const DriverAuth = () => {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ name: "", surname: "", cellphone: "", password: "" });
 
+  const [showTerms, setShowTerms] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   // OTP state
   const [otpStep, setOtpStep]       = useState("form"); // "form" | "otp" | "done"
   const [otpCode, setOtpCode]       = useState("");
@@ -1879,6 +1883,7 @@ const DriverAuth = () => {
         }
       } else {
         if (!phoneToken) return toast.error("Please verify your phone number first");
+        if (!termsAccepted) { toast.error("Please accept the Terms & Conditions to continue"); return; }
         const r = await api.post("/auth/register/driver", form, {
           headers: { "X-Phone-Verified": phoneToken },
         });
@@ -1942,6 +1947,20 @@ const DriverAuth = () => {
             </div>
           </div>
 
+          {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
+          {!isLogin && otpStep === "form" && (
+            <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0"}}>
+              <input type="checkbox" id="driver-terms-cb" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}
+                style={{marginTop:2,accentColor:"#00ff88",width:16,height:16,flexShrink:0,cursor:"pointer"}} />
+              <label htmlFor="driver-terms-cb" style={{color:"rgba(255,255,255,0.5)",fontSize:12,lineHeight:1.5,cursor:"pointer"}}>
+                I have read and agree to the{" "}
+                <button type="button" onClick={() => setShowTerms(true)}
+                  style={{color:"#00ff88",background:"none",border:"none",padding:0,fontSize:12,cursor:"pointer",textDecoration:"underline"}}>
+                  Terms & Conditions and Privacy Policy
+                </button>
+              </label>
+            </div>
+          )}
           {/* OTP confirmation step */}
           {!isLogin && otpStep === "otp" && (
             <div className="space-y-1.5">
@@ -2530,7 +2549,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
               <p className="text-white font-semibold text-sm leading-tight">{user?.name} {user?.surname}</p>
               <div className="flex items-center gap-2">
                 <StatusBadge status={registrationStatus} />
-                {user?.rating && <span className="text-yellow-400 text-xs">â˜… {user.rating?.toFixed(1)}</span>}
+                {user?.rating && <span className="text-yellow-400 text-xs">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¹Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ {user.rating?.toFixed(1)}</span>}
               </div>
             </div>
           </div>
@@ -2895,7 +2914,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 </div>
 
                 <div className="flex gap-2">
-                  {[ ["overview", t("overview")], ["competition", "ðŸ† Competition"], ["topup", t("top_up")], ["withdraw", t("withdraw")] ].map(([k,l]) => (
+                  {[ ["overview", t("overview")], ["competition", "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â  Competition"], ["topup", t("top_up")], ["withdraw", t("withdraw")] ].map(([k,l]) => (
                     <button key={k} onClick={() => setEarningsTab(k)}
                       className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${earningsTab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/30 hover:text-white/60"}`}>
                       {l}
@@ -3179,13 +3198,13 @@ const CompetitionLeaderboard = ({ driverId }) => {
   if (!data) return null;
 
   const prizes = [150, 120, 90, 60, 30];
-  const medals = ["ðŸ¥‡","ðŸ¥ˆ","ðŸ¥‰","4ï¸âƒ£","5ï¸âƒ£"];
+  const medals = ["ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¡","ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥ÃƒÆ’Ã¢â‚¬Â¹ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ","ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â°","4ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£","5ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£"];
   const myEntry = data.leaderboard?.find(e => e.driver_id === driverId);
   const myRank = myEntry ? data.leaderboard.indexOf(myEntry) + 1 : null;
 
   if (!data.active) return (
     <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:16,padding:"20px",textAlign:"center"}}>
-      <div style={{fontSize:32,marginBottom:8}}>ðŸ</div>
+      <div style={{fontSize:32,marginBottom:8}}>ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â</div>
       <div style={{color:"rgba(255,255,255,0.6)",fontWeight:600}}>Competition Break Week</div>
       <div style={{color:"rgba(255,255,255,0.3)",fontSize:13,marginTop:4}}>Next competition starts next Monday</div>
     </div>
@@ -3195,21 +3214,21 @@ const CompetitionLeaderboard = ({ driverId }) => {
     <div style={{background:"rgba(255,215,0,0.04)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:16,overflow:"hidden"}}>
       <div style={{background:"linear-gradient(135deg,rgba(255,215,0,0.15),rgba(255,140,0,0.1))",padding:"16px",borderBottom:"1px solid rgba(255,215,0,0.2)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:28}}>ðŸ†</span>
+          <span style={{fontSize:28}}>ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â </span>
           <div>
             <div style={{color:"#ffd700",fontWeight:900,fontSize:16}}>Weekly Competition</div>
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>Most trips this week wins</div>
           </div>
           <div style={{marginLeft:"auto",textAlign:"right"}}>
             <div style={{color:"#ffd700",fontWeight:900,fontSize:13}}>1st: 150 GEL</div>
-            <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>2nd: 120 Â· 3rd: 90</div>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>2nd: 120 ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· 3rd: 90</div>
           </div>
         </div>
       </div>
       {myEntry && (
         <div style={{padding:"10px 16px",background:"rgba(0,255,136,0.08)",borderBottom:"1px solid rgba(0,255,136,0.15)",display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:18}}>{myRank <= 5 ? medals[myRank-1] : `#${myRank}`}</span>
-          <span style={{color:"#00ff88",fontWeight:700,fontSize:14}}>You â€” {myEntry.trips} trips</span>
+          <span style={{color:"#00ff88",fontWeight:700,fontSize:14}}>You ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â {myEntry.trips} trips</span>
           {myRank <= 5 && <span style={{marginLeft:"auto",color:"#ffd700",fontWeight:700}}>+{prizes[myRank-1]} GEL</span>}
         </div>
       )}
