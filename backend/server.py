@@ -4125,7 +4125,7 @@ async def complete_ride(
                     _loyalty_update["loyalty_discount_pct"] = 15
                     send_push_notification(
                         rider_id,
-                        title="🎉 Free Ride Discount Earned!",
+                        title="ðŸŽ‰ Free Ride Discount Earned!",
                         body="You completed 12 rides! Your next ride is 15% off.",
                         data={"type": "loyalty_reward"},
                     )
@@ -4186,19 +4186,57 @@ async def cancel_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
                 "earnings.total_commission_paid": firestore.Increment(-commission_paid),
             })
 
+    # Cancellation fee: 3 GEL if rider cancels after driver has arrived
+    cancellation_fee = 0.0
+    is_rider_cancel = (user_id == rider_id)
+    if is_rider_cancel and current_status == "arrived" and driver_id:
+        cancellation_fee = 3.0
+        if rider_id:
+            rider_doc = db.collection("users").document(rider_id).get()
+            rider_data = rider_doc.to_dict() if rider_doc.exists else {}
+            rider_balance = float(rider_data.get("wallet_balance", 0))
+            actual_fee = min(cancellation_fee, rider_balance) if rider_balance > 0 else 0.0
+            if actual_fee > 0:
+                db.collection("users").document(rider_id).update({
+                    "wallet_balance": firestore.Increment(-actual_fee)
+                })
+                db.collection("users").document(driver_id).update({
+                    "earnings.balance": firestore.Increment(actual_fee),
+                    "earnings.total_earned": firestore.Increment(actual_fee),
+                })
+                cancellation_fee = actual_fee
     ride_ref.update({
         "status": "cancelled",
         "cancelled_by": user_id,
         "cancelled_at": firestore.SERVER_TIMESTAMP,
+        "cancellation_fee": cancellation_fee,
     })
-
     if driver_id:
+        if cancellation_fee > 0:
+            send_push_notification(
+                driver_id,
+                title="Ride Cancelled - Fee Applied",
+                body=f"Rider cancelled after arrival. GEL {cancellation_fee:.2f} no-show fee paid to you.",
+                data={"type": "ride_cancelled", "ride_id": ride_id, "fee": str(cancellation_fee)},
+            )
+        else:
+            send_push_notification(
+                driver_id,
+                title="Ride Cancelled",
+                body="The rider cancelled this ride. Commission refunded.",
+                data={"type": "ride_cancelled", "ride_id": ride_id},
+            )
+    if rider_id and cancellation_fee > 0:
         send_push_notification(
-            driver_id,
-            title="Ride Cancelled",
-            body="The rider cancelled this ride. Commission refunded.",
-            data={"type": "ride_cancelled", "ride_id": ride_id},
+            rider_id,
+            title="Cancellation Fee Applied",
+            body=f"GEL {cancellation_fee:.2f} no-show fee charged as the driver had already arrived.",
+            data={"type": "cancellation_fee", "fee": str(cancellation_fee)},
         )
+    msg = "Ride cancelled"
+    if cancellation_fee > 0:
+        msg = f"Ride cancelled. GEL {cancellation_fee:.2f} no-show fee applied."
+    return {"message": msg, "cancellation_fee": cancellation_fee}
 
     return {"message": "Ride cancelled"}
 
@@ -4559,7 +4597,7 @@ async def run_competition_payout(admin_id: str = Depends(get_admin_user)):
         })
         send_push_notification(
             driver_id,
-            title="ðŸ† Competition Prize!",
+            title="Ã°Å¸Ââ€  Competition Prize!",
             body=f"Congratulations! You finished #{i+1} and won {prize} GEL!",
             data={"type": "competition_prize", "amount": str(prize), "rank": str(i+1)},
         )
@@ -4803,7 +4841,7 @@ async def charge_saved_card(
     payload: dict = Body(...),
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
-    """Charge a PayPal vaulted card directly — no frontend PayPal buttons needed."""
+    """Charge a PayPal vaulted card directly â€” no frontend PayPal buttons needed."""
     if not user_id:
         raise HTTPException(401, "Not authenticated")
     vault_id = payload.get("vault_id")
