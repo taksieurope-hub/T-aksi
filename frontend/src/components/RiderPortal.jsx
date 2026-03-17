@@ -1572,6 +1572,8 @@ const RiderDashboard = () => {
   const [carType,       setCarType]       = useState("economy");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [savedCards, setSavedCards] = useState([]);
+  const [selectedVaultId, setSelectedVaultId] = useState(null);
+  const [savedCards, setSavedCards] = useState([]);
 
   const [routeInfo,    setRouteInfo]    = useState(null);
   const [fareEstimate, setFareEstimate] = useState(null);
@@ -1611,7 +1613,7 @@ const [showPromo, setShowPromo] = useState(false);
   useEffect(() => {
     fetchActiveRide();
     fetchRideHistory();
-    fetchSurgeStatus();
+    // Only fetch surge when pickup location is set
     fetchScheduledRides();
     api.get("/user/language").catch(() => {});
   }, []);
