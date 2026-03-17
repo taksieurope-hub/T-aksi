@@ -3322,6 +3322,15 @@ async def request_ride(
     fare["service_fee"] = service_fee
     fare["base_total"] = fare["total"]
     fare["total"] += service_fee
+    # Apply lifetime promo discount
+    _rider_doc = db.collection("users").document(final_user_id).get()
+    _rider_promo = (_rider_doc.to_dict() or {}).get("promo", {}) if _rider_doc.exists else {}
+    if _rider_promo.get("active") and _rider_promo.get("type") == "lifetime":
+        _disc_pct = float(_rider_promo.get("discount_pct", 0)) / 100.0
+        _disc_amt = round(fare["total"] * _disc_pct, 2)
+        fare["total"] = round(fare["total"] - _disc_amt, 2)
+        fare["promo_discount"] = _disc_amt
+        fare["promo_code"] = _rider_promo.get("code", "")
 
     stops_data = [
         {"address": s.get("address", ""), "lat": s.get("lat", 0), "lng": s.get("lng", 0), "order": s.get("order", 0)}
