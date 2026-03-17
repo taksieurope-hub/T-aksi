@@ -286,6 +286,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
   const etaIntervalRef        = useRef(null);   // countdown interval
   const [isFollowing, setIsFollowing] = useState(true);
   const [etaSeconds, setEtaSeconds]   = useState(null);
+  const [navInfo, setNavInfo] = useState({ heading: 0, nextStreet: "", distanceToNext: "" });
 
   const getSafeCoord = (val) => { const n = parseFloat(val); return !isNaN(n) && n !== 0 ? n : null; };
 
@@ -324,7 +325,8 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
   useEffect(() => {
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 41.7151, lng: 44.8271 }, zoom: 15,
+      center: { lat: 41.7151, lng: 44.8271 }, zoom: 17,
+      tilt: 45,
       disableDefaultUI: true, zoomControl: false, gestureHandling: "cooperative", backgroundColor: "#0d0d1a",
       styles: [
         { elementType: "geometry", stylers: [{ color: "#0d0d1a" }] },
@@ -428,6 +430,8 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
           directionsRendererRef.current.setDirections(result);
           const leg = result.routes[0]?.legs[0];
           if (withEta && leg?.duration?.value) startEtaCountdown(leg.duration.value);
+          const steps = leg?.steps || [];
+          if (steps.length > 0) { const s = steps[0]; setNavInfo(prev => ({ ...prev, nextStreet: (s.instructions||"").replace(/<[^>]*>/g,""), distanceToNext: s.distance?.text||"" })); }
           const bounds = new window.google.maps.LatLngBounds();
           bounds.extend(origin); bounds.extend(dest);
           waypoints.forEach(wp => bounds.extend(wp.location));
@@ -474,19 +478,53 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     
     if (isFollowing) {
       mapInstanceRef.current.panTo(pos);
-      // ??? THIS SPINS THE ENTIRE MAP TO FACE FORWARD
       mapInstanceRef.current.setHeading(heading);
+      mapInstanceRef.current.setTilt(45);
     }
+    setNavInfo(prev => ({ ...prev, heading }));
   }, [driverLocation, isFollowing]);
 
   const etaLabel = status === "in_progress" ? t("destination") : t("pickup");
 
+  const getTurnArrow = (h) => {
+    const n = ((h % 360) + 360) % 360;
+    if (n < 30 || n > 330) return "↑";
+    if (n < 90) return "↗";
+    if (n < 150) return "→";
+    if (n < 210) return "↓";
+    if (n < 270) return "←";
+    return "↖";
+  };
+
   return (
     <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: "#0d0d1a" }}>
-      <div ref={mapRef} style={{ height: "46vh", minHeight: "300px", width: "100%" }} />
+      {status !== "preview" && (
+        <div style={{ position:"absolute", top:0, left:0, right:0, zIndex:20, pointerEvents:"none" }}>
+          <div style={{ background:"rgba(7,7,15,0.96)", backdropFilter:"blur(12px)", borderBottom:"1px solid rgba(0,212,255,0.2)", padding:"12px 16px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+              <div style={{ flexShrink:0, width:56, height:56, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,212,255,0.15)", border:"2px solid rgba(0,212,255,0.5)" }}>
+                <span style={{ fontSize:30, color:"#00d4ff", lineHeight:1 }}>{getTurnArrow(navInfo.heading)}</span>
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                {navInfo.distanceToNext ? <div style={{ color:"#00d4ff", fontSize:22, fontWeight:900, fontFamily:"monospace", lineHeight:1 }}>{navInfo.distanceToNext}</div> : null}
+                <div style={{ color:"#ffffff", fontSize:13, fontWeight:600, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {navInfo.nextStreet || (status === "accepted" ? "Heading to pickup..." : "On the way...")}
+                </div>
+              </div>
+              {etaSeconds != null && etaSeconds > 0 && (
+                <div style={{ flexShrink:0, textAlign:"right" }}>
+                  <div style={{ color:"#00ff88", fontSize:20, fontWeight:900, fontFamily:"monospace" }}>{fmtEta(etaSeconds)}</div>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>ETA</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      <div ref={mapRef} style={{ height:"52vh", minHeight:"320px", width:"100%" }} />
 
       {/* ETA pill */}
-      {etaSeconds != null && etaSeconds > 0 && status !== "preview" && (
+      {false && etaSeconds != null && etaSeconds > 0 && status !== "preview" && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
           <div className="bg-[#07070f]/90 backdrop-blur-sm px-4 py-2 rounded-full border border-[#00d4ff]/30 flex items-center gap-2 shadow-xl">
             <Timer className="w-3.5 h-3.5 text-[#00d4ff]" />
