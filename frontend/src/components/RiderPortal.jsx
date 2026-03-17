@@ -1731,7 +1731,7 @@ const [showPromo, setShowPromo] = useState(false);
   const updateStop = (i, data) => setStops(prev => { const s = [...prev]; s[i] = { ...s[i], ...data }; return s; });
   const removeStop = (i) => setStops(stops.filter((_, idx) => idx !== i));
 
-  const handleBookRide = () => {
+  const handleBookRide = async () => {
     if (!pickup.lat || !pickup.address.trim()) { toast.error("Please select a pickup location"); return; }
     if (paymentMethod !== "cash" && !destination.lat) { toast.error("Set a destination for card or wallet payments"); return; }
     if (paymentMethod === "wallet") {
