@@ -3331,6 +3331,15 @@ async def request_ride(
         fare["total"] = round(fare["total"] - _disc_amt, 2)
         fare["promo_discount"] = _disc_amt
         fare["promo_code"] = _rider_promo.get("code", "")
+    # Apply loyalty 15% discount if earned
+    _rider_doc2 = db.collection("users").document(final_user_id).get()
+    _rider_d2 = _rider_doc2.to_dict() or {} if _rider_doc2.exists else {}
+    if _rider_d2.get("loyalty_free_ride_earned"):
+        _loyalty_disc = round(fare["total"] * 0.15, 2)
+        fare["total"] = round(fare["total"] - _loyalty_disc, 2)
+        fare["loyalty_discount"] = _loyalty_disc
+        # Clear the flag so it only applies once
+        db.collection("users").document(final_user_id).update({"loyalty_free_ride_earned": False, "loyalty_discount_pct": 0})
 
     stops_data = [
         {"address": s.get("address", ""), "lat": s.get("lat", 0), "lng": s.get("lng", 0), "order": s.get("order", 0)}
@@ -4093,7 +4102,23 @@ async def complete_ride(
     if rider_id and rider_ref:
         try:
             if rider_ref.get().exists:
-                rider_ref.update({"total_rides": firestore.Increment(1)})
+                _rider_data = rider_ref.get().to_dict() or {}
+                _total = int(_rider_data.get("total_rides", 0)) + 1
+                _cycle_rides = _total % 13  # 0 = just completed 13th ride
+                _loyalty_update = {
+                    "total_rides": firestore.Increment(1),
+                    "loyalty_rides_in_cycle": _cycle_rides,
+                }
+                if _total > 0 and _total % 13 == 0:
+                    _loyalty_update["loyalty_free_ride_earned"] = True
+                    _loyalty_update["loyalty_discount_pct"] = 15
+                    send_push_notification(
+                        rider_id,
+                        title="🎉 Free Ride Discount Earned!",
+                        body="You completed 12 rides! Your next ride is 15% off.",
+                        data={"type": "loyalty_reward"},
+                    )
+                rider_ref.update(_loyalty_update)
         except Exception as e:
             logger.error(f"Post-ride Rider update failed gracefully: {e}")
 
@@ -4523,7 +4548,7 @@ async def run_competition_payout(admin_id: str = Depends(get_admin_user)):
         })
         send_push_notification(
             driver_id,
-            title="🏆 Competition Prize!",
+            title="ðŸ† Competition Prize!",
             body=f"Congratulations! You finished #{i+1} and won {prize} GEL!",
             data={"type": "competition_prize", "amount": str(prize), "rank": str(i+1)},
         )
