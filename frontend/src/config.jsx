@@ -122,7 +122,22 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  const updateUser = (data) => {
+  const refreshUser = async () => {
+    const wasLoggedOut = sessionStorage.getItem("logged_out") === "true";
+    if (wasLoggedOut) return;
+    try {
+      const res = await fetch(`${API}/auth/me`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.user) updateUserData(data.user);
+      } else if (res.status === 401) {
+        tokenStorage.clearSession();
+        setUser(null);
+      }
+    } catch {}
+  };
+
+  const updateUserData = (data) => {
     setUser(data);
     if (USE_LS_FALLBACK) {
       localStorage.setItem("user", JSON.stringify(data));
@@ -130,9 +145,10 @@ export const AuthProvider = ({ children }) => {
       sessionStorage.setItem("user", JSON.stringify(data));
     }
   };
+  const updateUser = updateUserData;
 
   const value = useMemo(
-    () => ({ user, login, logout, updateUser }),
+    () => ({ user, login, logout, updateUser, refreshUser }),
     [user]
   );
 
