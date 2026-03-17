@@ -361,7 +361,7 @@ const RatePassengerModal = ({ rideId, riderName, onDone }) => {
       <div className="flex justify-center gap-3">
         {[1,2,3,4,5].map(s => (
           <button key={s} onClick={() => setRating(s)}
-            className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "â˜…" : "â˜†"}`}>
+            className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "Ã¢Ëœâ€¦" : "Ã¢Ëœâ€ "}`}>
             ?
           </button>
         ))}
@@ -395,6 +395,13 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
 
   useEffect(() => {
     api.get("/driver/withdrawals/history").then(r => setHistory(r.data.withdrawals || [])).catch(() => {});
+    // Auto-fill saved bank details
+    api.get("/driver/bank-details").then(r => {
+      if (r.data.bank_account) {
+        setBankType(r.data.bank_type || "iban");
+        setBankDetails(r.data.bank_account);
+      }
+    }).catch(() => {});
   }, []);
 
   const submit = async () => {
@@ -924,6 +931,109 @@ const ReferralPanel = () => {
 // =============================================================================
 // MORE PANEL
 // =============================================================================
+
+// =============================================================================
+// BANK DETAILS PANEL
+// =============================================================================
+const BankDetailsPanel = ({ onSaved }) => {
+  const { t } = useLanguage();
+  const [bankType, setBankType] = React.useState("iban");
+  const [bankAccount, setBankAccount] = React.useState("");
+  const [saved, setSaved] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    api.get("/driver/bank-details").then(r => {
+      if (r.data.bank_account) {
+        setSaved(r.data);
+        setBankType(r.data.bank_type || "iban");
+        setBankAccount(r.data.bank_account);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const bankLabels = { iban: "IBAN", bog: "Bank of Georgia", tbc: "TBC Bank" };
+  const bankPlaceholders = {
+    iban: "GE29NB0000000101904917",
+    bog: "GE29BG0000000101904917",
+    tbc: "GE29TB0000000101904917",
+  };
+
+  const save = async () => {
+    if (bankAccount.trim().length < 5) return toast.error("Please enter valid bank details");
+    setLoading(true);
+    try {
+      await api.post(`/driver/bank-details?bank_type=${bankType}&bank_account=${encodeURIComponent(bankAccount.trim().toUpperCase())}`);
+      setSaved({ bank_type: bankType, bank_account: bankAccount.trim().toUpperCase() });
+      toast.success("Bank details saved!");
+      onSaved?.();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to save");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div style={{background:"rgba(255,215,0,0.05)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:16,padding:16,marginBottom:4}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+          <span style={{fontSize:22}}>ðŸ¦</span>
+          <div>
+            <div style={{color:"#ffd700",fontWeight:700,fontSize:14}}>Saved Bank Details</div>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>Saved once, auto-fills every withdrawal</div>
+          </div>
+        </div>
+      </div>
+
+      {saved?.bank_account && (
+        <div style={{background:"rgba(0,255,136,0.06)",border:"1px solid rgba(0,255,136,0.25)",borderRadius:12,padding:14,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>âœ…</span>
+          <div style={{flex:1}}>
+            <div style={{color:"#00ff88",fontWeight:700,fontSize:13}}>Current saved account</div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+              <span style={{background:"rgba(0,255,136,0.15)",borderRadius:6,padding:"2px 8px",color:"#00ff88",fontSize:11,fontWeight:700}}>{(saved.bank_type||"bank").toUpperCase()}</span>
+              <span style={{color:"white",fontFamily:"monospace",fontSize:13,letterSpacing:1}}>{saved.bank_account}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <label style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Transfer Method</label>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:6}}>
+          {Object.entries(bankLabels).map(([k, v]) => (
+            <button key={k} onClick={() => setBankType(k)}
+              style={{padding:"10px 4px",borderRadius:12,border:`1px solid ${bankType===k?"rgba(0,255,136,0.5)":"rgba(255,255,255,0.1)"}`,background:bankType===k?"rgba(0,255,136,0.1)":"transparent",color:bankType===k?"#00ff88":"rgba(255,255,255,0.4)",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              {k.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>{bankLabels[bankType]} Number</label>
+        <input
+          value={bankAccount}
+          onChange={e => setBankAccount(e.target.value.toUpperCase())}
+          placeholder={bankPlaceholders[bankType]}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:12,padding:"12px 14px",color:"#ffffff",fontSize:14,fontFamily:"monospace",letterSpacing:1,outline:"none",caretColor:"#00ff88",boxSizing:"border-box"}}
+        />
+      </div>
+
+      <button onClick={save} disabled={loading || bankAccount.trim().length < 5}
+        style={{width:"100%",background:"linear-gradient(135deg,#00ff88,#00d4ff)",color:"#000",fontWeight:900,border:"none",borderRadius:12,padding:"14px",fontSize:15,cursor:"pointer",opacity:(loading||bankAccount.trim().length<5)?0.5:1}}>
+        {loading ? "Saving..." : saved?.bank_account ? "Update Bank Details" : "Save Bank Details"}
+      </button>
+
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:10,padding:12}}>
+        <div style={{color:"rgba(255,255,255,0.3)",fontSize:11,lineHeight:1.6}}>
+          Your bank details are stored securely and only used for withdrawal processing. 
+          Once saved, they will auto-fill when you request a withdrawal.
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocation }) => {
   const { t } = useLanguage();
   const [view, setView] = useState("menu");
@@ -942,6 +1052,7 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
   bg: "bg-[#00ff88]/10", 
   border: "border-[#00ff88]/20" 
 },
+    { id: "bank", label: "Bank Details", icon: Wallet, desc: "Save your IBAN for withdrawals", color: "text-yellow-400", bg: "bg-yellow-400/10", border: "border-yellow-400/20" },
   ];
 
   if (view !== "menu") {
@@ -951,6 +1062,7 @@ const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocatio
     if (view === "referrals") return <div><BackButton onClick={back} /><ReferralPanel /></div>;
     if (view === "support")   return <div><BackButton onClick={back} /><SupportPanel /></div>;
     if (view === "feedback") return <div><BackButton onClick={back} /><React.Suspense fallback={null}><FeedbackPanel userType="driver" /></React.Suspense></div>;
+    if (view === "bank") return <div><BackButton onClick={back} /><BankDetailsPanel onSaved={back} /></div>;
   }
 
   return (
@@ -2371,7 +2483,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
               <p className="text-white font-semibold text-sm leading-tight">{user?.name} {user?.surname}</p>
               <div className="flex items-center gap-2">
                 <StatusBadge status={registrationStatus} />
-                {user?.rating && <span className="text-yellow-400 text-xs">★ {user.rating?.toFixed(1)}</span>}
+                {user?.rating && <span className="text-yellow-400 text-xs">â˜… {user.rating?.toFixed(1)}</span>}
               </div>
             </div>
           </div>
@@ -2736,7 +2848,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 </div>
 
                 <div className="flex gap-2">
-                  {[ ["overview", t("overview")], ["competition", "🏆 Competition"], ["topup", t("top_up")], ["withdraw", t("withdraw")] ].map(([k,l]) => (
+                  {[ ["overview", t("overview")], ["competition", "ðŸ† Competition"], ["topup", t("top_up")], ["withdraw", t("withdraw")] ].map(([k,l]) => (
                     <button key={k} onClick={() => setEarningsTab(k)}
                       className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${earningsTab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/30 hover:text-white/60"}`}>
                       {l}
@@ -3020,13 +3132,13 @@ const CompetitionLeaderboard = ({ driverId }) => {
   if (!data) return null;
 
   const prizes = [150, 120, 90, 60, 30];
-  const medals = ["🥇","🥈","🥉","4️⃣","5️⃣"];
+  const medals = ["ðŸ¥‡","ðŸ¥ˆ","ðŸ¥‰","4ï¸âƒ£","5ï¸âƒ£"];
   const myEntry = data.leaderboard?.find(e => e.driver_id === driverId);
   const myRank = myEntry ? data.leaderboard.indexOf(myEntry) + 1 : null;
 
   if (!data.active) return (
     <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:16,padding:"20px",textAlign:"center"}}>
-      <div style={{fontSize:32,marginBottom:8}}>🏁</div>
+      <div style={{fontSize:32,marginBottom:8}}>ðŸ</div>
       <div style={{color:"rgba(255,255,255,0.6)",fontWeight:600}}>Competition Break Week</div>
       <div style={{color:"rgba(255,255,255,0.3)",fontSize:13,marginTop:4}}>Next competition starts next Monday</div>
     </div>
@@ -3036,21 +3148,21 @@ const CompetitionLeaderboard = ({ driverId }) => {
     <div style={{background:"rgba(255,215,0,0.04)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:16,overflow:"hidden"}}>
       <div style={{background:"linear-gradient(135deg,rgba(255,215,0,0.15),rgba(255,140,0,0.1))",padding:"16px",borderBottom:"1px solid rgba(255,215,0,0.2)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:28}}>🏆</span>
+          <span style={{fontSize:28}}>ðŸ†</span>
           <div>
             <div style={{color:"#ffd700",fontWeight:900,fontSize:16}}>Weekly Competition</div>
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>Most trips this week wins</div>
           </div>
           <div style={{marginLeft:"auto",textAlign:"right"}}>
             <div style={{color:"#ffd700",fontWeight:900,fontSize:13}}>1st: 150 GEL</div>
-            <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>2nd: 120 · 3rd: 90</div>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>2nd: 120 Â· 3rd: 90</div>
           </div>
         </div>
       </div>
       {myEntry && (
         <div style={{padding:"10px 16px",background:"rgba(0,255,136,0.08)",borderBottom:"1px solid rgba(0,255,136,0.15)",display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:18}}>{myRank <= 5 ? medals[myRank-1] : `#${myRank}`}</span>
-          <span style={{color:"#00ff88",fontWeight:700,fontSize:14}}>You — {myEntry.trips} trips</span>
+          <span style={{color:"#00ff88",fontWeight:700,fontSize:14}}>You â€” {myEntry.trips} trips</span>
           {myRank <= 5 && <span style={{marginLeft:"auto",color:"#ffd700",fontWeight:700}}>+{prizes[myRank-1]} GEL</span>}
         </div>
       )}

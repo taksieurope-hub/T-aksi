@@ -4731,3 +4731,35 @@ async def get_financials(
         "daily_breakdown": sorted(daily_breakdown.values(), key=lambda x: x["date"]),
         "driver_breakdown": sorted(driver_breakdown.values(), key=lambda x: x["commission"], reverse=True),
     }
+
+@app.post("/api/driver/bank-details", tags=["Driver"])
+async def save_bank_details(
+    bank_type: str = Query(...),
+    bank_account: str = Query(...),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+    if len(bank_account.strip()) < 5:
+        raise HTTPException(400, "Invalid bank account details")
+    db = get_db()
+    db.collection("users").document(user_id).update({
+        "saved_bank_type": bank_type.lower(),
+        "saved_bank_account": bank_account.strip().upper(),
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"message": "Bank details saved"}
+
+@app.get("/api/driver/bank-details", tags=["Driver"])
+async def get_bank_details(user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+    db = get_db()
+    doc = db.collection("users").document(user_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "User not found")
+    data = doc.to_dict()
+    return {
+        "bank_type": data.get("saved_bank_type", ""),
+        "bank_account": data.get("saved_bank_account", ""),
+    }
