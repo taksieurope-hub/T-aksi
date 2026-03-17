@@ -1871,7 +1871,7 @@ const [showPromo, setShowPromo] = useState(false);
               <button className="flex items-center gap-1 text-[#00ff88] text-xs mt-0.5 hover:text-[#00d4ff] transition-colors" onClick={() => setShowTopUp(true)}>
                 <Wallet className="w-2.5 h-2.5" />
                 GEL {user?.wallet_balance?.toFixed(2) || "0.00"}
-                <span className="text-white/25">?</span>
+                <span className="text-white/25">·</span>
                 <span className="text-white/40">{t("top_up")}</span>
               </button>
             </div>
@@ -2109,7 +2109,7 @@ const [showPromo, setShowPromo] = useState(false);
   ) : (
     <div className="flex items-center">
       <Rocket className="w-5 h-5 mr-2" />
-      <span>{t("request_ride")} {carType} ? GEL {fareEstimate?.total.toFixed(2)}</span>
+      <span>{t("request_ride")} {carType} · GEL {fareEstimate?.total.toFixed(2)}</span>
     </div>
   )}
 </Button>
