@@ -26,7 +26,7 @@ import {
   Shield, Users, Car, Home, LogOut, Lock, ArrowLeft, Loader2,
   CheckCircle2, XCircle, TrendingUp, UserCheck, Banknote, BarChart3,
   PlusCircle, CreditCard, MessageSquare, ArrowRightLeft, FileWarning,
-  AlertTriangle, RefreshCw, Eye, ChevronRight, Siren, Wallet, Search, X,
+  AlertTriangle, RefreshCw, Eye, ChevronRight, Siren, Wallet, Search, X, Trash2,
 } from "lucide-react";
 
 // -----------------------------------------------------------------------------
@@ -814,6 +814,10 @@ const AdminDashboard = () => {
                                   <PlusCircle className="w-3.5 h-3.5 mr-1" /> Add
                                 </Button>
                               </AddBalanceDialog>
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                onClick={async () => { if(window.confirm(`Delete rider ${rider.name} ${rider.surname}? This cannot be undone.`)) { try { await api.delete(`/admin/users/${rider.id}`); toast.success("Rider deleted"); fetchAll(); } catch(e) { toast.error("Failed to delete rider"); } } }}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -950,6 +954,10 @@ const AdminDashboard = () => {
                                       <PlusCircle className="w-3.5 h-3.5 mr-1" /> Add
                                     </Button>
                                   </AddBalanceDialog>
+                                  <Button size="sm" variant="ghost" className="h-7 px-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                    onClick={async () => { if(window.confirm(`Delete driver ${driver.name} ${driver.surname}? This cannot be undone.`)) { try { await api.delete(`/admin/users/${driver.id}`); toast.success("Driver deleted"); fetchAll(); } catch(e) { toast.error("Failed to delete driver"); } } }}>
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
                                 </div>
                               </TableCell>
                             </TableRow>
