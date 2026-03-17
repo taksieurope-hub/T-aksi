@@ -1336,6 +1336,8 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const prevRideIdRef        = useRef(null);
   const lastPositionRef      = useRef(null);
   const targetPositionRef    = useRef(null);
+  const surgeCirclesRef      = useRef([]);
+  const surgeIntervalRef     = useRef(null);
 
   const [isFollowing, setIsFollowing]     = useState(true);
   const [routeSteps,  setRouteSteps]      = useState([]);
@@ -1495,6 +1497,51 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     directionsServiceRef.current = new window.google.maps.DirectionsService();
     map.addListener("dragstart", () => setIsFollowing(false));
     mapInstanceRef.current = map;
+  }, []);
+
+  // Surge zones - fetch and draw colored circles every 30s
+  useEffect(() => {
+    const drawZones = async () => {
+      if (!mapInstanceRef.current || !window.google) return;
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/surge/zones`);
+        const data = await res.json();
+        // Clear old circles
+        surgeCirclesRef.current.forEach(c => c.setMap(null));
+        surgeCirclesRef.current = [];
+        (data.zones || []).forEach(zone => {
+          const circle = new window.google.maps.Circle({
+            map: mapInstanceRef.current,
+            center: { lat: zone.lat, lng: zone.lng },
+            radius: zone.radius,
+            fillColor: zone.color,
+            fillOpacity: 0.18,
+            strokeColor: zone.color,
+            strokeOpacity: 0.5,
+            strokeWeight: 2,
+            zIndex: 10,
+          });
+          // Label in center
+          const marker = new window.google.maps.Marker({
+            position: { lat: zone.lat, lng: zone.lng },
+            map: mapInstanceRef.current,
+            icon: {
+              url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="60" height="24"><rect width="60" height="24" rx="12" fill="${zone.color}" opacity="0.85"/><text x="30" y="16" text-anchor="middle" font-size="11" font-weight="bold" font-family="sans-serif" fill="#000">${zone.multiplier}x surge</text></svg>`)}`,
+              scaledSize: new window.google.maps.Size(60, 24),
+              anchor: new window.google.maps.Point(30, 12),
+            },
+            zIndex: 11,
+          });
+          surgeCirclesRef.current.push(circle, marker);
+        });
+      } catch (e) { /* silent fail */ }
+    };
+    drawZones();
+    surgeIntervalRef.current = setInterval(drawZones, 30000);
+    return () => {
+      clearInterval(surgeIntervalRef.current);
+      surgeCirclesRef.current.forEach(c => c.setMap(null));
+    };
   }, []);
 
   // Driver position update ? smooth animation, auto-rotate map to face forward
