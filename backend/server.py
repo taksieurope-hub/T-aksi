@@ -990,7 +990,7 @@ def get_area_demand(lat: float, lng: float) -> float:
 
 def get_surge_multiplier(lat: float = None, lng: float = None) -> dict:
     """Demand-based surge — no time gate. Triggers purely from rides/drivers ratio."""
-    demand = 0.3  # default baseline
+    demand = 0.0  # default to no surge when no location provided
     if lat and lng:
         demand = get_area_demand(lat, lng)
 
