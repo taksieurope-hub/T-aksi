@@ -1479,7 +1479,7 @@ const RiderSupportPanel = () => {
     <div className="space-y-4">
       <div className="bg-white/3 border border-white/8 rounded-2xl p-4 space-y-3">
         <p className="text-white/50 text-xs uppercase tracking-wider font-semibold">New Message</p>
-        <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} placeholder="Describe your issue or question..." className="w-full bg-white/4 border border-white/10 rounded-xl px-4 py-3 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-[#00d4ff]/40" />
+        <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} placeholder="Describe your issue or question..." className="w-full rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:border-[#00d4ff]/40" style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:"#ffffff",caretColor:"#00d4ff"}} />
         <Button onClick={send} disabled={!message.trim() || sending} className="w-full bg-[#00d4ff] text-black font-bold h-11 rounded-xl">
           {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
           {sending ? "Sending..." : "Send Message"}
