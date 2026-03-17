@@ -1,4 +1,4 @@
-import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
+﻿import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
@@ -1482,7 +1482,7 @@ const RiderSupportPanel = () => {
 // RIDER DASHBOARD ? UNCHANGED logic, uses upgraded LiveTrackingMap above
 // =============================================================================
 const RiderDashboard = () => {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, login, logout, refreshUser } = useAuth();
   const navigate  = useNavigate();
   const { t }     = useLanguage();
 
@@ -2531,12 +2531,9 @@ const RiderAutoLogin = ({ userType, AuthComponent }) => {
 };
 
 const RiderPortal = () => {
-const RiderPortal = () => {
-  const { user, login } = useAuth();
-  const location = useLocation();
-  const [demoReady, setDemoReady] = React.useState(false);
-  React.useEffect(() => { if (!user) { api.post("/auth/demo-login?user_type=rider").then(r => { if (r.data?.token && r.data?.user) login(r.data.token, r.data.user); }).catch(()=>{}).finally(()=>setDemoReady(true)); } }, []);
-  if (!user && !demoReady) return <div style={{background:"#07070f",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:40,height:40,border:"3px solid #333",borderTop:"3px solid #00ff88",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style></div>;
+  const { user, loading } = useAuth(); 
+
+  // 1. If Firebase is thinking on refresh, show the spinner
   if (loading) {
     return (
       <div style={{ backgroundColor: '#07070f', height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#00ff88', fontFamily: 'system-ui' }}>
@@ -2547,6 +2544,7 @@ const RiderPortal = () => {
     );
   }
 
+  React.useEffect(() => { if (!user) { api.post("/auth/demo-login?user_type=rider").then(r => { if (r.data?.token && r.data?.user) login(r.data.token, r.data.user); }).catch(()=>{}); } }, [user]);
   // 2. If not logged in, send them back to the Auth screen
   if (!user) {
     return <RiderAuth />;
