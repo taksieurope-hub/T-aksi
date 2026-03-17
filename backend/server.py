@@ -4722,8 +4722,25 @@ async def get_financials(
     withdrawals = list(db.collection("driver_withdrawals").where("status", "==", "approved").stream())
     total_withdrawals = sum(float(w.to_dict().get("amount", 0)) for w in withdrawals)
 
+    # Build human-readable period label
+    month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+    if period == "week":
+        period_label = f"Week of {(now - timedelta(days=7)).strftime('%d %b')} - {now.strftime('%d %b %Y')}"
+    elif period == "month":
+        period_label = f"{month_names[now.month-1]} {now.year}"
+    elif period == "quarter":
+        q = ((now.month - 1) // 3) + 1
+        period_label = f"Q{q} {now.year}"
+    elif period == "year":
+        period_label = f"Full Year {now.year}"
+    else:
+        period_label = "All Time"
+
     return {
         "period": period,
+        "period_label": period_label,
+        "date_from": start.strftime("%d %b %Y") if start else "All time",
+        "date_to": now.strftime("%d %b %Y"),
         "summary": {
             "total_rides": total_rides,
             "gross_revenue": round(gross_revenue, 2),
@@ -4869,3 +4886,31 @@ async def delete_saved_card(vault_id: str, user_id: Optional[str] = Depends(get_
     updated = [c for c in cards if c.get("vault_id") != vault_id]
     db.collection("users").document(user_id).update({"saved_cards": updated})
     return {"message": "Card removed"}
+
+@app.post("/api/admin/clear-test-data", tags=["Admin"])
+async def clear_test_data(
+    payload: dict = Body(...),
+    admin_id: str = Depends(get_admin_user)
+):
+    """Delete all test/dummy rides from Firestore. Requires admin password confirmation."""
+    import os
+    admin_password = payload.get("password", "")
+    correct_password = os.environ.get("ADMIN_CLEAR_PASSWORD", "TaksiClear2026!")
+    if admin_password != correct_password:
+        raise HTTPException(403, "Incorrect password")
+    db = get_db()
+    # Delete all rides
+    rides = list(db.collection("rides").stream())
+    deleted_rides = 0
+    batch = db.batch()
+    for i, r in enumerate(rides):
+        batch.delete(r.reference)
+        deleted_rides += 1
+        if (i + 1) % 400 == 0:
+            batch.commit()
+            batch = db.batch()
+    batch.commit()
+    return {
+        "message": f"Cleared {deleted_rides} rides from the database.",
+        "deleted_rides": deleted_rides,
+    }
