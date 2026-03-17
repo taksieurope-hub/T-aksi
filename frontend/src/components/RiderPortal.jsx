@@ -489,12 +489,12 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
 
   const getTurnArrow = (h) => {
     const n = ((h % 360) + 360) % 360;
-    if (n < 30 || n > 330) return "ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Ëœ";
-    if (n < 90) return "ÃƒÂ¢Ã¢â‚¬Â —";
-    if (n < 150) return "ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢";
-    if (n < 210) return "ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“";
-    if (n < 270) return "ÃƒÂ¢Ã¢â‚¬Â ";
-    return "ÃƒÂ¢Ã¢â‚¬Â —œ";
+    if (n < 30 || n > 330) return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“";
+    if (n < 90) return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â";
+    if (n < 150) return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢";
+    if (n < 210) return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ";
+    if (n < 270) return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚Â";
+    return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“";
   };
 
   return (
@@ -611,10 +611,10 @@ const RiderAuth = () => {
   const [isLogin, setIsLogin]   = useState(true);
   const [loading, setLoading]   = useState(false);
   const [formData, setFormData] = useState({ name: "", surname: "", cellphone: "", password: "" });
-
-  const [otpStep, setOtpStep]       = useState("form");
   const [showTerms, setShowTerms] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+
+  const [otpStep, setOtpStep]       = useState("form");
   const [otpCode, setOtpCode]       = useState("");
   const [phoneToken, setPhoneToken] = useState(null);
 
@@ -715,8 +715,7 @@ const RiderAuth = () => {
                   placeholder="+995 XXX XXX XXX" required autoComplete="tel"
                   disabled={otpStep === "otp" || otpStep === "done"} />
               </div>
-              {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
-            {!isLogin && otpStep === "form" && (
+              {!isLogin && otpStep === "form" && (
                 <Button type="button" onClick={handleSendOtp} disabled={loading || !formData.cellphone}
                   className="h-11 px-3 bg-white/10 text-white text-xs rounded-xl border border-white/10 hover:bg-white/15">
                   Verify
@@ -727,20 +726,21 @@ const RiderAuth = () => {
               )}
             </div>
           </div>
-              {!isLogin && otpStep === "form" && (
-                <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0"}}>
-                  <input type="checkbox" id="terms-cb" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}
-                    style={{marginTop:2,accentColor:"#00ff88",width:16,height:16,flexShrink:0,cursor:"pointer"}} />
-                  <label htmlFor="terms-cb" style={{color:"rgba(255,255,255,0.5)",fontSize:12,lineHeight:1.5,cursor:"pointer"}}>
-                    I have read and agree to the{" "}
-                    <button type="button" onClick={() => setShowTerms(true)}
-                      style={{color:"#00ff88",background:"none",border:"none",padding:0,fontSize:12,cursor:"pointer",textDecoration:"underline"}}>
-                      Terms & Conditions and Privacy Policy
-                    </button>
-                  </label>
-                </div>
-              )}
 
+            {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
+            {!isLogin && otpStep === "form" && (
+              <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0"}}>
+                <input type="checkbox" id="terms-cb" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}
+                  style={{marginTop:2,accentColor:"#00ff88",width:16,height:16,flexShrink:0,cursor:"pointer"}} />
+                <label htmlFor="terms-cb" style={{color:"rgba(255,255,255,0.5)",fontSize:12,lineHeight:1.5,cursor:"pointer"}}>
+                  I have read and agree to the{" "}
+                  <button type="button" onClick={() => setShowTerms(true)}
+                    style={{color:"#00ff88",background:"none",border:"none",padding:0,fontSize:12,cursor:"pointer",textDecoration:"underline"}}>
+                    Terms & Conditions and Privacy Policy
+                  </button>
+                </label>
+              </div>
+            )}
           {!isLogin && otpStep === "otp" && (
             <div>
               <label className="text-white/40 text-xs font-medium mb-1.5 block">Enter 4-digit code</label>
@@ -1543,6 +1543,10 @@ const RiderDashboard = () => {
   useEffect(() => {
     api.get("/rider/saved-cards").then(r => setSavedCards(r.data.saved_cards || [])).catch(() => {});
   }, [user?.id]);
+
+  useEffect(() => {
+    api.get("/rider/saved-cards").then(r => setSavedCards(r.data.saved_cards || [])).catch(() => {});
+  }, [user?.id]);
   const navigate  = useNavigate();
   const { t }     = useLanguage();
 
@@ -1567,6 +1571,8 @@ const RiderDashboard = () => {
   const [stops,         setStops]         = useState([]);
   const [carType,       setCarType]       = useState("economy");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [savedCards, setSavedCards] = useState([]);
+  const [selectedVaultId, setSelectedVaultId] = useState(null);
   const [savedCards, setSavedCards] = useState([]);
   const [selectedVaultId, setSelectedVaultId] = useState(null);
 
@@ -1831,7 +1837,7 @@ const [showPromo, setShowPromo] = useState(false);
     if (!activeRide) return;
     // Warn about cancellation fee if driver has arrived
     if (activeRide.status === "arrived") {
-      const confirmed = window.confirm("Ã¢Å¡Â Ã¯Â¸Â The driver has already arrived. A GEL 3.00 no-show fee will be charged to your wallet. Cancel anyway?");
+      const confirmed = window.confirm("\u26a0\ufe0f The driver has already arrived. A GEL 3.00 no-show fee will be charged to your wallet. Cancel anyway?");
       if (!confirmed) return;
     }
     try {
@@ -1924,7 +1930,7 @@ const [showPromo, setShowPromo] = useState(false);
               <button className="flex items-center gap-1 text-[#00ff88] text-xs mt-0.5 hover:text-[#00d4ff] transition-colors" onClick={() => setShowTopUp(true)}>
                 <Wallet className="w-2.5 h-2.5" />
                 GEL {user?.wallet_balance?.toFixed(2) || "0.00"}
-                <span className="text-white/25">·</span>
+                <span className="text-white/25">Ãƒâ€šÃ‚Â·</span>
                 <span className="text-white/40">{t("top_up")}</span>
               </button>
             </div>
@@ -2029,7 +2035,7 @@ const [showPromo, setShowPromo] = useState(false);
             {surgeInfo?.is_surge && (
               <div style={{background:"rgba(255,140,0,0.1)",border:"2px solid rgba(255,140,0,0.4)",borderRadius:16,padding:"14px 16px",animation:"pulse 2s infinite"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                  <span style={{fontSize:24}}>⚡</span>
+                  <span style={{fontSize:24}}>ÃƒÂ¢Ã…Â¡Ã‚Â¡</span>
                   <div style={{flex:1}}>
                     <div style={{color:"#ff8c00",fontWeight:900,fontSize:14}}>Surge Pricing Active</div>
                     <div style={{color:"rgba(255,140,0,0.6)",fontSize:12}}>{surgeInfo.surge_reason}</div>
@@ -2042,10 +2048,10 @@ const [showPromo, setShowPromo] = useState(false);
                 <div style={{background:"rgba(255,140,0,0.08)",borderRadius:10,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <span style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>Base fare</span>
                   <span style={{color:"rgba(255,255,255,0.4)",fontSize:12,fontFamily:"monospace",textDecoration:"line-through"}}>
-                    GEL {fareEstimate ? (fareEstimate.total / (surgeInfo.multiplier||1)).toFixed(2) : "—"}
+                    GEL {fareEstimate ? (fareEstimate.total / (surgeInfo.multiplier||1)).toFixed(2) : "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"}
                   </span>
                   <span style={{color:"#ff8c00",fontSize:14,fontWeight:900,fontFamily:"monospace"}}>
-                    Ã¢â€ ’ GEL {fareEstimate?.total.toFixed(2)}
+                    ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ GEL {fareEstimate?.total.toFixed(2)}
                   </span>
                 </div>
                 <div style={{color:"rgba(255,140,0,0.5)",fontSize:11,marginTop:6,textAlign:"center"}}>
@@ -2058,7 +2064,7 @@ const [showPromo, setShowPromo] = useState(false);
               <div className="bg-white/3 border border-white/8 rounded-2xl px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-white/40 text-sm">
                   <RouteIcon className="w-4 h-4" />
-                  <span>{routeInfo.distance} {t("km")} · {routeInfo.duration} {t("min")}</span>
+                  <span>{routeInfo.distance} {t("km")} Ãƒâ€šÃ‚Â· {routeInfo.duration} {t("min")}</span>
                 </div>
                 <div className="text-right">
                   <div className="flex items-baseline justify-end">
@@ -2129,10 +2135,10 @@ const [showPromo, setShowPromo] = useState(false);
                         <CreditCard style={{width:18,height:18,color:selectedVaultId===card.vault_id?"#00d4ff":"rgba(255,255,255,0.4)"}} />
                         <div style={{flex:1,textAlign:"left"}}>
                           <span style={{color:selectedVaultId===card.vault_id?"#00d4ff":"white",fontWeight:700,fontSize:13}}>
-                            {card.brand || "Card"} Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢ {card.last4 || "****"}
+                            {card.brand || "Card"} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ {card.last4 || "****"}
                           </span>
                         </div>
-                        {selectedVaultId===card.vault_id && <span style={{color:"#00d4ff",fontSize:11,fontWeight:700}}>Ã¢Å“â€œ Selected</span>}
+                        {selectedVaultId===card.vault_id && <span style={{color:"#00d4ff",fontSize:11,fontWeight:700}}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Selected</span>}
                       </button>
                     ))}
                   </div>
@@ -2145,30 +2151,30 @@ const [showPromo, setShowPromo] = useState(false);
             <div className="mt-6 mb-3 space-y-3">
               {!showPromo && !promoApplied && (
                 <button onClick={() => setShowPromo(true)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,background:"rgba(255,215,0,0.05)",border:"1px dashed rgba(255,215,0,0.3)",borderRadius:14,padding:"10px 14px",cursor:"pointer"}}>
-                  <span style={{fontSize:24}}>Ã°Å¸Å½Å¸Ã¯Â¸Â</span>
+                  <span style={{fontSize:24}}>ÃƒÂ°Ã…Â¸Ã…Â½Ã…Â¸ÃƒÂ¯Ã‚Â¸Ã‚Â</span>
                   <div style={{flex:1,textAlign:"left"}}>
                     <div style={{color:"#ffd700",fontWeight:700,fontSize:13}}>Have a promo code?</div>
                     <div style={{color:"rgba(255,255,255,0.35)",fontSize:11}}>Tap to enter your code</div>
                   </div>
-                  <span style={{color:"rgba(255,215,0,0.5)",fontSize:18}}>Ã¢â‚¬Âº</span>
+                  <span style={{color:"rgba(255,215,0,0.5)",fontSize:18}}>ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âº</span>
                 </button>
               )}
               {promoApplied && (
                 <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(0,255,136,0.08)",border:"1px solid rgba(0,255,136,0.3)",borderRadius:14,padding:"10px 14px"}}>
-                  <span style={{fontSize:22}}>Ã¢Å“â€¦</span>
+                  <span style={{fontSize:22}}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦</span>
                   <div style={{flex:1}}>
                     <div style={{color:"#00ff88",fontWeight:700,fontSize:13}}>Promo Applied!</div>
-                    <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>{promoCode} — 15% off</div>
+                    <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>{promoCode} ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â 15% off</div>
                   </div>
-                  <button onClick={() => { setPromoCode(""); setPromoApplied(false); setShowPromo(false); }} style={{color:"rgba(255,255,255,0.3)",fontSize:18,background:"none",border:"none",cursor:"pointer"}}>Ã¢Å“•</button>
+                  <button onClick={() => { setPromoCode(""); setPromoApplied(false); setShowPromo(false); }} style={{color:"rgba(255,255,255,0.3)",fontSize:18,background:"none",border:"none",cursor:"pointer"}}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢</button>
                 </div>
               )}
               {showPromo && !promoApplied && (
                 <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,215,0,0.25)",borderRadius:14,padding:14}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-                    <span style={{fontSize:20}}>Ã°Å¸Å½Å¸Ã¯Â¸Â</span>
+                    <span style={{fontSize:20}}>ÃƒÂ°Ã…Â¸Ã…Â½Ã…Â¸ÃƒÂ¯Ã‚Â¸Ã‚Â</span>
                     <span style={{color:"#ffd700",fontWeight:700,fontSize:13}}>Enter Promo Code</span>
-                    <button onClick={() => setShowPromo(false)} style={{marginLeft:"auto",color:"rgba(255,255,255,0.3)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>Ã¢Å“•</button>
+                    <button onClick={() => setShowPromo(false)} style={{marginLeft:"auto",color:"rgba(255,255,255,0.3)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢</button>
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     <input type="text" placeholder="e.g. BETA15" value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"10px 14px",color:"#ffffff",fontSize:14,fontWeight:700,letterSpacing:2,outline:"none",caretColor:"#ffd700"}} />
@@ -2178,7 +2184,7 @@ const [showPromo, setShowPromo] = useState(false);
               )}
               {promoApplied && fareEstimate?.discount > 0 && (
                 <div style={{display:"flex",justifyContent:"space-between",padding:"0 8px"}}>
-                  <span style={{color:"#00ff88",fontSize:11,fontWeight:700}}>Ã°Å¸Å½â€° Promo discount: GEL {fareEstimate.discount.toFixed(2)}</span>
+                  <span style={{color:"#00ff88",fontSize:11,fontWeight:700}}>ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â° Promo discount: GEL {fareEstimate.discount.toFixed(2)}</span>
                 </div>
               )}
             </div>
@@ -2198,7 +2204,7 @@ const [showPromo, setShowPromo] = useState(false);
   ) : (
     <div className="flex items-center">
       <Rocket className="w-5 h-5 mr-2" />
-      <span>{t("request_ride")} {carType} · GEL {fareEstimate?.total.toFixed(2)}</span>
+      <span>{t("request_ride")} {carType} Ãƒâ€šÃ‚Â· GEL {fareEstimate?.total.toFixed(2)}</span>
     </div>
   )}
 </Button>
@@ -2484,7 +2490,7 @@ const [showPromo, setShowPromo] = useState(false);
                       <p style={{color:"rgba(255,255,255,0.4)",fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Saved Cards</p>
                       {savedCards.map(card => (
                         <div key={card.vault_id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-                          <span style={{color:"white",fontSize:13,flex:1}}>Ã°Å¸’Â³ {card.brand || "Card"} Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢ {card.last4 || "****"}</span>
+                          <span style={{color:"white",fontSize:13,flex:1}}>ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â³ {card.brand || "Card"} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ {card.last4 || "****"}</span>
                           <button onClick={async () => { if(window.confirm("Remove this card?")) { await api.delete(`/rider/saved-cards/${card.vault_id}`); setSavedCards(prev => prev.filter(c => c.vault_id !== card.vault_id)); toast.success("Card removed"); }}}
                             style={{color:"rgba(255,60,60,0.6)",fontSize:11,background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>Remove</button>
                         </div>
@@ -2511,7 +2517,7 @@ const [showPromo, setShowPromo] = useState(false);
             {/* Welcome Discount */}
             {(user?.welcome_discount_rides_remaining > 0) && (
               <div style={{background:"rgba(255,140,0,0.06)",border:"1px solid rgba(255,140,0,0.3)",borderRadius:16,padding:16,display:"flex",alignItems:"center",gap:12}}>
-                <span style={{fontSize:28}}>ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â°</span>
+                <span style={{fontSize:28}}>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°</span>
                 <div style={{flex:1}}>
                   <div style={{color:"#ff8c00",fontWeight:800,fontSize:14}}>Welcome Discount Active!</div>
                   <div style={{color:"rgba(255,255,255,0.5)",fontSize:12,marginTop:2}}>15% off your next {user.welcome_discount_rides_remaining} ride{user.welcome_discount_rides_remaining !== 1 ? "s" : ""}</div>
@@ -2531,7 +2537,7 @@ const [showPromo, setShowPromo] = useState(false);
               return (
                 <div style={{background:"rgba(0,212,255,0.04)",border:"1px solid rgba(0,212,255,0.2)",borderRadius:16,padding:16}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                    <span style={{fontSize:22}}>ÃƒÂ°Ã…Â¸Ã…Â½</span>
+                    <span style={{fontSize:22}}>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â</span>
                     <div style={{flex:1}}>
                       <div style={{color:"#00d4ff",fontWeight:700,fontSize:14}}>Loyalty Reward</div>
                       <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>Every 13th ride gets 15% off</div>
