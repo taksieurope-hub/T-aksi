@@ -3017,7 +3017,7 @@ const DriverPortal = () => {
       options={{
         "client-id": PAYPAL_CLIENT_ID || "sb",
         currency: "USD",
-        vault: true // ?? Swapped capture for vault
+        intent: "capture"
       }}
     >
       <Routes>

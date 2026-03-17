@@ -2540,7 +2540,7 @@ const RiderPortal = () => {
 
   // 3. Logged in -> Show Dashboard
   return (
-    <PayPalScriptProvider options={{ "client-id": PAYPAL_CLIENT_ID || "sb", currency: "USD", vault: true }}>
+    <PayPalScriptProvider options={{ "client-id": PAYPAL_CLIENT_ID || "sb", currency: "USD", intent: "capture" }}>
       <Routes>
         <Route path="/" element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<RiderDashboard />} />
