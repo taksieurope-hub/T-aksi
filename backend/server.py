@@ -1138,6 +1138,8 @@ async def register_rider(data: UserRegister, response: Response, x_phone_verifie
         "wallet_balance": 0.0,
         "total_rides": 0,
         "rating": 5.0,
+        "welcome_discount_rides_remaining": 2,
+        "welcome_discount_pct": 15,
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP,
     }
@@ -3331,6 +3333,15 @@ async def request_ride(
         fare["total"] = round(fare["total"] - _disc_amt, 2)
         fare["promo_discount"] = _disc_amt
         fare["promo_code"] = _rider_promo.get("code", "")
+    # Apply welcome discount for new riders (first 2 rides)
+    _rider_doc3 = db.collection("users").document(final_user_id).get()
+    _rider_d3 = _rider_doc3.to_dict() or {} if _rider_doc3.exists else {}
+    _welcome_remaining = int(_rider_d3.get("welcome_discount_rides_remaining", 0))
+    if _welcome_remaining > 0:
+        _welcome_disc = round(fare["total"] * 0.15, 2)
+        fare["total"] = round(fare["total"] - _welcome_disc, 2)
+        fare["welcome_discount"] = _welcome_disc
+        db.collection("users").document(final_user_id).update({"welcome_discount_rides_remaining": firestore.Increment(-1)})
     # Apply loyalty 15% discount if earned
     _rider_doc2 = db.collection("users").document(final_user_id).get()
     _rider_d2 = _rider_doc2.to_dict() or {} if _rider_doc2.exists else {}
