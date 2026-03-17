@@ -1271,7 +1271,7 @@ async def verify_firebase_phone(req: Request):
         raise HTTPException(400, f"Invalid Firebase token: {str(e)}")
 
 AGORA_APP_ID = "952b4fa249fe44e08b64836a9f6c2a43"
-AGORA_APP_CERTIFICATE = os.environ.get("AGORA_APP_CERTIFICATE", "")
+AGORA_APP_CERTIFICATE = os.environ.get("AGORA_APP_CERTIFICATE", "6fe49d41759a4319be3ee5768188c326")
 
 @app.get("/api/agora/token", tags=["Calls"])
 async def get_agora_token(channel: str, user_id: str = Depends(get_current_user_id)):
@@ -1285,7 +1285,19 @@ async def get_agora_token(channel: str, user_id: str = Depends(get_current_user_
             AGORA_APP_ID, AGORA_APP_CERTIFICATE, channel, 0, Role_Publisher, expire
         )
         return {"token": token, "app_id": AGORA_APP_ID, "channel": channel}
+    except ImportError:
+        try:
+            from agora_token import RtcTokenBuilder
+            expire = int(time.time()) + 3600
+            token = RtcTokenBuilder.build_token_with_uid(
+                AGORA_APP_ID, AGORA_APP_CERTIFICATE, channel, 0, 1, expire, expire
+            )
+            return {"token": token, "app_id": AGORA_APP_ID, "channel": channel}
+        except Exception as e2:
+            logger.error(f"Agora token error: {e2}")
+            return {"token": AGORA_APP_ID, "app_id": AGORA_APP_ID, "channel": channel}
     except Exception as e:
+        logger.error(f"Agora token error: {e}")
         return {"token": AGORA_APP_ID, "app_id": AGORA_APP_ID, "channel": channel}
 
 @app.post("/api/auth/demo-login", tags=["Auth"])
