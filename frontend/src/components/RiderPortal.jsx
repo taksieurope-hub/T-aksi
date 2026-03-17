@@ -1,4 +1,4 @@
-﻿import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
+import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
@@ -1482,7 +1482,7 @@ const RiderSupportPanel = () => {
 // RIDER DASHBOARD ? UNCHANGED logic, uses upgraded LiveTrackingMap above
 // =============================================================================
 const RiderDashboard = () => {
-  const { user, login, logout, refreshUser } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const navigate  = useNavigate();
   const { t }     = useLanguage();
 
@@ -2519,17 +2519,6 @@ if (!PAYPAL_CLIENT_ID) {
   console.error("? VITE_PAYPAL_CLIENT_ID is not set.");
 }
 
-const RiderAutoLogin = ({ userType, AuthComponent }) => {
-  const { login } = useAuth();
-  const navigate = useNavigate();
-  React.useEffect(() => {
-    api.post(`/auth/demo-login?user_type=${userType}`).then(r => {
-      if (r.data?.token && r.data?.user) { login(r.data.token, r.data.user); }
-    }).catch(() => {});
-  }, []);
-  return <AuthComponent />;
-};
-
 const RiderPortal = () => {
   const { user, loading } = useAuth(); 
 
@@ -2544,7 +2533,6 @@ const RiderPortal = () => {
     );
   }
 
-  React.useEffect(() => { if (!user) { api.post("/auth/demo-login?user_type=rider").then(r => { if (r.data?.token && r.data?.user) login(r.data.token, r.data.user); }).catch(()=>{}); } }, [user]);
   // 2. If not logged in, send them back to the Auth screen
   if (!user) {
     return <RiderAuth />;

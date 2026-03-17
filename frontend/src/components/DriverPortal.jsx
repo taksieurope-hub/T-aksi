@@ -1,4 +1,4 @@
-﻿import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
+import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
 import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -3004,11 +3004,9 @@ if (!PAYPAL_CLIENT_ID) {
 }
 
 const DriverPortal = () => {
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
 
-  React.useEffect(() => { if (!user) { api.post("/auth/demo-login?user_type=driver").then(r => { if (r.data?.token && r.data?.user) login(r.data.token, r.data.user); }).catch(()=>{}); } }, [user]);
-  React.useEffect(() => { if (!user) { api.post("/auth/demo-login?user_type=driver").then(r => { if (r.data?.token && r.data?.user) login(r.data.token, r.data.user); }).catch(()=>{}); } }, [user]);
   if (!user || user.user_type !== "driver") {
     if (location.pathname === "/driver" || location.pathname === "/driver/") return <DriverAuth />;
     return <Navigate to="/driver" replace />;
