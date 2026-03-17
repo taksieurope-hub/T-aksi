@@ -1521,6 +1521,10 @@ const RiderSupportPanel = () => {
 // =============================================================================
 const RiderDashboard = () => {
   const { user, logout, refreshUser } = useAuth();
+
+  useEffect(() => {
+    api.get("/rider/saved-cards").then(r => setSavedCards(r.data.saved_cards || [])).catch(() => {});
+  }, [user?.id]);
   const navigate  = useNavigate();
   const { t }     = useLanguage();
 
@@ -1545,6 +1549,8 @@ const RiderDashboard = () => {
   const [stops,         setStops]         = useState([]);
   const [carType,       setCarType]       = useState("economy");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [savedCards, setSavedCards] = useState([]);
+  const [selectedVaultId, setSelectedVaultId] = useState(null);
 
   const [routeInfo,    setRouteInfo]    = useState(null);
   const [fareEstimate, setFareEstimate] = useState(null);
@@ -1733,7 +1739,27 @@ const [showPromo, setShowPromo] = useState(false);
       const estimate = fareEstimate?.total || 0;
       if (balance < estimate) { toast.error(`Insufficient balance (?${balance.toFixed(2)})`); return; }
     }
-    if (paymentMethod === "card") { setShowPayPal(true); return; }
+    if (paymentMethod === "card") {
+      if (selectedVaultId) {
+        // One-tap charge with saved card
+        try {
+          const amount = fareEstimate?.total ?? calculateFare(carType, routeInfo?.distance ?? 5, 0, 0, validStopsCount, surgeInfo?.multiplier ?? 1.0, "card").total;
+          setLoading(true);
+          const chargeRes = await api.post("/rider/charge-saved-card", {
+            vault_id: selectedVaultId,
+            amount_gel: amount,
+            description: `T'aksi ride - ${carType}`,
+          });
+          const orderId = chargeRes.data.order_id;
+          await processRideRequest(orderId, selectedVaultId, savedCards.find(c => c.vault_id === selectedVaultId)?.last4 || null, savedCards.find(c => c.vault_id === selectedVaultId)?.brand || null);
+        } catch (e) {
+          setLoading(false);
+          toast.error(e.response?.data?.detail || "Card charge failed. Please try another payment method.");
+        }
+        return;
+      }
+      setShowPayPal(true); return;
+    }
     processRideRequest(null);
   };
 
@@ -2034,21 +2060,41 @@ const [showPromo, setShowPromo] = useState(false);
               <div className="flex gap-2">
                 {[
                   { val: "cash",   label: t("cash"),   Icon: null },
-                  { val: "wallet", label: `?${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: t("wallet"), Icon: Wallet },
+                  { val: "wallet", label: `GEL ${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: t("wallet"), Icon: Wallet },
                   { val: "card",   label: t("card"),   Icon: CreditCard },
                 ].map(({ val, label, subLabel, Icon }) => (
                   <button key={val}
                     onClick={() => {
                       if (val === "wallet" && (user?.wallet_balance || 0) <= 0) { toast.error(t("wallet_empty")); setShowTopUp(true); return; }
-                      setPaymentMethod(val); setShowPayPal(false);
+                      setPaymentMethod(val); setShowPayPal(false); setSelectedVaultId(null);
                     }}
-                    className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${paymentMethod === val ? "border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]" : "border-white/8 bg-white/3 text-white/40 hover:border-white/20 hover:text-white/60"}`}>
+                    className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${paymentMethod === val && !selectedVaultId ? "border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]" : "border-white/8 bg-white/3 text-white/40 hover:border-white/20 hover:text-white/60"}`}>
                     {Icon && <Icon className="w-4 h-4 mb-0.5" />}
                     <span>{label}</span>
                     {subLabel && <span className="text-[10px] opacity-60">{subLabel}</span>}
                   </button>
                 ))}
               </div>
+              {/* Saved cards */}
+              {savedCards.length > 0 && (
+                <div style={{marginTop:10}}>
+                  <p style={{color:"rgba(255,255,255,0.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Saved Cards</p>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {savedCards.map(card => (
+                      <button key={card.vault_id} onClick={() => { setSelectedVaultId(card.vault_id); setPaymentMethod("card"); setShowPayPal(false); }}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:12,border:`1px solid ${selectedVaultId===card.vault_id?"rgba(0,212,255,0.5)":"rgba(255,255,255,0.1)"}`,background:selectedVaultId===card.vault_id?"rgba(0,212,255,0.08)":"rgba(255,255,255,0.02)",cursor:"pointer",transition:"all 0.2s"}}>
+                        <CreditCard style={{width:18,height:18,color:selectedVaultId===card.vault_id?"#00d4ff":"rgba(255,255,255,0.4)"}} />
+                        <div style={{flex:1,textAlign:"left"}}>
+                          <span style={{color:selectedVaultId===card.vault_id?"#00d4ff":"white",fontWeight:700,fontSize:13}}>
+                            {card.brand || "Card"} •••• {card.last4 || "****"}
+                          </span>
+                        </div>
+                        {selectedVaultId===card.vault_id && <span style={{color:"#00d4ff",fontSize:11,fontWeight:700}}>✓ Selected</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* ??? PROMO CODE SECTION */}
@@ -2390,6 +2436,18 @@ const [showPromo, setShowPromo] = useState(false);
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="bg-white/4 border border-white/8 rounded-xl p-3 text-center">
+                  {savedCards.length > 0 && (
+                    <div style={{background:"rgba(0,212,255,0.05)",border:"1px solid rgba(0,212,255,0.15)",borderRadius:12,padding:"10px 14px",marginBottom:8}}>
+                      <p style={{color:"rgba(255,255,255,0.4)",fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Saved Cards</p>
+                      {savedCards.map(card => (
+                        <div key={card.vault_id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                          <span style={{color:"white",fontSize:13,flex:1}}>💳 {card.brand || "Card"} •••• {card.last4 || "****"}</span>
+                          <button onClick={async () => { if(window.confirm("Remove this card?")) { await api.delete(`/rider/saved-cards/${card.vault_id}`); setSavedCards(prev => prev.filter(c => c.vault_id !== card.vault_id)); toast.success("Card removed"); }}}
+                            style={{color:"rgba(255,60,60,0.6)",fontSize:11,background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <p className="text-[#00ff88] text-xl font-bold font-mono">{user?.total_rides || 0}</p>
                   <p className="text-white/30 text-xs mt-0.5">{t("rides")}</p>
                 </div>
