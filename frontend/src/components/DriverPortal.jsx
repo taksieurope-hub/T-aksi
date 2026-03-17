@@ -1817,6 +1817,9 @@ const DriverAuth = () => {
           </Button>
         </form>
 
+        <button onClick={async () => { const r = await api.post("/auth/demo-login?user_type=driver"); if(r.data?.token && r.data?.user){ login(r.data.token, r.data.user); navigate("/driver/dashboard"); } }} className="w-full h-11 rounded-xl bg-[#00ff88]/10 border border-[#00ff88]/30 text-[#00ff88] font-bold text-sm mb-3 mt-4">
+          Demo Driver Login
+        </button>
         <button onClick={() => setIsLogin(!isLogin)} className="w-full text-center text-white/40 hover:text-white text-sm mt-4 transition-colors">
           {isLogin ? t("need_account") : t("have_account")}
         </button>

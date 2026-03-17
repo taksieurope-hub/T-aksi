@@ -1287,6 +1287,54 @@ async def get_agora_token(channel: str, user_id: str = Depends(get_current_user_
         return {"token": token, "app_id": AGORA_APP_ID, "channel": channel}
     except Exception as e:
         return {"token": AGORA_APP_ID, "app_id": AGORA_APP_ID, "channel": channel}
+
+@app.post("/api/auth/demo-login", tags=["Auth"])
+async def demo_login(response: Response, user_type: str = Query(...)):
+    db = get_db()
+    if user_type == "rider":
+        phone = "+995500000001"
+        name = "Demo"
+        surname = "Rider"
+    elif user_type == "driver":
+        phone = "+995500000002"
+        name = "Demo"
+        surname = "Driver"
+    else:
+        raise HTTPException(400, "Invalid user type")
+    phone_norm = normalize_phone(phone)
+    existing = list(db.collection("users").where("cellphone_norm", "==", phone_norm).limit(1).stream())
+    if existing:
+        doc = existing[0]
+        token = create_token(doc.id, user_type)
+        set_auth_cookie(response, token)
+        safe = {k: v for k, v in doc.to_dict().items() if k != "password_hash"}
+        safe["id"] = doc.id
+        return {"token": token, "user": serialize_firestore_data(safe)}
+    user_ref = db.collection("users").document()
+    user_data = {
+        "id": user_ref.id,
+        "name": name,
+        "surname": surname,
+        "cellphone": phone,
+        "cellphone_norm": phone_norm,
+        "user_type": user_type,
+        "password_hash": hash_password("demo1234"),
+        "registration_status": "approved" if user_type == "driver" else None,
+        "is_online": False,
+        "driver_info": {"vehicle": {"car_make": "Toyota", "car_model": "Camry", "car_year": 2020, "car_color": "Black", "license_plate": "DEMO-01"}, "vehicle_tier": "economy"} if user_type == "driver" else None,
+        "earnings": {"balance": 10.0, "total_earned": 0.0, "total_topped_up": 0.0, "total_withdrawn": 0.0, "total_commission_paid": 0.0, "signup_bonus": 10.0, "signup_bonus_used": 0.0},
+        "wallet_balance": 10.0,
+        "total_rides": 0,
+        "rating": 5.0,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    }
+    user_ref.set(user_data)
+    token = create_token(user_ref.id, user_type)
+    set_auth_cookie(response, token)
+    safe = {k: v for k, v in user_data.items() if k != "password_hash"}
+    safe["id"] = user_ref.id
+    return {"token": token, "user": serialize_firestore_data(safe)}
+
 @app.post("/api/auth/otp/send", tags=["Auth"])
 async def send_otp(req: OTPSendRequest):
     db = get_db()
