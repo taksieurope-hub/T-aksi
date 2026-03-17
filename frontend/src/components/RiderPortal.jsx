@@ -2519,6 +2519,17 @@ if (!PAYPAL_CLIENT_ID) {
   console.error("? VITE_PAYPAL_CLIENT_ID is not set.");
 }
 
+const RiderAutoLogin = ({ userType, AuthComponent }) => {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    api.post(`/auth/demo-login?user_type=${userType}`).then(r => {
+      if (r.data?.token && r.data?.user) { login(r.data.token, r.data.user); }
+    }).catch(() => {});
+  }, []);
+  return <AuthComponent />;
+};
+
 const RiderPortal = () => {
   const { user, loading } = useAuth(); 
 
