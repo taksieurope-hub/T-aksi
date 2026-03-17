@@ -994,14 +994,15 @@ def get_surge_multiplier(lat: float = None, lng: float = None) -> dict:
     if lat and lng:
         demand = get_area_demand(lat, lng)
 
-    if demand >= 0.75:
+    # demand = rides / (drivers * 2), so 0.5 = rides exceed half the drivers
+    if demand >= 1.0:
         multiplier, reason = 2.0, "Very high demand in your area"
-    elif demand >= 0.5:
+    elif demand >= 0.75:
         multiplier, reason = 1.8, "High demand in your area"
-    elif demand >= 0.30:
+    elif demand >= 0.60:
         multiplier, reason = 1.5, "Moderate demand in your area"
-    elif demand >= 0.15:
-        multiplier, reason = 1.2, "Elevated demand in your area"
+    elif demand >= 0.50:
+        multiplier, reason = 1.2, "More requests than half your local drivers"
     else:
         return {"multiplier": 1.0, "commission_rate": DRIVER_COMMISSION_RATE, "is_surge": False, "surge_reason": None, "demand_level": round(demand, 2)}
 
@@ -5064,12 +5065,12 @@ async def get_surge_zones():
             else:
                 demand = min(1.0, ride_count / max(1, driver_count * 2))
 
-            if demand >= 0.15:
-                if demand >= 0.75:
+            if demand >= 0.50:
+                if demand >= 1.0:
                     level, color, multiplier = "very_high", "#ff2200", 2.0
-                elif demand >= 0.5:
+                elif demand >= 0.75:
                     level, color, multiplier = "high", "#ff6600", 1.8
-                elif demand >= 0.30:
+                elif demand >= 0.60:
                     level, color, multiplier = "moderate", "#ffaa00", 1.5
                 else:
                     level, color, multiplier = "elevated", "#ffdd00", 1.2
