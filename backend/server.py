@@ -3627,7 +3627,8 @@ async def match_drivers_to_ride(ride_id: str):
             dv = driver_data.get("driver_info",{}).get("vehicles",[])
             da = driver_data.get("driver_info",{}).get("active_vehicle_id")
             dveh = next((v for v in dv if v.get("id")==da), dv[0] if dv else {})
-            if dveh.get("tier","economy").lower() not in allowed: continue
+            driver_tier = (dveh.get("tier") or dveh.get("vehicle_tier") or driver_data.get("driver_info",{}).get("vehicle_tier") or "economy").lower()
+            if driver_tier not in allowed: continue
             driver_location = driver_data.get("current_location")
             if driver_location and driver_location.get("lat") and driver_location.get("lng"):
                 distance = haversine_distance(
@@ -3662,8 +3663,8 @@ async def match_drivers_to_ride(ride_id: str):
             for driver in selected_drivers:
                 send_push_notification(
                     driver["id"],
-                    title="New Ride Request ??",
-                    body=f"Pickup {round(driver['distance'], 1)}km away ? ?{ride_data.get('estimated_fare', 0):.0f}",
+                    title=f"New {(ride_data.get('carType') or 'Economy').title()} Ride Request",
+                    body=f"Pickup {round(driver['distance'], 1)}km away - GEL {ride_data.get('estimated_fare', 0):.0f}",
                     data={
                         "type": "ride_request",
                         "ride_id": ride_id,
