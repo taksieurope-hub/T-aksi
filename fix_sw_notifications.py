@@ -1,0 +1,84 @@
+﻿import os
+
+# Update the service worker to handle ride request notifications with sound
+sw_addition = """
+// T'aksi - Ride request notification handler
+self.addEventListener('push', function(event) {
+  if (!event.data) return;
+  
+  let payload;
+  try { payload = event.data.json(); } 
+  catch(e) { payload = { notification: { title: "New Ride", body: event.data.text() } }; }
+
+  const data = payload.data || {};
+  const notif = payload.notification || {};
+  const isRideRequest = data.type === "ride_request";
+
+  const options = {
+    title: notif.title || "T'aksi",
+    body: notif.body || "",
+    icon: "/icons/icon-192x192.png",
+    badge: "/icons/badge-72x72.png",
+    data: data,
+    requireInteraction: isRideRequest,
+    silent: false,
+    vibrate: isRideRequest ? [500, 300, 500, 300, 500, 300, 800] : [200],
+    actions: isRideRequest ? [
+      { action: "accept", title: "Accept Ride" },
+      { action: "decline", title: "Decline" }
+    ] : [],
+    tag: isRideRequest ? "ride-request" : "taksi-notification",
+    renotify: true,
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(options.title, options)
+  );
+});
+
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  const data = event.notification.data || {};
+  
+  if (event.action === "accept" && data.ride_id) {
+    event.waitUntil(
+      clients.matchAll({ type: "window", includeUncontrolled: true }).then(function(clientList) {
+        for (let client of clientList) {
+          if (client.url.includes("/driver") && "focus" in client) {
+            client.focus();
+            client.postMessage({ type: "ACCEPT_RIDE", ride_id: data.ride_id });
+            return;
+          }
+        }
+        return clients.openWindow("/driver/dashboard?accept=" + data.ride_id);
+      })
+    );
+  } else {
+    event.waitUntil(
+      clients.matchAll({ type: "window", includeUncontrolled: true }).then(function(clientList) {
+        for (let client of clientList) {
+          if ("focus" in client) { client.focus(); return; }
+        }
+        return clients.openWindow("/driver/dashboard");
+      })
+    );
+  }
+});
+"""
+
+# Write to public folder so vite includes it
+sw_path = "frontend/public/sw-push.js"
+with open(sw_path, "w", encoding="utf-8", newline="\n") as f:
+    f.write(sw_addition)
+print("Written: " + sw_path)
+
+# Now update vite.config to include this in the service worker
+vite_path = "frontend/vite.config.js"
+if not os.path.exists(vite_path):
+    vite_path = "frontend/vite.config.ts"
+
+c = open(vite_path, "r", encoding="utf-8").read()
+print("Vite config found: " + vite_path)
+print("Has importScripts:", "importScripts" in c)
+print("Has injectManifest:", "injectManifest" in c)
+print("Has generateSW:", "generateSW" in c)

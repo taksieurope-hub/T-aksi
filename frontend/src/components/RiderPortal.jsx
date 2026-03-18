@@ -1749,6 +1749,7 @@ const [showPromo, setShowPromo] = useState(false);
         })),
         carType, 
         paymentMethod,
+        ...(paymentMethod === "corporate" && user?.corporate_account_id ? { corporate_account_id: user.corporate_account_id } : {}),
         
         // ??? THE CRITICAL ADDITION: Pass the promo code to the server
         promo_code: promoApplied ? "BETA15" : null, 
@@ -2055,6 +2056,7 @@ const [showPromo, setShowPromo] = useState(false);
                   { val: "cash",   label: t("cash"),   Icon: null },
                   { val: "wallet", label: `GEL ${user?.wallet_balance?.toFixed(2) || "0.00"}`, subLabel: t("wallet"), Icon: Wallet },
                   { val: "card",   label: t("card"),   Icon: CreditCard },
+                  ...(user?.corporate_account_id ? [{ val: "corporate", label: "Business", subLabel: user.corporate_company_name || "Corporate", Icon: null }] : []),
                 ].map(({ val, label, subLabel, Icon }) => (
                   <button key={val}
                     onClick={() => {

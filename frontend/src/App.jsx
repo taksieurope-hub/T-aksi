@@ -125,7 +125,8 @@ function App() {
                   <Route path="/"               element={<LandingPage />} />
                   <Route path="/track/:rideId"  element={<LandingPage />} />
                   <Route path="/rider/*"        element={<RiderPortal />} />
-                  <Route path="/driver/*"       element={<DriverPortal />} />
+                  <Route path="/business" element={<CorporatePortal />} />
+        <Route path="/driver/*"       element={<DriverPortal />} />
                   <Route path="/admin/*"        element={<AdminPortal />} />
                   <Route path="/dashboard"      element={<Navigate to="/rider/dashboard" replace />} />
                   <Route path="*"               element={<Navigate to="/" replace />} />
