@@ -3266,8 +3266,8 @@ async def retry_ride_matching(
     if ride_data.get("status") not in ["no_drivers", "cancelled"]:
         raise HTTPException(400, f"Cannot retry ride with status: {ride_data.get('status')}")
 
-    ride_owner = ride_data.get("userId") or ride_data.get("user_id")
-    if ride_owner != user_id:
+    ride_owner = ride_data.get("userId") or ride_data.get("user_id") or ride_data.get("rider_id")
+    if ride_owner and ride_owner != user_id:
         raise HTTPException(403, "You can only retry your own rides")
 
     db.collection("rides").document(ride_id).update({
@@ -3312,7 +3312,9 @@ async def request_ride(
     user_id: Optional[str] = Depends(get_current_user_id),
 ):
     db = get_db()
-    final_user_id = user_id or ride_data.user_id or "test_rider_id"
+    final_user_id = user_id or ride_data.user_id
+    if not final_user_id:
+        raise HTTPException(401, "Authentication required to request a ride")
 
     if not ride_data.pickup_lat or not ride_data.pickup_lng:
         raise HTTPException(status_code=422, detail="Pickup coordinates are required.")
