@@ -87,7 +87,7 @@ self.addEventListener("message", function (event) {
 });
 
 
-self.addEventListener("activate", function(event) {
+selself.addEventListener("activate", function(event) {
   event.waitUntil(
     caches.keys().then(function(cacheNames) {
       return Promise.all(
