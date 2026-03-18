@@ -1106,21 +1106,9 @@ async def worker_ping():
 # =========================
 
 @app.post("/api/auth/register/rider", tags=["Auth"])
-async def register_rider(data: UserRegister, response: Response, x_phone_verified: Optional[str] = Header(None)):
+async def register_rider(data: UserRegister, response: Response):
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
-
-    if not x_phone_verified:
-        raise HTTPException(403, "Phone number must be verified before registering.")
-    token_data = decode_token(x_phone_verified)
-    if not token_data or token_data.get("role") != "phone_verified":
-        raise HTTPException(403, "Invalid or expired phone verification token.")
-    if token_data.get("user_id") != phone_norm:
-        raise HTTPException(403, "Phone token does not match the phone number being registered.")
-
-    otp_doc = db.collection("otp_codes").document(phone_norm).get()
-    if not otp_doc.exists or not otp_doc.to_dict().get("verified"):
-        raise HTTPException(403, "Phone number has not been verified via OTP.")
 
     existing = list(db.collection("users").where("cellphone_norm", "==", phone_norm).limit(1).stream())
     if existing:
@@ -1158,21 +1146,9 @@ async def register_rider(data: UserRegister, response: Response, x_phone_verifie
 
 @app.post("/api/auth/register/driver", tags=["Auth"])
 @app.post("/api/driver/register", tags=["Auth"])
-async def register_driver(data: UserRegister, response: Response, x_phone_verified: Optional[str] = Header(None)):
+async def register_driver(data: UserRegister, response: Response):
     db = get_db()
     phone_norm = normalize_phone(data.cellphone)
-
-    if not x_phone_verified:
-        raise HTTPException(403, "Phone number must be verified before registering.")
-    token_data = decode_token(x_phone_verified)
-    if not token_data or token_data.get("role") != "phone_verified":
-        raise HTTPException(403, "Invalid or expired phone verification token.")
-    if token_data.get("user_id") != phone_norm:
-        raise HTTPException(403, "Phone token does not match the phone number being registered.")
-
-    otp_doc = db.collection("otp_codes").document(phone_norm).get()
-    if not otp_doc.exists or not otp_doc.to_dict().get("verified"):
-        raise HTTPException(403, "Phone number has not been verified via OTP.")
 
     existing = list(db.collection("users").where("cellphone_norm", "==", phone_norm).limit(1).stream())
     if existing:
