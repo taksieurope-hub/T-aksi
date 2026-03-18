@@ -1224,6 +1224,7 @@ async def register_driver(data: UserRegister, response: Response):
         signup_bonus = 0.0
     user_data["earnings"]["signup_bonus"] = signup_bonus
     user_data["earnings"]["signup_bonus_used"] = 0.0
+    user_data["earnings"]["balance"] = signup_bonus
     user_ref.set(user_data)
 
     token = create_token(user_ref.id, "driver")
@@ -3611,7 +3612,8 @@ async def match_drivers_to_ride(ride_id: str):
             commission_rate = ride_data.get("commission_rate", DRIVER_COMMISSION_RATE)
             required_commission = estimated_fare * commission_rate
             driver_balance = driver_data.get("earnings", {}).get("balance", 0)
-            if driver_balance < required_commission:
+            ride_payment = ride_data.get("payment_method", "cash")
+            if ride_payment == "cash" and driver_balance < required_commission:
                 continue
 
 
