@@ -21,6 +21,11 @@ export default defineConfig(({ mode }) => {
           injectionPoint: undefined,
         },
         manifest: false,
+        workbox: {
+          cleanupOutdatedCaches: true,
+          skipWaiting: true,
+          clientsClaim: true,
+        },
       }),
     ],
     resolve: {
@@ -40,6 +45,14 @@ export default defineConfig(({ mode }) => {
       target: 'esnext',
       minify: 'esbuild',
       outDir: 'dist',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'react-router-dom'],
+            axios: ['axios'],
+          }
+        }
+      }
     }
   }
 })
