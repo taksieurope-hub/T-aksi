@@ -1929,21 +1929,7 @@ const DriverAuth = () => {
               </label>
             </div>
           )}
-          {/* OTP confirmation step */}</Label>
-              <div className="flex gap-2">
-                <Input value={otpCode} onChange={e => setOtpCode(e.target.value)} maxLength={4}
-                  placeholder="0000"
-                  className="bg-white/5 border-white/10 text-white h-11 text-center text-lg tracking-widest flex-1" />
-                <Button type="button" onClick={handleVerifyOtp} disabled={loading || otpCode.length < 4}
-                  className="h-11 px-4 bg-[#00d4ff] text-black font-bold rounded-xl text-sm">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : t("confirm")}
-                </Button>
-              </div>
-              <button type="button" onClick={handleSendOtp} className="text-white/30 text-xs hover:text-white/60">
-                {t("resend_code")}
-              </button>
-            </div>
-          )}
+
 
           <div className="space-y-1.5">
             <Label className="text-white/50 text-xs">{t("password")}</Label>
