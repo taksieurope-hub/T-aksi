@@ -2024,6 +2024,17 @@ const [showPromo, setShowPromo] = useState(false);
               </div>
             )}
 
+            {(user?.welcome_discount_rides_remaining > 0) && (
+              <div style={{background:"rgba(255,140,0,0.06)",border:"1px solid rgba(255,140,0,0.3)",borderRadius:16,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+                <span style={{fontSize:24}}>🎉</span>
+                <div style={{flex:1}}>
+                  <div style={{color:"#ff8c00",fontWeight:800,fontSize:13}}>Welcome Discount Active!</div>
+                  <div style={{color:"rgba(255,255,255,0.5)",fontSize:11,marginTop:2}}>15% off your next {user.welcome_discount_rides_remaining} ride{user.welcome_discount_rides_remaining !== 1 ? "s" : ""}</div>
+                </div>
+                <div style={{background:"rgba(255,140,0,0.2)",border:"1px solid rgba(255,140,0,0.4)",borderRadius:10,padding:"4px 10px",color:"#ff8c00",fontWeight:900,fontSize:15}}>-15%</div>
+              </div>
+            )}
+
             <div>
               <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">{t("vehicle_class")}</p>
               <div className="grid grid-cols-5 gap-1.5">
