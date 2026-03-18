@@ -2327,6 +2327,26 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     finally { setLoading(false); }
   };
 
+  // Listen for ACCEPT_RIDE message from service worker notification action
+  React.useEffect(() => {
+    const handleSWMessage = (event) => {
+      if (event.data && event.data.type === "ACCEPT_RIDE" && event.data.ride_id) {
+        handleAcceptRide(event.data.ride_id);
+      }
+    };
+    navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", handleSWMessage);
+    // Also handle URL param ?accept=rideId when opened from notification
+    const params = new URLSearchParams(window.location.search);
+    const acceptId = params.get("accept");
+    if (acceptId) {
+      setTimeout(() => handleAcceptRide(acceptId), 1500);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    return () => {
+      navigator.serviceWorker && navigator.serviceWorker.removeEventListener("message", handleSWMessage);
+    };
+  }, []);
+
   const handleAcceptRide = async (rideId) => {
   setLoading(true);
   try {
