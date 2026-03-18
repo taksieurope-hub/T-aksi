@@ -2881,6 +2881,9 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                   <GlassCard accent className="p-4 text-center">
                     <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
                     <p className="text-3xl font-bold font-mono text-[#00ff88]">GEL {balance.toFixed(2)}</p>
+                    {remainingBonus > 0 && (
+                      <p className="text-amber-400 text-[10px] mt-1">🎁 GEL {remainingBonus.toFixed(2)} signup bonus (commission only)</p>
+                    )}
                   </GlassCard>
                   <GlassCard className="p-4 text-center">
                     <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Total Earned</p>
