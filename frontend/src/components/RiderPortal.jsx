@@ -614,37 +614,8 @@ const RiderAuth = () => {
   const [loading, setLoading]   = useState(false);
   const [formData, setFormData] = useState({ name: "", surname: "", cellphone: "", password: "" });
 
-  const [otpStep, setOtpStep]       = useState("form");
-  const [otpCode, setOtpCode]       = useState("");
-  const [phoneToken, setPhoneToken] = useState(null);
 
-  const handleSendOtp = async () => {
-    if (!formData.cellphone) return toast.error("Enter your phone number first");
-    setLoading(true);
-    try {
-      const phone = formData.cellphone.startsWith("+") ? formData.cellphone : "+995" + formData.cellphone.replace(/^0/, "");
-      const result = await sendFirebaseOTP(phone);
-      if (!result.success) throw new Error(result.error);
-      toast.success("Verification code sent!");
-      setOtpStep("otp");
-    } catch (err) {
-      toast.error(err.message || "Failed to send code");
-    } finally { setLoading(false); }
-  };
 
-  const handleVerifyOtp = async () => {
-    setLoading(true);
-    try {
-      const result = await verifyFirebaseOTP(otpCode);
-      if (!result.success) throw new Error(result.error);
-      const res = await api.post("/auth/firebase-phone/verify", { id_token: result.idToken });
-      setPhoneToken(res.data.phone_token);
-      setOtpStep("done");
-      toast.success("Phone verified!");
-    } catch (err) {
-      toast.error(err.message || "Incorrect code");
-    } finally { setLoading(false); }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -658,10 +629,8 @@ const RiderAuth = () => {
           navigate("/rider/dashboard");
         }
       } else {
-        if (!phoneToken) return toast.error("Please verify your phone number first");
         if (!termsAccepted) { toast.error("Please accept the Terms & Conditions to continue"); return; }
         const res = await api.post("/auth/register/rider", formData, {
-          headers: { "X-Phone-Verified": phoneToken },
         });
         if (res.data?.token && res.data?.user) {
           login(res.data.token, res.data.user);
@@ -713,17 +682,9 @@ const RiderAuth = () => {
                   onChange={e => { setFormData({ ...formData, cellphone: e.target.value }); setOtpStep("form"); setPhoneToken(null); }}
                   className="pl-9 bg-white/5 border-white/10 text-white h-11 rounded-xl"
                   placeholder="+995 XXX XXX XXX" required autoComplete="tel"
-                  disabled={otpStep === "otp" || otpStep === "done"} />
+                  />
               </div>
-              {!isLogin && otpStep === "form" && (
-                <Button type="button" onClick={handleSendOtp} disabled={loading || !formData.cellphone}
-                  className="h-11 px-3 bg-white/10 text-white text-xs rounded-xl border border-white/10 hover:bg-white/15">
-                  Verify
-                </Button>
-              )}
-              {!isLogin && otpStep === "done" && (
-                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">? Verified</div>
-              )}
+
             </div>
           </div>
 
@@ -741,22 +702,7 @@ const RiderAuth = () => {
               </label>
             </div>
           )}
-          {!isLogin && otpStep === "otp" && (
-            <div>
-              <label className="text-white/40 text-xs font-medium mb-1.5 block">Enter 4-digit code</label>
-              <div className="flex gap-2">
-                <Input value={otpCode} onChange={e => setOtpCode(e.target.value)} maxLength={4}
-                  placeholder="0000" className="bg-white/5 border-white/10 text-white h-11 rounded-xl text-center text-lg tracking-widest flex-1" />
-                <Button type="button" onClick={handleVerifyOtp} disabled={loading || otpCode.length < 4}
-                  className="h-11 px-4 bg-[#00d4ff] text-black font-bold rounded-xl text-sm">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm"}
-                </Button>
-              </div>
-              <button type="button" onClick={handleSendOtp} className="text-white/30 text-xs mt-1 hover:text-white/60">
-                Resend code
-              </button>
-            </div>
-          )}
+
 
           <div>
             <label className="text-white/40 text-xs font-medium mb-1.5 block">{t("password")}</label>
@@ -767,7 +713,7 @@ const RiderAuth = () => {
                 className="pl-9 bg-white/5 border-white/10 text-white h-11 rounded-xl" required autoComplete="current-password" />
             </div>
           </div>
-          <Button type="submit" disabled={loading || (!isLogin ? otpStep !== "done" : false)}
+          <Button type="submit" disabled={loading}
             className="w-full bg-[#00ff88] text-black font-bold h-12 rounded-xl hover:bg-[#00e07a] transition-colors mt-2">
             {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
             {isLogin ? t("sign_in") : t("sign_up")}

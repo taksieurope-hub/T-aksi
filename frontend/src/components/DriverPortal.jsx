@@ -1837,37 +1837,8 @@ const DriverAuth = () => {
   const [showTerms, setShowTerms] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   // OTP state
-  const [otpStep, setOtpStep]       = useState("form"); // "form" | "otp" | "done"
-  const [otpCode, setOtpCode]       = useState("");
-  const [phoneToken, setPhoneToken] = useState(null);
 
-  const handleSendOtp = async () => {
-    if (!form.cellphone) return toast.error("Enter your phone number first");
-    setLoading(true);
-    try {
-      const phone = form.cellphone.startsWith("+") ? form.cellphone : "+995" + form.cellphone.replace(/^0/, "");
-      const result = await sendFirebaseOTP(phone);
-      if (!result.success) throw new Error(result.error);
-      toast.success("Verification code sent!");
-      setOtpStep("otp");
-    } catch (err) {
-      toast.error(err.message || "Failed to send code");
-    } finally { setLoading(false); }
-  };
 
-  const handleVerifyOtp = async () => {
-    setLoading(true);
-    try {
-      const result = await verifyFirebaseOTP(otpCode);
-      if (!result.success) throw new Error(result.error);
-      const res = await api.post("/auth/firebase-phone/verify", { id_token: result.idToken });
-      setPhoneToken(res.data.phone_token);
-      setOtpStep("done");
-      toast.success("Phone verified!");
-    } catch (err) {
-      toast.error(err.message || "Incorrect code");
-    } finally { setLoading(false); }
-  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -1881,10 +1852,8 @@ const DriverAuth = () => {
           navigate("/driver/dashboard");
         }
       } else {
-        if (!phoneToken) return toast.error("Please verify your phone number first");
         if (!termsAccepted) { toast.error("Please accept the Terms & Conditions to continue"); return; }
         const r = await api.post("/auth/register/driver", form, {
-          headers: { "X-Phone-Verified": phoneToken },
         });
         if (r.data?.token && r.data?.user) {
           login(r.data.token, r.data.user);
@@ -1960,10 +1929,7 @@ const DriverAuth = () => {
               </label>
             </div>
           )}
-          {/* OTP confirmation step */}
-          {!isLogin && otpStep === "otp" && (
-            <div className="space-y-1.5">
-              <Label className="text-white/50 text-xs">{t("enter_otp_code")}</Label>
+          {/* OTP confirmation step */}</Label>
               <div className="flex gap-2">
                 <Input value={otpCode} onChange={e => setOtpCode(e.target.value)} maxLength={4}
                   placeholder="0000"
@@ -1987,7 +1953,7 @@ const DriverAuth = () => {
                 className="pl-9 bg-white/5 border-white/10 text-white h-11" required />
             </div>
           </div>
-          <Button type="submit" disabled={loading || (!isLogin ? otpStep !== "done" : false)}
+          <Button type="submit" disabled={loading}
             className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-base mt-2">
             {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
             {isLogin ? t("sign_in") : t("register")}
