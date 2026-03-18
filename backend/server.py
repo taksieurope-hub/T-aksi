@@ -1002,13 +1002,24 @@ def get_area_demand(lat: float, lng: float) -> float:
         return min(1.0, nearby_rides / max(1, nearby_drivers * 2))
     except Exception as e:
         logger.warning(f"Error calculating area demand: {e}")
-        return 0.3
+        return 0.0
 
 
 def get_surge_multiplier(lat: float = None, lng: float = None) -> dict:
-    """Demand-based surge — no time gate. Triggers purely from rides/drivers ratio."""
-    demand = 0.0  # default to no surge when no location provided
+    """Demand-based surge — only activates when 10+ drivers are online platform-wide."""
+    demand = 0.0
     if lat and lng:
+        # Check total online drivers first - no surge below 10
+        try:
+            db = get_db()
+            total_online = len(list(db.collection("users")
+                .where("user_type", "==", "driver")
+                .where("is_online", "==", True)
+                .stream()))
+            if total_online < 10:
+                return {"multiplier": 1.0, "commission_rate": DRIVER_COMMISSION_RATE, "is_surge": False, "surge_reason": None, "demand_level": 0.0}
+        except Exception:
+            return {"multiplier": 1.0, "commission_rate": DRIVER_COMMISSION_RATE, "is_surge": False, "surge_reason": None, "demand_level": 0.0}
         demand = get_area_demand(lat, lng)
 
     # demand = rides / (drivers * 2), so 0.5 = rides exceed half the drivers
