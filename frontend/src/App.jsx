@@ -14,6 +14,7 @@ const LandingPage    = lazy(() => import("@/components/LandingPage"));
 const RiderPortal    = lazy(() => import("@/components/RiderPortal"));
 const DriverPortal   = lazy(() => import("@/components/DriverPortal"));
 const AdminPortal    = lazy(() => import("@/components/AdminPortal"));
+const CorporatePortal = lazy(() => import("@/components/CorporatePortal"));
 
 const PortalLoader = () => (
   <div style={{
