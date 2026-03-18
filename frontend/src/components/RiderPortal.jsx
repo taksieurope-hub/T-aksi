@@ -689,6 +689,9 @@ const RiderAuth = () => {
           </div>
 
           {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
+          {!isLogin && (
+            <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0"}}>
+              <input type="checkbox" id="terms-cb" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}
                 style={{marginTop:2,accentColor:"#00ff88",width:16,height:16,flexShrink:0,cursor:"pointer"}} />
               <label htmlFor="terms-cb" style={{color:"rgba(255,255,255,0.5)",fontSize:12,lineHeight:1.5,cursor:"pointer"}}>
                 I have read and agree to the{" "}
