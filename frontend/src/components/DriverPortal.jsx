@@ -1903,13 +1903,13 @@ const DriverAuth = () => {
                   className="pl-9 bg-white/5 border-white/10 text-white h-11 placeholder:text-white/20"
                   required />
               </div>
-                </Button>
-              )}</div>
-              )}
             </div>
           </div>
 
           {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
+          {!isLogin && (
+            <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0"}}>
+              <input type="checkbox" id="driver-terms-cb" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}
                 style={{marginTop:2,accentColor:"#00ff88",width:16,height:16,flexShrink:0,cursor:"pointer"}} />
               <label htmlFor="driver-terms-cb" style={{color:"rgba(255,255,255,0.5)",fontSize:12,lineHeight:1.5,cursor:"pointer"}}>
                 I have read and agree to the{" "}
