@@ -1166,6 +1166,10 @@ async def register_driver(data: UserRegister, response: Response):
         "user_type": "driver",
         "registration_status": "pending_vehicle",
         "is_online": False,
+        "preferred_radius": 2.0,
+        "acceptance_rate": 100.0,
+        "total_requests": 0,
+        "total_accepted": 0,
         "current_location": None,
         "driver_info": {"vehicle": None, "vehicle_tier": None},
         "earnings": {
@@ -3506,7 +3510,7 @@ async def cancel_scheduled_ride(scheduled_ride_id: str, user_id: Optional[str] =
 async def match_drivers_to_ride(ride_id: str):
     db = get_db()
 
-    radius_progression = [3, 5, 8, 12, 20, 30]
+    radius_progression = [2, 4, 6, 10, 15, 25]
     drivers_per_radius = [5, 5, 8, 10, 15, 20]
     wait_time_per_round = [30, 25, 20, 15, 15, 15]
     total_notified = []
@@ -3550,6 +3554,23 @@ async def match_drivers_to_ride(ride_id: str):
         nearby_drivers = []
         declined = ride_data.get("declined_drivers", [])
         already_notified = ride_data.get("notified_drivers", [])
+        # Also check drivers finishing nearby rides (within 1km of dropoff)
+        finishing_drivers = []
+        try:
+            active_rides = db.collection("rides").where("status", "in", ["in_progress", "arrived"]).stream()
+            for ar in active_rides:
+                ard = ar.to_dict()
+                dropoff_lat = ard.get("dropoff_lat")
+                dropoff_lng = ard.get("dropoff_lng")
+                if not dropoff_lat or not dropoff_lng:
+                    continue
+                dist_to_new_pickup = haversine_distance(pickup_lat, pickup_lng, dropoff_lat, dropoff_lng)
+                if dist_to_new_pickup <= 1.0:
+                    finishing_driver_id = ard.get("driver_id")
+                    if finishing_driver_id and finishing_driver_id not in declined and finishing_driver_id not in already_notified:
+                        finishing_drivers.append(finishing_driver_id)
+        except Exception as e:
+            logger.warning(f"Finishing drivers check failed: {e}")
 
         for driver in drivers:
             driver_data = driver.to_dict()
@@ -3576,7 +3597,10 @@ async def match_drivers_to_ride(ride_id: str):
                 distance = haversine_distance(
                     pickup_lat, pickup_lng, driver_location["lat"], driver_location["lng"]
                 )
-                if distance <= radius:
+                driver_preferred_radius = driver_data.get("preferred_radius", 2.0)
+                effective_radius = max(radius, driver_preferred_radius)
+                is_finishing_nearby = driver.id in finishing_drivers
+                if distance <= effective_radius or is_finishing_nearby:
                     nearby_drivers.append({
                         "id": driver.id,
                         "distance": round(distance, 2),
@@ -3585,7 +3609,7 @@ async def match_drivers_to_ride(ride_id: str):
                         "balance": driver_balance,
                     })
 
-        nearby_drivers.sort(key=lambda x: x["distance"])
+        nearby_drivers.sort(key=lambda x: (x["distance"], -x.get("acceptance_rate", 100)))
         selected_drivers = nearby_drivers[: drivers_per_radius[idx]]
 
         if selected_drivers:
@@ -3743,6 +3767,18 @@ async def decline_ride(ride_id: str, user_id: Optional[str] = Depends(get_curren
     if not user_id:
         raise HTTPException(401, "Not authenticated")
     db = get_db()
+    # Track acceptance rate
+    try:
+        driver_ref = db.collection("users").document(user_id)
+        driver_doc = driver_ref.get()
+        if driver_doc.exists:
+            dd = driver_doc.to_dict()
+            total_req = dd.get("total_requests", 0) + 1
+            total_acc = dd.get("total_accepted", 0)
+            acc_rate = round((total_acc / total_req) * 100, 1) if total_req > 0 else 100.0
+            driver_ref.update({"total_requests": total_req, "acceptance_rate": acc_rate})
+    except Exception as e:
+        logger.warning(f"Acceptance rate update failed: {e}")
     db.collection("rides").document(ride_id).update({
         "declined_drivers": firestore.ArrayUnion([user_id])
     })
@@ -5067,3 +5103,16 @@ async def get_surge_zones():
     except Exception as e:
         logger.error(f"Surge zones error: {e}")
         return {"zones": []}
+
+
+@app.post("/api/driver/preferred-radius", tags=["Driver"])
+async def set_preferred_radius(
+    radius: float = Query(..., ge=1.0, le=25.0),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    """Driver sets their preferred search radius in km."""
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+    db = get_db()
+    db.collection("users").document(user_id).update({"preferred_radius": radius})
+    return {"message": "Preferred radius updated", "radius": radius}

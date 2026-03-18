@@ -2294,6 +2294,13 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     }
   };
 
+  const [preferredRadius, setPreferredRadius] = React.useState(2);
+
+  const updateRadius = async (r) => {
+    setPreferredRadius(r);
+    try { await api.post("/driver/preferred-radius?radius=" + r); } catch(e) {}
+  };
+
   const handleToggleOnline = async (online) => {
     try {
       await api.post(`/driver/status?is_online=${online}`);
@@ -2507,6 +2514,14 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                 className={`relative w-14 h-7 rounded-full transition-colors duration-300 border ${isOnline ? "bg-[#00ff88]/25 border-[#00ff88]/50" : "bg-white/8 border-white/15"}`}>
                 <div className={`absolute top-0.5 w-6 h-6 rounded-full transition-transform duration-300 shadow-lg ${isOnline ? "translate-x-7 bg-[#00ff88]" : "translate-x-0.5 bg-white/40"}`} />
               </button>
+            )}
+            {isOnline && (
+              <div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 8px",background:"rgba(0,255,136,0.05)",borderRadius:8,border:"1px solid rgba(0,255,136,0.15)"}}>
+                <span style={{color:"rgba(255,255,255,0.4)",fontSize:10,whiteSpace:"nowrap"}}>{preferredRadius}km</span>
+                <input type="range" min="1" max="15" step="0.5" value={preferredRadius}
+                  onChange={e => updateRadius(parseFloat(e.target.value))}
+                  style={{width:60,accentColor:"#00ff88"}} />
+              </div>
             )}
 
             <button onClick={logout} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-red-400 transition-colors">
