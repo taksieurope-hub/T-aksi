@@ -1614,8 +1614,8 @@ const [showPromo, setShowPromo] = useState(false);
   }, []);
 
   useEffect(() => {
-    if (pickup.lat) fetchSurgeStatus();
-  }, [pickup.lat, pickup.lng]); // eslint-disable-line
+    if (pickup.lat && destination.lat) fetchSurgeStatus();
+  }, [pickup.lat, pickup.lng, destination.lat]); // eslint-disable-line
 
   useEffect(() => {
     if (mapsLoaded && !pickup.lat) getCurrentLocation();
@@ -2511,7 +2511,7 @@ const [showPromo, setShowPromo] = useState(false);
             {/* Welcome Discount */}
             {(user?.welcome_discount_rides_remaining > 0) && (
               <div style={{background:"rgba(255,140,0,0.06)",border:"1px solid rgba(255,140,0,0.3)",borderRadius:16,padding:16,display:"flex",alignItems:"center",gap:12}}>
-                <span style={{fontSize:28}}>ðŸŽ‰</span>
+                <span style={{fontSize:28}}>🎉</span>
                 <div style={{flex:1}}>
                   <div style={{color:"#ff8c00",fontWeight:800,fontSize:14}}>Welcome Discount Active!</div>
                   <div style={{color:"rgba(255,255,255,0.5)",fontSize:12,marginTop:2}}>15% off your next {user.welcome_discount_rides_remaining} ride{user.welcome_discount_rides_remaining !== 1 ? "s" : ""}</div>
@@ -2531,7 +2531,7 @@ const [showPromo, setShowPromo] = useState(false);
               return (
                 <div style={{background:"rgba(0,212,255,0.04)",border:"1px solid rgba(0,212,255,0.2)",borderRadius:16,padding:16}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                    <span style={{fontSize:22}}>ðŸŽ</span>
+                    <span style={{fontSize:22}}>🎁</span>
                     <div style={{flex:1}}>
                       <div style={{color:"#00d4ff",fontWeight:700,fontSize:14}}>Loyalty Reward</div>
                       <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>Every 13th ride gets 15% off</div>
