@@ -362,8 +362,8 @@ const RatePassengerModal = ({ rideId, riderName, onDone }) => {
       <div className="flex justify-center gap-3">
         {[1,2,3,4,5].map(s => (
           <button key={s} onClick={() => setRating(s)}
-            className={`w-12 h-12 rounded-xl text-2xl transition-all ${s <= rating ? "⭐⭐ ⭐⭐⭐" : "⭐⭐ ⭐⭐⭐ "}`}>
-            ?
+            className={`w-12 h-12 rounded-xl text-2xl transition-all active:scale-95 ${s <= rating ? "text-yellow-400 scale-110" : "text-white/20"}`}>
+            <Star className="w-7 h-7 mx-auto" fill={s <= rating ? "currentColor" : "none"} />
           </button>
         ))}
       </div>
