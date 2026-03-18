@@ -218,10 +218,27 @@ def send_push_notification(user_id: str, title: str, body: str, data: dict = Non
             token=token,
             android=messaging.AndroidConfig(
                 priority="high",
-                notification=messaging.AndroidNotification(sound="default", default_vibrate_timings=True),
+                ttl=60,
+                notification=messaging.AndroidNotification(
+                    sound="ride_alert",
+                    default_vibrate_timings=False,
+                    vibrate_timings=[0.5, 0.3, 0.5, 0.3, 0.5],
+                    priority=messaging.AndroidNotificationPriority.MAX,
+                    visibility=messaging.AndroidNotificationVisibility.PUBLIC,
+                    notification_count=1,
+                    sticky=True,
+                    local_only=False,
+                ),
             ),
             apns=messaging.APNSConfig(
-                payload=messaging.APNSPayload(aps=messaging.Aps(sound="default", badge=1)),
+                headers={"apns-priority": "10", "apns-push-type": "alert"},
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(
+                        sound=messaging.CriticalSound(name="ride_alert.wav", critical=1, volume=1.0),
+                        badge=1,
+                        content_available=True,
+                    )
+                ),
             ),
         )
 
