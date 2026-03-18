@@ -1898,27 +1898,18 @@ const DriverAuth = () => {
               <div className="relative flex-1">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
                 <Input type="tel" value={form.cellphone}
-                  onChange={e => { setForm({ ...form, cellphone: e.target.value }); setOtpStep("form"); setPhoneToken(null); }}
+                  onChange={e => setForm({ ...form, cellphone: e.target.value })}
                   placeholder="+995 555 000 000"
                   className="pl-9 bg-white/5 border-white/10 text-white h-11 placeholder:text-white/20"
-                  required disabled={otpStep === "otp" || otpStep === "done"} />
+                  required />
               </div>
-              {!isLogin && otpStep === "form" && (
-                <Button type="button" onClick={handleSendOtp} disabled={loading || !form.cellphone}
-                  className="h-11 px-3 bg-white/10 text-white text-xs rounded-xl border border-white/10 hover:bg-white/15">
-                  {t("verify")}
                 </Button>
-              )}
-              {!isLogin && otpStep === "done" && (
-                <div className="h-11 px-3 flex items-center text-[#00ff88] text-xs font-bold">? {t("verified")}</div>
+              )}</div>
               )}
             </div>
           </div>
 
           {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
-          {!isLogin && otpStep === "form" && (
-            <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0"}}>
-              <input type="checkbox" id="driver-terms-cb" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}
                 style={{marginTop:2,accentColor:"#00ff88",width:16,height:16,flexShrink:0,cursor:"pointer"}} />
               <label htmlFor="driver-terms-cb" style={{color:"rgba(255,255,255,0.5)",fontSize:12,lineHeight:1.5,cursor:"pointer"}}>
                 I have read and agree to the{" "}

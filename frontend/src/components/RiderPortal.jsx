@@ -679,7 +679,7 @@ const RiderAuth = () => {
               <div className="relative flex-1">
                 <Phone className="absolute left-3 top-3.5 h-4 w-4 text-white/30" />
                 <Input id="rider-phone" name="cellphone" type="tel" value={formData.cellphone}
-                  onChange={e => { setFormData({ ...formData, cellphone: e.target.value }); setOtpStep("form"); setPhoneToken(null); }}
+                  onChange={e => setFormData({ ...formData, cellphone: e.target.value })}
                   className="pl-9 bg-white/5 border-white/10 text-white h-11 rounded-xl"
                   placeholder="+995 XXX XXX XXX" required autoComplete="tel"
                   />
@@ -689,9 +689,6 @@ const RiderAuth = () => {
           </div>
 
           {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
-          {!isLogin && otpStep === "form" && (
-            <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0"}}>
-              <input type="checkbox" id="terms-cb" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}
                 style={{marginTop:2,accentColor:"#00ff88",width:16,height:16,flexShrink:0,cursor:"pointer"}} />
               <label htmlFor="terms-cb" style={{color:"rgba(255,255,255,0.5)",fontSize:12,lineHeight:1.5,cursor:"pointer"}}>
                 I have read and agree to the{" "}
