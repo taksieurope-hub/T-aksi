@@ -1,4 +1,5 @@
 import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
+import SupportChatWidget from "@/components/SupportChatWidget";
 import { registerFCMToken } from "@/lib/firebase";
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
@@ -598,6 +599,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
       </div>
       <MapPicker isOpen={showMapPicker} onClose={() => setShowMapPicker(false)}
         onLocationSelect={(loc) => onChange(loc)} title={placeholder} initialLocation={value} />
+      <SupportChatWidget />
     </>
   );
 };

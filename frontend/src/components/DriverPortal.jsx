@@ -3,6 +3,7 @@ import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { registerFCMToken } from "@/lib/firebase";
+import SupportChatWidget from "@/components/SupportChatWidget";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
@@ -332,6 +333,7 @@ const SOSButton = ({ activeRide, location }) => {
           </div>
         </DialogContent>
       </Dialog>
+      <SupportChatWidget />
     </>
   );
 };

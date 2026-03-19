@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿path = "frontend/src/components/SupportChatWidget.jsx"
+
+widget = """import React, { useState, useEffect, useRef } from "react";
 import api from "@/api";
 import { useAuth } from "@/config";
 
@@ -110,3 +112,8 @@ const SupportChatWidget = () => {
 };
 
 export default SupportChatWidget;
+"""
+
+with open(path, "w", encoding="utf-8", newline="\n") as f:
+    f.write(widget)
+print("OK: SupportChatWidget built")
