@@ -23,7 +23,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 41.7151, lng: 44.8271 }, zoom: 15,
       disableDefaultUI: true, gestureHandling: "greedy", backgroundColor: "#0d0d1a",
-      styles: [{ elementType: "geometry", stylers: [{ color: "#0d0d1a" }] }, { featureType: "road", elementType: "geometry", stylers: [{ color: "#1f2937" }] }],
+      styles: [{ elementType: "geometry", stylers: [{ color: "#1a1a2e" }] }, { elementType: "labels.text.fill", stylers: [{ color: "#ffffff" }] }, { elementType: "labels.text.stroke", stylers: [{ color: "#000000" }] }, { featureType: "road", elementType: "geometry", stylers: [{ color: "#4a5568" }] }, { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#00d4ff" }] }, { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#3a4a5c" }] }, { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e1626" }] }, { featureType: "poi", elementType: "geometry", stylers: [{ color: "#1a2035" }] }, { featureType: "transit", elementType: "geometry", stylers: [{ color: "#2d3748" }] }],
     });
     directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
       map, suppressMarkers: true,
