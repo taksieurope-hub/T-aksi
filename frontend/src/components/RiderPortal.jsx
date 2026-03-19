@@ -1,4 +1,5 @@
 import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
+import { registerFCMToken } from "@/lib/firebase";
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
@@ -1492,6 +1493,7 @@ const RiderDashboard = () => {
 
   useEffect(() => {
     api.get("/rider/saved-cards").then(r => setSavedCards(r.data.saved_cards || [])).catch(() => {});
+    if (user?.id) registerFCMToken(api).catch(console.error);
   }, [user?.id]);
   const navigate  = useNavigate();
   const { t }     = useLanguage();

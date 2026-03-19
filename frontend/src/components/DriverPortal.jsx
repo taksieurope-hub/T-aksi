@@ -2,6 +2,7 @@ import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth
 import React from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { registerFCMToken } from "@/lib/firebase";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
@@ -2162,6 +2163,12 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   }, [midTripWaiting, midTripWaitStart, midTripWaitBanked, activeRide, distanceTraveled]);
 
   useEffect(() => { fetchActiveRide(); fetchRideHistory(); }, []);
+  useEffect(() => {
+    if (user?.id) {
+      registerFCMToken(api).catch(console.error);
+    }
+  }, [user?.id]);
+
   useEffect(() => {
     if (registrationStatus !== "approved" || !isOnline) return;
     fetchAvailableRides();
