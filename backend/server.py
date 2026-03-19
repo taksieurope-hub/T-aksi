@@ -28,6 +28,7 @@ import jwt
 import httpx
 import sys
 import secrets
+import anthropic
 
 load_dotenv()
 
