@@ -3779,7 +3779,7 @@ async def match_drivers_to_ride(ride_id: str):
 
 
             ride_car_type = (ride_data.get("carType") or "economy").lower()
-            ELIGIBLE_TYPES = {"economy":{"economy","jumpstart","personal"},"comfort":{"comfort","economy","jumpstart","personal"},"suv":{"suv","comfort","economy","jumpstart","personal"},"jumpstart":{"economy","comfort","suv","personal","jumpstart"},"personal":{"economy","comfort","suv","personal","jumpstart"}}
+            ELIGIBLE_TYPES = {"economy":{"economy","jumpstart"},"comfort":{"comfort","suv","personal"},"suv":{"suv"},"jumpstart":{"economy","jumpstart"},"personal":{"personal","suv","comfort"}}
             allowed = ELIGIBLE_TYPES.get(ride_car_type, {"economy"})
             dv = driver_data.get("driver_info",{}).get("vehicles",[])
             da = driver_data.get("driver_info",{}).get("active_vehicle_id")
