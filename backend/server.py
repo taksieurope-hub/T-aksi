@@ -2283,6 +2283,7 @@ async def admin_delete_campaign(campaign_id: str, admin_id: str = Depends(get_ad
 # =========================
 
 import uuid
+import anthropic
 
 
 @app.post("/api/driver/wallet/topup/paypal", tags=["Driver"])
@@ -2345,6 +2346,39 @@ async def driver_topup_paypal(req: PayPalTopUpRequest, user_id: Optional[str] = 
 
 
 @app.post("/api/driver/vehicle", tags=["Driver"])
+def detect_vehicle_tier_ai(car_make: str, car_model: str, car_year: int) -> str:
+    """Use Claude to automatically detect the correct vehicle tier."""
+    try:
+        client = anthropic.Anthropic()
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=10,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Classify this car into exactly one tier: economy, comfort, suv, jumpstart, or personal.\n"
+                        f"Car: {car_year} {car_make} {car_model}\n"
+                        f"Rules:\n"
+                        f"- economy: standard sedans, hatchbacks, basic cars (Toyota Corolla, Hyundai Elantra, etc)\n"
+                        f"- comfort: premium sedans, executive cars (Mercedes E-Class, BMW 5-Series, Toyota Camry, etc)\n"
+                        f"- suv: SUVs, minivans, large vehicles (Toyota Land Cruiser, BMW X5, Ford Explorer, etc)\n"
+                        f"- jumpstart: any electric or hybrid vehicle\n"
+                        f"- personal: luxury/sports cars (Mercedes S-Class, BMW 7-Series, Porsche, etc)\n"
+                        f"Reply with ONLY the single word tier, nothing else."
+                    )
+                }
+            ]
+        )
+        tier = message.content[0].text.strip().lower()
+        if tier in ["economy", "comfort", "suv", "jumpstart", "personal"]:
+            return tier
+        return "economy"
+    except Exception as e:
+        logger.warning(f"AI tier detection failed: {e}")
+        return "economy"
+
+
 async def register_vehicle(
     car_make: str = Form(...),
     car_model: str = Form(...),
@@ -2397,7 +2431,7 @@ async def register_vehicle(
         "car_year": car_year,
         "car_color": car_color,
         "license_plate": license_plate.upper(),
-        "tier": vehicle_tier.lower() if vehicle_tier in ["economy","comfort","suv","jumpstart","personal"] else "economy",
+        "tier": detect_vehicle_tier_ai(car_make, car_model, car_year),
         "documents": document_urls,
         "status": "pending",
     }
@@ -2409,7 +2443,7 @@ async def register_vehicle(
         "updated_at": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"message": "Vehicle added successfully!", "tier": "economy"}
+    return {"message": "Vehicle added successfully!", "tier": vehicle_data["tier"]}
 
 
 @app.post("/api/driver/status", tags=["Driver"])

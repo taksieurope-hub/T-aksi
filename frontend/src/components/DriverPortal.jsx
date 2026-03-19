@@ -2329,8 +2329,10 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       fd.append("vehicle_tier", vehicleTier);
       ["license_front","license_back","reg_front","reg_back","car_photo_front","car_photo_back","car_photo_left","car_photo_right"]
         .forEach(k => { if (vehicleData[k]) fd.append(k, vehicleData[k]); });
-      await api.post("/driver/vehicle", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("Documents submitted!");
+      const res = await api.post("/driver/vehicle", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const tierLabel = { economy: "Economy", comfort: "Comfort", suv: "SUV / XL", jumpstart: "Jumpstart", personal: "Personal" };
+      const detectedTier = res.data?.tier || "economy";
+      toast.success("Documents submitted! Vehicle classified as: " + (tierLabel[detectedTier] || detectedTier));
       updateUser({ ...user, driver_info: { ...user.driver_info, vehicle: vehicleData }, registration_status: "pending_review" });
     } catch (_) { toast.error("Upload failed. Please try again."); }
     finally { setLoading(false); }
