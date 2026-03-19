@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { startCall, endCall, isCalling } from "@/hooks/useAgoraCall";
 import { Phone, MessageSquare, X, Send, Loader2, CheckCheck, Mic, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -194,7 +194,9 @@ const RideCommunication = ({
         prevCountRef.current = newMsgs.length;
       }
 
-      setMessages(newMsgs);
+      // Normalize sender_id to string for reliable comparison
+      const normalized = newMsgs.map(m => ({...m, sender_id: m.sender_id ? String(m.sender_id) : m.sender_id}));
+      setMessages(normalized);
     } catch (_) {}
   }, [rideId, currentUserId, isOpen, otherLabel, accent]);
 
@@ -383,7 +385,7 @@ const RideCommunication = ({
               ) : (
                 <>
                   {messages.map((msg, i) => {
-                    const isMe = msg.sender_id && currentUserId ? String(msg.sender_id) === String(currentUserId) : (isDriver ? msg.sender_type === "driver" : msg.sender_type === "rider");
+                    const isMe = msg.sender_id && currentUserId ? String(msg.sender_id) === String(currentUserId) : (isDriver ? msg.sender_type === "driver" || msg.sender_role === "driver" : msg.sender_type === "rider" || msg.sender_role === "rider");
                     const showTime = i === 0 ||
                       formatTime(msg.timestamp) !== formatTime(messages[i - 1]?.timestamp);
 
@@ -401,7 +403,12 @@ const RideCommunication = ({
                           } ${msg._optimistic ? "opacity-70" : "opacity-100"}`}
                           style={isMe ? { background: accent } : {}}
                         >
-                          {msg.message}
+                          {msg.translated_message ? (
+                            <>
+                              <span>{msg.translated_message}</span>
+                              <span style={{display:"block",fontSize:10,opacity:0.5,marginTop:3,fontStyle:"italic"}}>{msg.original_message}</span>
+                            </>
+                          ) : msg.message}
                         </div>
                         <div className="flex items-center gap-1 mt-0.5 px-1">
                           <span className="text-[10px] text-gray-600">
