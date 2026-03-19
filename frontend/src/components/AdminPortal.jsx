@@ -715,6 +715,8 @@ const CorporateAdminPanel = ({ api }) => {
 };
 
 
+
+
 const AdminDashboard = () => {
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -898,6 +900,7 @@ const AdminDashboard = () => {
                 { value: "sos",         icon: Siren,          label: "SOS",         badge: sosCount, badgeColor: "bg-red-500" },
                 { value: "financials",  icon: BarChart3,      label: "Financials" },
                 { value: "livemap",     icon: MapPin,         label: "Live Map" },
+                { value: "corporate",   icon: Building2,      label: "Corporate" },
                 { value: "corporate",   icon: Building2,      label: "Corporate" },
               ].map(({ value, icon: Icon, label, count, badge, badgeColor }) => (
                 <TabsTrigger key={value} value={value}

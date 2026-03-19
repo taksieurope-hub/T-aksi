@@ -10,8 +10,11 @@ for path in files:
     lines = open(path, "r", encoding="utf-8").read().splitlines()
     hits = []
     for i, line in enumerate(lines):
-        if any(x in line for x in ["rideMessages", "chatMessages", "messages.map", "msgs.map", "msg.map", "setMessages", "setChatMessages", "chat_messages", "rideChat", "ChatPanel", "ChatModal", "chatOpen", "showChat", "setShowChat", "setChatOpen"]):
-            hits.append(str(i+1) + ": " + line)
+        if "RideCommunication" in line:
+            # show 3 lines of context around each hit
+            for j in range(max(0,i-1), min(len(lines), i+5)):
+                hits.append(str(j+1) + ": " + lines[j])
+            hits.append("---")
     if hits:
         print(f"\n=== {path} ===")
         for h in hits: print(h)

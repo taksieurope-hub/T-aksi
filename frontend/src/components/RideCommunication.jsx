@@ -324,7 +324,7 @@ const RideCommunication = ({
             className="w-full sm:max-w-md flex flex-col bg-[#0a0a0a] border rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl"
             style={{
               borderColor: `${accent}40`,
-              maxHeight: "92dvh",
+              height: "85dvh",
               animation: "slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1) forwards",
               boxShadow: `0 0 60px ${accent}18, 0 25px 60px rgba(0,0,0,0.9)`,
             }}
@@ -360,7 +360,8 @@ const RideCommunication = ({
                 </a>
                 <button
                   onClick={handleClose}
-                  className="w-9 h-9 rounded-full flex items-center justify-center bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
+                  className="w-11 h-11 rounded-full flex items-center justify-center bg-white/10 active:bg-red-500/30 text-white transition-colors"
+                  style={{ minWidth: 44, minHeight: 44 }}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -368,7 +369,7 @@ const RideCommunication = ({
             </div>
 
             {/* Message list */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center gap-3 py-12">
                   <div
@@ -385,7 +386,7 @@ const RideCommunication = ({
               ) : (
                 <>
                   {messages.map((msg, i) => {
-                    const isMe = msg.sender_id && currentUserId ? String(msg.sender_id) === String(currentUserId) : (isDriver ? msg.sender_type === "driver" || msg.sender_role === "driver" : msg.sender_type === "rider" || msg.sender_role === "rider");
+                    const isMe = (msg.sender_id && currentUserId) ? String(msg.sender_id) === String(currentUserId) : (isDriver ? msg.sender_role === "driver" : msg.sender_role === "rider");
                     const showTime = i === 0 ||
                       formatTime(msg.timestamp) !== formatTime(messages[i - 1]?.timestamp);
 

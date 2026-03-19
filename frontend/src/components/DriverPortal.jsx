@@ -1134,6 +1134,20 @@ const useLocationTracker = (isOnline, onLocationUpdate) => {
           heading = (heading != null && !isNaN(heading)) ? heading * 0.3 + calculated * 0.7 : calculated;
         }
         lastLocationRef.current = { lat: newLat, lng: newLng, heading: heading || 0, speed: pos.coords.speed };
+
+        // Accumulate distance while ride is in_progress
+        if (window.__activeRideStatus === "in_progress" && window.__lastGpsPoint) {
+          const R = 6371;
+          const dLat = (newLat - window.__lastGpsPoint.lat) * Math.PI / 180;
+          const dLng = (newLng - window.__lastGpsPoint.lng) * Math.PI / 180;
+          const a = Math.sin(dLat/2)**2 + Math.cos(window.__lastGpsPoint.lat * Math.PI/180) * Math.cos(newLat * Math.PI/180) * Math.sin(dLng/2)**2;
+          const segKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          if (segKm < 0.5) { // ignore GPS jumps > 500m
+            window.__distanceTraveled = (window.__distanceTraveled || 0) + segKm;
+            window.__setDistanceTraveled && window.__setDistanceTraveled(Math.round(window.__distanceTraveled * 100) / 100);
+          }
+        }
+        window.__lastGpsPoint = { lat: newLat, lng: newLng };
       },
       err => {
         console.error("GPS error:", err);
@@ -1304,18 +1318,21 @@ const NavHUD = ({ step, nextStep, speed, isCompact = false }) => {
 const MAP_STYLES = [
   { elementType: "geometry", stylers: [{ color: "#1a1f2e" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#1a1f2e" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#6b7280" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#c9a96e" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#e2c97e" }] },
   { featureType: "poi", stylers: [{ visibility: "off" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#2d3748" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#1a202c" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#4a5568" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#2d3748" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#4a5f7a" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#2d3f55" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#c8d6e5" }] },
+  { featureType: "road.local", elementType: "geometry", stylers: [{ color: "#3d5068" }] },
+  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#4f6b87" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#6b8fa8" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#4a6880" }] },
   { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f5c842" }] },
   { featureType: "transit", stylers: [{ visibility: "off" }] },
   { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#4a5568" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#4a6880" }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#141c2b" }] },
 ];
 
 // =============================================================================
@@ -1477,7 +1494,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 41.7151, lng: 44.8271 },
       zoom: 18,
-      tilt: 55, // More immersive tilt
+      tilt: 45,
       heading: 0,
       disableDefaultUI: true,
       gestureHandling: "greedy",
@@ -1491,7 +1508,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     routeRendererRef.current = new window.google.maps.DirectionsRenderer({
       map,
       suppressMarkers: true,
-      preserveViewport: true,
+      preserveViewport: false,
       polylineOptions: {
         strokeColor: "#00ff88",
         strokeWeight: 6,
@@ -1501,6 +1518,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     directionsServiceRef.current = new window.google.maps.DirectionsService();
     map.addListener("dragstart", () => setIsFollowing(false));
     mapInstanceRef.current = map;
+    setMapReady(true);
   }, []);
 
   // Surge zones - fetch and draw colored circles every 30s
@@ -1680,7 +1698,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       }
     );
   // 5. IMPORTANT: Add activeRide?.stops to this dependency array!
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat, activeRide?.stops]);
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat, activeRide?.stops, mapReady]);
   const handleNav = (app) => {
     if (!activeRide) return;
     const isPickup = ["accepted", "arrived"].includes(activeRide.status);
@@ -2015,6 +2033,17 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const [arrivedTime, setArrivedTime] = useState(null);
   const [waitTimer, setWaitTimer] = useState(0);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
+  const distanceTraveledRef = useRef(0);
+
+  // Wire GPS distance accumulator to window so the geolocation watcher can update it
+  useEffect(() => {
+    window.__setDistanceTraveled = setDistanceTraveled;
+    return () => { window.__setDistanceTraveled = null; };
+  }, []);
+
+  useEffect(() => {
+    window.__activeRideStatus = activeRide?.status || null;
+  }, [activeRide?.status]);
   const [isWaitingAtStop, setIsWaitingAtStop] = useState(false);
   // Mid-trip wait timer state
   const [midTripWaiting,    setMidTripWaiting]    = useState(false);
@@ -2236,6 +2265,9 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         
         setArrivedTime(null);
         lastPositionRef.current = driverLocation;
+        window.__distanceTraveled = 0;
+        window.__lastGpsPoint = null;
+        window.__activeRideStatus = "in_progress";
         toast.success("Ride started!");
       } else if (action === "complete") {
         // We define these here so the code doesn't "break" looking for them
@@ -2269,6 +2301,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
         setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null); 
         setIsWaitingAtStop(false); setMidTripWaiting(false); setMidTripWaitStart(null); 
         setMidTripWaitSecs(0); setMidTripWaitBanked(0); setLiveFare(null);
+        window.__distanceTraveled = 0; window.__lastGpsPoint = null; window.__activeRideStatus = null;
         
         fetchRideHistory(); await refreshUser();
         return;

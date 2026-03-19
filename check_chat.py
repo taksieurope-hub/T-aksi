@@ -1,14 +1,17 @@
-﻿path = "frontend/src/components/RideCommunication.jsx"
-c = open(path, "r", encoding="utf-8-sig").read()
-lines = c.splitlines()
+﻿import os
 
-# Find message sending
-for i, line in enumerate(lines):
-    if "send" in line.lower() and ("message" in line.lower() or "chat" in line.lower()) and "const" in line:
-        print(str(i+1) + ": " + line)
+files = [
+    "frontend/src/components/DriverPortal.jsx",
+    "frontend/src/components/RiderPortal.jsx",
+]
 
-print("---")
-# Find message display
-for i, line in enumerate(lines):
-    if "message" in line.lower() and ("map" in line or "render" in line.lower() or "content" in line.lower()):
-        print(str(i+1) + ": " + line)
+for path in files:
+    if not os.path.exists(path): continue
+    lines = open(path, "r", encoding="utf-8").read().splitlines()
+    hits = []
+    for i, line in enumerate(lines):
+        if any(x in line.lower() for x in ["chatmodal", "ridechat", "livechat", "chat-modal", "msgbubble", "message bubble", "sender", "msg.sender", "message.sender", "scrollref", "scrollinto", "overflow-y", "flex-col-reverse"]):
+            hits.append(str(i+1) + ": " + line)
+    if hits:
+        print(f"\n=== {path} ===")
+        for h in hits: print(h)
