@@ -2031,6 +2031,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const [rateRideId, setRateRideId] = useState(null);
   const [rateRiderName, setRateRiderName] = useState("");
 
+  const [vehicleTier, setVehicleTier] = useState("economy");
   const [vehicleData, setVehicleData] = useState({
     car_make:"", car_model:"", car_year:"", car_color:"", license_plate:"",
     license_front:null, license_back:null, reg_front:null, reg_back:null,
@@ -2318,6 +2319,7 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       ["car_make","car_model","car_year","car_color","license_plate"].forEach(k =>
         fd.append(k, k === "car_year" ? parseInt(vehicleData[k]) : vehicleData[k])
       );
+      fd.append("vehicle_tier", vehicleTier);
       ["license_front","license_back","reg_front","reg_back","car_photo_front","car_photo_back","car_photo_left","car_photo_right"]
         .forEach(k => { if (vehicleData[k]) fd.append(k, vehicleData[k]); });
       await api.post("/driver/vehicle", fd, { headers: { "Content-Type": "multipart/form-data" } });
@@ -3052,6 +3054,18 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
                         className="bg-white/4 border-white/10 text-white h-9 text-sm placeholder:text-white/20" />
                     </div>
                   ))}
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-white/40 text-[11px]">Vehicle Class</Label>
+                    <div className="grid grid-cols-3 gap-2 mb-1">
+                      {[["economy","Economy","Standard"],["comfort","Comfort","Premium"],["suv","SUV / XL","Large"]].map(([val,label,desc]) => (
+                        <button key={val} type="button" onClick={() => setVehicleTier(val)}
+                          className={"p-2.5 rounded-xl border-2 text-left transition-all " + (vehicleTier === val ? "border-[#00ff88] bg-[#00ff88]/10" : "border-white/10 bg-white/3")}>
+                          <div className={"text-xs font-bold " + (vehicleTier === val ? "text-[#00ff88]" : "text-white")}>{label}</div>
+                          <div className="text-white/40 text-[10px]">{desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="col-span-2 space-y-1">
                     <Label className="text-white/40 text-[11px]">License Plate</Label>
                     <Input required placeholder="AB-123-CD" value={vehicleData.license_plate}

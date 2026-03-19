@@ -2351,6 +2351,7 @@ async def register_vehicle(
     car_year: int = Form(...),
     car_color: str = Form(...),
     license_plate: str = Form(...),
+    vehicle_tier: str = Form("economy"),
     license_front: Optional[UploadFile] = File(None),
     license_back: Optional[UploadFile] = File(None),
     reg_front: Optional[UploadFile] = File(None),
@@ -2396,7 +2397,7 @@ async def register_vehicle(
         "car_year": car_year,
         "car_color": car_color,
         "license_plate": license_plate.upper(),
-        "tier": "economy",
+        "tier": vehicle_tier.lower() if vehicle_tier in ["economy","comfort","suv","jumpstart","personal"] else "economy",
         "documents": document_urls,
         "status": "pending",
     }
