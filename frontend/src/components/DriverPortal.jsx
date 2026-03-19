@@ -333,7 +333,6 @@ const SOSButton = ({ activeRide, location }) => {
           </div>
         </DialogContent>
       </Dialog>
-      <SupportChatWidget />
     </>
   );
 };

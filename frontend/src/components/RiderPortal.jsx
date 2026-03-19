@@ -599,7 +599,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, iconColor, id
       </div>
       <MapPicker isOpen={showMapPicker} onClose={() => setShowMapPicker(false)}
         onLocationSelect={(loc) => onChange(loc)} title={placeholder} initialLocation={value} />
-      <SupportChatWidget />
+
     </>
   );
 };
@@ -2688,6 +2688,7 @@ const [showPromo, setShowPromo] = useState(false);
               </div>
             </div>
             <RiderSupportPanel />
+              <SupportChatWidget />
           </div>
         )}
 
