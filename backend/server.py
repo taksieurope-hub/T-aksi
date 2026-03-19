@@ -1746,6 +1746,32 @@ async def get_rider_detail(rider_id: str, admin_id: str = Depends(get_admin_user
     return {"rider": serialize_firestore_data(data)}
 
 
+@app.post("/api/admin/drivers/{driver_id}/set-tier", tags=["Admin"])
+async def set_driver_tier(driver_id: str, tier: str = Query(...), admin_id: str = Depends(get_admin_user)):
+    valid_tiers = ["economy", "comfort", "suv", "jumpstart", "personal"]
+    if tier.lower() not in valid_tiers:
+        raise HTTPException(400, f"Invalid tier. Must be one of: {valid_tiers}")
+    db = get_db()
+    doc = db.collection("users").document(driver_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Driver not found")
+    data = doc.to_dict()
+    vehicles = data.get("driver_info", {}).get("vehicles", [])
+    active_id = data.get("driver_info", {}).get("active_vehicle_id")
+    updated = False
+    for v in vehicles:
+        if v.get("id") == active_id or not active_id:
+            v["tier"] = tier.lower()
+            updated = True
+            break
+    if updated:
+        db.collection("users").document(driver_id).update({
+            "driver_info.vehicles": vehicles,
+            "driver_info.vehicle_tier": tier.lower(),
+        })
+    return {"message": f"Vehicle tier updated to {tier}", "driver_id": driver_id}
+
+
 @app.post("/api/admin/drivers/{driver_id}/approve", tags=["Admin"])
 async def approve_driver(driver_id: str, admin_id: str = Depends(get_admin_user)):
     db = get_db()
@@ -3492,11 +3518,14 @@ async def request_ride(
     if getattr(ride_data, 'vault_id', None):
         _save_card_vault(db, final_user_id, ride_data.vault_id, ride_data.card_last4, ride_data.card_brand)
 
+    _rider_doc_phone = db.collection("users").document(final_user_id).get()
+    user_data = _rider_doc_phone.to_dict() if _rider_doc_phone.exists else {}
     ride_ref = db.collection("rides").document()
     new_ride = {
         "id": ride_ref.id,
         "userId": final_user_id,
         "rider_id": final_user_id,
+        "rider_phone": user_data.get("cellphone", "") if user_data else "",
         "carType": ride_data.car_type,
         "pickup": ride_data.pickup,
         "pickup_lat": ride_data.pickup_lat,
@@ -3852,12 +3881,18 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
     balance = driver_data.get("earnings", {}).get("balance", 0)
     held_commission = (ride_data.get("estimated_fare", 0) or 0) * commission_rate
 
-    # Balance check ? driver must have enough to cover commission
-    if balance < held_commission:
+    # Balance check - include signup bonus for cash rides
+    _earnings = driver_data.get("earnings", {})
+    _bonus = _earnings.get("signup_bonus", 0)
+    _bonus_used = _earnings.get("signup_bonus_used", 0)
+    _remaining_bonus = max(0, _bonus - _bonus_used)
+    _effective_balance = balance + _remaining_bonus
+    ride_payment = ride_data.get("payment_method", "cash")
+    if ride_payment == "cash" and _effective_balance < held_commission:
         raise HTTPException(
             400,
-            f"Insufficient balance. Need ?{held_commission:.2f} to accept this ride. "
-            f"Current balance: ?{balance:.2f}. Please top up your wallet."
+            f"Insufficient balance. Need GEL {held_commission:.2f} to accept this cash ride. "
+            f"Current balance: GEL {balance:.2f}. Please top up your wallet."
         )
 
 

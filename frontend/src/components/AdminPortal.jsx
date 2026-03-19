@@ -583,6 +583,14 @@ const CorporateAdminPanel = ({ api }) => {
 
   React.useEffect(() => { load(); }, []);
 
+  const setDriverTier = async (id, tier) => {
+    try {
+      await api.post(`/admin/drivers/${id}/set-tier?tier=${tier}`);
+      toast.success("Vehicle tier updated to " + tier);
+      loadDrivers();
+    } catch { toast.error("Failed to update tier"); }
+  };
+
   const approve = async (id) => {
     setActionLoading(p => ({ ...p, [id + "_approve"]: true }));
     try {
@@ -1132,6 +1140,15 @@ const AdminDashboard = () => {
                                     onClick={() => { setDetailUserId(driver.id); setDetailUserType("driver"); }}>
                                     <Eye className="w-3.5 h-3.5 mr-1" /> View
                                   </Button>
+                                  <select onChange={e => e.target.value && setDriverTier(driver.id, e.target.value)} defaultValue=""
+                                    className="h-7 text-xs bg-white/5 border border-white/10 rounded-lg px-1.5 text-white/60 cursor-pointer">
+                                    <option value="" disabled>Tier...</option>
+                                    {["economy","comfort","suv","jumpstart","personal"].map(t => (
+                                      <option key={t} value={t} style={{background:"#111"}}>
+                                        {t.charAt(0).toUpperCase()+t.slice(1)}
+                                      </option>
+                                    ))}
+                                  </select>
                                   <AddBalanceDialog user={driver} userType="driver" onSuccess={fetchAll}>
                                     <Button size="sm" variant="outline" className="h-7 px-2 border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
                                       <PlusCircle className="w-3.5 h-3.5 mr-1" /> Add

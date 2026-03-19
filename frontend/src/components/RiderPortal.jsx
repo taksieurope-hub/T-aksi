@@ -2148,6 +2148,12 @@ const [showPromo, setShowPromo] = useState(false);
                   <span style={{color:"#00ff88",fontSize:11,fontWeight:700}}>🎉 Promo discount: GEL {fareEstimate.discount.toFixed(2)}</span>
                 </div>
               )}
+              {(user?.welcome_discount_rides_remaining > 0) && fareEstimate?.total > 0 && (
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0 8px"}}>
+                  <span style={{color:"#ff8c00",fontSize:11,fontWeight:700}}>🎉 Welcome discount: -GEL {(fareEstimate.total * 0.15 / 0.85).toFixed(2)} (15% off)</span>
+                  <span style={{color:"#ff8c00",fontSize:11,fontWeight:700}}>→ GEL {(fareEstimate.total * 0.85).toFixed(2)}</span>
+                </div>
+              )}
             </div>
 
 {/* THE MAIN ACTION BUTTON */}
