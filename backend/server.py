@@ -4682,8 +4682,8 @@ async def get_chat_messages(ride_id: str, user_id: Optional[str] = Depends(get_c
     }
     target_lang = LANG_NAMES.get(user_lang, "English")
 
-    # Translate messages not sent by this user if language is not English
-    if user_lang != "en" and len(messages) > 0:
+    # Translate messages not sent by this user into the reader's language
+    if len(messages) > 0:
         try:
             client = anthropic.Anthropic()
             msgs_to_translate = [m for m in messages if m.get("sender_id") != user_id and m.get("message")]
@@ -4695,7 +4695,7 @@ async def get_chat_messages(ride_id: str, user_id: Optional[str] = Depends(get_c
                     max_tokens=1000,
                     messages=[{
                         "role": "user",
-                        "content": f"Translate each message to {target_lang}. Keep the same order, separated by ---. Only return translations, nothing else:\n\n{combined}"
+                        "content": f"Translate each message to {target_lang}. If a message is already in {target_lang}, return it unchanged. Keep the same order, separated by ---. Only return the translated/unchanged messages, nothing else:\n\n{combined}"
                     }]
                 )
                 translations = resp.content[0].text.strip().split("\n---\n")
