@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="T'aksi - Your Ride Across the Galaxy. Experience the future of transportation in Georgia. Fast, reliable, and out of this world." />
-    <meta http-equiv="Clear-Site-Data" content="cache" />
     <meta name="theme-color" content="#00ff88" />
     
     <!-- Favicon -->
@@ -42,16 +41,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&family=Noto+Sans+Georgian:wght@400;600;700&display=swap" rel="stylesheet" />
     <title>T'aksi - Galactic Rides</title>
   
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(regs) {
-        regs.forEach(function(reg) { reg.unregister(); });
-      });
-      caches.keys().then(function(keys) {
-        keys.forEach(function(key) { caches.delete(key); });
-      });
-    }
-  </script>
+
   </head>
   <body style="background-color: #07070f; margin: 0; padding: 0;">
     <!-- No-JS Fallback -->
@@ -62,7 +52,6 @@
         <p>Please enable JavaScript in your browser settings.</p>
       </div>
     </noscript>
-    <div id="recaptcha-container"></div>
     <div id="recaptcha-container"></div>
     <div id="root"></div>
     <script type="module" src="/src/index.jsx"></script>
