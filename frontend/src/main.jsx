@@ -1,10 +1,3 @@
-// Unregister broken service workers then reload
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(reg => reg.unregister());
-  });
-}
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -12,31 +5,17 @@ import { LanguageProvider } from './i18n/LanguageContext';
 import App from './App';
 import './index.css';
 
-// Register SW with error handling
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
-      .then(reg => {
-        console.log("SW registered");
-        reg.addEventListener("updatefound", () => {
-          const newSW = reg.installing;
-          newSW.addEventListener("statechange", () => {
-            if (newSW.state === "installed" && navigator.serviceWorker.controller) {
-              newSW.postMessage({ type: "SKIP_WAITING" });
-            }
-          });
-        });
-      })
-      .catch(err => console.warn("SW registration failed:", err));
-
-    // If SW causes error, reload without SW
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      window.location.reload();
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.unregister());
+    }).then(() => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
     });
   });
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <LanguageProvider>
       <BrowserRouter>

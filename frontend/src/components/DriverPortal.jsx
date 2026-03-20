@@ -1317,7 +1317,7 @@ const NavHUD = ({ step, nextStep, speed, isCompact = false }) => {
 const MAP_STYLES = [
   { elementType: "geometry", stylers: [{ color: "#1a1f2e" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#1a1f2e" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#ffffff" }] },
   { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#e2c97e" }] },
   { featureType: "poi", stylers: [{ visibility: "off" }] },
   { featureType: "road", elementType: "geometry", stylers: [{ color: "#4a5f7a" }] },

@@ -550,7 +550,7 @@ export default function TermsAndConditions({ onClose, initialTab = 0 }) {
     }}>
       <div style={{
         width: "100%", maxWidth: 600,
-        background: "#0d0d1a",
+        background: "#1a1a2e",
         border: "1px solid rgba(255,255,255,0.08)",
         borderRadius: "20px 20px 0 0",
         maxHeight: "92vh",
