@@ -1,19 +1,6 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import { Building2, Users, CreditCard, LogOut, Plus, Trash2, RefreshCw, ChevronRight, Loader2, CheckCircle, Clock, XCircle } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_URL || "https://taksi-backend.onrender.com/api";
-
-const api = axios.create({
-  baseURL: API_BASE,
-  withCredentials: true,
-});
-
-api.interceptors.request.use(cfg => {
-  const t = localStorage.getItem("corp_token");
-  if (t) cfg.headers.Authorization = `Bearer ${t}`;
-  return cfg;
-});
+import api from "@/api";
 
 const statusBadge = (status) => {
   const map = {
