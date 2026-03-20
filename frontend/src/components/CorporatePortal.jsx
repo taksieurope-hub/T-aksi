@@ -292,7 +292,7 @@ const CorporateDashboard = ({ corp, onLogout }) => {
             <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: 20 }}>
               <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 14 }}>Top Up</p>
               <p style={{ margin: "0 0 16px", fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>To top up your corporate wallet, contact T'aksi directly. We'll process bank transfers, cash deposits, and card payments.</p>
-              <a href={`mailto:taksigeorgia@gmail.com?subject=Corporate Wallet Top Up - ${corp.company_name}`}
+              <a href="mailto:taksigeorgia@gmail.com?subject=Corporate Wallet Top Up - " + corp.company_name
                 style={{ display: "block", background: "linear-gradient(135deg,#00ff88,#00d4ff)", color: "#000", fontWeight: 800, fontSize: 14, textAlign: "center", borderRadius: 12, padding: "13px 0", textDecoration: "none" }}>
                 Email Us to Top Up
               </a>
