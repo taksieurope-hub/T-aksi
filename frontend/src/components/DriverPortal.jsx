@@ -1493,7 +1493,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 41.7151, lng: 44.8271 },
       zoom: 18,
-      tilt: 45,
+      tilt: 0,
       heading: 0,
       disableDefaultUI: true,
       gestureHandling: "greedy",
