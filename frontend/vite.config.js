@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         strategies: 'injectManifest',
         srcDir: 'src',
         filename: 'sw.js',
@@ -21,11 +21,7 @@ export default defineConfig(({ mode }) => {
           injectionPoint: undefined,
         },
         manifest: false,
-        workbox: {
-          cleanupOutdatedCaches: true,
-          skipWaiting: true,
-          clientsClaim: true,
-        },
+        devOptions: { enabled: false },
       }),
     ],
     resolve: {
