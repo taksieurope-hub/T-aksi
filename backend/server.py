@@ -5644,3 +5644,54 @@ async def admin_topup_corporate(corp_id: str, data: CorporateTopUp, admin_id: st
         "updated_at": firestore.SERVER_TIMESTAMP,
     })
     return {"message": f"Added GEL {data.amount:.2f} to corporate wallet"}
+
+
+class AddDistanceRequest(BaseModel):
+    extra_km: float
+    extra_fare: float
+
+@app.post("/api/rides/{ride_id}/add-distance", tags=["Rides"])
+async def add_extra_distance(
+    ride_id: str,
+    data: AddDistanceRequest,
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    """Called when driver deviates from route - adds half the extra distance cost to fare."""
+    if not user_id:
+        raise HTTPException(401, "Not authenticated")
+    if data.extra_km <= 0 or data.extra_fare < 0:
+        raise HTTPException(400, "Invalid distance or fare")
+
+    db = get_db()
+    ride_ref = db.collection("rides").document(ride_id)
+    ride_doc = ride_ref.get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+
+    ride_data = ride_doc.to_dict()
+    # Only the driver on this ride can add distance
+    if ride_data.get("driver_id") != user_id and ride_data.get("driverId") != user_id:
+        raise HTTPException(403, "Not your ride")
+
+    current_fare = float(ride_data.get("estimated_fare") or ride_data.get("final_fare") or 0)
+    new_fare = round(current_fare + data.extra_fare, 2)
+
+    ride_ref.update({
+        "estimated_fare": new_fare,
+        "extra_distance_km": firestore.Increment(data.extra_km),
+        "extra_distance_fare": firestore.Increment(data.extra_fare),
+        "route_recalculated": True,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    })
+
+    # Notify rider of fare update
+    rider_id = ride_data.get("userId") or ride_data.get("rider_id")
+    if rider_id:
+        send_push_notification(
+            rider_id,
+            title="Route updated",
+            body=f"Driver took a different route. Fare adjusted to GEL {new_fare:.2f}",
+            data={"type": "fare_updated", "ride_id": ride_id, "new_fare": str(new_fare)}
+        )
+
+    return {"message": "Distance added", "new_fare": new_fare, "extra_km": data.extra_km}

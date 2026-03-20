@@ -149,6 +149,16 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
       componentRestrictions: { country: "ge" },
       fields: ["formatted_address", "geometry", "name"],
     });
+    // Bias results toward user's current location
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const circle = new window.google.maps.Circle({
+          center: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+          radius: 5000,
+        });
+        ac.setBounds(circle.getBounds());
+      }, () => {});
+    }
     ac.addListener("place_changed", () => {
       const place = ac.getPlace();
       if (place.geometry) {

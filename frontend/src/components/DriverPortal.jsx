@@ -1492,9 +1492,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 41.7151, lng: 44.8271 },
-      zoom: 18,
-      tilt: 0,
-      heading: 0,
+      zoom: 16,
       disableDefaultUI: true,
       gestureHandling: "greedy",
       backgroundColor: "#f2f2f2",
@@ -1697,7 +1695,54 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       }
     );
   // 5. IMPORTANT: Add activeRide?.stops to this dependency array!
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat, activeRide?.stops, mapReady]);
+  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat, activeRide?.stops, mapReady, driverLocation?.lat]);
+  // Route deviation detection - recalculate if driver goes off route
+  // If new route is longer, add half the extra distance cost to fare
+  const lastRouteDistanceRef = React.useRef(null);
+  const deviationCheckRef = React.useRef(null);
+
+  useEffect(() => {
+    if (activeRide?.status !== "in_progress" || !mapReady) return;
+
+    deviationCheckRef.current = setInterval(() => {
+      if (!directionsServiceRef.current || !driverLocation?.lat || !activeRide) return;
+      const dLat = parseFloat(driverLocation.lat), dLng = parseFloat(driverLocation.lng);
+      const destLat = parseFloat(activeRide.dest_lat || activeRide.destination_lat);
+      const destLng = parseFloat(activeRide.dest_lng || activeRide.destination_lng);
+      if (!dLat || !dLng || !destLat || !destLng) return;
+
+      directionsServiceRef.current.route(
+        { origin: { lat: dLat, lng: dLng }, destination: { lat: destLat, lng: destLng }, travelMode: window.google.maps.TravelMode.DRIVING },
+        (result, status) => {
+          if (status !== "OK") return;
+          const newDistKm = result.routes[0].legs.reduce((t, l) => t + l.distance.value, 0) / 1000;
+
+          if (lastRouteDistanceRef.current === null) {
+            lastRouteDistanceRef.current = newDistKm;
+            return;
+          }
+
+          const extraKm = newDistKm - lastRouteDistanceRef.current;
+          if (extraKm > 0.3) {
+            // Driver is off route - redraw and adjust fare
+            if (routeRendererRef.current) routeRendererRef.current.setDirections(result);
+            lastRouteDistanceRef.current = newDistKm;
+
+            // Notify backend of extra distance (half price)
+            const extraFare = parseFloat((extraKm * 0.5 * 0.5).toFixed(2));
+            if (extraFare > 0) {
+              api.post("/rides/" + activeRide.id + "/add-distance", { extra_km: extraKm, extra_fare: extraFare })
+                .catch(() => {});
+            }
+          }
+        }
+      );
+    }, 30000); // Check every 30 seconds
+
+    return () => { if (deviationCheckRef.current) clearInterval(deviationCheckRef.current); };
+  }, [activeRide?.status, activeRide?.id, mapReady, driverLocation?.lat]);
+
+
   const handleNav = (app) => {
     if (!activeRide) return;
     const isPickup = ["accepted", "arrived"].includes(activeRide.status);
