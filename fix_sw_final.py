@@ -1,4 +1,4 @@
-import { clientsClaim } from "workbox-core";
+﻿sw_content = """import { clientsClaim } from "workbox-core";
 
 self.skipWaiting();
 clientsClaim();
@@ -79,3 +79,7 @@ self.addEventListener("message", function (event) {
     self.skipWaiting();
   }
 });
+"""
+
+open("frontend/src/sw.js", "w", encoding="utf-8").write(sw_content)
+print("Done. Clean service worker written.")
