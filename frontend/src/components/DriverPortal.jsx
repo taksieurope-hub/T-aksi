@@ -1,1886 +1,280 @@
-import { sendFirebaseOTP, verifyFirebaseOTP } from "@/hooks/useFirebasePhoneAuth";
-import React from "react";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { registerFCMToken } from "@/lib/firebase";
-import SupportChatWidget from "@/components/SupportChatWidget";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
-import TermsAndConditions from "@/components/TermsAndConditions";
 import LanguageSelector from "@/i18n/LanguageSelector";
 import { DriverTripCompletionModal } from "@/components/TripCompletionModal";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import Drivermap from './Drivermap';
-
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RideCommunication from "./RideCommunication";
 import {
-
-  Car, MapPin, Star, History, Home, LogOut, User, Phone, Lock,
-  ArrowLeft, ArrowRight, Navigation, Wallet, Loader2, Rocket, Plus, X,
-  Zap, TrendingUp, MessageSquare, Target, Crosshair, Send, Banknote,
-  CreditCard, ExternalLink, AlertTriangle, Activity, MapPinned,
-  CheckCircle2, XCircle, Play, Timer, PauseCircle, Building2, Info,
-  Shield, Users, Gift, LifeBuoy, Copy, Share2, ChevronDown, ChevronUp,
-  ChevronRight, Bell, Flame, Calendar, Truck, Settings, RefreshCw,
-  Award, BarChart3, FileText, Heart, Headphones, AlertCircle,
-  CornerUpLeft, CornerUpRight, RotateCcw, Merge, ArrowUp, Eye, ThumbsUp
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import {
+  Car, MapPin, Star, History, Home, LogOut, User,
+  Phone, Lock, ArrowLeft, ArrowRight, Navigation, Wallet, Loader2, Rocket,
+  Plus, X, Zap, TrendingUp, MessageSquare,
+  Target, Crosshair, Send, Banknote, CreditCard, ExternalLink,
+  AlertTriangle, Activity, MapPinned, CheckCircle2, XCircle,
+  Play, Timer, PauseCircle, Building2, Info, Car as CarIcon,
+  MessageCircle, FileText, ChevronDown, ChevronUp,
 } from "lucide-react";
 
-const FeedbackPanel = React.lazy(() => import("@/components/Feedbackpanel"));
-
 // =============================================================================
-// CONSTANTS ? synced with server.py
+// PRICING RULES — Synced with server.py + RiderPortal exactly
 // =============================================================================
 const PRICING_RULES = {
-  economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   icon: "??" },
-  comfort:   { name: "Comfort",   base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2,   icon: "??" },
-  suv:       { name: "SUV / XL",  base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2,   icon: "??" },
-  personal:  { name: "Personal",  base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2,   icon: "??" },
-  jumpstart: { name: "Jumpstart", base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, icon: "?" },
+  economy:   { name: "Economy",   base: 2.00, perKm: 0.50, perMinWait: 0.50, freeWait: 2,   icon: "🚗" },
+  comfort:   { name: "Comfort",   base: 2.50, perKm: 0.55, perMinWait: 0.50, freeWait: 2,   icon: "🚙" },
+  suv:       { name: "SUV / XL",  base: 3.90, perKm: 0.80, perMinWait: 0.50, freeWait: 2,   icon: "🚐" },
+  personal:  { name: "Personal",  base: 4.00, perKm: 0.70, perMinWait: 0.50, freeWait: 2,   icon: "👤" },
+  jumpstart: { name: "Jumpstart", base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, icon: "⚡" },
 };
 
 const DRIVER_COMMISSION_RATE = 0.23;
-const LOCATION_UPDATE_INTERVAL = 2000;
+const LOCATION_UPDATE_INTERVAL = 2000; // ms
+
+// Minimum balance reserve + fee enforced by server
 const WITHDRAWAL_RESERVE = 5.00;
-const WITHDRAWAL_FEE = 1.00;
+const WITHDRAWAL_FEE    = 1.00;
 
 const CANCEL_REASONS = {
-  accepted:    ["Heavy Traffic / Stuck", "Car Trouble", "Accidentally Accepted", "Cannot Locate Pickup", "Personal Emergency"],
-  arrived:     ["Client Not Showing (Timer Expired)", "Client Refused Ride", "Too Much Luggage", "Unaccompanied Minor", "Safety Concern"],
-  in_progress: ["Client Requested Early End", "Client Behavior / Rude", "Safety Concern", "Wrong Destination", "Vehicle Breakdown"],
-};
-
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return 9999;
-  const R = 6371; 
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-};
-
-// =============================================================================
-// DESIGN TOKENS
-// =============================================================================
-const C = {
-  green:  "#00ff88",
-  cyan:   "#00d4ff",
-  bg:     "#07070f",
-  card:   "#0e0e1c",
-  card2:  "#13132a",
-  border: "rgba(255,255,255,0.07)",
-  muted:  "rgba(255,255,255,0.4)",
-};
-
-// =============================================================================
-// GOOGLE MAPS SINGLETON LOADER
-// =============================================================================
-let mapsLoadState = "idle";
-const mapsReadyCallbacks = [];
-
-const loadGoogleMaps = (apiKey) => {
-  if (mapsLoadState === "loaded" && window.google?.maps) return Promise.resolve();
-  if (mapsLoadState === "loaded" && !window.google?.maps) mapsLoadState = "idle";
-  if (mapsLoadState === "loading") return new Promise((res, rej) => mapsReadyCallbacks.push({ res, rej }));
-
-  mapsLoadState = "loading";
-  return new Promise((res, rej) => {
-    mapsReadyCallbacks.push({ res, rej });
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry&callback=__taksiMapsReady`;
-    script.async = true;
-    script.defer = true;
-    window.__taksiMapsReady = () => {
-      mapsLoadState = "loaded";
-      mapsReadyCallbacks.forEach(cb => cb.res());
-      mapsReadyCallbacks.length = 0;
-      delete window.__taksiMapsReady;
-    };
-    script.onerror = () => {
-      mapsLoadState = "error";
-      mapsReadyCallbacks.forEach(cb => cb.rej(new Error("Maps failed")));
-      mapsReadyCallbacks.length = 0;
-    };
-    document.head.appendChild(script);
-  });
-};
-
-// =============================================================================
-// SHARED UI COMPONENTS
-// =============================================================================
-const GlassCard = ({ children, className = "", accent = false }) => (
-  <div className={`rounded-2xl border ${accent ? "border-[#00ff88]/25 bg-[#00ff88]/5" : "border-white/7 bg-white/3"} backdrop-blur-sm ${className}`}>
-    {children}
-  </div>
-);
-
-const StatPill = ({ label, value, color = "text-white" }) => (
-  <div className="bg-white/4 rounded-xl p-3 text-center border border-white/7">
-    <p className="text-[10px] uppercase tracking-widest text-white/40 mb-1">{label}</p>
-    <p className={`text-lg font-bold font-mono ${color}`}>{value}</p>
-  </div>
-);
-
-const SectionHeader = ({ icon: Icon, title, subtitle, action }) => (
-  <div className="flex items-center justify-between mb-4">
-    <div className="flex items-center gap-2">
-      {Icon && <div className="w-7 h-7 rounded-lg bg-[#00ff88]/15 flex items-center justify-center"><Icon className="w-4 h-4 text-[#00ff88]" /></div>}
-      <div>
-        <h3 className="text-white font-semibold text-[15px]">{title}</h3>
-        {subtitle && <p className="text-white/40 text-xs">{subtitle}</p>}
-      </div>
-    </div>
-    {action}
-  </div>
-);
-
-const BackButton = ({ onClick, label = "Back" }) => (
-  <button onClick={onClick} className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-4 transition-colors">
-    <ArrowLeft className="w-4 h-4" /> {label}
-  </button>
-);
-
-const StatusBadge = ({ status }) => {
-  const map = {
-    pending_vehicle:    ["bg-amber-500/20 text-amber-400 border-amber-500/30",   "Pending Vehicle"],
-    pending_review:     ["bg-orange-500/20 text-orange-400 border-orange-500/30","Under Review"],
-    approved:           ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "Approved"],
-    rejected:           ["bg-red-500/20 text-red-400 border-red-500/30",         "Rejected"],
-    searching:          ["bg-yellow-500/20 text-yellow-400 border-yellow-500/30","Searching"],
-    accepted:           ["bg-blue-500/20 text-blue-400 border-blue-500/30",      "Accepted"],
-    arrived:            ["bg-purple-500/20 text-purple-400 border-purple-500/30","Arrived"],
-    in_progress:        ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "In Progress"],
-    completed:          ["bg-emerald-500/20 text-emerald-400 border-emerald-500/30","Completed"],
-    cancelled:          ["bg-red-500/20 text-red-400 border-red-500/30",         "Cancelled"],
-    escalated:          ["bg-red-500/20 text-red-400 border-red-500/30",         "Escalated"],
-    in_progress_ticket: ["bg-blue-500/20 text-blue-400 border-blue-500/30",      "In Progress"],
-    resolved:           ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "Resolved"],
-    closed:             ["bg-white/10 text-white/40 border-white/10",            "Closed"],
-    active:             ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "Active"],
-    pending:            ["bg-amber-500/20 text-amber-400 border-amber-500/30",   "Pending"],
-    approved_w:         ["bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30",   "Approved"],
-    rejected_w:         ["bg-red-500/20 text-red-400 border-red-500/30",         "Rejected"],
-  };
-  const [cls, label] = map[status] || ["bg-white/10 text-white/50 border-white/10", status || "Unknown"];
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${cls}`}>{label}</span>;
+  accepted: [
+    "Heavy Traffic / Stuck", "Car Trouble / Mechanical Issue",
+    "Accidentally Accepted", "Cannot Locate Pickup Address", "Personal Emergency",
+  ],
+  arrived: [
+    "Client Not Showing Up (Timer Expired)", "Client Refused Ride",
+    "Too Much Luggage / Cargo", "Unaccompanied Minor", "No Mask / Safety Concern",
+  ],
+  in_progress: [
+    "Client Requested Early End", "Client Behavior / Rude",
+    "Safety Concern", "Wrong Destination", "Vehicle Breakdown",
+  ],
 };
 
 // =============================================================================
 // DRIVER WAIT TIMER
 // =============================================================================
-
-const DriverWaitTimer = ({ arrivedAt, carType, onUpdate }) => {
+const DriverWaitTimer = ({ arrivedAt, carType }) => {
   const [elapsed, setElapsed] = useState(0);
-  // Use a ref for the callback so the interval closure never goes stale
-  const onUpdateRef = useRef(onUpdate);
-  useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
 
   useEffect(() => {
-    const startTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
-    if (isNaN(startTime)) return;
-
-    const tick = () => {
-      const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
-      setElapsed(elapsedSec);
-      const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
-      const freeWaitSec = rules.freeWait * 60;
-      // Always report total elapsed minutes so parent has accurate billing value.
-      // calculate_fare on the server subtracts freeWait internally.
-      const totalMin = elapsedSec / 60;
-      if (elapsedSec > freeWaitSec) {
-        const overtimeSec = elapsedSec - freeWaitSec;
-        const overtimeMin = overtimeSec / 60;
-        onUpdateRef.current?.({ minutes: totalMin, overtime: overtimeMin, earned: overtimeMin * rules.perMinWait });
-      } else {
-        onUpdateRef.current?.({ minutes: totalMin, overtime: 0, earned: 0 });
-      }
-    };
-
-    tick(); // immediate first tick
-    const interval = setInterval(tick, 1000);
+    const startTime = arrivedAt && !isNaN(new Date(arrivedAt).getTime())
+      ? new Date(arrivedAt).getTime()
+      : Date.now();
+    const interval = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
     return () => clearInterval(interval);
-  }, [arrivedAt, carType]); // ? intentionally omit onUpdate (handled via ref)
+  }, [arrivedAt]);
 
-  const rules = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
-  const freeWaitSec = rules.freeWait * 60;
+  const rules           = PRICING_RULES[carType?.toLowerCase()] || PRICING_RULES.economy;
+  const freeWaitSeconds = rules.freeWait * 60;
 
-  if (elapsed <= freeWaitSec) {
-    const rem = freeWaitSec - elapsed;
+  if (elapsed <= freeWaitSeconds) {
+    const remaining = freeWaitSeconds - elapsed;
+    const mins = String(Math.floor(remaining / 60)).padStart(2, "0");
+    const secs = String(remaining % 60).padStart(2, "0");
     return (
-      <div className="col-span-2 bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-blue-400">
-          <Timer className="w-5 h-5 animate-pulse" />
-          <span className="font-medium text-sm">Free Wait</span>
+      <div className="bg-blue-500/20 border border-blue-500 p-4 rounded-xl flex items-center justify-between col-span-2">
+        <div className="flex items-center text-blue-400">
+          <Timer className="w-5 h-5 mr-2 animate-pulse" />
+          <span className="font-medium">Free Wait Time</span>
         </div>
         <div className="text-right">
-          <div className="text-blue-300 font-mono text-2xl font-bold">
-            {String(Math.floor(rem / 60)).padStart(2, "0")}:{String(rem % 60).padStart(2, "0")}
-          </div>
-          <div className="text-blue-400/50 text-[10px] uppercase tracking-wider">remaining</div>
+          <div className="text-blue-400 font-mono text-xl font-bold">{mins}:{secs}</div>
+          <div className="text-blue-400/70 text-[10px] uppercase font-bold tracking-wider">Remaining</div>
         </div>
       </div>
     );
   }
 
-  const overtime = elapsed - freeWaitSec;
-  const earned = ((overtime / 60) * rules.perMinWait).toFixed(2);
+  const overtime    = elapsed - freeWaitSeconds;
+  const mins        = String(Math.floor(overtime / 60)).padStart(2, "0");
+  const secs        = String(overtime % 60).padStart(2, "0");
+  const liveEarnings = ((overtime / 60) * rules.perMinWait).toFixed(2);
+
   return (
-    <div className="col-span-2 bg-[#00ff88]/10 border border-[#00ff88]/40 rounded-xl p-4 flex items-center justify-between">
-      <div className="flex items-center gap-2 text-[#00ff88]">
-        <Timer className="w-5 h-5 animate-pulse" />
-        <span className="font-medium text-sm">Paid Wait</span>
+    <div className="bg-[#00ff88]/20 border border-[#00ff88] p-4 rounded-xl flex items-center justify-between shadow-[0_0_15px_rgba(0,255,136,0.2)] col-span-2">
+      <div className="flex items-center text-[#00ff88]">
+        <Timer className="w-5 h-5 mr-2 animate-pulse" />
+        <span className="font-medium">Paid Wait Time</span>
       </div>
       <div className="text-right">
-        <div className="text-[#00ff88] font-mono text-2xl font-bold">
-          {String(Math.floor(overtime / 60)).padStart(2, "0")}:{String(overtime % 60).padStart(2, "0")}
-        </div>
-        <div className="text-[#00ff88] font-bold text-sm">+GEL {earned}</div>
+        <div className="text-[#00ff88] font-mono text-xl font-bold">{mins}:{secs}</div>
+        <div className="text-[#00ff88] font-bold text-sm">Earned: +₾{liveEarnings}</div>
       </div>
     </div>
   );
 };
 
 // =============================================================================
-// SURGE INDICATOR
-// =============================================================================
-const SurgeIndicator = ({ location }) => {
-  const [surge, setSurge] = useState(null);
-  useEffect(() => {
-    const fetch = async () => {
-      try {
-        const q = location ? `?lat=${location.lat}&lng=${location.lng}` : "";
-        const r = await api.get(`/surge/status${q}`);
-        setSurge(r.data);
-      } catch (_) {}
-    };
-    fetch();
-    const iv = setInterval(fetch, 60000);
-    return () => clearInterval(iv);
-  }, [location?.lat, location?.lng]);
-
-  if (!surge?.is_surge) return null;
-  return (
-    <div className="flex items-center gap-1.5 bg-orange-500/15 border border-orange-500/30 rounded-lg px-2.5 py-1">
-      <Flame className="w-3.5 h-3.5 text-orange-400 animate-pulse" />
-      <span className="text-orange-300 text-xs font-bold">{surge.multiplier}x</span>
-    </div>
-  );
-};
-
-// =============================================================================
-// SOS BUTTON
-// =============================================================================
-const SOSButton = ({ activeRide, location }) => {
-  const [confirm, setConfirm] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const trigger = async () => {
-    setLoading(true);
-    try {
-      await api.post("/sos", {
-        ride_id: activeRide?.id || null,
-        lat: location?.lat || 0,
-        lng: location?.lng || 0,
-        message: `Driver SOS ? Ride: ${activeRide?.id || "none"}`,
-      });
-      toast.error("?? SOS sent! Support team has been alerted.", { duration: 10000 });
-      setConfirm(false);
-    } catch (_) {
-      toast.error("SOS failed ? call emergency services directly");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <>
-      <button onClick={() => setConfirm(true)}
-        className="flex items-center gap-1.5 bg-red-500/15 border border-red-500/40 rounded-lg px-2.5 py-1 active:bg-red-500/30 transition-colors">
-        <Shield className="w-3.5 h-3.5 text-red-400" />
-        <span className="text-red-400 text-xs font-bold">SOS</span>
-      </button>
-
-      <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent className="bg-[#0e0e1c] border border-red-500/50 text-white max-w-sm rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-red-400 flex items-center gap-2 text-xl">
-              <Shield className="w-6 h-6" /> Emergency SOS
-            </DialogTitle>
-            <DialogDescription className="text-white/60 text-sm">
-              This will immediately alert the T'aksi support team with your location. Use only in genuine emergencies.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex gap-3 mt-2">
-            <Button variant="ghost" onClick={() => setConfirm(false)} className="flex-1 border border-white/10 text-white/60 h-12">Cancel</Button>
-            <Button onClick={trigger} disabled={loading} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold h-12">
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "?? Send SOS"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-};
-
-// =============================================================================
-// RATE PASSENGER MODAL
-// =============================================================================
-const RatePassengerModal = ({ rideId, riderName, onDone }) => {
-  const [rating, setRating] = useState(5);
-  const [review, setReview] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const submit = async () => {
-    setLoading(true);
-    try {
-      await api.post(`/rides/${rideId}/rate-passenger`, { rating, review });
-      toast.success("Passenger rated!");
-      onDone();
-    } catch (_) {
-      toast.error("Failed to submit rating");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <p className="text-white/60 text-sm text-center">How was your ride with <span className="text-white font-medium">{riderName || "this passenger"}</span>?</p>
-      <div className="flex justify-center gap-3">
-        {[1,2,3,4,5].map(s => (
-          <button key={s} onClick={() => setRating(s)}
-            className={`w-12 h-12 rounded-xl text-2xl transition-all active:scale-95 ${s <= rating ? "text-yellow-400 scale-110" : "text-white/20"}`}>
-            <Star className="w-7 h-7 mx-auto" fill={s <= rating ? "currentColor" : "none"} />
-          </button>
-        ))}
-      </div>
-      <Input value={review} onChange={e => setReview(e.target.value)} placeholder="Optional feedback..."
-        className="bg-white/5 border-white/10 text-white placeholder:text-white/30" />
-      <div className="flex gap-3">
-        <Button variant="ghost" onClick={onDone} className="flex-1 border border-white/10 text-white/60">Skip</Button>
-        <Button onClick={submit} disabled={loading} className="flex-1 bg-[#00ff88] text-black font-bold">
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Rating"}
-        </Button>
-      </div>
-    </div>
-  );
-};
-
-// =============================================================================
-// WITHDRAWAL PANEL
+// WITHDRAWAL PANEL — fixed: numbers sized for small screens, history from correct endpoint
 // =============================================================================
 const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
-  const { t } = useLanguage();
-  const [amount, setAmount] = useState("");
+  const [amount,      setAmount]      = useState("");
   const [bankDetails, setBankDetails] = useState("");
-  const [bankType, setBankType] = useState("iban");
-  const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState([]);
+  const [bankType,    setBankType]    = useState("iban");
+  const [loading,     setLoading]     = useState(false);
+  const [history,     setHistory]     = useState([]);
 
-  const maxW = Math.max(0, balance - WITHDRAWAL_RESERVE - WITHDRAWAL_FEE);
-  const amt = parseFloat(amount) || 0;
-  const isValid = amt >= 1 && amt <= maxW && bankDetails.trim().length >= 5;
+  const maxWithdrawal = Math.max(0, balance - WITHDRAWAL_RESERVE - WITHDRAWAL_FEE);
+  const requestedAmt  = parseFloat(amount) || 0;
+  const totalDeducted = requestedAmt > 0 ? requestedAmt + WITHDRAWAL_FEE : 0;
+  const remainingBal  = balance - totalDeducted;
+  const isValid       = requestedAmt >= 1 && requestedAmt <= maxWithdrawal && bankDetails.trim().length >= 5;
 
   useEffect(() => {
-    api.get("/driver/withdrawals/history").then(r => setHistory(r.data.withdrawals || [])).catch(() => {});
-    // Auto-fill saved bank details
-    api.get("/driver/bank-details").then(r => {
-      if (r.data.bank_account) {
-        setBankType(r.data.bank_type || "iban");
-        setBankDetails(r.data.bank_account);
-      }
-    }).catch(() => {});
+    api.get("/driver/withdrawals/history")
+      .then(r => setHistory(r.data.withdrawals || []))
+      .catch(() => {});
   }, []);
 
-  const submit = async () => {
+  const handleWithdraw = async () => {
     if (!isValid) return;
     setLoading(true);
     try {
-      const r = await api.post("/driver/withdraw", {
-        driver_id: driverId, amount: amt,
+      const res = await api.post("/driver/withdraw", {
+        driver_id:    driverId,
+        amount:       requestedAmt,
         bank_details: `[${bankType.toUpperCase()}] ${bankDetails.trim()}`,
       });
-      toast.success(r.data.message || `Withdrawal of ?${amt.toFixed(2)} requested!`);
+      toast.success(res.data.message || `₾${requestedAmt.toFixed(2)} withdrawal requested!`);
       setAmount(""); setBankDetails("");
-      onSuccess?.();
+      // Refresh history
+      api.get("/driver/withdrawals/history").then(r => setHistory(r.data.withdrawals || [])).catch(() => {});
+      if (onSuccess) onSuccess();
     } catch (err) {
-      toast.error(err.response?.data?.detail || err.response?.data?.message || "Withdrawal failed. Check your balance.");
-    } finally { setLoading(false); }
+      toast.error(err.response?.data?.detail || "Withdrawal failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const bankLabels = { iban: "IBAN", bog: "Bank of Georgia", tbc: "TBC Bank" };
-  const bankPlaceholders = {
-    iban: "GE29NB0000000101904917", bog: "GE29BG0000000101904917", tbc: "GE29TB0000000101904917",
-  };
+  const bankLabels = { iban: "IBAN (Any Bank)", bog: "Bank of Georgia", tbc: "TBC Bank" };
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <GlassCard accent className="p-4 text-center">
-          <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
-          <p className="text-2xl font-bold font-mono text-[#00ff88]">GEL {balance.toFixed(2)}</p>
-        </GlassCard>
-        <GlassCard className="p-4 text-center">
-          <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Max Withdraw</p>
-          <p className="text-2xl font-bold font-mono text-white">GEL {maxW.toFixed(2)}</p>
-          <p className="text-white/30 text-[9px] mt-0.5">?5 reserve + ?1 fee</p>
-        </GlassCard>
+
+      {/* Balance summary — FIX: smaller text so numbers fit on narrow screens */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-3 text-center">
+          <p className="text-[#00ff88]/60 text-[10px] uppercase font-bold mb-1">Balance</p>
+          <p className="text-lg font-bold text-[#00ff88] tabular-nums">₾{balance.toFixed(2)}</p>
+        </div>
+        <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
+          <p className="text-gray-400 text-[10px] uppercase font-bold mb-1">Max Out</p>
+          <p className="text-lg font-bold text-white tabular-nums">₾{maxWithdrawal.toFixed(2)}</p>
+          <p className="text-gray-500 text-[9px] mt-0.5">₾5 reserve + ₾1 fee</p>
+        </div>
       </div>
 
+      {/* Amount */}
       <div className="space-y-1.5">
-        <Label className="text-white/60 text-xs uppercase tracking-wider">Amount (GEL)</Label>
+        <Label className="text-gray-300 text-sm">Amount (GEL)</Label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">?</span>
-          <Input type="number" min="1" max={maxW} value={amount} onChange={e => setAmount(e.target.value)}
-            placeholder="0.00" className="pl-7 bg-white/4 border-white/10 text-white text-lg h-12 font-mono" />
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">₾</span>
+          <Input type="number" min="1" max={maxWithdrawal} step="0.01"
+            value={amount} onChange={e => setAmount(e.target.value)}
+            placeholder="0.00"
+            className="pl-7 bg-black/50 border-[#00ff88]/30 text-white h-11" />
         </div>
         <div className="flex gap-3 text-xs">
-          <button onClick={() => setAmount(String(Math.floor(maxW / 2)))} className="text-[#00d4ff] underline">Half</button>
-          <button onClick={() => setAmount(String(maxW.toFixed(2)))} className="text-[#00d4ff] underline">Max</button>
+          <button onClick={() => setAmount(String((maxWithdrawal / 2).toFixed(2)))}
+            className="text-[#00d4ff] underline">½ Max</button>
+          <button onClick={() => setAmount(String(maxWithdrawal.toFixed(2)))}
+            className="text-[#00d4ff] underline">Full Max</button>
         </div>
       </div>
 
+      {/* Bank selector */}
       <div className="space-y-1.5">
-        <Label className="text-white/60 text-xs uppercase tracking-wider">Transfer Method</Label>
-        <div className="grid grid-cols-3 gap-2">
-          {Object.entries(bankLabels).map(([k, v]) => (
-            <button key={k} onClick={() => setBankType(k)}
-              className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${bankType === k ? "bg-[#00ff88]/15 border-[#00ff88]/50 text-[#00ff88]" : "border-white/10 text-white/40 hover:border-white/25"}`}>
-              {k.toUpperCase()}
-            </button>
+        <Label className="text-gray-300 text-sm">Bank</Label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {Object.entries(bankLabels).map(([key, label]) => (
+            <button key={key} onClick={() => setBankType(key)}
+              className={`py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                bankType === key
+                  ? "bg-[#00ff88]/20 border-[#00ff88] text-[#00ff88]"
+                  : "border-white/10 text-gray-400 hover:border-white/30"
+              }`}>{key.toUpperCase()}</button>
           ))}
         </div>
       </div>
 
+      {/* Account number */}
       <div className="space-y-1.5">
-        <Label className="text-white/60 text-xs uppercase tracking-wider">{bankLabels[bankType]} Details</Label>
-        <Input value={bankDetails} onChange={e => setBankDetails(e.target.value)} placeholder={bankPlaceholders[bankType]}
-          className="bg-white/4 border-white/10 text-white font-mono uppercase placeholder:normal-case placeholder:text-white/20" />
+        <Label className="text-gray-300 text-sm">{bankLabels[bankType]} Account</Label>
+        <Input value={bankDetails} onChange={e => setBankDetails(e.target.value)}
+          placeholder={bankType === "iban" ? "GE29NB0000000101904917" : bankType === "bog" ? "GE29BG…" : "GE29TB…"}
+          className="bg-black/50 border-[#00ff88]/30 text-white font-mono text-sm uppercase" />
       </div>
 
-      {amt > 0 && (
-        <GlassCard className="p-4 space-y-2 text-sm">
-          <div className="flex justify-between text-white/70"><span>Requested</span><span className="font-mono">GEL {amt.toFixed(2)}</span></div>
-          <div className="flex justify-between text-red-400"><span>Processing fee</span><span className="font-mono">-GEL {WITHDRAWAL_FEE.toFixed(2)}</span></div>
+      {/* Fee breakdown */}
+      {requestedAmt > 0 && (
+        <div className="bg-black/50 border border-white/10 rounded-xl p-3 space-y-1.5 text-xs">
+          <div className="flex justify-between text-gray-300">
+            <span>You request</span><span className="font-mono tabular-nums">₾{requestedAmt.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-red-400">
+            <span>Processing fee</span><span className="font-mono tabular-nums">−₾{WITHDRAWAL_FEE.toFixed(2)}</span>
+          </div>
           <Separator className="bg-white/10" />
-          <div className="flex justify-between text-white font-bold"><span>Total deducted</span><span className="font-mono text-red-400">-GEL {(amt + WITHDRAWAL_FEE).toFixed(2)}</span></div>
+          <div className="flex justify-between font-bold text-white">
+            <span>Total deducted</span>
+            <span className="font-mono tabular-nums text-red-400">−₾{totalDeducted.toFixed(2)}</span>
+          </div>
           <div className="flex justify-between">
-            <span className="text-white/50">Balance after</span>
-            <span className={`font-mono font-bold ${balance - amt - WITHDRAWAL_FEE >= WITHDRAWAL_RESERVE ? "text-[#00ff88]" : "text-red-400"}`}>
-              GEL {(balance - amt - WITHDRAWAL_FEE).toFixed(2)}
+            <span className="text-gray-400">Balance after</span>
+            <span className={`font-mono tabular-nums font-bold ${remainingBal >= WITHDRAWAL_RESERVE ? "text-[#00ff88]" : "text-red-400"}`}>
+              ₾{remainingBal.toFixed(2)}
             </span>
           </div>
-        </GlassCard>
+        </div>
       )}
 
-      <div className="flex gap-2 bg-blue-500/8 border border-blue-500/20 rounded-xl p-3">
-        <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-        <p className="text-blue-300/80 text-xs leading-relaxed">{t("withdrawal_info")}</p>
+      {/* Info */}
+      <div className="flex gap-2 bg-blue-500/10 border border-blue-500/30 rounded-xl p-3">
+        <Info className="w-3.5 h-3.5 text-blue-400 mt-0.5 shrink-0" />
+        <p className="text-blue-300 text-[11px] leading-relaxed">
+          Processed by admin within 1–2 business days. ₾5 reserve always remains.
+        </p>
       </div>
 
-      <Button onClick={submit} disabled={!isValid || loading}
-        className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold disabled:opacity-30">
-        {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Banknote className="w-5 h-5 mr-2" />}
-        {loading ? t("processing") : `${t("withdraw")} GEL ${amt > 0 ? amt.toFixed(2) : "0.00"}`}
+      <Button onClick={handleWithdraw} disabled={!isValid || loading}
+        className="w-full h-11 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold disabled:opacity-50">
+        {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Banknote className="w-4 h-4 mr-2" />}
+        {loading ? "Processing..." : `Withdraw ₾${requestedAmt > 0 ? requestedAmt.toFixed(2) : "0.00"}`}
       </Button>
 
+      {/* History */}
       {history.length > 0 && (
-        <div className="space-y-2 pt-2">
-          <p className="text-white/30 text-[10px] uppercase tracking-widest">{t("recent")}</p>
-          {history.slice(0, 5).map((w, i) => (
-            <div key={i} className="flex justify-between items-center bg-white/3 rounded-xl p-3 border border-white/5">
+        <div className="space-y-1.5">
+          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Recent Withdrawals</p>
+          {history.slice(0, 6).map((w, i) => (
+            <div key={i} className="flex justify-between items-center bg-black/40 rounded-lg p-2.5 border border-white/5">
               <div>
-                <p className="text-white font-mono font-bold">GEL {w.amount?.toFixed(2)}</p>
-                <p className="text-white/30 text-xs">{w.created_at ? new Date(w.created_at).toLocaleDateString() : "?"}</p>
+                <p className="text-white text-sm font-mono tabular-nums">₾{w.amount?.toFixed(2)}</p>
+                <p className="text-gray-500 text-[10px]">{w.created_at ? new Date(w.created_at).toLocaleDateString() : "—"}</p>
               </div>
-              <StatusBadge status={w.status === "approved" ? "approved_w" : w.status === "rejected" ? "rejected_w" : "pending"} />
+              <Badge className={
+                w.status === "approved" ? "bg-green-500/20 text-green-400 border-green-500/50 text-[10px]" :
+                w.status === "rejected" ? "bg-red-500/20 text-red-400 border-red-500/50 text-[10px]" :
+                "bg-yellow-500/20 text-yellow-400 border-yellow-500/50 text-[10px]"
+              }>{w.status || "pending"}</Badge>
             </div>
           ))}
         </div>
       )}
-    </div>
-  );
-};
-
-// =============================================================================
-// CAMPAIGNS PANEL
-// =============================================================================
-const CampaignsPanel = ({ driverRating }) => {
-  const { t } = useLanguage();
-  const [campaigns, setCampaigns] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [joining, setJoining] = useState(null);
-  const [tab, setTab] = useState("available");
-
-  useEffect(() => {
-    api.get("/driver/campaigns").then(r => { setCampaigns(r.data.campaigns || []); setLoading(false); }).catch(() => setLoading(false));
-  }, []);
-
-  const joinCampaign = async (id, title) => {
-    setJoining(id);
-    try {
-      await api.post(`/driver/campaigns/${id}/join`);
-      toast.success(`Joined "${title}"!`);
-      const r = await api.get("/driver/campaigns");
-      setCampaigns(r.data.campaigns || []);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to join");
-    } finally { setJoining(null); }
-  };
-
-  const available = campaigns.filter(c => !c.joined);
-  const joined = campaigns.filter(c => c.joined);
-
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" /></div>;
-
-  return (
-    <div className="space-y-4">
-      <SectionHeader icon={Award} title={t("driver_campaigns")} subtitle={t("campaigns_subtitle")} />
-
-      <div className="flex gap-2">
-        {[["available", t("available"), available.length], ["joined", t("my_progress"), joined.length]].map(([k, l, n]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${tab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/40"}`}>
-            {l} {n > 0 && <span className="ml-1 bg-[#00ff88]/20 text-[#00ff88] text-xs px-1.5 rounded-full">{n}</span>}
-          </button>
-        ))}
-      </div>
-
-      {tab === "available" && (
-        <div className="space-y-3">
-          {available.length === 0 && (
-            <div className="text-center py-8 text-white/30">
-              <Award className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>{t("no_campaigns")}</p>
-            </div>
-          )}
-          {available.map(c => (
-            <GlassCard key={c.id} className="p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl">{c.emoji || "??"}</span>
-                  <div>
-                    <p className="text-white font-semibold">{c.title}</p>
-                    <p className="text-white/50 text-xs mt-0.5">{c.description}</p>
-                  </div>
-                </div>
-                <div className="text-right shrink-0 ml-2">
-                  <p className="text-[#00ff88] font-bold font-mono">+GEL {c.bonus_amount}</p>
-                  <p className="text-white/30 text-[10px]">bonus</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs text-white/40">
-                  <Target className="w-3 h-3" />
-                  <span>Goal: {c.target_value} {c.campaign_type === "rides_count" ? "rides" : c.campaign_type === "earnings_target" ? "GEL earned" : "tasks"}</span>
-                </div>
-                {!c.eligible ? (
-                  <span className="text-amber-400/70 text-xs">{c.eligibility_reason}</span>
-                ) : (
-                  <Button size="sm" onClick={() => joinCampaign(c.id, c.title)} disabled={joining === c.id}
-                    className="bg-[#00ff88]/15 border border-[#00ff88]/40 text-[#00ff88] hover:bg-[#00ff88]/25 h-8 text-xs">
-                    {joining === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Join"}
-                  </Button>
-                )}
-              </div>
-            </GlassCard>
-          ))}
-        </div>
-      )}
-
-      {tab === "joined" && (
-        <div className="space-y-3">
-          {joined.length === 0 && (
-            <div className="text-center py-8 text-white/30">
-              <Target className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>{t("join_campaigns_progress")}</p>
-            </div>
-          )}
-          {joined.map(c => {
-            const pct = c.progress?.percentage || 0;
-            const done = c.progress?.completed;
-            return (
-              <GlassCard key={c.id} className={`p-4 ${done ? "border-[#00ff88]/30" : ""}`}>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl">{c.emoji || "??"}</span>
-                    <div>
-                      <p className="text-white font-semibold">{c.title}</p>
-                      <p className="text-white/50 text-xs">{c.progress?.current}/{c.progress?.target} {c.campaign_type === "rides_count" ? "rides" : "completed"}</p>
-                    </div>
-                  </div>
-                  {done ? <StatusBadge status="approved" /> : <p className="text-[#00ff88] font-bold font-mono">+GEL {c.bonus_amount}</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <div className="h-2 bg-white/8 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-500 ${done ? "bg-[#00ff88]" : "bg-gradient-to-r from-[#00ff88] to-[#00d4ff]"}`}
-                      style={{ width: `${Math.min(100, pct)}%` }} />
-                  </div>
-                  <div className="flex justify-between text-[10px] text-white/30">
-                    <span>{pct.toFixed(1)}{t("percent_complete")}</span>
-                    {done && <span className="text-[#00ff88]">? Bonus earned!</span>}
-                  </div>
-                </div>
-              </GlassCard>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// =============================================================================
-// FLEET PANEL
-// =============================================================================
-const FleetPanel = ({ registrationStatus }) => {
-  const { t } = useLanguage();
-  const [vehicles, setVehicles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ car_make: "", car_model: "", car_year: "", car_color: "", license_plate: "", driver_name: "", driver_phone: "", car_type: "economy" });
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    api.get("/driver/fleet").then(r => { setVehicles(r.data.vehicles || []); setLoading(false); }).catch(() => setLoading(false));
-  }, []);
-
-  const addVehicle = async () => {
-    setSubmitting(true);
-    try {
-      await api.post("/driver/fleet/add", { ...form, car_year: parseInt(form.car_year), license_plate: form.license_plate.toUpperCase() });
-      toast.success("Fleet vehicle added!");
-      const r = await api.get("/driver/fleet");
-      setVehicles(r.data.vehicles || []);
-      setShowAdd(false);
-      setForm({ car_make: "", car_model: "", car_year: "", car_color: "", license_plate: "", driver_name: "", driver_phone: "", car_type: "economy" });
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to add vehicle");
-    } finally { setSubmitting(false); }
-  };
-
-  const removeVehicle = async (id) => {
-    try {
-      await api.delete(`/driver/fleet/${id}`);
-      setVehicles(prev => prev.filter(v => v.id !== id));
-      toast.success("Vehicle removed");
-    } catch (_) { toast.error("Failed to remove"); }
-  };
-
-  if (registrationStatus !== "approved") {
-    return (
-      <div className="text-center py-12">
-        <Truck className="w-12 h-12 text-white/20 mx-auto mb-3" />
-        <p className="text-white/40 text-sm">Your account must be approved<br />before managing fleet vehicles.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <SectionHeader icon={Truck} title={t("fleet_management")} subtitle={t("fleet_management")}
-        action={<Button size="sm" onClick={() => setShowAdd(!showAdd)} className={`h-8 text-xs font-bold ${showAdd ? "bg-red-500/20 border border-red-500/40 text-red-400" : "bg-[#00ff88]/15 border border-[#00ff88]/40 text-[#00ff88]"}`}>
-          {showAdd ? <><X className="w-3.5 h-3.5 mr-1" /> {t("cancel")}</> : <><Plus className="w-3.5 h-3.5 mr-1" /> {t("add_vehicle")}</>}
-        </Button>}
-      />
-
-      {showAdd && (
-        <GlassCard className="p-4 space-y-3">
-          <p className="text-white/60 text-xs uppercase tracking-wider mb-1">{t("vehicle_details")}</p>
-          <div className="grid grid-cols-2 gap-2.5">
-            {[["car_make","Make","Toyota"],["car_model","Model","Camry"],["car_year","Year","2020"],["car_color","Color","Silver"],["license_plate","Plate","AB-123-CD"],["driver_name","Driver Name","Full Name"],["driver_phone","Driver Phone","+995 555 000 000"]].map(([k,l,p]) => (
-              <div key={k} className={`space-y-1 ${k === "driver_name" || k === "driver_phone" ? "col-span-2" : ""}`}>
-                <Label className="text-white/40 text-[11px]">{l}</Label>
-                <Input value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} placeholder={p}
-                  className="bg-white/4 border-white/10 text-white h-9 text-sm placeholder:text-white/20" />
-              </div>
-            ))}
-            <div className="col-span-2 space-y-1">
-              <Label className="text-white/40 text-[11px]">Vehicle Type</Label>
-              <select value={form.car_type} onChange={e => setForm({ ...form, car_type: e.target.value })}
-                className="w-full bg-white/4 border border-white/10 text-white rounded-lg h-9 px-3 text-sm">
-                {Object.entries(PRICING_RULES).map(([k, v]) => <option key={k} value={k} className="bg-[#0e0e1c]">{v.icon} {v.name}</option>)}
-              </select>
-            </div>
-          </div>
-          <Button onClick={addVehicle} disabled={submitting || !form.car_make || !form.license_plate || !form.driver_name}
-            className="w-full bg-[#00ff88] text-black font-bold h-10">
-            {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            {t("add_vehicle")}
-          </Button>
-        </GlassCard>
-      )}
-
-      {loading ? (
-        <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" /></div>
-      ) : vehicles.length === 0 ? (
-        <div className="text-center py-10 text-white/30">
-          <Truck className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p>{t("no_fleet_vehicles")}</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {vehicles.map(v => (
-            <GlassCard key={v.id} className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-white font-semibold">{v.car_year} {v.car_make} {v.car_model}</p>
-                    <StatusBadge status={v.status || "active"} />
-                  </div>
-                  <p className="text-white/40 text-sm font-mono">{v.license_plate}</p>
-                  <p className="text-white/50 text-xs mt-1.5">?? {v.driver_name} ? {v.driver_phone}</p>
-                </div>
-                <button onClick={() => removeVehicle(v.id)} className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </GlassCard>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// =============================================================================
-// SUPPORT PANEL
-// =============================================================================
-const SupportPanel = () => {
-  const { t } = useLanguage();
-  const [tickets, setTickets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
-  const [expandedId, setExpandedId] = useState(null);
-
-  useEffect(() => {
-    api.get("/support/history").then(r => { setTickets(r.data.tickets || []); setLoading(false); }).catch(() => setLoading(false));
-  }, []);
-
-  const send = async () => {
-    if (!message.trim()) return;
-    setSending(true);
-    try {
-      await api.post("/support/message", { message: message.trim() });
-      toast.success("Support ticket created. We'll respond shortly.");
-      setMessage("");
-      const r = await api.get("/support/history");
-      setTickets(r.data.tickets || []);
-    } catch (_) {
-      toast.error("Failed to send message");
-    } finally { setSending(false); }
-  };
-
-  return (
-    <div className="space-y-4">
-      <SectionHeader icon={Headphones} title={t("support")} subtitle={t("support_subtitle")} />
-
-      <GlassCard className="p-4 space-y-3">
-        <Label className="text-white/60 text-xs uppercase tracking-wider">{t("new_message")}</Label>
-        <textarea value={message} onChange={e => setMessage(e.target.value)} rows={3}
-          placeholder={t("describe_issue")}
-          className="w-full bg-white/4 border border-white/10 rounded-xl p-3 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-[#00ff88]/40" />
-        <Button onClick={send} disabled={!message.trim() || sending}
-          className="w-full bg-[#00ff88] text-black font-bold h-10">
-          {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-          {sending ? t("sending") : t("send_message")}
-        </Button>
-      </GlassCard>
-
-      {loading ? (
-        <div className="flex justify-center py-6"><Loader2 className="w-6 h-6 animate-spin text-[#00ff88]" /></div>
-      ) : tickets.length === 0 ? (
-        <div className="text-center py-8 text-white/30">
-          <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p>{t("no_tickets")}</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-white/30 text-[10px] uppercase tracking-widest">{t("previous_tickets")}</p>
-          {tickets.map(t => (
-            <GlassCard key={t.id} className="overflow-hidden">
-              <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}>
-                <div>
-                  <p className="text-white text-sm line-clamp-1 font-medium">{t.message}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <StatusBadge status={t.status === "in_progress" ? "in_progress_ticket" : t.status} />
-                    <span className="text-white/30 text-[10px]">{t.created_at ? new Date(t.created_at).toLocaleDateString() : "?"}</span>
-                  </div>
-                </div>
-                {expandedId === t.id ? <ChevronUp className="w-4 h-4 text-white/30 shrink-0" /> : <ChevronDown className="w-4 h-4 text-white/30 shrink-0" />}
-              </button>
-              {expandedId === t.id && (
-                <div className="px-4 pb-4 space-y-2 border-t border-white/5 pt-3">
-                  {(t.chat_history || []).map((msg, i) => (
-                    <div key={i} className={`rounded-xl p-3 text-sm ${msg.role === "user" ? "bg-[#00ff88]/8 border border-[#00ff88]/15 ml-4" : "bg-white/4 border border-white/8 mr-4"}`}>
-                      <p className={`text-[10px] uppercase tracking-wider mb-1 ${msg.role === "user" ? "text-[#00ff88]/60" : msg.role === "admin" ? "text-blue-400/70" : "text-white/40"}`}>
-                        {msg.role === "user" ? t("you") : msg.role === "admin" ? t("support_agent") : t("system")}
-                      </p>
-                      <p className="text-white/80">{msg.content}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </GlassCard>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// =============================================================================
-// REFERRAL PANEL
-// =============================================================================
-const ReferralPanel = () => {
-  const { t } = useLanguage();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [code, setCode] = useState("");
-  const [applying, setApplying] = useState(false);
-
-  useEffect(() => {
-    api.get("/user/referral").then(r => { setData(r.data); setLoading(false); }).catch(() => setLoading(false));
-  }, []);
-
-  const copyCode = () => {
-    navigator.clipboard.writeText(data.referral_code);
-    toast.success("Code copied!");
-  };
-
-  const applyCode = async () => {
-    if (!code.trim()) return;
-    setApplying(true);
-    try {
-      const r = await api.post("/user/referral/apply", { code: code.trim().toUpperCase() });
-      toast.success(r.data.message || "Referral code applied!");
-      setCode("");
-      const r2 = await api.get("/user/referral");
-      setData(r2.data);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Invalid code");
-    } finally { setApplying(false); }
-  };
-
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-[#00ff88]" /></div>;
-
-  return (
-    <div className="space-y-4">
-      <SectionHeader icon={Gift} title={t("referrals")} subtitle={t("invite_friend_desc")} />
-
-      {data && (
-        <>
-          <div className="grid grid-cols-2 gap-3">
-            <StatPill label={t("referrals")} value={data.referrals_count || 0} color="text-white" />
-            <StatPill label={t("bonus_earned")} value={`?${(data.bonus_earned || 0).toFixed(2)}`} color="text-[#00ff88]" />
-          </div>
-
-          <GlassCard accent className="p-4 space-y-3">
-            <p className="text-[#00ff88]/60 text-[10px] uppercase tracking-widest">{t("your_code")}</p>
-            <div className="flex items-center gap-3">
-              <p className="text-3xl font-bold font-mono tracking-widest text-white flex-1">{data.referral_code}</p>
-              <button onClick={copyCode} className="p-2.5 rounded-xl bg-[#00ff88]/15 border border-[#00ff88]/30 text-[#00ff88] hover:bg-[#00ff88]/25 transition-colors">
-                <Copy className="w-4 h-4" />
-              </button>
-              <button onClick={() => navigator.share?.({ title: "Join T'aksi", url: data.referral_link || `https://taksi.ge/ref/${data.referral_code}` })}
-                className="p-2.5 rounded-xl bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] hover:bg-[#00d4ff]/25 transition-colors">
-                <Share2 className="w-4 h-4" />
-              </button>
-            </div>
-          </GlassCard>
-
-          <GlassCard className="p-4 space-y-3">
-            <p className="text-white/60 text-[10px] uppercase tracking-widest">{t("apply_code")}</p>
-            <div className="flex gap-2">
-              <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder={t("enter_code")}
-                className="bg-white/4 border-white/10 text-white font-mono uppercase placeholder:normal-case placeholder:text-white/20 flex-1" />
-              <Button onClick={applyCode} disabled={!code.trim() || applying} className="bg-[#00ff88] text-black font-bold px-5">
-                {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : t("apply")}
-              </Button>
-            </div>
-          </GlassCard>
-
-          <GlassCard className="p-4">
-            <p className="text-white/60 text-xs uppercase tracking-wider mb-3">{t("how_it_works")}</p>
-            {[[t("invite_friend"), t("invite_friend_desc")], [t("they_sign_up"), t("they_sign_up_desc")], [t("both_earn_bonus"), t("both_earn_bonus_desc")]].map(([title,d],i) => (
-              <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
-                <div className="w-6 h-6 rounded-full bg-[#00ff88]/15 border border-[#00ff88]/30 flex items-center justify-center text-[#00ff88] text-xs font-bold shrink-0">{i+1}</div>
-                <div><p className="text-white text-sm font-medium">{title}</p><p className="text-white/40 text-xs">{d}</p></div>
-              </div>
-            ))}
-          </GlassCard>
-        </>
-      )}
-    </div>
-  );
-};
-
-// =============================================================================
-// MORE PANEL
-// =============================================================================
-
-// =============================================================================
-// BANK DETAILS PANEL
-// =============================================================================
-const BankDetailsPanel = ({ onSaved }) => {
-  const { t } = useLanguage();
-  const [bankType, setBankType] = React.useState("iban");
-  const [bankAccount, setBankAccount] = React.useState("");
-  const [saved, setSaved] = React.useState(null);
-  const [loading, setLoading] = React.useState(false);
-
-  React.useEffect(() => {
-    api.get("/driver/bank-details").then(r => {
-      if (r.data.bank_account) {
-        setSaved(r.data);
-        setBankType(r.data.bank_type || "iban");
-        setBankAccount(r.data.bank_account);
-      }
-    }).catch(() => {});
-  }, []);
-
-  const bankLabels = { iban: "IBAN", bog: "Bank of Georgia", tbc: "TBC Bank" };
-  const bankPlaceholders = {
-    iban: "GE29NB0000000101904917",
-    bog: "GE29BG0000000101904917",
-    tbc: "GE29TB0000000101904917",
-  };
-
-  const save = async () => {
-    if (bankAccount.trim().length < 5) return toast.error("Please enter valid bank details");
-    setLoading(true);
-    try {
-      await api.post(`/driver/bank-details?bank_type=${bankType}&bank_account=${encodeURIComponent(bankAccount.trim().toUpperCase())}`);
-      setSaved({ bank_type: bankType, bank_account: bankAccount.trim().toUpperCase() });
-      toast.success("Bank details saved!");
-      onSaved?.();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Failed to save");
-    } finally { setLoading(false); }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div style={{background:"rgba(255,215,0,0.05)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:16,padding:16,marginBottom:4}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-          <span style={{fontSize:22}}>🚗🚗</span>
-          <div>
-            <div style={{color:"#ffd700",fontWeight:700,fontSize:14}}>Saved Bank Details</div>
-            <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>Saved once, auto-fills every withdrawal</div>
-          </div>
-        </div>
-      </div>
-
-      {saved?.bank_account && (
-        <div style={{background:"rgba(0,255,136,0.06)",border:"1px solid rgba(0,255,136,0.25)",borderRadius:12,padding:14,display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:20}}>🚗🚗</span>
-          <div style={{flex:1}}>
-            <div style={{color:"#00ff88",fontWeight:700,fontSize:13}}>Current saved account</div>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
-              <span style={{background:"rgba(0,255,136,0.15)",borderRadius:6,padding:"2px 8px",color:"#00ff88",fontSize:11,fontWeight:700}}>{(saved.bank_type||"bank").toUpperCase()}</span>
-              <span style={{color:"white",fontFamily:"monospace",fontSize:13,letterSpacing:1}}>{saved.bank_account}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-1.5">
-        <label style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Transfer Method</label>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:6}}>
-          {Object.entries(bankLabels).map(([k, v]) => (
-            <button key={k} onClick={() => setBankType(k)}
-              style={{padding:"10px 4px",borderRadius:12,border:`1px solid ${bankType===k?"rgba(0,255,136,0.5)":"rgba(255,255,255,0.1)"}`,background:bankType===k?"rgba(0,255,136,0.1)":"transparent",color:bankType===k?"#00ff88":"rgba(255,255,255,0.4)",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-              {k.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <label style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>{bankLabels[bankType]} Number</label>
-        <input
-          value={bankAccount}
-          onChange={e => setBankAccount(e.target.value.toUpperCase())}
-          placeholder={bankPlaceholders[bankType]}
-          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:12,padding:"12px 14px",color:"#ffffff",fontSize:14,fontFamily:"monospace",letterSpacing:1,outline:"none",caretColor:"#00ff88",boxSizing:"border-box"}}
-        />
-      </div>
-
-      <button onClick={save} disabled={loading || bankAccount.trim().length < 5}
-        style={{width:"100%",background:"linear-gradient(135deg,#00ff88,#00d4ff)",color:"#000",fontWeight:900,border:"none",borderRadius:12,padding:"14px",fontSize:15,cursor:"pointer",opacity:(loading||bankAccount.trim().length<5)?0.5:1}}>
-        {loading ? "Saving..." : saved?.bank_account ? "Update Bank Details" : "Save Bank Details"}
-      </button>
-
-      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:10,padding:12}}>
-        <div style={{color:"rgba(255,255,255,0.3)",fontSize:11,lineHeight:1.6}}>
-          Your bank details are stored securely and only used for withdrawal processing. 
-          Once saved, they will auto-fill when you request a withdrawal.
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const MorePanel = ({ registrationStatus, driverRating, activeRide, driverLocation }) => {
-  const { t } = useLanguage();
-  const [view, setView] = useState("menu");
-
-  const menuItems = [
-    { id: "campaigns", label: t("campaigns"),  icon: Award,      desc: t("campaigns_subtitle"),  color: "text-yellow-400",  bg: "bg-yellow-400/10", border: "border-yellow-400/20" },
-    { id: "fleet",     label: t("fleet_management"),      icon: Truck,      desc: t("fleet_subtitle"),  color: "text-blue-400",    bg: "bg-blue-400/10",   border: "border-blue-400/20" },
-    { id: "referrals", label: t("referrals"),  icon: Gift,       desc: t("invite_friend_desc"),         color: "text-purple-400",  bg: "bg-purple-400/10", border: "border-purple-400/20" },
-    { id: "support",   label: t("support"),    icon: Headphones, desc: t("support_subtitle"),              color: "text-[#00d4ff]",   bg: "bg-[#00d4ff]/10",  border: "border-[#00d4ff]/20" },
-    { 
-  id: "feedback", 
-  label: t("feedback"), 
-  icon: ThumbsUp, 
-  desc: t("describe_issue"), 
-  color: "text-[#00ff88]", 
-  bg: "bg-[#00ff88]/10", 
-  border: "border-[#00ff88]/20" 
-},
-    { id: "bank", label: "Bank Details", icon: Wallet, desc: "Save your IBAN for withdrawals", color: "text-yellow-400", bg: "bg-yellow-400/10", border: "border-yellow-400/20" },
-  ];
-
-  if (view !== "menu") {
-    const back = () => setView("menu");
-    if (view === "campaigns") return <div><BackButton onClick={back} /><CampaignsPanel driverRating={driverRating} /></div>;
-    if (view === "fleet")     return <div><BackButton onClick={back} /><FleetPanel registrationStatus={registrationStatus} /></div>;
-    if (view === "referrals") return <div><BackButton onClick={back} /><ReferralPanel /></div>;
-    if (view === "support")   return <div><BackButton onClick={back} /><SupportPanel /></div>;
-    if (view === "feedback") return <div><BackButton onClick={back} /><React.Suspense fallback={null}><FeedbackPanel userType="driver" /></React.Suspense></div>;
-    if (view === "bank") return <div><BackButton onClick={back} /><BankDetailsPanel onSaved={back} /></div>;
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        {menuItems.map(({ id, label, icon: Icon, desc, color, bg, border }) => (
-          <button key={id} onClick={() => setView(id)}
-            className={`${bg} border ${border} rounded-2xl p-4 text-left transition-all active:scale-95`}>
-            <Icon className={`w-6 h-6 ${color} mb-2`} />
-            <p className="text-white font-semibold text-sm">{label}</p>
-            <p className="text-white/40 text-xs mt-0.5">{desc}</p>
-            <ChevronRight className={`w-4 h-4 ${color} mt-2`} />
-          </button>
-        ))}
-      <div className="bg-white/3 border border-white/8 rounded-2xl p-4 flex items-center justify-between mb-3">
-        <p className="text-white font-semibold text-sm">{t("language")}</p>
-        <LanguageSelector variant="ghost" />
-      </div>
-      </div>
-
-      <GlassCard className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-red-400" />
-            </div>
-            <div>
-              <p className="text-white font-semibold text-sm">{t("emergency_sos")}</p>
-              <p className="text-white/40 text-xs">{t("alert_support_instantly")}</p>
-            </div>
-          </div>
-          <SOSButton activeRide={activeRide} location={driverLocation} />
-        </div>
-      </GlassCard>
-    </div>
-  );
-};
-
-// =============================================================================
-// LOCATION TRACKER HOOK
-// =============================================================================
-const useLocationTracker = (isOnline, onLocationUpdate) => {
-  const watchIdRef = useRef(null);
-  const intervalRef = useRef(null);
-  const lastLocationRef = useRef(null);
-  const callbackRef = useRef(onLocationUpdate);
-  useEffect(() => { callbackRef.current = onLocationUpdate; }, [onLocationUpdate]);
-
-  useEffect(() => {
-    if (!isOnline) {
-      if (watchIdRef.current != null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
-      if (intervalRef.current != null) { clearInterval(intervalRef.current); intervalRef.current = null; }
-      return;
-    }
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      pos => {
-        const newLat = pos.coords.latitude;
-        const newLng = pos.coords.longitude;
-        const prev = lastLocationRef.current;
-        let heading = pos.coords.heading;
-        if (prev && Math.abs(newLat - prev.lat) + Math.abs(newLng - prev.lng) > 0.00005) {
-          const dLat = newLat - prev.lat;
-          const dLng = newLng - prev.lng;
-          const calculated = (Math.atan2(dLng, dLat) * 180 / Math.PI + 360) % 360;
-          heading = (heading != null && !isNaN(heading)) ? heading * 0.3 + calculated * 0.7 : calculated;
-        }
-        lastLocationRef.current = { lat: newLat, lng: newLng, heading: heading || 0, speed: pos.coords.speed };
-
-        // Accumulate distance while ride is in_progress
-        if (window.__activeRideStatus === "in_progress" && window.__lastGpsPoint) {
-          const R = 6371;
-          const dLat = (newLat - window.__lastGpsPoint.lat) * Math.PI / 180;
-          const dLng = (newLng - window.__lastGpsPoint.lng) * Math.PI / 180;
-          const a = Math.sin(dLat/2)**2 + Math.cos(window.__lastGpsPoint.lat * Math.PI/180) * Math.cos(newLat * Math.PI/180) * Math.sin(dLng/2)**2;
-          const segKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-          if (segKm < 0.5) { // ignore GPS jumps > 500m
-            window.__distanceTraveled = (window.__distanceTraveled || 0) + segKm;
-            window.__setDistanceTraveled && window.__setDistanceTraveled(Math.round(window.__distanceTraveled * 100) / 100);
-          }
-        }
-        window.__lastGpsPoint = { lat: newLat, lng: newLng };
-      },
-      err => {
-        console.error("GPS error:", err);
-        if (err.code === 1) {
-          // Permission denied
-          console.warn("Location permission denied by user");
-        }
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-    intervalRef.current = setInterval(() => {
-      if (lastLocationRef.current) callbackRef.current(lastLocationRef.current);
-    }, LOCATION_UPDATE_INTERVAL);
-    return () => {
-      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
-      if (intervalRef.current != null) clearInterval(intervalRef.current);
-    };
-  }, [isOnline]);
-
-  return lastLocationRef;
-};
-
-// =============================================================================
-// NAV HUD HELPERS (for DriverSmartMap)
-// =============================================================================
-const stripHtml = (html) => (html || "").replace(/<[^>]*>/g, "");
-
-const getManeuverInfo = (maneuver = "", instruction = "") => {
-  const m = (maneuver + " " + instruction).toLowerCase();
-  if (m.includes("sharp-left") || m.includes("uturn-left"))
-    return { Icon: RotateCcw, color: "#f97316", flip: false };
-  if (m.includes("sharp-right") || m.includes("uturn-right"))
-    return { Icon: RotateCcw, color: "#f97316", flip: true };
-  if (m.includes("turn-left") || (m.includes("left") && !m.includes("right")))
-    return { Icon: CornerUpLeft, color: "#60a5fa", flip: false };
-  if (m.includes("turn-right") || m.includes("right"))
-    return { Icon: CornerUpRight, color: "#60a5fa", flip: false };
-  if (m.includes("merge") || m.includes("ramp"))
-    return { Icon: Merge, color: "#a78bfa", flip: false };
-  if (m.includes("roundabout"))
-    return { Icon: RotateCcw, color: "#facc15", flip: false };
-  if (m.includes("destination") || m.includes("arrive"))
-    return { Icon: MapPinned, color: "#00ff88", flip: false };
-  return { Icon: ArrowUp, color: "#00ff88", flip: false };
-};
-
-const lerpAngle = (from, to, t) => {
-  const diff = ((to - from + 540) % 360) - 180;
-  return (from + diff * t + 360) % 360;
-};
-
-const LaneIndicator = ({ lanes }) => {
-  if (!lanes?.length) return null;
-  return (
-    <div className="flex items-center justify-center gap-1 mt-2 pb-1">
-      {lanes.map((lane, i) => {
-        const active = lane.indications?.some((ind) =>
-          ["straight", "slight left", "slight right", "left", "right"].includes(ind)
-        );
-        const ind = lane.indications?.[0];
-        return (
-          <div key={i} className={`flex flex-col items-center justify-center w-8 h-8 rounded-lg transition-all ${active ? "bg-[#00ff88]/25 border border-[#00ff88]/60" : "bg-white/8 border border-white/15 opacity-40"}`}>
-            <ArrowUp className={`w-4 h-4 ${active ? "text-[#00ff88]" : "text-white/50"}`}
-              style={{ transform: ind === "left" ? "rotate(-45deg)" : ind === "right" ? "rotate(45deg)" : "none" }} />
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-const NavHUD = ({ step, nextStep, speed, isCompact = false }) => {
-  if (!step) return null;
-  const { Icon, color, flip } = getManeuverInfo(step.maneuver || "", step.instructions || "");
-  const nextInfo = nextStep ? getManeuverInfo(nextStep.maneuver || "", nextStep.instructions || "") : null;
-  
-  // Compact mode for cleaner driving experience
-  if (isCompact) {
-    return (
-      <div className="absolute top-3 left-3 right-3 z-30" style={{ pointerEvents: "none" }}>
-        <div className="flex items-center gap-3">
-          {/* Turn indicator */}
-          <div className="rounded-xl shadow-2xl flex items-center gap-3 px-3 py-2"
-            style={{ background: "rgba(7,7,15,0.88)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(16px)" }}>
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-              style={{ background: `${color}15`, border: `1.5px solid ${color}40` }}>
-              <Icon className="w-6 h-6" style={{ color, transform: flip ? "scaleX(-1)" : "none" }} />
-            </div>
-            <div className="min-w-0">
-              <p className="font-bold leading-none" style={{ color, fontSize: "1.25rem", fontVariantNumeric: "tabular-nums" }}>
-                {step.distance?.text || ""}
-              </p>
-              <p className="text-white/70 text-xs font-medium mt-0.5 leading-tight line-clamp-1">
-                {stripHtml(step.instructions)}
-              </p>
-            </div>
-          </div>
-          
-          {/* Speed indicator - minimal */}
-          {speed != null && (
-            <div className="rounded-xl flex items-center justify-center w-12 h-12 shadow-lg"
-              style={{ background: "rgba(7,7,15,0.88)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(16px)" }}>
-              <div className="text-center">
-                <span className="text-white font-bold text-base leading-none block">{Math.round(speed * 3.6)}</span>
-                <span className="text-white/30 text-[8px] uppercase">km/h</span>
-              </div>
-            </div>
-          )}
-        </div>
-        
-        {/* Next turn preview - minimal */}
-        {nextStep && nextInfo && (
-          <div className="mt-2 rounded-lg flex items-center gap-2 px-3 py-1.5 w-fit"
-            style={{ background: "rgba(7,7,15,0.75)", border: "1px solid rgba(255,255,255,0.05)", backdropFilter: "blur(12px)" }}>
-            <span className="text-white/30 text-[10px] uppercase">then</span>
-            <nextInfo.Icon className="w-3 h-3" style={{ color: nextInfo.color }} />
-            <span className="text-white/50 text-xs">{nextStep.distance?.text}</span>
-          </div>
-        )}
-      </div>
-    );
-  }
-  
-  // Full mode for detailed navigation
-  return (
-    <div className="absolute top-[72px] left-3 right-3 z-30" style={{ pointerEvents: "none" }}>
-      <div className="rounded-2xl overflow-hidden shadow-2xl"
-        style={{ background: "rgba(7,7,15,0.93)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(20px)" }}>
-        <div className="flex items-center gap-4 px-4 py-3">
-          <div className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: `${color}18`, border: `2px solid ${color}50` }}>
-            <Icon className="w-8 h-8" style={{ color, transform: flip ? "scaleX(-1)" : "none" }} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-black leading-none tracking-tight" style={{ color, fontSize: "1.75rem", fontVariantNumeric: "tabular-nums" }}>
-              {step.distance?.text || ""}
-            </p>
-            <p className="text-white text-sm font-semibold mt-1 leading-tight line-clamp-2">
-              {stripHtml(step.instructions)}
-            </p>
-          </div>
-        </div>
-        {step.lane_restrictions?.length > 0 && <div className="px-4"><LaneIndicator lanes={step.lane_restrictions} /></div>}
-        {nextStep && nextInfo && (
-          <div className="flex items-center gap-2 px-4 py-2"
-            style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)" }}>
-            <span className="text-white/35 text-xs uppercase tracking-widest shrink-0">Then</span>
-            <nextInfo.Icon className="w-3.5 h-3.5 shrink-0" style={{ color: nextInfo.color }} />
-            <span className="text-white/60 text-xs truncate">{stripHtml(nextStep.instructions)}</span>
-            <span className="text-white/35 text-xs ml-auto shrink-0">{nextStep.distance?.text}</span>
-          </div>
-        )}
-      </div>
-      {speed != null && (
-        <div className="absolute right-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl shadow-lg"
-          style={{ top: "calc(100% + 8px)", background: "rgba(7,7,15,0.9)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(16px)" }}>
-          <span className="text-white font-bold text-base leading-none">{Math.round(speed * 3.6)}</span>
-          <span className="text-white/30 text-[8px] uppercase tracking-wider">km/h</span>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// =============================================================================
-// MAP STYLES - Clean, modern, minimal for driving
-// =============================================================================
-const MAP_STYLES = [
-  { featureType: "poi", stylers: [{ visibility: "off" }] },
-  { featureType: "poi.park", stylers: [{ visibility: "on" }] },
-  { featureType: "transit", stylers: [{ visibility: "off" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e0e0e0" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#333333" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#f5c518" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#e0a800" }] },
-  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#333333" }] },
-  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#f9f9f9" }] },
-  { featureType: "road.local", elementType: "geometry", stylers: [{ color: "#f9f9f9" }] },
-  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#f2f2f2" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#b3d4e8" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#4a90a4" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#333333" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#222222" }] },
-];
-
-// =============================================================================
-// DRIVER SMART MAP ? Waze-quality with buttery-smooth animation
-// - Auto-rotate map to face direction of travel
-// - Smooth marker interpolation (no jumps)
-// - Clean, minimal UI for driving
-// - Full-screen map experience
-// =============================================================================
-const DriverSmartMap = ({ activeRide, driverLocation }) => {
-  const mapRef               = useRef(null);
-  const mapInstanceRef       = useRef(null);
-  const markerRef            = useRef(null);
-  const pickupMarkerRef      = useRef(null);
-  const destMarkerRef        = useRef(null);
-  const routeRendererRef     = useRef(null);
-  const directionsServiceRef = useRef(null);
-  const headingRef           = useRef(0);
-  const rafRef               = useRef(null);
-  const positionRafRef       = useRef(null);
-  const etaIntervalRef       = useRef(null);
-  const prevRideIdRef        = useRef(null);
-  const lastPositionRef      = useRef(null);
-  const targetPositionRef    = useRef(null);
-  const surgeCirclesRef      = useRef([]);
-  const surgeIntervalRef     = useRef(null);
-
-  const [isFollowing, setIsFollowing]     = useState(true);
-  const [routeSteps,  setRouteSteps]      = useState([]);
-  const [stepIdx,     setStepIdx]         = useState(0);
-  const [speed,       setSpeed]           = useState(null);
-  const [etaSeconds,  setEtaSeconds]      = useState(null);
-  const [isCompactHUD, setIsCompactHUD]   = useState(true); // Clean mode by default
-
-  const getSafe = (v) => { const n = parseFloat(v); return !isNaN(n) && n !== 0 ? n : null; };
-  const hvKm = (lat1, lo1, lat2, lo2) => {
-    const R = 6371, dL = (lat2-lat1)*Math.PI/180, dl = (lo2-lo1)*Math.PI/180;
-    const a = Math.sin(dL/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dl/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  };
-
-  const fmtEta = (secs) => {
-    if (!secs || secs <= 0) return null;
-    const m = Math.floor(secs / 60), s = secs % 60;
-    return m > 0 ? `${m}m ${s}s` : `${s}s`;
-  };
-
-  // Smooth position interpolation
-  const lerp = (start, end, t) => start + (end - start) * t;
-
-  // SVG pin helpers - cleaner design
-  const makePickupIcon = () => ({
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44"><defs><filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/></filter></defs><path d="M18 2C10 2 4 8 4 16c0 10 14 26 14 26S32 26 32 16C32 8 26 2 18 2z" fill="#00ff88" filter="url(#shadow)"/><circle cx="18" cy="16" r="5" fill="#07070f"/></svg>')}`,
-    scaledSize: new window.google.maps.Size(32, 40),
-    anchor: new window.google.maps.Point(16, 40),
-  });
-
-  const makeDestIcon = () => ({
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44"><defs><filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/></filter></defs><path d="M18 2C10 2 4 8 4 16c0 10 14 26 14 26S32 26 32 16C32 8 26 2 18 2z" fill="#ef4444" filter="url(#shadow)"/><circle cx="18" cy="16" r="5" fill="#07070f"/></svg>')}`,
-    scaledSize: new window.google.maps.Size(32, 40),
-    anchor: new window.google.maps.Point(16, 40),
-  });
-
-  // Modern driver arrow SVG - points upward (direction of travel)
-  const makeDriverIcon = (heading = 0) => ({
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-      <defs>
-        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2" result="blur"/>
-          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
-      </defs>
-      <circle cx="24" cy="24" r="20" fill="#00ff88" opacity="0.15"/>
-      <circle cx="24" cy="24" r="16" fill="#00ff88" filter="url(#glow)"/>
-      <path d="M24 10 L30 24 L24 20 L18 24 Z" fill="#07070f"/>
-    </svg>`)}`,
-    scaledSize: new window.google.maps.Size(48, 48),
-    anchor: new window.google.maps.Point(24, 24),
-  });
-
-  const upsertPin = (ref, position, icon) => {
-    if (!mapInstanceRef.current || !position) return;
-    if (!ref.current) {
-      ref.current = new window.google.maps.Marker({ position, map: mapInstanceRef.current, icon, zIndex: 900 });
-    } else {
-      ref.current.setPosition(position);
-      ref.current.setIcon(icon);
-      ref.current.setMap(mapInstanceRef.current);
-    }
-  };
-  const removePin = (ref) => { if (ref.current) { ref.current.setMap(null); ref.current = null; } };
-
-  const startEtaCountdown = (durationSecs) => {
-    if (etaIntervalRef.current) clearInterval(etaIntervalRef.current);
-    let remaining = durationSecs;
-    setEtaSeconds(remaining);
-    etaIntervalRef.current = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) { clearInterval(etaIntervalRef.current); setEtaSeconds(0); }
-      else setEtaSeconds(remaining);
-    }, 1000);
-  };
-
-  useEffect(() => () => { 
-    if (etaIntervalRef.current) clearInterval(etaIntervalRef.current);
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    if (positionRafRef.current) cancelAnimationFrame(positionRafRef.current);
-  }, []);
-
-  // Smooth heading animation with easing
-  const animateHeading = useCallback((targetHeading) => {
-    if (!mapInstanceRef.current) return;
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    const tick = () => {
-      const current = headingRef.current;
-      const next = lerpAngle(current, targetHeading, 0.15); // Smoother easing
-      headingRef.current = next;
-      mapInstanceRef.current.setHeading(next);
-      if (Math.abs(((next - targetHeading + 540) % 360) - 180) > 0.3) {
-        rafRef.current = requestAnimationFrame(tick);
-      }
-    };
-    rafRef.current = requestAnimationFrame(tick);
-  }, []);
-
-  // Smooth position animation for marker
-  const animateMarkerPosition = useCallback((targetLat, targetLng) => {
-    if (!markerRef.current) return;
-    
-    const startPos = lastPositionRef.current || { lat: targetLat, lng: targetLng };
-    const startTime = performance.now();
-    const duration = 300; // 300ms smooth transition
-
-    const animatePos = (currentTime) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // Ease out cubic for smooth deceleration
-      const eased = 1 - Math.pow(1 - progress, 3);
-      
-      const lat = lerp(startPos.lat, targetLat, eased);
-      const lng = lerp(startPos.lng, targetLng, eased);
-      
-      markerRef.current.setPosition({ lat, lng });
-      
-      if (progress < 1) {
-        positionRafRef.current = requestAnimationFrame(animatePos);
-      } else {
-        lastPositionRef.current = { lat: targetLat, lng: targetLng };
-      }
-    };
-    
-    if (positionRafRef.current) cancelAnimationFrame(positionRafRef.current);
-    positionRafRef.current = requestAnimationFrame(animatePos);
-  }, []);
-
-  // Map init - cleaner, full-screen experience
-  useEffect(() => {
-    if (!mapRef.current || !window.google || mapInstanceRef.current) return;
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 41.7151, lng: 44.8271 },
-      zoom: 16,
-      disableDefaultUI: true,
-      gestureHandling: "greedy",
-      backgroundColor: "#f2f2f2",
-      styles: MAP_STYLES,
-      mapTypeControl: false,
-      fullscreenControl: false,
-      streetViewControl: false,
-      zoomControl: false,
-    });
-    routeRendererRef.current = new window.google.maps.DirectionsRenderer({
-      map,
-      suppressMarkers: true,
-      preserveViewport: false,
-      polylineOptions: {
-        strokeColor: "#00ff88",
-        strokeWeight: 6,
-        strokeOpacity: 0.9,
-      },
-    });
-    directionsServiceRef.current = new window.google.maps.DirectionsService();
-    map.addListener("dragstart", () => setIsFollowing(false));
-    mapInstanceRef.current = map;
-    setMapReady(true);
-  }, []);
-
-  // Surge zones - fetch and draw colored circles every 30s
-  useEffect(() => {
-    const drawZones = async () => {
-      if (!mapInstanceRef.current || !window.google) return;
-      try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/surge/zones`);
-        const data = await res.json();
-        // Clear old circles
-        surgeCirclesRef.current.forEach(c => c.setMap(null));
-        surgeCirclesRef.current = [];
-        (data.zones || []).forEach(zone => {
-          const circle = new window.google.maps.Circle({
-            map: mapInstanceRef.current,
-            center: { lat: zone.lat, lng: zone.lng },
-            radius: zone.radius,
-            fillColor: zone.color,
-            fillOpacity: 0.18,
-            strokeColor: zone.color,
-            strokeOpacity: 0.5,
-            strokeWeight: 2,
-            zIndex: 10,
-          });
-          // Label in center
-          const marker = new window.google.maps.Marker({
-            position: { lat: zone.lat, lng: zone.lng },
-            map: mapInstanceRef.current,
-            icon: {
-              url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="60" height="24"><rect width="60" height="24" rx="12" fill="${zone.color}" opacity="0.85"/><text x="30" y="16" text-anchor="middle" font-size="11" font-weight="bold" font-family="sans-serif" fill="#000">${zone.multiplier}x surge</text></svg>`)}`,
-              scaledSize: new window.google.maps.Size(60, 24),
-              anchor: new window.google.maps.Point(30, 12),
-            },
-            zIndex: 11,
-          });
-          surgeCirclesRef.current.push(circle, marker);
-        });
-      } catch (e) { /* silent fail */ }
-    };
-    drawZones();
-    surgeIntervalRef.current = setInterval(drawZones, 30000);
-    return () => {
-      clearInterval(surgeIntervalRef.current);
-      surgeCirclesRef.current.forEach(c => c.setMap(null));
-    };
-  }, []);
-
-  // Driver position update ? smooth animation, auto-rotate map to face forward
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !driverLocation) return;
-    const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
-    if (!lat || !lng) return;
-    const pos = { lat, lng };
-    const heading = parseFloat(driverLocation.heading) || 0;
-    setSpeed(driverLocation.speed ?? null);
-
-    // Create or update driver marker with smooth position animation
-    if (!markerRef.current) {
-      markerRef.current = new window.google.maps.Marker({
-        position: pos,
-        map: mapInstanceRef.current,
-        zIndex: 1000,
-        icon: makeDriverIcon(),
-      });
-      lastPositionRef.current = pos;
-    } else {
-      // Smooth position interpolation
-      animateMarkerPosition(lat, lng);
-    }
-
-    // Auto-rotate map to face direction of travel (Waze-style)
-    if (isFollowing) {
-      // Smooth pan to driver position
-      mapInstanceRef.current.panTo(pos);
-      
-      // Animate heading rotation smoothly
-      animateHeading(heading);
-      
-      // Tilt disabled - required for custom map styles to apply
-    }
-
-    // Advance to next navigation step when close enough
-    if (routeSteps.length > 0 && stepIdx < routeSteps.length) {
-      const step = routeSteps[stepIdx];
-      if (step.end_location && hvKm(lat, lng, step.end_location.lat(), step.end_location.lng()) < 0.04) {
-        setStepIdx(p => p + 1);
-      }
-    }
-  }, [driverLocation, isFollowing, routeSteps, stepIdx, animateHeading, animateMarkerPosition]);
-
-  // Auto-fit on new ride accept ? zoom to show driver + pickup
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
-    if (!activeRide || activeRide.status !== "accepted") return;
-    const rideKey = activeRide.id || activeRide.pickup_lat;
-    if (prevRideIdRef.current === rideKey) return;
-    prevRideIdRef.current = rideKey;
-
-    const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
-    const pLat = getSafe(activeRide.pickup_lat),  pLng = getSafe(activeRide.pickup_lng);
-    if (!dLat || !pLat) return;
-
-    const bounds = new window.google.maps.LatLngBounds();
-    bounds.extend({ lat: dLat, lng: dLng });
-    bounds.extend({ lat: pLat, lng: pLng });
-    mapInstanceRef.current.fitBounds(bounds, { top: 120, bottom: 240, left: 60, right: 60 });
-    // Resume following after 3s
-    setTimeout(() => setIsFollowing(true), 3000);
-  }, [activeRide?.status, activeRide?.id]);
-
-  // Directions + ETA + pins
-  useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
-    if (!activeRide || !driverLocation) {
-      routeRendererRef.current?.setDirections({ routes: [] });
-      setRouteSteps([]);
-      setEtaSeconds(null);
-      removePin(pickupMarkerRef);
-      removePin(destMarkerRef);
-      return;
-    }
-
-    const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
-    if (!dLat || !dLng) return;
-
-    let target = null;
-    if (["accepted", "arrived"].includes(activeRide.status)) {
-      const lat = getSafe(activeRide.pickup_lat), lng = getSafe(activeRide.pickup_lng);
-      if (lat && lng) {
-        target = { lat, lng };
-        upsertPin(pickupMarkerRef, target, makePickupIcon());
-        removePin(destMarkerRef);
-      }
-    } else if (activeRide.status === "in_progress") {
-      const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat);
-      const lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
-      if (lat && lng) {
-        target = { lat, lng };
-        upsertPin(destMarkerRef, target, makeDestIcon());
-        removePin(pickupMarkerRef);
-      }
-    }
-
-    if (!target) return;
-
-    // 1. Format the stops into Google Maps waypoints
-    const stopsWaypoints = activeRide?.stops
-      ?.filter(stop => stop.lat && stop.lng)
-      .map(stop => ({
-        location: { lat: parseFloat(stop.lat), lng: parseFloat(stop.lng) },
-        stopover: true
-      })) || [];
-
-    directionsServiceRef.current.route(
-      { 
-        origin: { lat: dLat, lng: dLng }, 
-        destination: target, 
-        waypoints: stopsWaypoints, // 2. Add them to the request
-        travelMode: window.google.maps.TravelMode.DRIVING 
-      },
-      (result, status) => {
-        if (status === "OK" && routeRendererRef.current) {
-          routeRendererRef.current.setDirections(result);
-          
-          // 3. Combine steps from all legs so navigation continues past the first stop
-          const allSteps = result.routes[0].legs.flatMap(leg => leg.steps);
-          setRouteSteps(allSteps);
-          setStepIdx(0);
-          
-          // 4. Sum the duration of all legs to get the true total ETA
-          const totalDuration = result.routes[0].legs.reduce((total, leg) => total + (leg.duration?.value || 0), 0);
-          if (totalDuration) startEtaCountdown(totalDuration);
-        }
-      }
-    );
-  // 5. IMPORTANT: Add activeRide?.stops to this dependency array!
-  }, [activeRide?.status, activeRide?.pickup_lat, activeRide?.dest_lat, activeRide?.destination_lat, activeRide?.stops, mapReady, driverLocation?.lat]);
-  // Route deviation detection - recalculate if driver goes off route
-  // If new route is longer, add half the extra distance cost to fare
-  const lastRouteDistanceRef = React.useRef(null);
-  const deviationCheckRef = React.useRef(null);
-
-  useEffect(() => {
-    if (activeRide?.status !== "in_progress" || !mapReady) return;
-
-    deviationCheckRef.current = setInterval(() => {
-      if (!directionsServiceRef.current || !driverLocation?.lat || !activeRide) return;
-      const dLat = parseFloat(driverLocation.lat), dLng = parseFloat(driverLocation.lng);
-      const destLat = parseFloat(activeRide.dest_lat || activeRide.destination_lat);
-      const destLng = parseFloat(activeRide.dest_lng || activeRide.destination_lng);
-      if (!dLat || !dLng || !destLat || !destLng) return;
-
-      directionsServiceRef.current.route(
-        { origin: { lat: dLat, lng: dLng }, destination: { lat: destLat, lng: destLng }, travelMode: window.google.maps.TravelMode.DRIVING },
-        (result, status) => {
-          if (status !== "OK") return;
-          const newDistKm = result.routes[0].legs.reduce((t, l) => t + l.distance.value, 0) / 1000;
-
-          if (lastRouteDistanceRef.current === null) {
-            lastRouteDistanceRef.current = newDistKm;
-            return;
-          }
-
-          const extraKm = newDistKm - lastRouteDistanceRef.current;
-          if (extraKm > 0.3) {
-            // Driver is off route - redraw and adjust fare
-            if (routeRendererRef.current) routeRendererRef.current.setDirections(result);
-            lastRouteDistanceRef.current = newDistKm;
-
-            // Notify backend of extra distance (half price)
-            const extraFare = parseFloat((extraKm * 0.5 * 0.5).toFixed(2));
-            if (extraFare > 0) {
-              api.post("/rides/" + activeRide.id + "/add-distance", { extra_km: extraKm, extra_fare: extraFare })
-                .catch(() => {});
-            }
-          }
-        }
-      );
-    }, 30000); // Check every 30 seconds
-
-    return () => { if (deviationCheckRef.current) clearInterval(deviationCheckRef.current); };
-  }, [activeRide?.status, activeRide?.id, mapReady, driverLocation?.lat]);
-
-
-  const handleNav = (app) => {
-    if (!activeRide) return;
-    const isPickup = ["accepted", "arrived"].includes(activeRide.status);
-    const destLat = isPickup ? activeRide.pickup_lat : (activeRide.dest_lat || activeRide.destination_lat);
-    const destLng = isPickup ? activeRide.pickup_lng : (activeRide.dest_lng || activeRide.destination_lng);
-    if (!destLat || !destLng) return toast.error("No coordinates available");
-    const url = app === "waze"
-      ? `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`
-      : `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`;
-    window.open(url, "_blank");
-  };
-
-  const curStep  = routeSteps[stepIdx];
-  const nextStep = routeSteps[stepIdx + 1];
-  const etaLabel = ["accepted","arrived"].includes(activeRide?.status) ? "to pickup" : "to destination";
-
-  return (
-    <div className="fixed inset-0 w-full h-full z-0">
-      <div ref={mapRef} className="w-full h-full" />
-
-      {/* Compact Turn-by-turn HUD - minimal and clean */}
-      {activeRide && <NavHUD step={curStep} nextStep={nextStep} speed={speed} isCompact={isCompactHUD} />}
-
-      {/* ETA countdown - floating minimal pill */}
-      {activeRide && etaSeconds != null && etaSeconds > 0 && (
-        <div className="absolute z-20 pointer-events-none" style={{ top: isCompactHUD ? 80 : 180, left: "50%", transform: "translateX(-50%)" }}>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full shadow-xl"
-            style={{ background: "rgba(7,7,15,0.85)", border: "1px solid rgba(0,212,255,0.25)", backdropFilter: "blur(12px)" }}>
-            <Timer className="w-3 h-3 text-[#00d4ff]" />
-            <span className="text-[#00d4ff] font-bold text-xs font-mono">{fmtEta(etaSeconds)}</span>
-            <span className="text-white/30 text-[10px]">{etaLabel}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Re-centre button - appears when user pans away */}
-      {!isFollowing && driverLocation && (
-        <button onClick={() => {
-            setIsFollowing(true);
-            const lat = parseFloat(driverLocation.lat), lng = parseFloat(driverLocation.lng);
-            if (!isNaN(lat) && !isNaN(lng)) {
-              mapInstanceRef.current?.panTo({ lat, lng });
-              mapInstanceRef.current?.setTilt(55);
-              animateHeading(parseFloat(driverLocation.heading) || 0);
-            }
-          }}
-          className="absolute z-20 flex items-center gap-2 px-4 py-2 rounded-full shadow-2xl transition-all active:scale-95"
-          style={{ bottom: 100, left: "50%", transform: "translateX(-50%)", background: "rgba(0,255,136,0.95)" }}>
-          <Crosshair className="w-4 h-4 text-black" />
-          <span className="text-black text-sm font-bold">Re-centre</span>
-        </button>
-      )}
-
-      {/* Minimal control buttons - right edge */}
-      <div className="absolute flex flex-col gap-1.5 z-10" style={{ right: 12, top: "40%" }}>
-        <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)+1)}
-          className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-700 text-lg font-bold shadow-lg active:scale-95 transition-transform"
-          style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }}>+</button>
-        <button onClick={() => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom()||15)-1)}
-          className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-700 text-lg font-bold shadow-lg active:scale-95 transition-transform"
-          style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }}>-</button>
-        <button 
-          onClick={() => { 
-            animateHeading(0);
-            setIsFollowing(true);
-          }}
-          className="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-          style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }} 
-          title="Reset north">
-          <Navigation className="w-4 h-4 text-gray-600" />
-        </button>
-        
-        {/* HUD toggle */}
-        <button 
-          onClick={() => setIsCompactHUD(!isCompactHUD)}
-          className="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-transform mt-1"
-          style={{ background: isCompactHUD ? "rgba(0,255,136,0.2)" : "rgba(255,255,255,0.9)", border: isCompactHUD ? "1px solid rgba(0,255,136,0.4)" : "none", backdropFilter: "blur(8px)" }} 
-          title="Toggle HUD size">
-          <Eye className="w-4 h-4" style={{ color: isCompactHUD ? "#00ff88" : "#666" }} />
-        </button>
-
-        {activeRide && <div className="h-px bg-white/20 my-1" />}
-        
-        {/* External nav buttons */}
-        {activeRide && (
-          <button onClick={() => handleNav("waze")}
-            className="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-            style={{ background: "rgba(51,181,229,0.9)", backdropFilter: "blur(8px)" }} title="Open in Waze">
-            <Zap className="w-4 h-4 text-white" />
-          </button>
-        )}
-        {activeRide && (
-          <button onClick={() => handleNav("google")}
-            className="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-            style={{ background: "rgba(52,168,83,0.9)", backdropFilter: "blur(8px)" }} title="Open in Google Maps">
-            <MapPinned className="w-4 h-4 text-white" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-
-
-// =============================================================================
-// ADD-STOP INPUT ? lightweight autocomplete for mid-trip stop addition
-// =============================================================================
-const AddStopInput = ({ value, onChange, mapsLoaded }) => {
-  const inputRef = useRef(null);
-  const acRef    = useRef(null);
-  useEffect(() => {
-    if (!mapsLoaded || !inputRef.current || acRef.current) return;
-    if (!window.google?.maps?.places) return;
-    acRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-      componentRestrictions: { country: "ge" },
-      fields: ["formatted_address", "geometry", "name"],
-    });
-    acRef.current.addListener("place_changed", () => {
-      const place = acRef.current.getPlace();
-      if (place?.geometry) {
-        onChange({
-          address: place.formatted_address || place.name || "",
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-        });
-        if (inputRef.current) inputRef.current.blur();
-      }
-    });
-  }, [mapsLoaded]);
-  return (
-    <div className="relative flex items-center">
-      <MapPin className="absolute left-3 h-4 w-4 text-[#00d4ff] pointer-events-none z-10" />
-      <input
-        ref={inputRef}
-        value={value?.address || ""}
-        onChange={e => onChange({ ...value, address: e.target.value })}
-        placeholder="Search stop address?"
-        autoComplete="off"
-        className="w-full pl-9 pr-3 h-11 bg-white/5 border border-white/10 text-white text-sm rounded-xl placeholder:text-white/25 outline-none focus:border-[#00d4ff]/40"
-      />
     </div>
   );
 };
@@ -1889,120 +283,368 @@ const AddStopInput = ({ value, onChange, mapsLoaded }) => {
 // DRIVER AUTH
 // =============================================================================
 const DriverAuth = () => {
-  const { login } = useAuth();
-  const navigate = useNavigate();
-  const { t } = useLanguage();
-  const [isLogin, setIsLogin] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ name: "", surname: "", cellphone: "", password: "" });
+  const { login }     = useAuth();
+  const navigate      = useNavigate();
+  const { t }         = useLanguage();
+  const [isLogin, setIsLogin]   = useState(true);
+  const [loading, setLoading]   = useState(false);
+  const [formData, setFormData] = useState({ name: "", surname: "", cellphone: "", password: "" });
 
-  const [showTerms, setShowTerms] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  // OTP state
-
-
-
-  const submit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      if (isLogin) {
-        const r = await api.post("/auth/login", form);
-        if (r.data?.token && r.data?.user) {
-          login(r.data.token, r.data.user);
-          toast.success(t("welcome_back"));
-          navigate("/driver/dashboard");
-        }
+      const endpoint = isLogin ? "/auth/login" : "/auth/register/driver";
+      const res = await api.post(endpoint, formData);
+      if (res.data?.token && res.data?.user) {
+        login(res.data.token, res.data.user);
+        toast.success(isLogin ? t("welcome_back") : t("success"));
+        navigate("/driver/dashboard");
       } else {
-        if (!termsAccepted) { toast.error("Please accept the Terms & Conditions to continue"); return; }
-        const r = await api.post("/auth/register/driver", form, {
-        });
-        if (r.data?.token && r.data?.user) {
-          login(r.data.token, r.data.user);
-          toast.success(t("success"));
-          navigate("/driver/dashboard");
-        }
+        throw new Error("Invalid response");
       }
-    } catch (err) {
-      toast.error(err.response?.data?.detail || err.message || t("error"));
-    } finally { setLoading(false); }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || error.message || t("error"));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#07070f" }}>
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2 text-white/40 hover:text-white text-sm mb-8 mx-auto transition-colors">
-            <ArrowLeft className="w-4 h-4" /> {t("back")}
-          </button>
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#00ff88] to-[#00d4ff] flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_rgba(0,255,136,0.3)]">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <Card className="w-full max-w-md glass-heavy">
+        <CardHeader className="text-center relative">
+          <div className="absolute right-4 top-4"><LanguageSelector variant="ghost" /></div>
+          <Button variant="ghost" className="absolute left-4 top-4 text-primary hover:text-white" onClick={() => navigate("/")}>
+            <ArrowLeft className="w-4 h-4 mr-2" /> {t("back")}
+          </Button>
+          <div className="w-20 h-20 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-4 mt-8">
             <Car className="w-10 h-10 text-black" />
           </div>
-          <h1 className="text-3xl font-bold text-white">{isLogin ? t("sign_in") : t("register")}</h1>
-          <p className="text-white/40 text-sm mt-1">{isLogin ? t("welcome_back") : t("become_pilot_title")}</p>
-        </div>
-
-        <form onSubmit={submit} className="space-y-3">
-          {!isLogin && (
-            <div className="grid grid-cols-2 gap-3">
-              {[["name", t("first_name")],["surname", t("last_name")]].map(([k,l]) => (
-                <div key={k} className="space-y-1.5">
-                  <Label className="text-white/50 text-xs">{l}</Label>
-                  <Input value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })}
-                    className="bg-white/5 border-white/10 text-white h-11 placeholder:text-white/20" required />
+          <h2 className="text-2xl font-bold text-primary">
+            {isLogin ? t("pilot_login") : t("become_pilot_title")}
+          </h2>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-primary">{t("first_name")}</Label>
+                  <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
+                    className="bg-background-secondary border-border text-white" required />
                 </div>
-              ))}
-            </div>
-          )}
-          <div className="space-y-1.5">
-            <Label className="text-white/50 text-xs">{t("phone_number")}</Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                <Input type="tel" value={form.cellphone}
-                  onChange={e => setForm({ ...form, cellphone: e.target.value })}
-                  placeholder="+995 555 000 000"
-                  className="pl-9 bg-white/5 border-white/10 text-white h-11 placeholder:text-white/20"
-                  required />
+                <div className="space-y-2">
+                  <Label className="text-primary">{t("last_name")}</Label>
+                  <Input value={formData.surname} onChange={e => setFormData({ ...formData, surname: e.target.value })}
+                    className="bg-background-secondary border-border text-white" required />
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label className="text-primary">{t("phone_number")}</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-3 h-4 w-4 text-primary/50" />
+                <Input type="tel" value={formData.cellphone}
+                  onChange={e => setFormData({ ...formData, cellphone: e.target.value })}
+                  className="pl-10 bg-background-secondary border-border text-white"
+                  placeholder="+995 XXX XXX XXX" required />
               </div>
             </div>
-          </div>
-
-          {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
-          {!isLogin && (
-            <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0"}}>
-              <input type="checkbox" id="driver-terms-cb" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}
-                style={{marginTop:2,accentColor:"#00ff88",width:16,height:16,flexShrink:0,cursor:"pointer"}} />
-              <label htmlFor="driver-terms-cb" style={{color:"rgba(255,255,255,0.5)",fontSize:12,lineHeight:1.5,cursor:"pointer"}}>
-                I have read and agree to the{" "}
-                <button type="button" onClick={() => setShowTerms(true)}
-                  style={{color:"#00ff88",background:"none",border:"none",padding:0,fontSize:12,cursor:"pointer",textDecoration:"underline"}}>
-                  Terms & Conditions and Privacy Policy
-                </button>
-              </label>
+            <div className="space-y-2">
+              <Label className="text-primary">{t("password")}</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-primary/50" />
+                <Input type="password" value={formData.password}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
+                  className="pl-10 bg-background-secondary border-border text-white" required />
+              </div>
             </div>
-          )}
-
-
-          <div className="space-y-1.5">
-            <Label className="text-white/50 text-xs">{t("password")}</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-              <Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
-                className="pl-9 bg-white/5 border-white/10 text-white h-11" required />
-            </div>
-          </div>
-          <Button type="submit" disabled={loading}
-            className="w-full h-12 bg-gradient-to-r from-[#00ff88] to-[#00d4ff] text-black font-bold text-base mt-2">
-            {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-            {isLogin ? t("sign_in") : t("register")}
+            <Button type="submit" disabled={loading}
+              className="w-full bg-gradient-to-r from-primary to-secondary text-black font-bold hover:shadow-neon-cyan transition-all">
+              {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              {isLogin ? t("sign_in") : t("register_driver")}
+            </Button>
+          </form>
+        </CardContent>
+        <CardFooter className="justify-center">
+          <Button variant="link" className="text-secondary" onClick={() => setIsLogin(!isLogin)}>
+            {isLogin ? t("need_account") : t("have_account")}
           </Button>
-        </form>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+};
 
-        <button onClick={() => setIsLogin(!isLogin)} className="w-full text-center text-white/40 hover:text-white text-sm mt-4 transition-colors">
-          {isLogin ? t("need_account") : t("have_account")}
+// =============================================================================
+// LOCATION TRACKER HOOK
+// BUG FIX: onLocationUpdate stabilised via ref so GPS watch never restarts
+// unnecessarily (was restarting on every activeRide status change)
+// =============================================================================
+const useLocationTracker = (isOnline, onLocationUpdate) => {
+  const watchIdRef      = useRef(null);
+  const intervalRef     = useRef(null);
+  const lastLocationRef = useRef(null);
+  // Stable ref — avoids the hook dep array needing the callback
+  const callbackRef     = useRef(onLocationUpdate);
+  useEffect(() => { callbackRef.current = onLocationUpdate; }, [onLocationUpdate]);
+
+  useEffect(() => {
+    if (!isOnline) {
+      if (watchIdRef.current  != null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
+      if (intervalRef.current != null) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      return;
+    }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        lastLocationRef.current = {
+          lat: pos.coords.latitude, lng: pos.coords.longitude,
+          heading: pos.coords.heading, speed: pos.coords.speed,
+        };
+      },
+      (err) => console.error("GPS error:", err),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+
+    intervalRef.current = setInterval(() => {
+      if (lastLocationRef.current) callbackRef.current(lastLocationRef.current);
+    }, LOCATION_UPDATE_INTERVAL);
+
+    return () => {
+      if (watchIdRef.current  != null) navigator.geolocation.clearWatch(watchIdRef.current);
+      if (intervalRef.current != null) clearInterval(intervalRef.current);
+    };
+  }, [isOnline]); // Only depends on isOnline — GPS never restarts on ride changes
+
+  return lastLocationRef;
+};
+
+// =============================================================================
+// DRIVER SMART MAP
+// BUG FIX: Route is NOT redrawn on every GPS ping — only when status/target changes
+// This prevents spamming the Google Directions API (each call is billed)
+// =============================================================================
+const DriverSmartMap = ({ activeRide, driverLocation }) => {
+  const mapRef              = useRef(null);
+  const mapInstanceRef      = useRef(null);
+  const markerRef           = useRef(null);
+  const routeRendererRef    = useRef(null);
+  const directionsServiceRef= useRef(null);
+  const [isFollowing, setIsFollowing]       = useState(true);
+  const [mapReady, setMapReady]             = useState(false);
+  const [routeSteps, setRouteSteps]         = useState([]);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+
+  const getSafe = (v) => { const n = parseFloat(v); return !isNaN(n) && n !== 0 ? n : null; };
+
+  const haversineKm = (lat1, lon1, lat2, lon2) => {
+    const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  // Init map once
+  useEffect(() => {
+    if (!mapRef.current || !window.google || mapInstanceRef.current) return;
+
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: { lat: 41.7151, lng: 44.8271 }, zoom: 17,
+      disableDefaultUI: true, zoomControl: false, gestureHandling: "greedy",
+      backgroundColor: "#ffffff",
+      styles: [
+        { elementType: "geometry",              stylers: [{ color: "#f5f5f5" }] },
+        { elementType: "labels.icon",           stylers: [{ visibility: "off" }] },
+        { elementType: "labels.text.fill",      stylers: [{ color: "#616161" }] },
+        { elementType: "labels.text.stroke",    stylers: [{ color: "#f5f5f5" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+        { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#e9e9e9" }] },
+      ],
+    });
+    map.addListener("dragstart", () => setIsFollowing(false));
+
+    routeRendererRef.current = new window.google.maps.DirectionsRenderer({
+      map, suppressMarkers: false,
+      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
+      preserveViewport: true,
+    });
+    directionsServiceRef.current = new window.google.maps.DirectionsService();
+    mapInstanceRef.current = map;
+    setMapReady(true);
+  }, []);
+
+  // Update driver marker on every GPS tick — NO route redraw here
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google || !driverLocation) return;
+    const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
+    if (!lat || !lng) return;
+
+    const pos     = { lat, lng };
+    const heading = parseFloat(driverLocation.heading) || 0;
+
+    if (!markerRef.current) {
+      markerRef.current = new window.google.maps.Marker({
+        position: pos, map: mapInstanceRef.current, zIndex: 1000,
+        icon: {
+          path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 6, fillColor: "#00d4ff", fillOpacity: 1,
+          strokeColor: "white", strokeWeight: 2,
+          rotation: heading, anchor: new window.google.maps.Point(0, 2.5),
+        },
+      });
+    } else {
+      markerRef.current.setPosition(pos);
+      const icon = { ...markerRef.current.getIcon(), rotation: heading };
+      markerRef.current.setIcon(icon);
+    }
+    if (isFollowing) mapInstanceRef.current.panTo(pos);
+
+    // Advance turn-by-turn step if close to waypoint
+    if (routeSteps.length > 0 && currentStepIndex < routeSteps.length) {
+      const step = routeSteps[currentStepIndex];
+      const dist = haversineKm(lat, lng, step.end_location.lat(), step.end_location.lng());
+      if (dist < 0.04) setCurrentStepIndex(p => p + 1);
+    }
+  }, [driverLocation, isFollowing, routeSteps, currentStepIndex]);
+
+  // Redraw route ONLY when status or target destination changes
+  // BUG FIX: Removed driverLocation from deps — prevented billed API call every 2s
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
+    if (!activeRide || !driverLocation) {
+      if (routeRendererRef.current) routeRendererRef.current.setDirections({ routes: [] });
+      setRouteSteps([]);
+      return;
+    }
+
+    const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
+    if (!dLat || !dLng) return;
+
+    let target = null;
+    if (["accepted", "arrived"].includes(activeRide.status)) {
+      const lat = getSafe(activeRide.pickup_lat);
+      const lng = getSafe(activeRide.pickup_lng);
+      if (lat && lng) target = { lat, lng };
+    } else if (activeRide.status === "in_progress") {
+      const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat);
+      const lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
+      if (lat && lng) target = { lat, lng };
+    }
+
+    if (!target) return;
+
+    directionsServiceRef.current.route(
+      { origin: { lat: dLat, lng: dLng }, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
+      (result, status) => {
+        if (status === "OK" && routeRendererRef.current) {
+          routeRendererRef.current.setDirections(result);
+          const steps = result.routes[0].legs[0].steps;
+          setRouteSteps(steps);
+          setCurrentStepIndex(0);
+        }
+      }
+    );
+  }, [
+    // Only re-route when the actual navigation target changes, not every GPS ping
+    activeRide?.status,
+    activeRide?.pickup_lat,
+    activeRide?.dest_lat,
+    activeRide?.destination_lat,
+    mapReady,
+  ]);
+
+  const getTurnIcon = (maneuver) => {
+    if (!maneuver)                    return <Navigation className="w-8 h-8" />;
+    if (maneuver.includes("left"))    return <ArrowLeft className="w-8 h-8" />;
+    if (maneuver.includes("right"))   return <ArrowRight className="w-8 h-8" />; // FIX: was rotated ArrowLeft
+    return <Navigation className="w-8 h-8" />;
+  };
+
+  const handleZoomIn  = () => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom() || 15) + 1);
+  const handleZoomOut = () => mapInstanceRef.current?.setZoom((mapInstanceRef.current.getZoom() || 15) - 1);
+  const handleRecenter = () => {
+    setIsFollowing(true);
+    if (driverLocation && mapInstanceRef.current) {
+      mapInstanceRef.current.panTo({ lat: parseFloat(driverLocation.lat), lng: parseFloat(driverLocation.lng) });
+    }
+  };
+
+  const handleNav = (app) => {
+    if (!activeRide) return;
+    let destLat, destLng, waypoints = "";
+    if (["accepted", "arrived"].includes(activeRide.status)) {
+      destLat = activeRide.pickup_lat; destLng = activeRide.pickup_lng;
+    } else {
+      destLat = activeRide.dest_lat || activeRide.destination_lat;
+      destLng = activeRide.dest_lng || activeRide.destination_lng;
+      if (activeRide.stops?.length && app === "google") {
+        const wStr = activeRide.stops.filter(s => s.lat && s.lng).map(s => `${s.lat},${s.lng}`).join("|");
+        if (wStr) waypoints = `&waypoints=${wStr}`;
+      }
+    }
+    if (!destLat || !destLng) return toast.error("No destination coordinates");
+    const url = app === "waze"
+      ? `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`
+      : `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}${waypoints}&travelmode=driving`;
+    window.open(url, "_blank");
+  };
+
+  const currentStep = routeSteps[currentStepIndex];
+
+  return (
+    <div className="fixed inset-0 w-full h-full z-0">
+      <div ref={mapRef} className="w-full h-full" />
+
+      {/* Turn-by-turn */}
+      {activeRide && currentStep && (
+        <div className="absolute top-28 left-4 right-4 z-20 bg-[#1a1a2e]/95 backdrop-blur-xl border border-[#00ff88]/50 rounded-2xl p-4 shadow-[0_10px_30px_rgba(0,0,0,0.6)] flex items-center gap-4">
+          <div className="bg-[#00ff88]/20 p-3 rounded-xl text-[#00ff88] shrink-0">
+            {getTurnIcon(currentStep.maneuver)}
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <p className="text-2xl font-bold text-white mb-1">{currentStep.distance.text}</p>
+            <p className="text-[#00ff88] font-medium text-[15px] leading-tight truncate">
+              {currentStep.instructions.replace(/<[^>]*>?/gm, "")}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Recenter */}
+      {!isFollowing && driverLocation && (
+        <button onClick={handleRecenter}
+          className="absolute bottom-[48vh] left-4 bg-[#00d4ff] text-black p-3 rounded-full shadow-lg z-10 border-2 border-white">
+          <Crosshair className="w-6 h-6 animate-pulse" />
+        </button>
+      )}
+
+      {/* Zoom controls */}
+      <div className="absolute top-1/2 right-4 -translate-y-1/2 flex flex-col gap-2 z-10">
+        <button onClick={handleZoomIn}
+          className="bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] w-12 h-12 rounded-xl flex items-center justify-center shadow-lg active:bg-[#00ff88]/30">
+          <Plus className="w-6 h-6" />
+        </button>
+        <button onClick={handleZoomOut}
+          className="bg-black/80 backdrop-blur-md border border-[#00ff88]/50 text-[#00ff88] w-12 h-12 rounded-xl flex items-center justify-center shadow-lg active:bg-[#00ff88]/30">
+          <span className="text-2xl font-bold leading-none -mt-1">-</span>
         </button>
       </div>
+
+      {/* External nav */}
+      {activeRide && (
+        <div className="absolute top-52 right-4 flex flex-col gap-3 z-10">
+          <Button size="icon" onClick={() => handleNav("waze")}
+            className="bg-black/80 border border-[#00d4ff]/50 text-[#00d4ff] w-12 h-12 rounded-full">
+            <Zap className="w-5 h-5" />
+          </Button>
+          <Button size="icon" onClick={() => handleNav("google")}
+            className="bg-black/80 border border-[#00ff88]/50 text-[#00ff88] w-12 h-12 rounded-full">
+            <MapPinned className="w-5 h-5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
@@ -2011,235 +653,147 @@ const DriverAuth = () => {
 // DRIVER DASHBOARD
 // =============================================================================
 const DriverDashboard = () => {
-  // Inside your main Driver Dashboard / Portal component
-const [totalWaitData, setTotalWaitData] = useState({ minutes: 0, earned: 0 });
-const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const { user, logout, updateUser } = useAuth();
-  usePushNotifications(user);
   const navigate = useNavigate();
-  const { t, _renderKey } = useLanguage();   
-  const handleStopFinished = (minutes) => {
-  setTotalStopMinutes(prev => prev + minutes);
-};
+  const { t }    = useLanguage();
 
-  const [locationLoading, setLocationLoading] = useState(false);
-
-  const handleUseCurrentLocation = () => {
-    setLocationLoading(true);
-    
-    // If you already have their live location in state, use it!
-    // Otherwise, ask the browser:
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        
-        // Reverse geocode it so they see a real address, not numbers
-        new window.google.maps.Geocoder().geocode({ location: { lat, lng } }, (results, status) => {
-          if (status === "OK" && results[0]) {
-             // ??? Update your input state here
-             setNewStopAddress(results[0].formatted_address);
-             setNewStopCoords({ lat, lng });
-          } else {
-             // Fallback to coordinates if address fails
-             setNewStopAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-             setNewStopCoords({ lat, lng });
-          }
-          setLocationLoading(false);
-        });
-      },
-      (err) => {
-        toast.error("Could not get location. Check permissions.");
-        setLocationLoading(false);
-      },
-      { enableHighAccuracy: true }
-    );
-  };
-  const [activeTab, setActiveTab] = useState("rides");
-  const [loading, setLoading] = useState(false);
-  const [mapsLoaded, setMapsLoaded] = useState(() => !!window.google?.maps);
+  // ---- UI ----
+  const [activeTab,   setActiveTab]   = useState("rides");
+  const [loading,     setLoading]     = useState(false);
+  const [mapsLoaded,  setMapsLoaded]  = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const touchStartY = useRef(null);
 
-  const [isOnline, setIsOnline] = useState(user?.is_online || false);
+  // ---- Online / location ----
+  const [isOnline,      setIsOnline]      = useState(user?.is_online || false);
   const [driverLocation, setDriverLocation] = useState(null);
 
+  // ---- Rides ----
   const [availableRides, setAvailableRides] = useState([]);
-  const [nearbyRides, setNearbyRides] = useState([]);
-  const [activeRide, setActiveRide] = useState(null);
-  const [rideHistory, setRideHistory] = useState([]);
-  const [completedRide, setCompletedRide] = useState(null);
+  const [nearbyRides,    setNearbyRides]    = useState([]);
+  const [activeRide,     setActiveRide]     = useState(null);
+  const [rideHistory,    setRideHistory]    = useState([]);
+  const [completedRide,  setCompletedRide]  = useState(null);
 
-  const [rideStartTime, setRideStartTime] = useState(null);
-  const [arrivedTime, setArrivedTime] = useState(null);
-  const [waitTimer, setWaitTimer] = useState(0);
+  // ---- Tracking ----
+  const [rideStartTime,    setRideStartTime]    = useState(null);
+  const [arrivedTime,      setArrivedTime]      = useState(null);
+  const [waitTimer,        setWaitTimer]        = useState(0);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
-  const distanceTraveledRef = useRef(0);
-
-  // Wire GPS distance accumulator to window so the geolocation watcher can update it
-  useEffect(() => {
-    window.__setDistanceTraveled = setDistanceTraveled;
-    return () => { window.__setDistanceTraveled = null; };
-  }, []);
-
-  useEffect(() => {
-    window.__activeRideStatus = activeRide?.status || null;
-  }, [activeRide?.status]);
-  const [isWaitingAtStop, setIsWaitingAtStop] = useState(false);
-  // Mid-trip wait timer state
-  const [midTripWaiting,    setMidTripWaiting]    = useState(false);
-  const [midTripWaitStart,  setMidTripWaitStart]  = useState(null);   // Date.ms
-  const [midTripWaitSecs,   setMidTripWaitSecs]   = useState(0);      // live elapsed seconds
-  const [midTripWaitBanked, setMidTripWaitBanked] = useState(0);      // confirmed minutes banked
-  const [liveFare,          setLiveFare]          = useState(null);   // live fare incl. wait fee
-  // Add-stop mid-trip
-  const [showAddStop,    setShowAddStop]    = useState(false);
-  const [newStopAddress, setNewStopAddress] = useState({ address: "", lat: null, lng: null });
+  const [isWaitingAtStop,  setIsWaitingAtStop]  = useState(false); // FIX: declared before handleRideAction
   const lastPositionRef = useRef(null);
 
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancelReason, setCancelReason] = useState("");
+  // ---- Cancel ----
+  const [showCancelModal,      setShowCancelModal]      = useState(false);
+  const [selectedCancelReason, setSelectedCancelReason] = useState("");
 
-  const [showRateModal, setShowRateModal] = useState(false);
-  const [rateRideId, setRateRideId] = useState(null);
-  const [rateRiderName, setRateRiderName] = useState("");
-
-  const [vehicleTier, setVehicleTier] = useState("economy");
+  // ---- Vehicle ----
   const [vehicleData, setVehicleData] = useState({
-    car_make:"", car_model:"", car_year:"", car_color:"", license_plate:"",
-    license_front:null, license_back:null, reg_front:null, reg_back:null,
-    car_photo_front:null, car_photo_back:null, car_photo_left:null, car_photo_right:null,
+    car_make: "", car_model: "", car_year: "", car_color: "", license_plate: "",
+    license_front: null, license_back: null, reg_front: null, reg_back: null,
+    car_photo_front: null, car_photo_back: null, car_photo_left: null, car_photo_right: null,
   });
 
-  const [earningsTab, setEarningsTab] = useState("overview");
-  const [topupAmount, setTopupAmount] = useState("");
+  // ---- Wallet ----
+  const [showTopupModal, setShowTopupModal] = useState(false);
+  const [topupAmount,    setTopupAmount]    = useState("");
+  const [earningsTab,    setEarningsTab]    = useState("overview");
 
-  const balance = user?.earnings?.balance ?? user?.wallet_balance ?? 0;
-  const signupBonus = user?.earnings?.signup_bonus ?? 0;
-  const signupBonusUsed = user?.earnings?.signup_bonus_used ?? 0;
-  const remainingBonus = Math.max(0, signupBonus - signupBonusUsed);
-  const withdrawableBalance = Math.max(0, balance - remainingBonus);
-  const totalEarned = user?.earnings?.total_earned ?? 0;
-  const totalWithdrawn = user?.earnings?.total_withdrawn ?? 0;
-  const commissionPaid = user?.earnings?.total_commission_paid ?? 0;
-  const registrationStatus = user?.registration_status?.toLowerCase();
-  const hasVehicle = !!(user?.driver_info?.vehicle);
+  // ---- Fleet management ----
+  const [fleetVehicles, setFleetVehicles] = useState([]);
+  const [showAddFleet,  setShowAddFleet]  = useState(false);
+  const [fleetLoading,  setFleetLoading]  = useState(false);
+  const [newVehicle,    setNewVehicle]    = useState({
+    car_make: "", car_model: "", car_year: "", car_color: "",
+    license_plate: "", driver_name: "", driver_phone: "", car_type: "economy",
+  });
 
-  // ===========================================================================
-  // FIX: Maps ? use singleton loader, not a nested useEffect
-  // ===========================================================================
+  // ---- Trip detail + dispute ----
+  const [selectedTrip,     setSelectedTrip]     = useState(null);
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeMessage,   setDisputeMessage]   = useState("");
+  const [disputeLoading,   setDisputeLoading]   = useState(false);
+
+  const balance            = user?.earnings?.balance ?? user?.wallet_balance ?? 0;
+  const totalEarned        = user?.earnings?.total_earned   ?? 0;
+  const totalWithdrawn     = user?.earnings?.total_withdrawn ?? 0;
+  const registrationStatus = user?.registration_status;
+  const hasVehicle         = !!(user?.driver_info?.vehicle);
+
+  // ==========================================================================
+  // Maps
+  // ==========================================================================
   useEffect(() => {
-    if (window.google?.maps) { setMapsLoaded(true); return; }
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-      console.error("VITE_GOOGLE_MAPS_API_KEY is not set");
-      toast.error(t("maps_api_key_missing") || "Maps API key missing");
-      return;
-    }
-    loadGoogleMaps(apiKey)
-      .then(() => setMapsLoaded(true))
-      .catch((err) => {
-        console.error("Maps load error:", err);
-        toast.error(t("maps_load_error") || "Failed to load Google Maps. Check API key restrictions.");
-      });
-  }, [t]);
+    if (window.google) { setMapsLoaded(true); return; }
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
+    script.async = true;
+    script.onload = () => setMapsLoaded(true);
+    document.head.appendChild(script);
+  }, []);
 
+  // ==========================================================================
+  // Auto-expand bottom sheet on status change
+  // ==========================================================================
   useEffect(() => { setIsMinimized(false); }, [activeRide?.status]);
 
-  const handleTouchStart = e => { touchStartY.current = e.touches[0].clientY; };
-  const handleTouchEnd = e => {
+  const handleTouchStart = (e) => { touchStartY.current = e.touches[0].clientY; };
+  const handleTouchEnd   = (e) => {
     if (touchStartY.current == null) return;
-    const d = e.changedTouches[0].clientY - touchStartY.current;
-    if (d > 40) setIsMinimized(true);
-    else if (d < -40) setIsMinimized(false);
+    const delta = e.changedTouches[0].clientY - touchStartY.current;
+    if (delta > 40)       setIsMinimized(true);
+    else if (delta < -40) setIsMinimized(false);
     touchStartY.current = null;
   };
 
-  const hvKm = (lat1, lng1, lat2, lng2) => {
-    const R = 6371, dL = (lat2-lat1)*Math.PI/180, dl = (lng2-lng1)*Math.PI/180;
-    const a = Math.sin(dL/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dl/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  // ==========================================================================
+  // Location update handler — stabilised via useRef in useLocationTracker
+  // ==========================================================================
+  const haversineKm = (lat1, lng1, lat2, lng2) => {
+    const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
+  // Using useRef for activeRide inside the callback to avoid recreating it every status change
   const activeRideRef = useRef(activeRide);
   useEffect(() => { activeRideRef.current = activeRide; }, [activeRide]);
 
-  const lastNetworkPingRef = useRef(0);
-  const lastSentLocationRef = useRef(null);
-
   const handleLocationUpdate = useCallback(async (location) => {
     setDriverLocation(location);
-    const now = Date.now();
-
-    // Skip network call if: (a) sent within last 10s AND (b) moved < 15m since last send.
-    // This cuts location POSTs by ~80% when stationary, preventing rate limit hits.
-    const last = lastSentLocationRef.current;
-    const movedEnough = !last || (() => {
-      const R = 6371000;
-      const dLat = (location.lat - last.lat) * Math.PI / 180;
-      const dLng = (location.lng - last.lng) * Math.PI / 180;
-      const a = Math.sin(dLat/2)**2 + Math.cos(last.lat * Math.PI/180) * Math.cos(location.lat * Math.PI/180) * Math.sin(dLng/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) > 15;  // > 15 metres
-    })();
-    const enoughTimePassed = now - lastNetworkPingRef.current >= 10000;
-
-    if (!movedEnough && !enoughTimePassed) return;
-
-    lastNetworkPingRef.current = now;
     try {
       await api.post("/driver/location", location);
-      lastSentLocationRef.current = location;
+      const ride = activeRideRef.current;
+      if (ride?.status === "in_progress" && lastPositionRef.current) {
+        const dist = haversineKm(lastPositionRef.current.lat, lastPositionRef.current.lng, location.lat, location.lng);
+        setDistanceTraveled(prev => prev + dist);
+        await api.post(`/rides/${ride.id}/update-tracking`, location);
+      }
       lastPositionRef.current = location;
-    } catch (_) {}
-  }, []);
+    } catch (err) { console.error("Location update failed:", err); }
+  }, []); // Empty deps — callback is stable, reads activeRide via ref
 
   useLocationTracker(isOnline, handleLocationUpdate);
 
-  // ===========================================================================
-  // Wait timer ? anchored to server's arrived_at
-  // ===========================================================================
+  // ==========================================================================
+  // Wait timer
+  // ==========================================================================
   useEffect(() => {
     if (activeRide?.status !== "arrived") return;
-    const serverArrivedAt = activeRide.arrived_at;
-    const startMs = serverArrivedAt && !isNaN(new Date(serverArrivedAt).getTime())
-      ? new Date(serverArrivedAt).getTime()
-      : (arrivedTime ?? Date.now());
-    if (!arrivedTime) setArrivedTime(startMs);
-    const iv = setInterval(() => {
-      // Store fractional minutes (e.g. 2.5 = 2 min 30 sec) for accurate billing
-      const totalElapsedMs = Date.now() - startMs;
-      setWaitTimer(totalElapsedMs / 60000);
-    }, 1000);
-    return () => clearInterval(iv);
-  }, [activeRide?.status, activeRide?.arrived_at]);
-
-  // Mid-trip wait ticker
-  useEffect(() => {
-    if (!midTripWaiting || !midTripWaitStart) return;
-    const iv = setInterval(() => {
-      const elapsedSec = Math.floor((Date.now() - midTripWaitStart) / 1000);
-      setMidTripWaitSecs(elapsedSec);
-      // Live fare preview (client-side only, backend confirms on stop)
-      if (activeRide) {
-        const car   = (activeRide.carType || activeRide.car_type || "economy").toLowerCase();
-        const rules = PRICING_RULES[car] || PRICING_RULES.economy;
-        const dist  = distanceTraveled || activeRide.estimated_distance || 0;
-        const bankedMin = midTripWaitBanked + elapsedSec / 60;
-        const billableWait = Math.max(0, bankedMin - rules.freeWait);
-        const base = rules.base + dist * rules.perKm;
-        const waitFee = billableWait * rules.perMinWait;
-        setLiveFare(Math.round((base + waitFee) * 100) / 100);
-      }
-    }, 1000);
-    return () => clearInterval(iv);
-  }, [midTripWaiting, midTripWaitStart, midTripWaitBanked, activeRide, distanceTraveled]);
-
-  useEffect(() => { fetchActiveRide(); fetchRideHistory(); }, []);
-  useEffect(() => {
-    if (user?.id) {
-      registerFCMToken(api).catch(console.error);
+    if (!arrivedTime && activeRide.arrived_at) {
+      setArrivedTime(new Date(activeRide.arrived_at).getTime());
     }
-  }, [user?.id]);
+    const interval = setInterval(() => {
+      const start = arrivedTime || Date.now();
+      setWaitTimer(Math.max(0, Math.floor((Date.now() - start) / 60000)));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [arrivedTime, activeRide?.status]);
+
+  // ==========================================================================
+  // Polling
+  // ==========================================================================
+  useEffect(() => { fetchActiveRide(); fetchRideHistory(); fetchFleet(); }, []);
 
   useEffect(() => {
     if (registrationStatus !== "approved" || !isOnline) return;
@@ -2257,132 +811,167 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
   const fetchRideHistory = async () => {
     try { const r = await api.get("/driver/history"); setRideHistory(r.data.rides || []); } catch (_) {}
   };
- const fetchNearbyRides = async () => {
-    try { 
-      const r = await api.get("/driver/rides/nearby?radius=10"); 
-      const allRides = r.data.rides || [];
-
-      // ??? THE GEOFENCE SHIELD ???
-      // We double-check the distance on the frontend using your live GPS
-      const strictlyNearbyRides = allRides.filter((ride) => {
-          // Check if we have both coordinates to compare
-          // Note: If your state variable for the driver's location is named something else 
-          // (like 'currentLocation' or 'location'), change 'driverLocation' below to match it!
-          if (typeof driverLocation !== 'undefined' && driverLocation?.lat && ride.pickup_lat) {
-              const realDistance = calculateDistance(
-                  driverLocation.lat, driverLocation.lng, 
-                  ride.pickup_lat, ride.pickup_lng
-              );
-              
-              // Only allow the ride through if it's actually within 10km
-              return realDistance <= 10; 
-          }
-          
-          // Fallback just in case
-          return ride.distance_to_pickup <= 10;
-      });
-
-      setNearbyRides(strictlyNearbyRides); 
-    } catch (_) {}
+  const fetchNearbyRides = async () => {
+    try { const r = await api.get("/driver/rides/nearby?radius=10"); setNearbyRides(r.data.rides || []); } catch (_) {}
   };
+
   const refreshUser = async () => {
     try { const r = await api.get("/auth/me"); updateUser(r.data); } catch (_) {}
   };
 
+  // ==========================================================================
+  // Fleet
+  // ==========================================================================
+  const fetchFleet = async () => {
+    try { const r = await api.get("/driver/fleet"); setFleetVehicles(r.data.vehicles || []); } catch (_) {}
+  };
+
+  const handleAddFleetVehicle = async (e) => {
+    e.preventDefault();
+    if (!newVehicle.driver_name.trim() || !newVehicle.license_plate.trim()) {
+      toast.error("Driver name and license plate are required"); return;
+    }
+    setFleetLoading(true);
+    try {
+      await api.post("/driver/fleet/add", { ...newVehicle, car_year: parseInt(newVehicle.car_year) || 2020 });
+      toast.success("Vehicle added to fleet!");
+      setShowAddFleet(false);
+      setNewVehicle({ car_make:"", car_model:"", car_year:"", car_color:"", license_plate:"", driver_name:"", driver_phone:"", car_type:"economy" });
+      fetchFleet();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to add vehicle");
+    } finally {
+      setFleetLoading(false);
+    }
+  };
+
+  const handleRemoveFleetVehicle = async (vehicleId) => {
+    try {
+      await api.delete(`/driver/fleet/${vehicleId}`);
+      toast.success("Vehicle removed");
+      setFleetVehicles(prev => prev.filter(v => v.id !== vehicleId));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to remove vehicle");
+    }
+  };
+
+  // ==========================================================================
+  // Dispute / support ticket for a ride
+  // ==========================================================================
+  const handleOpenDispute = (trip) => {
+    setSelectedTrip(trip);
+    setDisputeMessage(`Re: Ride on ${trip.created_at ? new Date(trip.created_at).toLocaleDateString() : "recent trip"}
+Pickup: ${trip.pickup}
+Destination: ${trip.destination || "Open"}
+Fare: ₾${trip.final_fare || trip.estimated_fare || "?"}
+
+Issue: `);
+    setShowDisputeModal(true);
+  };
+
+  const handleSubmitDispute = async () => {
+    if (!disputeMessage.trim() || disputeMessage.trim().length < 20) {
+      toast.error("Please describe the issue in more detail"); return;
+    }
+    setDisputeLoading(true);
+    try {
+      const res = await api.post("/support/message", {
+        message: disputeMessage,
+        ticket_id: null,
+      });
+      toast.success("Dispute submitted! Our team will respond shortly.");
+      setShowDisputeModal(false);
+      setDisputeMessage("");
+      setSelectedTrip(null);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to submit dispute");
+    } finally {
+      setDisputeLoading(false);
+    }
+  };
+
+  // ==========================================================================
+  // Ride actions
+  // ==========================================================================
   const handleRideAction = async (action) => {
     if (!activeRide) return;
     setLoading(true);
     try {
       if (action === "arrived") {
         await api.post(`/rides/${activeRide.id}/arrived`);
-        setArrivedTime(null);
-        
+        setArrivedTime(Date.now());
         toast.success("Marked as arrived");
-      } else if (action === "start") {
-        const pickupWaitMin = parseFloat((waitTimer || 0).toFixed(4));
-        await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: pickupWaitMin });
+      }
+      else if (action === "start") {
+        await api.post(`/rides/${activeRide.id}/start`, { pickup_wait_time: parseInt(waitTimer || 0) });
         setRideStartTime(Date.now());
         setDistanceTraveled(0);
-        
-        setArrivedTime(null);
         lastPositionRef.current = driverLocation;
         window.__distanceTraveled = 0;
         window.__lastGpsPoint = null;
         window.__activeRideStatus = "in_progress";
         toast.success("Ride started!");
-      } else if (action === "complete") {
-        // We define these here so the code doesn't "break" looking for them
+      }
+      else if (action === "complete") {
+        // Round distance to avoid floating-point noise accumulation
         const finalDist = isNaN(distanceTraveled) ? 0 : parseFloat(distanceTraveled.toFixed(2));
-        
-        const pickupWait = parseFloat(waitTimer) || 0;
-        const stopWait = parseFloat(midTripWaitBanked) || 0;
-        const finalWait = parseFloat((pickupWait + stopWait).toFixed(4));
+        const finalWait = isNaN(waitTimer)         ? 0 : parseInt(waitTimer);
+        const dLat      = driverLocation?.lat || "";
+        const dLng      = driverLocation?.lng || "";
 
-        // The API call
         const res = await api.post(
-          `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${driverLocation?.lat || ""}&dropoff_lng=${driverLocation?.lng || ""}`
+          `/rides/${activeRide.id}/complete?final_distance=${finalDist}&total_wait_minutes=${finalWait}&dropoff_lat=${dLat}&dropoff_lng=${dLng}`
         );
 
-        // --- THE REST IS YOUR ORIGINAL SUCCESS LOGIC ---
+        const finalFare     = res.data.final_fare   > 0 ? res.data.final_fare   : (activeRide.estimated_fare || 0);
         const cashToCollect = res.data.cash_to_collect || 0;
-        toast.success(
-          cashToCollect > 0
-            ? `Collect ?${cashToCollect.toFixed(2)} cash from passenger`
-            : "Ride complete! No cash needed.",
-          { duration: 8000 }
-        );
 
-        const riderName = activeRide.rider_name || activeRide.driver_info?.rider_name || "Passenger";
-        setRateRideId(activeRide.id);
-        setRateRiderName(riderName);
-        setCompletedRide({ ...res.data, final_fare: res.data.final_fare || activeRide.estimated_fare });
-        
-        // Cleanup state
+        if (cashToCollect > 0) {
+          toast.success(`Trip done! Collect exactly ₾${cashToCollect.toFixed(2)} CASH.`, { duration: 8000 });
+        } else {
+          toast.success("Trip done! No cash to collect.");
+        }
+
+        setCompletedRide({ ...res.data, final_fare: finalFare });
         setActiveRide(null);
-        setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null); 
-        setIsWaitingAtStop(false); setMidTripWaiting(false); setMidTripWaitStart(null); 
-        setMidTripWaitSecs(0); setMidTripWaitBanked(0); setLiveFare(null);
-        window.__distanceTraveled = 0; window.__lastGpsPoint = null; window.__activeRideStatus = null;
-        
-        fetchRideHistory(); await refreshUser();
+        setDistanceTraveled(0);
+        setWaitTimer(0);
+        setArrivedTime(null);
+        setRideStartTime(null);
+        setIsWaitingAtStop(false);
+
+        fetchRideHistory();
+        await refreshUser();
         return;
       }
+
+      // For non-complete actions, refresh the ride state
       if (action !== "complete") {
         const r = await api.get(`/rides/${activeRide.id}`);
         setActiveRide(r.data);
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Action failed");
-    } finally { setLoading(false); }
-  };
-
-  const handleCancelRide = async () => {
-    if (!activeRide || !cancelReason) return;
-    setLoading(true);
-    try {
-      await api.post(`/rides/${activeRide.id}/cancel`, { reason: cancelReason });
-      toast.success("Ride cancelled");
-      
-      // FULL CLEANUP: Added the mid-trip and live fare resets so they don't bleed into the next ride
-      setActiveRide(null);
-      setDistanceTraveled(0); setWaitTimer(0); setArrivedTime(null); setRideStartTime(null);
-      setIsWaitingAtStop(false); setMidTripWaiting(false); setMidTripWaitStart(null); 
-      setMidTripWaitSecs(0); setMidTripWaitBanked(0); setLiveFare(null);
-      
-      setShowCancelModal(false); setCancelReason("");
-      fetchRideHistory(); fetchAvailableRides();
-    } catch (_) { 
-      toast.error("Failed to cancel"); 
-    } finally { 
-      setLoading(false); 
+    } finally {
+      setLoading(false);
     }
   };
 
-  const [preferredRadius, setPreferredRadius] = React.useState(2);
-
-  const updateRadius = async (r) => {
-    setPreferredRadius(r);
-    try { await api.post("/driver/preferred-radius?radius=" + r); } catch(e) {}
+  const handleCancelRide = async () => {
+    if (!activeRide || !selectedCancelReason) return;
+    setLoading(true);
+    try {
+      await api.post(`/rides/${activeRide.id}/cancel`, { reason: selectedCancelReason, stage: activeRide.status });
+      toast.success("Ride cancelled");
+      setActiveRide(null); setDistanceTraveled(0); setWaitTimer(0);
+      setArrivedTime(null); setRideStartTime(null);
+      setShowCancelModal(false); setSelectedCancelReason("");
+      fetchRideHistory(); fetchAvailableRides();
+    } catch (_) {
+      toast.error("Failed to cancel ride");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleToggleOnline = async (online) => {
@@ -2390,8 +979,8 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
       await api.post(`/driver/status?is_online=${online}`);
       setIsOnline(online);
       updateUser({ ...user, is_online: online });
-      toast.success(online ? "You're online" : "You're offline");
-    } catch (_) { toast.error("Failed to update status"); }
+      toast.success(online ? "You are now Online" : "You are now Offline");
+    } catch (_) { toast.error("Status update failed"); }
   };
 
   const handleRegisterVehicle = async (e) => {
@@ -2399,940 +988,900 @@ const [totalStopMinutes, setTotalStopMinutes] = useState(0);
     setLoading(true);
     try {
       const fd = new FormData();
-      ["car_make","car_model","car_year","car_color","license_plate"].forEach(k =>
-        fd.append(k, k === "car_year" ? parseInt(vehicleData[k]) : vehicleData[k])
-      );
-      fd.append("vehicle_tier", vehicleTier);
+      fd.append("car_make",      vehicleData.car_make);
+      fd.append("car_model",     vehicleData.car_model);
+      fd.append("car_year",      parseInt(vehicleData.car_year));
+      fd.append("car_color",     vehicleData.car_color);
+      fd.append("license_plate", vehicleData.license_plate);
       ["license_front","license_back","reg_front","reg_back","car_photo_front","car_photo_back","car_photo_left","car_photo_right"]
         .forEach(k => { if (vehicleData[k]) fd.append(k, vehicleData[k]); });
+
       const res = await api.post("/driver/vehicle", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      const tierLabel = { economy: "Economy", comfort: "Comfort", suv: "SUV / XL", jumpstart: "Jumpstart", personal: "Personal" };
-      const detectedTier = res.data?.tier || "economy";
-      toast.success("Documents submitted! Vehicle classified as: " + (tierLabel[detectedTier] || detectedTier));
+      toast.success("Documents submitted for review!");
       updateUser({ ...user, driver_info: { ...user.driver_info, vehicle: vehicleData }, registration_status: "pending_review" });
-    } catch (_) { toast.error("Upload failed. Please try again."); }
+    } catch (_) {
+      toast.error("Upload failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // BUG FIX: Added null/NaN guard on estimatedFare + use constant
+  const handleAcceptRide = async (rideId, estimatedFare) => {
+    if (!estimatedFare || isNaN(estimatedFare)) {
+      toast.error("Invalid ride fare"); return;
+    }
+    const commission = estimatedFare * DRIVER_COMMISSION_RATE;
+    if (balance < commission) {
+      toast.error(`Insufficient balance. Need ₾${commission.toFixed(2)} for this ride.`); return;
+    }
+    setLoading(true);
+    try {
+      await api.post(`/rides/${rideId}/accept`);
+      toast.success("Ride accepted!");
+      const r = await api.get(`/rides/${rideId}`);
+      setActiveRide(r.data);
+      setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
+      setDistanceTraveled(0);
+    } catch (_) { toast.error("Failed to accept ride"); }
     finally { setLoading(false); }
   };
 
-  // Listen for ACCEPT_RIDE message from service worker notification action
-  React.useEffect(() => {
-    const handleSWMessage = (event) => {
-      if (event.data && event.data.type === "ACCEPT_RIDE" && event.data.ride_id) {
-        handleAcceptRide(event.data.ride_id);
-      }
-    };
-    navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", handleSWMessage);
-    // Also handle URL param ?accept=rideId when opened from notification
-    const params = new URLSearchParams(window.location.search);
-    const acceptId = params.get("accept");
-    if (acceptId) {
-      setTimeout(() => handleAcceptRide(acceptId), 1500);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-    return () => {
-      navigator.serviceWorker && navigator.serviceWorker.removeEventListener("message", handleSWMessage);
-    };
-  }, []);
-
-  const handleAcceptRide = async (rideId) => {
-  setLoading(true);
-  try {
-    await api.post(`/rides/${rideId}/accept`);
-    toast.success("Ride accepted!");
-
-    const r = await api.get(`/rides/${rideId}`);
-    setActiveRide(r.data);
-    setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
-    setDistanceTraveled(0);
-
-  } catch (error) {
-    // THIS IS THE MONEY LINE
-    console.error("DEBUG ACCEPT ERROR:", error.response?.data);
-    
-    const backendMessage = error.response?.data?.message || "Failed to accept";
-    toast.error(backendMessage);
-
-    // If it's a 400, the ride is likely dead/gone. Remove it from view.
-    if (error.response?.status === 400) {
-       setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
-    }
-  } finally {
-    setLoading(false);
-  }
-};
-
   const handleDeclineRide = async (rideId) => {
-    try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(prev => prev.filter(r => r.id !== rideId)); }
+    try { await api.post(`/rides/${rideId}/decline`); setAvailableRides(prev => prev.filter(r => r.id !== rideId)); toast.info("Declined"); }
     catch (_) {}
   };
 
-  const toggleMidTripWait = async () => {
-    if (!midTripWaiting) {
-      // Start
-      setMidTripWaiting(true);
-      setMidTripWaitStart(Date.now());
-      setMidTripWaitSecs(0);
-      try { await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=start`); } catch (_) {}
-      const rate = PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50;
-      toast.success(`Wait timer started ? ?${rate.toFixed(2)}/min`);
-    } else {
-      // Stop ? ask backend to bank the time and recalc fare
-      setMidTripWaiting(false);
-      try {
-        const res = await api.post(`/rides/${activeRide.id}/mid-trip-wait?action=stop`);
-        const banked = res.data.accumulated_minutes || 0;
-        const newFare = res.data.new_estimated_fare;
-        setMidTripWaitBanked(banked);
-        setMidTripWaitSecs(0);
-        setMidTripWaitStart(null);
-        if (newFare != null) {
-          setLiveFare(newFare);
-          setActiveRide(prev => ({ ...prev, estimated_fare: newFare }));
-        }
-        const min = Math.floor(banked);
-        const sec = Math.round((banked - min) * 60);
-        toast.success(`Wait saved: ${min}m ${sec}s ? resuming trip`);
-      } catch (_) {
-        setMidTripWaitBanked(prev => prev + midTripWaitSecs / 60);
-        setMidTripWaitSecs(0);
-        setMidTripWaitStart(null);
-      }
-    }
-  };
-
-  const addStopMidTrip = async () => {
-    if (!newStopAddress.lat) { toast.error("Select a valid stop location"); return; }
-    try {
-      const res = await api.post(
-        `/rides/${activeRide.id}/add-stop?stop_address=${encodeURIComponent(newStopAddress.address)}&stop_lat=${newStopAddress.lat}&stop_lng=${newStopAddress.lng}`
-      );
-      setActiveRide(prev => ({ ...prev, stops: res.data.stops, estimated_fare: res.data.new_estimated_fare }));
-      setLiveFare(res.data.new_estimated_fare);
-      setShowAddStop(false);
-      setNewStopAddress({ address: "", lat: null, lng: null });
-      toast.success(`Stop added ? new fare ?${res.data.new_estimated_fare.toFixed(2)}`);
-    } catch (err) { toast.error(err.response?.data?.detail || "Failed to add stop"); }
-  };
-
-  const handleAddStopAtCurrentLocation = async () => {
-    // 1. Open the UI area immediately
-    setShowAddStop(true);
-
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported");
-      return;
-    }
-
-    // 2. Get high-accuracy GPS coordinates
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      const { latitude, longitude } = position.coords;
-
-      try {
-        // 3. Turn coordinates into a real address using your Google Key
-        const response = await fetch(
-          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}`
-        );
-        const data = await response.json();
-
-        if (data.results && data.results[0]) {
-          const address = data.results[0].formatted_address;
-          
-          // 4. Update the input automatically
-          setNewStopAddress({
-            address: address,
-            lat: latitude,
-            lng: longitude
-          });
-          toast.success("Location captured!");
-        }
-      } catch (error) {
-        console.error("Geocoding failed", error);
-        toast.error("Could not find address");
-      }
-    }, (err) => {
-      toast.error("Please enable GPS permissions");
-    }, { enableHighAccuracy: true });
+  const handleRequestToJoin = async (rideId) => {
+    setLoading(true);
+    try { await api.post(`/rides/${rideId}/request-join`); toast.success("Join requested!"); fetchAvailableRides(); }
+    catch (_) {} finally { setLoading(false); }
   };
 
   const toggleStopWait = async () => {
     try {
-      const next = !isWaitingAtStop;
-      await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=${next}`);
-      setIsWaitingAtStop(next);
-      toast.success(next ? "Stop wait started" : "Stop wait paused");
-    } catch (_) {}
+      const newStatus = !isWaitingAtStop;
+      await api.post(`/rides/${activeRide.id}/toggle-stop-wait?is_waiting=${newStatus}`);
+      setIsWaitingAtStop(newStatus);
+      toast.success(newStatus ? "Stop wait timer started" : "Stop wait timer paused");
+    } catch (_) { toast.error("Failed to update wait status"); }
   };
 
-  const tabs = [
-    { id: "rides",    icon: Activity,  label: t("rides")   },
-    { id: "nearby",   icon: Crosshair, label: t("nearby")  },
-    { id: "earnings", icon: Wallet,    label: t("wallet")  },
-    { id: "history",  icon: History,   label: t("history") },
-    { id: "more",     icon: Settings,  label: t("more")    },
-  ];
-
-  const rideStatusConfig = {
-    accepted:    { color: "#60a5fa", label: "Heading to Pickup" },
-    arrived:     { color: "#a78bfa", label: "Waiting for Passenger" },
-    in_progress: { color: "#00ff88", label: "Ride In Progress" },
+  // ==========================================================================
+  // Helpers
+  // ==========================================================================
+  const statusColors = {
+    pending_vehicle: "bg-yellow-500 text-black", pending_review: "bg-orange-500 text-black",
+    approved: "bg-[#00ff88] text-black", rejected: "bg-red-500 text-white",
   };
-  const rsc = rideStatusConfig[activeRide?.status] || {};
+  const rideStatusColors = {
+    searching: "bg-yellow-500 text-black", accepted: "bg-blue-500 text-white",
+    arrived: "bg-purple-500 text-white",   in_progress: "bg-[#00ff88] text-black",
+    completed: "bg-green-600 text-white",  cancelled: "bg-red-500 text-white",
+  };
 
-  const waitDisplayMin = Math.floor(waitTimer);
-  const waitDisplaySec = Math.round((waitTimer - waitDisplayMin) * 60);
-
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
   return (
-  <div className="fixed inset-0 bg-[#07070f] font-sans text-white overflow-hidden" key={_renderKey}>
-      {/* MAP */}
+    <div className="fixed inset-0 w-full h-full bg-black font-sans text-white overflow-hidden flex flex-col">
+
+      {/* MAP BACKGROUND */}
       <div className="absolute inset-0 z-0">
-        <Drivermap activeRide={activeRide} driverLocation={driverLocation} />
-        {!mapsLoaded && (
-          <div className="w-full h-full bg-gradient-to-b from-[#07070f] to-[#0e0e1c] flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-[#00ff88]/40" />
+        {mapsLoaded && <DriverSmartMap activeRide={activeRide} driverLocation={driverLocation} />}
+      </div>
+
+      {/* HEADER */}
+      <div className="absolute top-0 left-0 right-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+        <header className="bg-black/90 backdrop-blur-xl border-b border-[#00d4ff]/30 p-3 sm:p-4">
+          <div className="container mx-auto flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] flex items-center justify-center">
+                <Car className="w-5 h-5 text-black" />
+              </div>
+              <div>
+                <p className="text-[#00d4ff] font-semibold">{user?.name} {user?.surname}</p>
+                <div className="flex items-center space-x-2">
+                  <Badge className={statusColors[registrationStatus] || "bg-gray-500"}>
+                    {registrationStatus?.replace(/_/g, " ").toUpperCase()}
+                  </Badge>
+                  <span className="text-[#00ff88] text-sm font-bold">₾{balance.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Online/Offline toggle — always visible for approved drivers */}
+              {registrationStatus === "approved" && (
+                <button
+                  onClick={() => handleToggleOnline(!isOnline)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-bold transition-all shrink-0 ${
+                    isOnline
+                      ? "bg-[#00ff88]/20 border-[#00ff88] text-[#00ff88]"
+                      : "bg-gray-800 border-gray-600 text-gray-400"
+                  }`}>
+                  <span className={`w-2 h-2 rounded-full ${isOnline ? "bg-[#00ff88]" : "bg-gray-500"}`} />
+                  {isOnline ? "Online" : "Offline"}
+                </button>
+              )}
+              {/* Home — always visible */}
+              <Button variant="ghost" size="icon"
+                className="text-[#00d4ff] shrink-0 w-9 h-9"
+                onClick={() => navigate("/")}>
+                <Home className="w-4 h-4" />
+              </Button>
+              {/* Logout — always visible, never hidden */}
+              <Button variant="ghost" size="icon"
+                className="text-red-400 hover:text-red-300 hover:bg-red-500/10 shrink-0 w-9 h-9"
+                onClick={logout}>
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        {isOnline && driverLocation && (
+          <div className="bg-black/80 backdrop-blur-md border-b border-[#00ff88]/20 px-4 py-2">
+            <div className="container mx-auto flex items-center text-xs text-[#00ff88]">
+              <Crosshair className="w-3 h-3 mr-2 animate-pulse" />
+              Tracking active • {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
+              {driverLocation.speed != null && (
+                <span className="ml-2">• {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* HEADER */}
-      {/* HEADER */}
-      <header className="absolute top-0 left-0 right-0 z-50 bg-[#07070f]/85 backdrop-blur-2xl border-b border-white/6">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00ff88] to-[#00d4ff] flex items-center justify-center">
-              <Car className="w-5 h-5 text-black" />
-            </div>
-            <div>
-              <p className="text-white font-semibold text-sm leading-tight">{user?.name} {user?.surname}</p>
-              <div className="flex items-center gap-2">
-                <StatusBadge status={registrationStatus} />
-                {user?.rating && <span className="text-yellow-400 text-xs">⭐⭐ {user.rating?.toFixed(1)}</span>}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <SurgeIndicator location={driverLocation} />
-            <div className="bg-[#00ff88]/10 border border-[#00ff88]/25 rounded-lg px-2.5 py-1.5">
-              <span className="text-[#00ff88] font-bold font-mono text-sm">GEL {balance.toFixed(2)}</span>
-            </div>
-
-            {registrationStatus === "approved" && (
-              <button onClick={() => handleToggleOnline(!isOnline)}
-                className={`relative w-14 h-7 rounded-full transition-colors duration-300 border ${isOnline ? "bg-[#00ff88]/25 border-[#00ff88]/50" : "bg-white/8 border-white/15"}`}>
-                <div className={`absolute top-0.5 w-6 h-6 rounded-full transition-transform duration-300 shadow-lg ${isOnline ? "translate-x-7 bg-[#00ff88]" : "translate-x-0.5 bg-white/40"}`} />
-              </button>
-            )}
-            {isOnline && (
-              <div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 8px",background:"rgba(0,255,136,0.05)",borderRadius:8,border:"1px solid rgba(0,255,136,0.15)"}}>
-                <span style={{color:"rgba(255,255,255,0.4)",fontSize:10,whiteSpace:"nowrap"}}>{preferredRadius}km</span>
-                <input type="range" min="1" max="15" step="0.5" value={preferredRadius}
-                  onChange={e => updateRadius(parseFloat(e.target.value))}
-                  style={{width:60,accentColor:"#00ff88"}} />
-              </div>
-            )}
-
-            <button onClick={logout} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-red-400 transition-colors">
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {isOnline && driverLocation && (
-          <div className="px-4 pb-2 flex items-center gap-2 text-[10px] text-[#00ff88]/50">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
-            GPS Active ? {driverLocation.lat?.toFixed(5)}, {driverLocation.lng?.toFixed(5)}
-            {driverLocation.speed != null && <span> ? {(driverLocation.speed * 3.6).toFixed(0)} km/h</span>}
-          </div>
-        )}
-      </header>
-
-      {/* ACTIVE RIDE PILL (minimized) */}
-      {activeRide && isMinimized && (
-        <button onClick={() => setIsMinimized(false)}
-          className="absolute top-20 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full border backdrop-blur-xl shadow-2xl transition-all"
-          style={{ background: `${rsc.color}18`, borderColor: `${rsc.color}40` }}>
-          <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: rsc.color }} />
-          <span className="text-sm font-semibold" style={{ color: rsc.color }}>{rsc.label}</span>
-          <ChevronUp className="w-4 h-4" style={{ color: rsc.color }} />
-        </button>
-      )}
-
       {/* BOTTOM SHEET */}
-      <div className={`absolute bottom-0 left-0 right-0 z-40 transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMinimized && activeRide ? "translate-y-[calc(100%-0px)]" : "translate-y-0"}`}>
-        <div className="bg-[#0a0a18]/95 backdrop-blur-3xl border-t border-white/8 rounded-t-3xl overflow-hidden shadow-[0_-20px_60px_rgba(0,0,0,0.8)]"
-          style={{ maxHeight: "72vh" }}>
-
-          <div className="flex justify-center pt-3 pb-1 cursor-pointer" onClick={() => setIsMinimized(p => !p)} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-            <div className="w-12 h-1 bg-white/15 rounded-full" />
-          </div>
-
-          {!activeRide && (
-            <div className="flex items-center gap-1 px-3 pb-2 pt-1 border-b border-white/5">
-              {tabs.map(({ id, icon: Icon, label }) => (
-                <button key={id} onClick={() => { setActiveTab(id); if (id === "nearby") fetchNearbyRides(); }}
-                  className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl transition-all ${activeTab === id ? "bg-[#00ff88]/12 text-[#00ff88]" : "text-white/30 hover:text-white/60"}`}>
-                  <Icon className="w-4 h-4" />
-                  <span className="text-[9px] uppercase tracking-wider font-bold">{label}</span>
-                </button>
-              ))}
+      <div className="absolute bottom-0 left-0 right-0 z-40 w-full flex justify-center pointer-events-none p-2 pb-4 sm:p-4 sm:pb-6">
+        <div
+          className={`pointer-events-auto w-full max-w-2xl bg-black/90 backdrop-blur-2xl border border-white/10 shadow-[0_-15px_40px_rgba(0,0,0,0.8)] rounded-3xl flex flex-col overflow-hidden transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+            isMinimized && activeRide ? "translate-y-[calc(100%-3rem)]" : "translate-y-0"
+          }`}
+          style={{ maxHeight: "75vh" }}
+        >
+          {/* Drag handle */}
+          {activeRide && (
+            <div
+              className="w-full flex justify-center items-center h-12 shrink-0 cursor-pointer bg-white/5 active:bg-white/10"
+              onClick={() => setIsMinimized(p => !p)}
+              onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}
+            >
+              <div className="w-16 h-1.5 bg-gray-500 rounded-full" />
             </div>
           )}
 
-          <div className="overflow-y-auto px-4 pb-6 pt-3" style={{ maxHeight: activeRide ? "65vh" : "calc(72vh - 80px)" }}>
+          <div className="overflow-y-auto p-3 pb-4 flex-1">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
 
-            {/* ACTIVE RIDE */}
-            {activeRide && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white font-bold text-lg">Active Ride</p>
-                    <p className="text-white/40 text-xs">
-                      {activeRide.carType || activeRide.car_type} ? {PRICING_RULES[(activeRide.carType || activeRide.car_type)?.toLowerCase()]?.icon || "??"}
-                    </p>
-                  </div>
-                  <StatusBadge status={activeRide.status} />
-                </div>
-
-                <GlassCard className="p-4 space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#00ff88] mt-1 shrink-0" />
-                    <div>
-                      <p className="text-white/40 text-[10px] uppercase tracking-wider">Pickup</p>
-                      <p className="text-white text-sm font-medium">{activeRide.pickup}</p>
-                    </div>
-                  </div>
-                  {activeRide.stops?.filter(s => s.lat).length > 0 && (
-                    <div className="flex items-start gap-3">
-                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 mt-1 shrink-0" />
-                      <div>
-                        <p className="text-yellow-400/60 text-[10px] uppercase tracking-wider">Stops ({activeRide.stops.length})</p>
-                        {activeRide.stops.filter(s => s.lat).map((s, i) => <p key={i} className="text-white/70 text-xs">? {s.address}</p>)}
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-start gap-3">
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#00d4ff] mt-1 shrink-0" />
-                    <div>
-                      <p className="text-[#00d4ff]/60 text-[10px] uppercase tracking-wider">Destination</p>
-                      <p className="text-white text-sm font-medium">{activeRide.destination || "Open Trip"}</p>
-                    </div>
-                  </div>
-                </GlassCard>
-
-                {activeRide.status === "arrived" && (
-                  <DriverWaitTimer 
-  arrivedAt={activeRide.arrived_at} 
-  carType={activeRide.carType || activeRide.car_type} 
-  // This uses the setWaitTimer function that ALREADY exists in your file
-  onUpdate={(data) => setWaitTimer(data.minutes)} 
-/>
-                )}
-                {activeRide.status === "in_progress" && (
-                  <GlassCard accent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[#00ff88]">
-                      <Activity className="w-5 h-5 animate-pulse" />
-                      <span className="font-medium text-sm">{t("distance_traveled")}</span>
-                    </div>
-                    <span className="text-[#00ff88] font-bold font-mono text-2xl">{distanceTraveled.toFixed(2)} km</span>
-                  </GlassCard>
-                )}
-
-                {/* -- Live Fare Card ------------------------------- */}
-                <div className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${midTripWaiting ? "bg-amber-500/10 border-amber-500/30 animate-pulse" : "bg-gradient-to-r from-[#00ff88]/10 to-[#00d4ff]/10 border-[#00ff88]/20"}`}>
-                  <div>
-                    <span className="text-white/60 text-sm">
-                      {midTripWaiting ? t("wait_charge_running") : t("current_fare")}
-                    </span>
-                    {midTripWaiting && (
-                      <p className="text-amber-400 text-xs mt-0.5 font-mono">
-                        +{String(Math.floor(midTripWaitSecs / 60)).padStart(2,"0")}:{String(midTripWaitSecs % 60).padStart(2,"0")} ? GEL {((midTripWaitBanked + midTripWaitSecs / 60) * (PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50)).toFixed(2)} wait fee
-                      </p>
-                    )}
-                  </div>
-                  <span className={`text-2xl font-bold font-mono transition-colors ${midTripWaiting ? "text-amber-400" : "text-[#00ff88]"}`}>
-                    GEL {(liveFare ?? activeRide.final_fare ?? activeRide.estimated_fare)?.toFixed(2) ?? "?"}
-                  </span>
-                </div>
-
-                {/* -- Mid-trip Wait Timer --------------------------- */}
-                {activeRide.status === "in_progress" && (
-                  <button onClick={toggleMidTripWait}
-                    className={`w-full h-12 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                      midTripWaiting
-                        ? "bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-[0_0_16px_rgba(245,158,11,0.3)]"
-                        : "bg-white/5 border-white/15 text-white/60 hover:border-amber-500/40 hover:text-amber-400"
-                    }`}>
-                    {midTripWaiting
-                      ? <><Timer className="w-4 h-4 animate-spin" /> Stop waiting ? resume trip</>
-                      : <><PauseCircle className="w-4 h-4" /> Start wait timer (GEL {(PRICING_RULES[(activeRide?.carType || activeRide?.car_type || "economy").toLowerCase()]?.perMinWait || 0.50).toFixed(2)}/min)</>
-                    }
-                  </button>
-                )}
-
-                {/* -- Add Stop Mid-Trip ----------------------------- */}
-                {activeRide.status === "in_progress" && (
-                  <button onClick={handleAddStopAtCurrentLocation}
-                    className="w-full h-11 rounded-xl border border-white/10 bg-white/4 text-white/50 text-sm font-semibold flex items-center justify-center gap-2 hover:border-[#00d4ff]/40 hover:text-[#00d4ff] transition-all active:scale-95">
-                    <Plus className="w-4 h-4" /> Add stop to route
-                  </button>
-                )}
-                {/* -- Add Stop Mid-Trip ----------------------------- */}
-                {activeRide.status === "in_progress" && !showAddStop && (
-                  <button onClick={() => setShowAddStop(true)}
-                    className="w-full h-11 rounded-xl border border-white/10 bg-white/4 text-white/50 text-sm font-semibold flex items-center justify-center gap-2 hover:border-[#00d4ff]/40 hover:text-[#00d4ff] transition-all active:scale-95">
-                    <Plus className="w-4 h-4" /> Add stop to route
-                  </button>
-                )}
-                
-                {showAddStop && activeRide.status === "in_progress" && (
-                  <div className="bg-white/4 border border-[#00d4ff]/20 rounded-2xl p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[#00d4ff] text-xs font-bold uppercase tracking-wider">New Stop</p>
-                      
-                      {/* ??? FIXED: Now uses YOUR existing function */}
-                      <button 
-                        onClick={handleAddStopAtCurrentLocation} 
-                        className="flex items-center gap-1.5 bg-[#00d4ff]/15 text-[#00d4ff] px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#00d4ff]/25 transition-all"
-                      >
-                        <MapPin className="w-3 h-3" /> Use My Location
-                      </button>
-                    </div>
-                    
-                    <AddStopInput value={newStopAddress} onChange={setNewStopAddress} mapsLoaded={mapsLoaded} />
-                    
-                    <div className="flex gap-2">
-                      <button onClick={() => { setShowAddStop(false); setNewStopAddress({ address: "", lat: null, lng: null }); }}
-                        className="flex-1 h-10 rounded-xl border border-white/10 text-white/40 text-sm hover:bg-white/5 transition-all">
-                        Cancel
-                      </button>
-                      <button onClick={addStopMidTrip} disabled={!newStopAddress.lat}
-                        className="flex-1 h-10 rounded-xl bg-[#00d4ff] text-black font-bold text-sm disabled:opacity-40 active:scale-95 transition-all">
-                        Confirm Stop
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                
-
-                <RideCommunication
-                  rideId={activeRide.id}
-                  otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone}
-                  otherPartyName={activeRide.rider_name || "Rider"}
-                  currentUserId={user?.id}
-                  isDriver={true}
-                />
-
-                <div className="flex gap-3">
-                  {activeRide.status === "accepted" && (
-                    <Button className="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold h-14 text-base" onClick={() => handleRideAction("arrived")} disabled={loading}>
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <MapPin className="w-5 h-5 mr-2" />} I've Arrived
-                    </Button>
-                  )}
-                  {activeRide.status === "arrived" && (
-                    <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold h-14 text-base" onClick={() => handleRideAction("start")} disabled={loading}>
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Play className="w-5 h-5 mr-2" />} Start Ride
-                    </Button>
-                  )}
-                  {activeRide.status === "in_progress" && (
-                    <Button className="flex-1 bg-[#00ff88] hover:bg-[#00e070] text-black font-bold h-14 text-base" onClick={() => handleRideAction("complete")} disabled={loading}>
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />} Complete
-                    </Button>
-                  )}
-                  <button onClick={() => setShowCancelModal(true)}
-                    className="w-14 h-14 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
-                    <XCircle className="w-6 h-6" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* RIDES TAB */}
-            {!activeRide && activeTab === "rides" && (
-              <div>
-                {registrationStatus !== "approved" ? (
-                  <div className="text-center py-10">
-                    <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
-                    <p className="text-white font-semibold">Account Pending Review</p>
-                    <p className="text-white/40 text-sm mt-1">We'll notify you once approved</p>
-                  </div>
-                ) : !isOnline ? (
-                  <div className="text-center py-10">
-                    <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-3">
-                      <Activity className="w-8 h-8 text-white/20" />
-                    </div>
-                    <p className="text-white font-semibold">You're Offline</p>
-                    <p className="text-white/40 text-sm mb-4 mt-1">Toggle online to receive rides</p>
-                    <Button className="bg-[#00ff88] text-black font-bold px-8 h-12" onClick={() => handleToggleOnline(true)}>
-                      Go Online
-                    </Button>
-                  </div>
-                ) : availableRides.length === 0 ? (
-                  <div className="text-center py-10">
-                    <div className="w-16 h-16 rounded-2xl bg-[#00d4ff]/5 flex items-center justify-center mx-auto mb-3">
-                      <Navigation className="w-8 h-8 text-[#00d4ff]/40 animate-pulse" />
-                    </div>
-                    <p className="text-white font-semibold">{t("searching_for_rides")}</p>
-                    <p className="text-white/30 text-sm mt-1">{t("new_requests_will_appear")}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-white/30 text-[10px] uppercase tracking-widest">{availableRides.length} available {availableRides.length === 1 ? "ride" : "rides"}</p>
-                    {availableRides.map(ride => {
-                      const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
-                      const driverCut = (ride.estimated_fare || 0) * (1 - DRIVER_COMMISSION_RATE);
-                      const canAccept = balance >= commission && !!ride.estimated_fare;
-                      const tier = PRICING_RULES[ride.car_type?.toLowerCase()] || PRICING_RULES.economy;
-                      return (
-                        <GlassCard key={ride.id} className="p-4">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1 pr-3">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span>{tier.icon}</span>
-                                <span className="text-white/40 text-xs uppercase tracking-wider">{tier.name}</span>
-                                {ride.surge_multiplier > 1 && (
-                                  <span className="text-orange-400 text-xs font-bold bg-orange-500/15 rounded px-1.5">{ride.surge_multiplier}x</span>
-                                )}
-                              </div>
-                              <p className="text-white font-medium text-sm leading-tight">{ride.pickup}</p>
-                              <p className="text-white/40 text-xs mt-0.5 flex items-center gap-1">
-                                <ArrowRight className="w-3 h-3" /> {ride.destination || "Open Trip"}
-                              </p>
-                              {ride.distance_to_pickup != null && (
-                                <p className="text-[#00d4ff] text-xs mt-1">?? {ride.distance_to_pickup} km away</p>
-                              )}
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-2xl font-bold font-mono text-[#00ff88]">GEL {ride.estimated_fare?.toFixed(2)}</p>
-                              <p className="text-white/40 text-xs">you get GEL {driverCut.toFixed(2)}</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button className="flex-1 bg-[#00ff88] text-black font-bold h-11" disabled={loading || !canAccept}
-                              onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}>
-                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : canAccept ? "Accept Ride" : `Need ?${commission.toFixed(2)}`}
-                            </Button>
-                            <button onClick={() => handleDeclineRide(ride.id)}
-                              className="w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors">
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </GlassCard>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* NEARBY TAB */}
-            {!activeRide && activeTab === "nearby" && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-white/30 text-[10px] uppercase tracking-widest">{t("within_10km")}</p>
-                  <button onClick={fetchNearbyRides} className="text-[#00d4ff] text-xs flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Refresh</button>
-                </div>
-                {nearbyRides.length === 0 ? (
-                  <div className="text-center py-8 text-white/30">
-                    <MapPinned className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>{t("no_rides_nearby")}</p>
-                  </div>
-                ) : nearbyRides.map(ride => (
-                  <GlassCard key={ride.id} className="p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="text-white font-medium text-sm">{ride.pickup}</p>
-                        <p className="text-white/40 text-xs">? {ride.destination || "Open"}</p>
-                        <p className="text-[#00d4ff] text-xs mt-1">?? {ride.distance_to_pickup?.toFixed(1)} km</p>
-                      </div>
-                      <p className="text-[#00ff88] font-bold font-mono">GEL {ride.estimated_fare?.toFixed(2)}</p>
-                    </div>
-                    <Button className="w-full bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] font-bold h-10 text-sm"
-                      onClick={async () => {
-                        setLoading(true);
-                        try { await api.post(`/rides/${ride.id}/request-join`); toast.success("Requested!"); fetchNearbyRides(); }
-                        catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
-                        finally { setLoading(false); }
-                      }}>
-                      Request to Accept
-                    </Button>
-                  </GlassCard>
-                ))}
-              </div>
-            )}
-
-            {/* EARNINGS TAB */}
-            {!activeRide && activeTab === "earnings" && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <GlassCard accent className="p-4 text-center">
-                    <p className="text-[#00ff88]/50 text-[10px] uppercase tracking-widest mb-1">Balance</p>
-                    <p className="text-3xl font-bold font-mono text-[#00ff88]">GEL {balance.toFixed(2)}</p>
-                    {remainingBonus > 0 && (
-                      <p className="text-amber-400 text-[10px] mt-1">🎁 GEL {remainingBonus.toFixed(2)} signup bonus (commission only)</p>
-                    )}
-                  </GlassCard>
-                  <GlassCard className="p-4 text-center">
-                    <p className="text-white/40 text-[10px] uppercase tracking-widest mb-1">Total Earned</p>
-                    <p className="text-3xl font-bold font-mono text-white">GEL {totalEarned.toFixed(2)}</p>
-                  </GlassCard>
-                  <StatPill label={t("commission_paid")} value={`GEL ${commissionPaid.toFixed(2)}`} color="text-red-400" />
-                  <StatPill label={t("withdrawn")} value={`GEL ${totalWithdrawn.toFixed(2)}`} color="text-white/60" />
-                </div>
-
-                <div className="flex gap-2">
-                  {[ ["overview", t("overview")], ["competition", "🏆🏆  Competition"], ["topup", t("top_up")], ["withdraw", t("withdraw")] ].map(([k,l]) => (
-                    <button key={k} onClick={() => setEarningsTab(k)}
-                      className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${earningsTab === k ? "bg-[#00ff88]/15 border-[#00ff88]/40 text-[#00ff88]" : "border-white/10 text-white/30 hover:text-white/60"}`}>
-                      {l}
-                    </button>
+              {!activeRide && (
+                <TabsList className="grid grid-cols-6 bg-black/50 border border-[#00d4ff]/20 mb-4 rounded-xl">
+                  {[
+                    ["rides",   "Rides",   Activity],
+                    ["nearby",  "Nearby",  Crosshair],
+                    ["vehicle", "Vehicle", Car],
+                    ["fleet",   "Fleet",   Building2],
+                    ["earnings","Earn",    Wallet],
+                    ["history", "History", History],
+                  ].map(([val, label, Icon]) => (
+                    <TabsTrigger key={val} value={val}
+                      onClick={val === "nearby" ? fetchNearbyRides : val === "fleet" ? fetchFleet : undefined}
+                      className="text-[10px] sm:text-sm px-1">
+                      <Icon className="w-3.5 h-3.5 sm:mr-1" /><span className="hidden sm:inline">{label}</span>
+                    </TabsTrigger>
                   ))}
-                </div>
+                </TabsList>
+              )}
 
-                {earningsTab === "overview" && (
-                  <GlassCard className="p-4 space-y-3">
-                    <p className="text-white/40 text-[10px] uppercase tracking-widest">Commission Breakdown</p>
-                    {[
-                      [t("platform_cut"), `${(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%`, "text-red-400"],
-                      [t("your_share"),   `${((1-DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%`, "text-[#00ff88]"],
-                      [t("surge_commission"), "23-24%", "text-orange-400"],
-                    ].map(([l,v,c]) => (
-                      <div key={l} className="flex justify-between items-center">
-                        <span className="text-white/60 text-sm">{l}</span>
-                        <span className={`font-mono font-bold ${c}`}>{v}</span>
+              {/* -------------------------------------------------------------- */}
+              {/* RIDES TAB                                                        */}
+              {/* -------------------------------------------------------------- */}
+              <TabsContent value="rides" className="m-0">
+                {activeRide ? (
+                  <Card className="bg-transparent border-none shadow-none">
+                    <CardHeader className="px-2 pt-0 pb-3">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-[#00ff88] font-bold text-lg">Active Ride</h3>
+                        <Badge className={rideStatusColors[activeRide.status]}>
+                          {activeRide.status?.replace(/_/g, " ").toUpperCase()}
+                        </Badge>
                       </div>
-                    ))}
-                  </GlassCard>
-                )}
-
-                {earningsTab === "competition" && (
-                  <CompetitionLeaderboard driverId={user?.id} />
-                )}
-                {earningsTab === "topup" && (
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label className="text-white/60 text-xs uppercase tracking-wider">Amount (GEL)</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold">?</span>
-                        <Input type="number" min="5" max="500" value={topupAmount} onChange={e => setTopupAmount(e.target.value)}
-                          placeholder="50" className="pl-7 bg-white/4 border-white/10 text-white text-lg h-12 font-mono" />
-                      </div>
-                      <p className="text-white/30 text-xs">
-                        ? ${topupAmount && !isNaN(parseFloat(topupAmount)) ? (parseFloat(topupAmount) * 0.37).toFixed(2) : "0.00"} USD
-                      </p>
-                    </div>
-
-                    {topupAmount && parseFloat(topupAmount) >= 5 ? (
-                      <PayPalButtons
-                        fundingSource="card"
-                        style={{ layout: "vertical", shape: "rect", color: "black" }}
-                        createOrder={(data, actions) => actions.order.create({
-                          purchase_units: [{ amount: { value: (parseFloat(topupAmount) * 0.37).toFixed(2), currency_code: "USD" } }],
-                          application_context: { shipping_preference: "NO_SHIPPING" },
-                        })}
-                        onApprove={async (data, actions) => {
-                          try {
-                            setLoading(true);
-                            await actions.order.capture();
-                            await api.post("/driver/wallet/topup/paypal", { order_id: data.orderID, amount: parseFloat(topupAmount) });
-                            toast.success(`?${topupAmount} added!`);
-                            setTopupAmount(""); setEarningsTab("overview");
-                            await refreshUser();
-                          } catch (_) { toast.error("Top-up failed. Contact support."); }
-                          finally { setLoading(false); }
-                        }}
-                        onError={() => toast.error("Payment failed.")}
-                        onCancel={() => toast.info("Payment cancelled.")}
-                      />
-                    ) : (
-                      <GlassCard className="p-4 text-center">
-                        <p className="text-white/30 text-sm">Enter ?5 or more to show payment options</p>
-                      </GlassCard>
-                    )}
-
-                    <Separator className="bg-white/5" />
-
-                    <div className="space-y-2">
-                      <p className="text-white/30 text-[10px] uppercase tracking-widest">Manual Top-up via Bank Transfer</p>
-                      <GlassCard className="p-4">
-                        <p className="text-white/60 text-sm mb-3">Transfer to our BOG account, then submit your reference number below for manual processing.</p>
-                        <a href="https://egreve.bog.ge//Taksi" target="_blank" rel="noreferrer"
-                          className="flex items-center justify-center gap-2 w-full h-10 rounded-xl bg-[#00d4ff]/15 border border-[#00d4ff]/30 text-[#00d4ff] font-bold text-sm">
-                          <ExternalLink className="w-4 h-4" /> Open BOG Payment Page
-                        </a>
-                      </GlassCard>
-                    </div>
-                  </div>
-                )}
-
-                {earningsTab === "withdraw" && (
-                  <WithdrawalPanel balance={balance} driverId={user?.id} onSuccess={async () => { setEarningsTab("overview"); await refreshUser(); }} />
-                )}
-              </div>
-            )}
-
-            {/* HISTORY TAB */}
-            {!activeRide && activeTab === "history" && (
-              <div className="space-y-3">
-                {rideHistory.length === 0 ? (
-                  <div className="text-center py-10 text-white/30">
-                    <History className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>{t("no_completed_rides")}</p>
-                  </div>
-                ) : rideHistory.map(r => (
-                  <GlassCard key={r.id} className="p-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1 pr-3">
-                        <p className="text-white text-sm font-medium truncate">{r.pickup}</p>
-                        {r.destination && <p className="text-white/40 text-xs truncate">? {r.destination}</p>}
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <StatusBadge status={r.status} />
-                          <span className="text-white/25 text-[10px]">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "?"}</span>
+                    </CardHeader>
+                    <CardContent className="space-y-4 text-white px-2 pb-2">
+                      {/* Trip addresses */}
+                      <div className="bg-black/50 rounded-xl p-4 border border-[#00ff88]/20 space-y-3">
+                        <div className="flex items-start">
+                          <MapPin className="w-5 h-5 text-[#00ff88] mr-2 mt-0.5" />
+                          <div><p className="text-[#00ff88]/60 text-xs">PICKUP</p><p className="font-medium">{activeRide.pickup}</p></div>
+                        </div>
+                        {activeRide.stops?.filter(s => s.lat && s.lng).length > 0 && (
+                          <div className="flex items-start">
+                            <MapPinned className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" />
+                            <div>
+                              <p className="text-yellow-400/60 text-xs">STOPS</p>
+                              {activeRide.stops.map((s, i) => <p key={i} className="text-sm">• {s.address}</p>)}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-start">
+                          <Navigation className="w-5 h-5 text-[#00d4ff] mr-2 mt-0.5" />
+                          <div><p className="text-[#00d4ff]/60 text-xs">DESTINATION</p><p className="font-medium">{activeRide.destination || "Open Trip"}</p></div>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-[#00ff88] font-bold font-mono">
-                          GEL {r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : (r.estimated_fare?.toFixed(2) ?? "?")}
-                        </p>
-                        <p className="text-white/30 text-xs capitalize">{r.carType || r.car_type || "?"}</p>
+
+                      {/* Wait / distance indicators */}
+                      {(activeRide.status === "arrived" || activeRide.status === "in_progress") && (
+                        <div className="grid grid-cols-2 gap-4">
+                          {activeRide.status === "arrived" && (
+                            <DriverWaitTimer arrivedAt={activeRide.arrived_at} carType={activeRide.carType || activeRide.car_type} />
+                          )}
+                          {activeRide.status === "in_progress" && (
+                            <div className="bg-[#00ff88]/20 border border-[#00ff88] rounded-xl p-4 text-center col-span-2">
+                              <Activity className="w-6 h-6 mx-auto text-[#00ff88] mb-1" />
+                              <p className="text-2xl font-bold text-[#00ff88]">{distanceTraveled.toFixed(2)} km</p>
+                              <p className="text-xs text-[#00ff88]/70">Traveled</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Fare */}
+                      <div className="flex justify-between items-center bg-[#00ff88]/10 rounded-xl p-4">
+                        <span className="text-[#00ff88]">Fare</span>
+                        <span className="text-2xl font-bold text-[#00ff88]">
+                          ₾{(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2) ?? "—"}
+                        </span>
+                      </div>
+
+                      {/* Communication */}
+                      <RideCommunication
+                        rideId={activeRide.id}
+                        otherPartyPhone={activeRide.rider_phone || activeRide.rider?.cellphone}
+                        otherPartyName={activeRide.rider_name || "Rider"}
+                        currentUserId={user?.id}
+                        isDriver={true}
+                      />
+
+                      {/* Action buttons */}
+                      <div className="flex flex-col gap-3 pt-2">
+                        {/* Stop wait toggle */}
+                        {activeRide.status === "in_progress" && activeRide.stops?.some(s => s.lat && s.lng) && (
+                          <Button
+                            onClick={toggleStopWait}
+                            variant={isWaitingAtStop ? "destructive" : "outline"}
+                            className="w-full h-12 font-bold bg-black border-white/20 text-white"
+                          >
+                            {isWaitingAtStop
+                              ? <><Timer className="mr-2 animate-spin" /> Finish Waiting at Stop</>
+                              : <><PauseCircle className="mr-2 text-yellow-400" /> Start Stop Wait</>}
+                          </Button>
+                        )}
+
+                        <div className="flex gap-3">
+                          <div className="flex-1">
+                            {activeRide.status === "accepted" && (
+                              <Button className="w-full bg-purple-500 text-white h-14 text-lg font-bold"
+                                onClick={() => handleRideAction("arrived")} disabled={loading}>
+                                <MapPin className="w-5 h-5 mr-2" /> I've Arrived
+                              </Button>
+                            )}
+                            {activeRide.status === "arrived" && (
+                              <Button className="w-full bg-blue-500 text-white h-14 text-lg font-bold"
+                                onClick={() => handleRideAction("start")} disabled={loading}>
+                                <Play className="w-5 h-5 mr-2" /> Start Trip
+                              </Button>
+                            )}
+                            {activeRide.status === "in_progress" && (
+                              <Button className="w-full bg-[#00ff88] text-black h-14 text-lg font-bold"
+                                onClick={() => handleRideAction("complete")} disabled={loading}>
+                                <CheckCircle2 className="w-5 h-5 mr-2" /> Complete Trip
+                              </Button>
+                            )}
+                          </div>
+                          <Button variant="destructive"
+                            className="h-14 w-14 bg-red-500/20 border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+                            onClick={() => setShowCancelModal(true)} disabled={loading}>
+                            <XCircle className="w-6 h-6" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  registrationStatus !== "approved" ? (
+                    <div className="text-center py-12">
+                      <AlertTriangle className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
+                      <p className="text-yellow-400 font-semibold">Account Pending Review</p>
+                    </div>
+                  ) : !isOnline ? (
+                    <div className="text-center py-12">
+                      <Activity className="w-16 h-16 mx-auto text-gray-500 mb-4" />
+                      <p className="text-gray-400 mb-4">You are offline</p>
+                      <Button className="bg-[#00ff88] text-black font-bold h-12 px-8" onClick={() => handleToggleOnline(true)}>
+                        Go Online
+                      </Button>
+                    </div>
+                  ) : availableRides.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Navigation className="w-16 h-16 mx-auto text-[#00d4ff]/50 mb-4 animate-pulse" />
+                      <p className="text-[#00d4ff]/70">Searching for rides...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {availableRides.map(ride => {
+                        const commission = (ride.estimated_fare || 0) * DRIVER_COMMISSION_RATE;
+                        const canAccept  = balance >= commission && !!ride.estimated_fare;
+                        return (
+                          <Card key={ride.id} className="bg-black/60 border border-[#00ff88]/30">
+                            <CardContent className="p-4 text-white">
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="flex-1 pr-2">
+                                  <p className="text-[#00ff88] font-semibold text-sm truncate">{ride.pickup}</p>
+                                  <p className="text-[#00d4ff]/70 text-xs truncate">→ {ride.destination || "Open"}</p>
+                                  {ride.car_type && (
+                                    <p className="text-gray-400 text-xs mt-1 capitalize">{ride.car_type} • {PRICING_RULES[ride.car_type]?.icon}</p>
+                                  )}
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-2xl font-bold text-[#00ff88]">₾{ride.estimated_fare?.toFixed(2)}</p>
+                                  <p className="text-gray-400 text-xs">Your cut: ₾{((ride.estimated_fare || 0) * (1 - DRIVER_COMMISSION_RATE)).toFixed(2)}</p>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button className="flex-1 bg-[#00ff88] text-black font-bold h-12"
+                                  onClick={() => handleAcceptRide(ride.id, ride.estimated_fare)}
+                                  disabled={loading || !canAccept}>
+                                  {canAccept ? "Accept" : `Need ₾${commission.toFixed(2)}`}
+                                </Button>
+                                <Button variant="outline" className="border-red-500 text-red-500 h-12 w-12"
+                                  onClick={() => handleDeclineRide(ride.id)}>
+                                  <XCircle className="w-5 h-5" />
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+              </TabsContent>
+
+              {/* -------------------------------------------------------------- */}
+              {/* NEARBY TAB                                                       */}
+              {/* -------------------------------------------------------------- */}
+              <TabsContent value="nearby">
+                <div className="space-y-4">
+                  <div className="flex justify-end mb-2">
+                    <Button size="sm" variant="outline" onClick={fetchNearbyRides} className="text-white border-white/20 hover:bg-white/10">
+                      Refresh
+                    </Button>
+                  </div>
+                  {nearbyRides.length === 0 && <p className="text-center text-gray-400 py-8">No nearby rides found</p>}
+                  {nearbyRides.map(ride => (
+                    <Card key={ride.id} className="bg-black/60 border border-[#00d4ff]/30">
+                      <CardContent className="p-4 text-white">
+                        <p className="text-[#00ff88]">{ride.pickup}</p>
+                        <p className="text-[#00d4ff]">→ {ride.destination}</p>
+                        <Button className="w-full mt-2 bg-[#00d4ff] text-black font-bold"
+                          onClick={() => handleRequestToJoin(ride.id)}>
+                          Request to Accept
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+
+              {/* -------------------------------------------------------------- */}
+              {/* VEHICLE TAB                                                      */}
+              {/* -------------------------------------------------------------- */}
+              <TabsContent value="vehicle">
+                <div className="space-y-4">
+                  <h3 className="text-[#00d4ff] font-bold text-lg">Vehicle Registration</h3>
+                  {hasVehicle ? (
+                    <div className="p-6 bg-black/50 rounded-xl border border-[#00ff88]/30 text-center">
+                      <CheckCircle2 className="w-12 h-12 text-[#00ff88] mx-auto mb-2" />
+                      <p className="text-lg font-bold">Documents Under Review</p>
+                      <p className="text-xl font-mono text-[#00ff88] mt-2">
+                        {user?.driver_info?.vehicle?.license_plate || "—"}
+                      </p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleRegisterVehicle} className="space-y-6">
+                      <div className="space-y-3">
+                        <h4 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">Vehicle Details</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[["car_make","Make","text","Toyota"],["car_model","Model","text","Camry"],["car_year","Year","number","2018"],["car_color","Color","text","Silver"]].map(([key,label,type,placeholder]) => (
+                            <div key={key} className="space-y-1">
+                              <Label className="text-gray-400 text-xs">{label}</Label>
+                              <Input required type={type} placeholder={placeholder}
+                                value={vehicleData[key]} onChange={e => setVehicleData({ ...vehicleData, [key]: e.target.value })}
+                                className="bg-black/50 text-white border-[#00d4ff]/30" />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-gray-400 text-xs">License Plate</Label>
+                          <Input required placeholder="AB-123-CD" value={vehicleData.license_plate}
+                            onChange={e => setVehicleData({ ...vehicleData, license_plate: e.target.value.toUpperCase() })}
+                            className="bg-black/50 text-white border-[#00d4ff]/30 uppercase font-mono" />
+                        </div>
+                      </div>
+
+                      {[
+                        ["Driver's License", [["license_front","Front"],["license_back","Back"]]],
+                        ["Vehicle Registration", [["reg_front","Front"],["reg_back","Back"]]],
+                        ["Car Photos", [["car_photo_front","Front"],["car_photo_back","Back"],["car_photo_left","Left"],["car_photo_right","Right"]]],
+                      ].map(([sectionTitle, fields]) => (
+                        <div key={sectionTitle} className="space-y-3">
+                          <h4 className="text-[#00ff88] font-bold border-b border-[#00ff88]/20 pb-1">{sectionTitle}</h4>
+                          <div className="grid grid-cols-2 gap-3">
+                            {fields.map(([key, label]) => (
+                              <div key={key} className="space-y-1">
+                                <Label className="text-gray-400 text-xs">{label}</Label>
+                                <Input required type="file" accept="image/*"
+                                  onChange={e => setVehicleData({ ...vehicleData, [key]: e.target.files[0] })}
+                                  className="bg-black/50 text-white border-[#00d4ff]/30 file:bg-[#00d4ff] file:text-black" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+
+                      <Button type="submit" disabled={loading}
+                        className="w-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold h-12 mt-4">
+                        {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
+                        Submit Documents
+                      </Button>
+                    </form>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* -------------------------------------------------------------- */}
+              {/* EARNINGS TAB — with Top Up + Withdraw sub-tabs                  */}
+              {/* -------------------------------------------------------------- */}
+              <TabsContent value="earnings">
+                <div className="space-y-4">
+                  {/* Stats overview */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-xl p-3 text-center">
+                      <p className="text-[#00ff88]/60 text-[10px] uppercase font-bold mb-1">Balance</p>
+                      <p className="text-xl font-bold text-[#00ff88]">₾{balance.toFixed(2)}</p>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
+                      <p className="text-gray-400 text-[10px] uppercase font-bold mb-1">Total Earned</p>
+                      <p className="text-xl font-bold text-white">₾{totalEarned.toFixed(2)}</p>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
+                      <p className="text-gray-400 text-[10px] uppercase font-bold mb-1">Withdrawn</p>
+                      <p className="text-xl font-bold text-white">₾{totalWithdrawn.toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  {/* Sub-tab switcher */}
+                  <div className="flex gap-2">
+                    {[["overview","Overview"],["topup","Top Up"],["withdraw","Withdraw"]].map(([key, label]) => (
+                      <button key={key} onClick={() => setEarningsTab(key)}
+                        className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all border ${
+                          earningsTab === key
+                            ? "bg-[#00ff88]/20 border-[#00ff88] text-[#00ff88]"
+                            : "border-white/10 text-gray-400 hover:border-white/30"
+                        }`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Overview */}
+                  {earningsTab === "overview" && (
+                    <div className="space-y-3">
+                      <div className="bg-black/50 border border-white/10 rounded-xl p-4 space-y-3">
+                        <p className="text-gray-400 text-xs uppercase font-bold">Commission Rate</p>
+                        <div className="flex justify-between">
+                          <span className="text-white">Platform commission</span>
+                          <span className="text-red-400 font-mono">{(DRIVER_COMMISSION_RATE * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white">Your share</span>
+                          <span className="text-[#00ff88] font-mono">{((1 - DRIVER_COMMISSION_RATE) * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button className="flex-1 bg-[#00ff88] text-black font-bold" onClick={() => setEarningsTab("topup")}>
+                          <Plus className="w-4 h-4 mr-2" /> Top Up
+                        </Button>
+                        <Button className="flex-1 bg-white/10 text-white border border-white/20 font-bold" onClick={() => setEarningsTab("withdraw")}>
+                          <Banknote className="w-4 h-4 mr-2" /> Withdraw
+                        </Button>
                       </div>
                     </div>
-                  </GlassCard>
-                ))}
-              </div>
-            )}
+                  )}
 
-            {/* MORE TAB */}
-            {!activeRide && activeTab === "more" && (
-              <MorePanel
-                registrationStatus={registrationStatus}
-                driverRating={user?.rating}
-                activeRide={activeRide}
-                driverLocation={driverLocation}
-              />
-            )}
+                  {/* Top Up via PayPal */}
+                  {earningsTab === "topup" && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label className="text-gray-300">Amount to Add (GEL)</Label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00ff88] font-bold text-lg">₾</span>
+                          <Input
+                            type="number" min="5" max="500" step="1"
+                            value={topupAmount} onChange={e => setTopupAmount(e.target.value)}
+                            placeholder="50" className="pl-8 bg-black/50 border-[#00ff88]/30 text-white text-lg h-12"
+                          />
+                        </div>
+                        <p className="text-gray-500 text-xs">Equivalent: ${topupAmount ? (parseFloat(topupAmount) * 0.37).toFixed(2) : "0.00"} USD</p>
+                      </div>
 
+                      {topupAmount && parseFloat(topupAmount) >= 5 ? (
+                        <PayPalButtons
+                          fundingSource="card"
+                          style={{ layout: "vertical", shape: "rect" }}
+                          createOrder={(data, actions) =>
+                            actions.order.create({
+                              purchase_units: [{
+                                amount: {
+                                  value: (parseFloat(topupAmount) * 0.37).toFixed(2),
+                                  currency_code: "USD",
+                                },
+                              }],
+                              application_context: { shipping_preference: "NO_SHIPPING" },
+                            })
+                          }
+                          onApprove={async (data, actions) => {
+                            try {
+                              setLoading(true);
+                              await actions.order.capture();
+                              await api.post("/driver/wallet/topup/paypal", {
+                                order_id: data.orderID,
+                                amount: parseFloat(topupAmount),
+                              });
+                              toast.success(`₾${topupAmount} added to your wallet!`);
+                              setTopupAmount("");
+                              setEarningsTab("overview");
+                              await refreshUser();
+                            } catch (_) {
+                              toast.error("Top-up failed. Contact support.");
+                            } finally {
+                              setLoading(false);
+                            }
+                          }}
+                          onError={(err) => { console.error("PayPal error:", err); toast.error("Payment failed."); }}
+                          onCancel={() => toast.info("Payment cancelled.")}
+                        />
+                      ) : (
+                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 text-center">
+                          <p className="text-yellow-400 text-sm">Enter ₾5 or more to show payment options</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Withdrawal — rendered from the WithdrawalPanel component */}
+                  {earningsTab === "withdraw" && (
+                    <WithdrawalPanel
+                      balance={balance}
+                      driverId={user?.id}
+                      onSuccess={async () => {
+                        setEarningsTab("overview");
+                        await refreshUser();
+                      }}
+                    />
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* -------------------------------------------------------------- */}
+              {/* FLEET TAB                                                         */}
+              {/* -------------------------------------------------------------- */}
+              <TabsContent value="fleet">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[#00d4ff] font-bold text-base">My Fleet</h3>
+                    <Button size="sm" onClick={() => setShowAddFleet(p => !p)}
+                      className="bg-[#00ff88] text-black font-bold h-8 px-3 text-xs">
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Vehicle
+                    </Button>
+                  </div>
+
+                  {/* Add vehicle form */}
+                  {showAddFleet && (
+                    <form onSubmit={handleAddFleetVehicle}
+                      className="bg-black/50 border border-[#00ff88]/30 rounded-xl p-4 space-y-3">
+                      <p className="text-[#00ff88] text-xs font-bold uppercase mb-2">New Fleet Vehicle</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          ["car_make",  "Make",        "text",   "Toyota"],
+                          ["car_model", "Model",       "text",   "Camry"],
+                          ["car_year",  "Year",        "number", "2018"],
+                          ["car_color", "Color",       "text",   "Silver"],
+                        ].map(([key, label, type, ph]) => (
+                          <div key={key} className="space-y-1">
+                            <Label className="text-gray-400 text-[10px]">{label}</Label>
+                            <Input required type={type} placeholder={ph}
+                              value={newVehicle[key]}
+                              onChange={e => setNewVehicle(p => ({ ...p, [key]: e.target.value }))}
+                              className="bg-black/60 text-white border-[#00d4ff]/30 h-9 text-sm" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-gray-400 text-[10px]">License Plate</Label>
+                        <Input required placeholder="AB-123-CD"
+                          value={newVehicle.license_plate}
+                          onChange={e => setNewVehicle(p => ({ ...p, license_plate: e.target.value.toUpperCase() }))}
+                          className="bg-black/60 text-white border-[#00d4ff]/30 h-9 font-mono uppercase text-sm" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-gray-400 text-[10px]">Driver Name</Label>
+                          <Input required placeholder="Full name"
+                            value={newVehicle.driver_name}
+                            onChange={e => setNewVehicle(p => ({ ...p, driver_name: e.target.value }))}
+                            className="bg-black/60 text-white border-[#00d4ff]/30 h-9 text-sm" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-gray-400 text-[10px]">Driver Phone</Label>
+                          <Input required placeholder="+995 5XX…"
+                            value={newVehicle.driver_phone}
+                            onChange={e => setNewVehicle(p => ({ ...p, driver_phone: e.target.value }))}
+                            className="bg-black/60 text-white border-[#00d4ff]/30 h-9 text-sm" />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-gray-400 text-[10px]">Vehicle Class</Label>
+                        <select
+                          value={newVehicle.car_type}
+                          onChange={e => setNewVehicle(p => ({ ...p, car_type: e.target.value }))}
+                          className="w-full h-9 bg-black/60 text-white border border-[#00d4ff]/30 rounded-md px-2 text-sm">
+                          {Object.entries(PRICING_RULES).map(([k, v]) => (
+                            <option key={k} value={k}>{v.icon} {v.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button type="button" variant="ghost" onClick={() => setShowAddFleet(false)}
+                          className="flex-1 text-gray-400 border border-gray-700 h-9 text-sm">Cancel</Button>
+                        <Button type="submit" disabled={fleetLoading}
+                          className="flex-1 bg-[#00ff88] text-black font-bold h-9 text-sm">
+                          {fleetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Vehicle"}
+                        </Button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Fleet list */}
+                  {fleetVehicles.length === 0 && !showAddFleet && (
+                    <div className="text-center py-8">
+                      <Building2 className="w-12 h-12 mx-auto text-gray-600 mb-3" />
+                      <p className="text-gray-400 text-sm">No fleet vehicles yet</p>
+                      <p className="text-gray-600 text-xs mt-1">Add vehicles driven by your employees</p>
+                    </div>
+                  )}
+                  {fleetVehicles.map(v => (
+                    <div key={v.id} className="bg-black/50 border border-[#00d4ff]/20 rounded-xl p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="text-white font-mono font-bold tracking-wider text-sm">{v.license_plate}</p>
+                          <p className="text-gray-400 text-xs">{v.car_color} {v.car_make} {v.car_model} {v.car_year}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-[#00ff88]/10 text-[#00ff88] border-[#00ff88]/30 text-[10px]">
+                            {PRICING_RULES[v.car_type]?.icon} {v.car_type}
+                          </Badge>
+                          <button onClick={() => handleRemoveFleetVehicle(v.id)}
+                            className="text-red-400/60 hover:text-red-400 transition-colors">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <User className="w-3 h-3" />
+                        <span>{v.driver_name}</span>
+                        {v.driver_phone && <><span>•</span><span>{v.driver_phone}</span></>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+
+              {/* -------------------------------------------------------------- */}
+              {/* HISTORY TAB                                                      */}
+              {/* -------------------------------------------------------------- */}
+              <TabsContent value="history">
+                <ScrollArea className="h-[500px]">
+                  <div className="space-y-2 pr-2">
+                    {rideHistory.length === 0 && <p className="text-gray-400 text-center py-6">No rides yet.</p>}
+                    {rideHistory.map(r => (
+                      <div key={r.id} className="bg-black/50 border border-[#00d4ff]/20 rounded-xl overflow-hidden">
+                        {/* Summary row */}
+                        <div className="p-3 flex items-center justify-between cursor-pointer hover:bg-white/5"
+                          onClick={() => setSelectedTrip(selectedTrip?.id === r.id ? null : r)}>
+                          <div className="flex-1 min-w-0 pr-2">
+                            <p className="text-white text-sm font-medium truncate">{r.pickup}</p>
+                            <p className="text-gray-500 text-xs truncate">→ {r.destination || "Open"}</p>
+                            <p className="text-gray-600 text-[10px] mt-0.5">
+                              {r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}
+                              {r.carType && ` • ${r.carType}`}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                            <p className="text-[#00ff88] font-bold tabular-nums">
+                              ₾{r.final_fare != null ? parseFloat(r.final_fare).toFixed(2) : "—"}
+                            </p>
+                            {selectedTrip?.id === r.id
+                              ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                              : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                          </div>
+                        </div>
+
+                        {/* Expanded detail */}
+                        {selectedTrip?.id === r.id && (
+                          <div className="border-t border-white/5 px-3 pb-3 space-y-2">
+                            <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
+                              <div className="bg-black/40 rounded-lg p-2">
+                                <p className="text-gray-500 mb-0.5">Payment</p>
+                                <p className="text-white capitalize">{r.payment_method || r.paymentMethod || "cash"}</p>
+                              </div>
+                              <div className="bg-black/40 rounded-lg p-2">
+                                <p className="text-gray-500 mb-0.5">Status</p>
+                                <p className="text-white capitalize">{r.status || "—"}</p>
+                              </div>
+                              {r.final_distance && (
+                                <div className="bg-black/40 rounded-lg p-2">
+                                  <p className="text-gray-500 mb-0.5">Distance</p>
+                                  <p className="text-white">{parseFloat(r.final_distance).toFixed(2)} km</p>
+                                </div>
+                              )}
+                              {r.cash_to_collect != null && (
+                                <div className="bg-black/40 rounded-lg p-2">
+                                  <p className="text-gray-500 mb-0.5">Cash Collected</p>
+                                  <p className="text-white">₾{parseFloat(r.cash_to_collect).toFixed(2)}</p>
+                                </div>
+                              )}
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenDispute(r)}
+                              className="w-full h-8 bg-orange-500/20 border border-orange-500/50 text-orange-400 hover:bg-orange-500/30 text-xs"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
+                              Report Issue / Dispute Fare
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+
+            </Tabs>
           </div>
         </div>
       </div>
 
-      {/* Vehicle registration modal */}
-      {registrationStatus === "pending_vehicle" && !hasVehicle && (
-        <div className="absolute inset-0 z-[60] bg-[#07070f]/96 backdrop-blur-2xl flex items-end">
-          <div className="w-full bg-[#0a0a18] border-t border-white/8 rounded-t-3xl p-5 max-h-[90vh] overflow-y-auto">
-            <div className="text-center mb-5">
-              <div className="w-14 h-14 rounded-2xl bg-[#00ff88]/10 flex items-center justify-center mx-auto mb-3">
-                <Car className="w-7 h-7 text-[#00ff88]" />
-              </div>
-              <h2 className="text-xl font-bold text-white">Register Your Vehicle</h2>
-              <p className="text-white/40 text-sm mt-1">To start driving, submit your documents for review</p>
-            </div>
-            <form onSubmit={handleRegisterVehicle} className="space-y-4">
-              <GlassCard className="p-4 space-y-3">
-                <p className="text-white/40 text-[10px] uppercase tracking-widest">Vehicle Details</p>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {[["car_make","Make","Toyota"],["car_model","Model","Camry"],["car_year","Year","2018","number"],["car_color","Color","Silver"]].map(([k,l,p,t="text"]) => (
-                    <div key={k} className="space-y-1">
-                      <Label className="text-white/40 text-[11px]">{l}</Label>
-                      <Input required type={t} placeholder={p} value={vehicleData[k]}
-                        onChange={e => setVehicleData({ ...vehicleData, [k]: e.target.value })}
-                        className="bg-white/4 border-white/10 text-white h-9 text-sm placeholder:text-white/20" />
-                    </div>
-                  ))}
-                  <div className="col-span-2 space-y-1">
-                    <Label className="text-white/40 text-[11px]">Vehicle Class</Label>
-                    <div className="grid grid-cols-3 gap-2 mb-1">
-                      {[["economy","Economy","Standard"],["comfort","Comfort","Premium"],["suv","SUV / XL","Large"]].map(([val,label,desc]) => (
-                        <button key={val} type="button" onClick={() => setVehicleTier(val)}
-                          className={"p-2.5 rounded-xl border-2 text-left transition-all " + (vehicleTier === val ? "border-[#00ff88] bg-[#00ff88]/10" : "border-white/10 bg-white/3")}>
-                          <div className={"text-xs font-bold " + (vehicleTier === val ? "text-[#00ff88]" : "text-white")}>{label}</div>
-                          <div className="text-white/40 text-[10px]">{desc}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <Label className="text-white/40 text-[11px]">License Plate</Label>
-                    <Input required placeholder="AB-123-CD" value={vehicleData.license_plate}
-                      onChange={e => setVehicleData({ ...vehicleData, license_plate: e.target.value.toUpperCase() })}
-                      className="bg-white/4 border-white/10 text-white h-9 font-mono uppercase placeholder:normal-case placeholder:text-white/20" />
-                  </div>
-                </div>
-              </GlassCard>
-
-              {[
-                ["Driver's License", [["license_front","Front"],["license_back","Back"]]],
-                ["Registration Card", [["reg_front","Front"],["reg_back","Back"]]],
-                ["Car Photos", [["car_photo_front","Front"],["car_photo_back","Back"],["car_photo_left","Left"],["car_photo_right","Right"]]],
-              ].map(([title, fields]) => (
-                <GlassCard key={title} className="p-4 space-y-3">
-                  <p className="text-white/40 text-[10px] uppercase tracking-widest">{title}</p>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {fields.map(([k, l]) => (
-                      <div key={k} className="space-y-1">
-                        <Label className="text-white/40 text-[11px]">{l} {vehicleData[k] && <span className="text-[#00ff88]">?</span>}</Label>
-                        <input required type="file" accept="image/*" onChange={e => setVehicleData({ ...vehicleData, [k]: e.target.files[0] })}
-                          className="w-full bg-white/4 border border-white/10 text-white rounded-lg p-2 text-xs file:bg-[#00ff88]/15 file:text-[#00ff88] file:border-0 file:rounded file:px-2 file:py-0.5 file:text-xs file:font-bold file:mr-2" />
-                      </div>
-                    ))}
-                  </div>
-                </GlassCard>
-              ))}
-
-              <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#00d4ff] to-[#00ff88] text-black font-bold text-base">
-                {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />} Submit Documents for Review
-              </Button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* CANCEL MODAL */}
+      {/* -------------------------------------------------------------------- */}
+      {/* CANCEL MODAL                                                          */}
+      {/* -------------------------------------------------------------------- */}
       <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
-        <DialogContent className="bg-[#0e0e1c] border border-white/10 text-white max-w-sm w-[95vw] rounded-2xl z-[100]">
+        <DialogContent
+          aria-describedby="cancel-desc"
+          className="bg-[#1a1a2e] border border-red-500/50 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]"
+        >
           <DialogHeader>
-            <DialogTitle className="text-red-400 flex items-center gap-2">
+            <DialogTitle className="text-red-500 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5" /> Cancel Ride
             </DialogTitle>
-            <DialogDescription className="text-white/50 text-sm">
-              Select a reason. Unjustified cancellations may affect your score.
+            <DialogDescription id="cancel-desc" className="text-gray-400">
+              Select a reason.{" "}
+              <span className="text-red-400 font-bold block mt-1">
+                Warning: Unjustified cancellations may affect your score.
+              </span>
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 my-2 max-h-64 overflow-y-auto">
-            {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map(reason => (
-              <div key={reason} onClick={() => setCancelReason(reason)}
-                className={`p-3 rounded-xl border cursor-pointer transition-all ${cancelReason === reason ? "bg-red-500/15 border-red-500/40 text-red-400" : "border-white/8 text-white/60 hover:border-white/20"}`}>
-                <p className="text-sm font-medium">{reason}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-3">
-            <Button variant="ghost" onClick={() => setShowCancelModal(false)} className="flex-1 border border-white/10 text-white/50 h-11">Back</Button>
-            <Button onClick={handleCancelRide} disabled={!cancelReason || loading} className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-11">
+          <ScrollArea className="max-h-[300px] pr-4">
+            <div className="grid gap-2 py-4">
+              {(CANCEL_REASONS[activeRide?.status] || CANCEL_REASONS.accepted).map(reason => (
+                <div key={reason} onClick={() => setSelectedCancelReason(reason)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                    selectedCancelReason === reason
+                      ? "bg-red-500 text-white border-red-500"
+                      : "bg-black/40 border-gray-700 hover:border-red-500/50 hover:bg-red-500/10"
+                  }`}>
+                  <p className="font-medium text-sm">{reason}</p>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+          <div className="flex gap-2 mt-2">
+            <Button variant="ghost" onClick={() => setShowCancelModal(false)}
+              className="flex-1 text-gray-400 border border-gray-700 h-12">Back</Button>
+            <Button variant="destructive" onClick={handleCancelRide}
+              disabled={!selectedCancelReason || loading}
+              className="flex-1 bg-red-600 hover:bg-red-700 font-bold h-12">
               Confirm Cancel
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* RATE PASSENGER MODAL */}
-      <Dialog open={showRateModal} onOpenChange={setShowRateModal}>
-        <DialogContent className="bg-[#0e0e1c] border border-white/10 text-white max-w-sm w-[95vw] rounded-2xl z-[100]">
-          <DialogHeader>
-            <DialogTitle className="text-[#00ff88] flex items-center gap-2">
-              <Star className="w-5 h-5" /> Rate Passenger
-            </DialogTitle>
-          </DialogHeader>
-          <RatePassengerModal rideId={rateRideId} riderName={rateRiderName} onDone={() => setShowRateModal(false)} />
-        </DialogContent>
-      </Dialog>
-
-      {/* TRIP COMPLETION MODAL */}
+      {/* -------------------------------------------------------------------- */}
+      {/* TRIP COMPLETION MODAL                                                 */}
+      {/* -------------------------------------------------------------------- */}
       <DriverTripCompletionModal
         isOpen={!!completedRide}
-        onClose={() => {
-          setCompletedRide(null);
-          setShowRateModal(true); // ? ADD THIS: Opens rating after closing fare
-        }}
+        onClose={() => setCompletedRide(null)}
         fareAmount={completedRide?.final_fare || completedRide?.estimated_fare}
         paymentMethod={completedRide?.payment_method || completedRide?.paymentMethod || "cash"}
-        riderName={completedRide?.rider_name || "Rider"}
+        riderName={completedRide?.rider_name || completedRide?.riderName || "Rider"}
         cashToCollect={completedRide?.cash_to_collect || 0}
-        onConfirm={() => {
-          setCompletedRide(null);
-          setShowRateModal(true); // ? ADD THIS: Opens rating after confirming fare
-        }}
+        onConfirm={() => setCompletedRide(null)}
       />
 
-    </div>   
-  );         
-};           
+      {/* -------------------------------------------------------------------- */}
+      {/* DISPUTE MODAL                                                         */}
+      {/* -------------------------------------------------------------------- */}
+      <Dialog open={showDisputeModal} onOpenChange={open => { setShowDisputeModal(open); if (!open) { setDisputeMessage(""); setSelectedTrip(null); } }}>
+        <DialogContent
+          aria-describedby="dispute-desc"
+          className="bg-[#1a1a2e] border border-orange-500/50 text-white sm:max-w-md w-[95%] rounded-xl z-[10000]"
+        >
+          <DialogHeader>
+            <DialogTitle className="text-orange-400 flex items-center gap-2">
+              <MessageCircle className="w-5 h-5" /> Report Issue / Dispute
+            </DialogTitle>
+            <DialogDescription id="dispute-desc" className="text-gray-400 text-sm">
+              Describe the problem with this trip. Our admin team will review and respond.
+            </DialogDescription>
+          </DialogHeader>
 
-// =============================================================================
-// PORTAL ROUTER
-// =============================================================================
-const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
-
-if (!PAYPAL_CLIENT_ID) {
-  console.error(
-    "? VITE_PAYPAL_CLIENT_ID is not set. " +
-    "Add it to your Render frontend service environment variables and redeploy."
-  );
-}
-
-
-// Competition Leaderboard Component
-const CompetitionLeaderboard = ({ driverId }) => {
-  const [data, setData] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    api.get("/competition/leaderboard").then(r => {
-      setData(r.data);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
-
-  if (loading) return <div style={{textAlign:"center",padding:"20px",color:"rgba(255,255,255,0.3)"}}>Loading...</div>;
-  if (!data) return null;
-
-  const prizes = [150, 120, 90, 60, 30];
-  const medals = ["🏆🏆","🏆🏆 ","🏆🏆","4🏆🏆🏆 🏆","5🏆🏆🏆 🏆"];
-  const myEntry = data.leaderboard?.find(e => e.driver_id === driverId);
-  const myRank = myEntry ? data.leaderboard.indexOf(myEntry) + 1 : null;
-
-  if (!data.active) return (
-    <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:16,padding:"20px",textAlign:"center"}}>
-      <div style={{fontSize:32,marginBottom:8}}></div>
-      <div style={{color:"rgba(255,255,255,0.6)",fontWeight:600}}>Competition Break Week</div>
-      <div style={{color:"rgba(255,255,255,0.3)",fontSize:13,marginTop:4}}>Next competition starts next Monday</div>
-    </div>
-  );
-
-  return (
-    <div style={{background:"rgba(255,215,0,0.04)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:16,overflow:"hidden"}}>
-      <div style={{background:"linear-gradient(135deg,rgba(255,215,0,0.15),rgba(255,140,0,0.1))",padding:"16px",borderBottom:"1px solid rgba(255,215,0,0.2)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:28}}>🚗🚗 </span>
-          <div>
-            <div style={{color:"#ffd700",fontWeight:900,fontSize:16}}>Weekly Competition</div>
-            <div style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>Most trips this week wins</div>
-          </div>
-          <div style={{marginLeft:"auto",textAlign:"right"}}>
-            <div style={{color:"#ffd700",fontWeight:900,fontSize:13}}>1st: 150 GEL</div>
-            <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>2nd: 120 🏆🏆 3rd: 90</div>
-          </div>
-        </div>
-      </div>
-      {myEntry && (
-        <div style={{padding:"10px 16px",background:"rgba(0,255,136,0.08)",borderBottom:"1px solid rgba(0,255,136,0.15)",display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:18}}>{myRank <= 5 ? medals[myRank-1] : `#${myRank}`}</span>
-          <span style={{color:"#00ff88",fontWeight:700,fontSize:14}}>You 🚗🚗 {myEntry.trips} trips</span>
-          {myRank <= 5 && <span style={{marginLeft:"auto",color:"#ffd700",fontWeight:700}}>+{prizes[myRank-1]} GEL</span>}
-        </div>
-      )}
-      <div style={{padding:"8px 0"}}>
-        {data.leaderboard?.length === 0 && (
-          <div style={{textAlign:"center",padding:"20px",color:"rgba(255,255,255,0.3)",fontSize:13}}>No trips yet this week. Be the first!</div>
-        )}
-        {data.leaderboard?.slice(0,10).map((entry, i) => (
-          <div key={entry.driver_id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",background: entry.driver_id === driverId ? "rgba(0,255,136,0.06)" : "transparent",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-            <span style={{fontSize:20,width:28,textAlign:"center"}}>{i < 5 ? medals[i] : `${i+1}`}</span>
-            <div style={{flex:1}}>
-              <div style={{color: entry.driver_id === driverId ? "#00ff88" : "white",fontWeight:600,fontSize:14}}>{entry.name || "Driver"}</div>
-              <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>{entry.trips} trips</div>
+          {selectedTrip && (
+            <div className="bg-black/40 rounded-xl p-3 border border-white/10 text-xs space-y-1">
+              <p className="text-gray-400">Trip: <span className="text-white">{selectedTrip.pickup} → {selectedTrip.destination || "Open"}</span></p>
+              <p className="text-gray-400">Fare: <span className="text-[#00ff88] font-bold">₾{(selectedTrip.final_fare || selectedTrip.estimated_fare || 0).toFixed(2)}</span></p>
+              <p className="text-gray-400">Date: <span className="text-white">{selectedTrip.created_at ? new Date(selectedTrip.created_at).toLocaleDateString() : "—"}</span></p>
             </div>
-            {i < 5 && <div style={{color:"#ffd700",fontWeight:700,fontSize:14}}>{prizes[i]} GEL</div>}
+          )}
+
+          <div className="space-y-2 mt-1">
+            <Label className="text-gray-300 text-sm">Your Message</Label>
+            <textarea
+              value={disputeMessage}
+              onChange={e => setDisputeMessage(e.target.value)}
+              rows={6}
+              placeholder="Describe the issue in detail..."
+              className="w-full bg-black/50 border border-orange-500/30 rounded-xl p-3 text-white text-sm resize-none focus:outline-none focus:border-orange-400 placeholder:text-gray-600"
+            />
+            <p className="text-gray-600 text-xs text-right">{disputeMessage.length} chars (min 20)</p>
           </div>
-        ))}
-      </div>
+
+          <DialogFooter className="gap-2 mt-2">
+            <Button variant="ghost" onClick={() => setShowDisputeModal(false)}
+              className="flex-1 text-gray-400 border border-gray-700 h-11">
+              Cancel
+            </Button>
+            <Button onClick={handleSubmitDispute}
+              disabled={disputeMessage.trim().length < 20 || disputeLoading}
+              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold h-11">
+              {disputeLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+              Submit Dispute
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
+// =============================================================================
+// PORTAL ROUTER
+// =============================================================================
 const DriverPortal = () => {
-  const { user } = useAuth();
-  const location = useLocation();
+  const { user }   = useAuth();
+  const location   = useLocation();
 
   if (!user || user.user_type !== "driver") {
     if (location.pathname === "/driver" || location.pathname === "/driver/") return <DriverAuth />;
@@ -3340,13 +1889,7 @@ const DriverPortal = () => {
   }
 
   return (
-   <PayPalScriptProvider
-      options={{
-        "client-id": PAYPAL_CLIENT_ID || "sb",
-        currency: "USD",
-        intent: "capture"
-      }}
-    >
+    <PayPalScriptProvider options={{ "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID, currency: "USD" }}>
       <Routes>
         <Route path="/"         element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DriverDashboard />} />

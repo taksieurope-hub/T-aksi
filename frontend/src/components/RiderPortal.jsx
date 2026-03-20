@@ -1610,7 +1610,10 @@ const RiderDashboard = () => {
 
   const [activeRide,        setActiveRide]       = useState(null);
   const [rideHistory,       setRideHistory]      = useState([]);
-  const [completedRideData, setCompletedRideData] = useState(null);
+  const [completedRideData, setCompletedRideData]   = useState(null);
+  const [showDriverRating, setShowDriverRating]     = useState(false);
+  const [ratingRideId, setRatingRideId]             = useState(null);
+  const [ratingDriverName, setRatingDriverName]     = useState("");
   const [showRatingModal,   setShowRatingModal]  = useState(null);
   const [scheduledRides,    setScheduledRides]   = useState([]);
 
@@ -2857,6 +2860,71 @@ const generatePDFReceipt = (ride) => {
   win.document.write(html);
   win.document.close();
   setTimeout(() => win.print(), 500);
+};
+
+
+const DriverRatingModal = ({ isOpen, onClose, rideId, driverName }) => {
+  const [rating, setRating]             = useState(0);
+  const [hovered, setHovered]           = useState(0);
+  const [comment, setComment]           = useState("");
+  const [loading, setLoading]           = useState(false);
+  const [selectedTags, setSelectedTags] = useState([]);
+  const TAGS_POS = ["Great driver","On time","Smooth ride","Friendly","Clean car"];
+  const TAGS_NEG = ["Late arrival","Reckless driving","Unfriendly","Wrong route","Dirty car"];
+  const tags = rating >= 4 ? TAGS_POS : rating > 0 ? TAGS_NEG : TAGS_POS;
+  const toggleTag = (t) => setSelectedTags(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
+  const handleSubmit = async () => {
+    if (!rating) return;
+    setLoading(true);
+    try {
+      await api.post(`/rides/${rideId}/rate/driver`, { rating, comment, tags: selectedTags });
+      toast.success("Thanks for your feedback!"); onClose();
+    } catch { toast.error("Failed to submit rating"); } finally { setLoading(false); }
+  };
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
+      <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-white/15 rounded-full mx-auto mb-5" />
+        <div className="text-center mb-6">
+          <p className="text-white text-lg font-bold">Rate your driver</p>
+          {driverName && <p className="text-gray-400 text-sm mt-1">{driverName}</p>}
+        </div>
+        <div className="flex justify-center gap-3 mb-5">
+          {[1,2,3,4,5].map(star => (
+            <button key={star} onClick={() => setRating(star)}
+              onMouseEnter={() => setHovered(star)} onMouseLeave={() => setHovered(0)}
+              className="text-4xl transition-transform active:scale-90">
+              {star <= (hovered || rating) ? "⭐" : "☆"}
+            </button>
+          ))}
+        </div>
+        {rating > 0 && (
+          <div className="flex flex-wrap gap-2 justify-center mb-4">
+            {tags.map(tag => (
+              <button key={tag} onClick={() => toggleTag(tag)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
+                  selectedTags.includes(tag)
+                    ? rating >= 4 ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
+                                  : "bg-red-500/20 border-red-500/50 text-red-300"
+                    : "bg-white/5 border-white/10 text-gray-400"}`}>{tag}</button>
+            ))}
+          </div>
+        )}
+        <textarea value={comment} onChange={e => setComment(e.target.value)}
+          placeholder="Leave a comment (optional)" rows={2} maxLength={300}
+          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white text-sm placeholder-gray-500 outline-none resize-none mb-4" />
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 h-12 bg-white/5 border border-white/10 rounded-2xl text-gray-400 text-sm">Skip</button>
+          <button onClick={handleSubmit} disabled={!rating || loading}
+            className="flex-1 h-12 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 rounded-2xl text-black font-bold text-sm flex items-center justify-center gap-2">
+            {loading && <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
+            Submit Rating
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const RiderPortal = () => {
