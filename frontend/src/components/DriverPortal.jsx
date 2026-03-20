@@ -419,7 +419,7 @@ const WithdrawalPanel = ({ balance, driverId, onSuccess }) => {
       setAmount(""); setBankDetails("");
       onSuccess?.();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Withdrawal failed");
+      toast.error(err.response?.data?.detail || err.response?.data?.message || "Withdrawal failed. Check your balance.");
     } finally { setLoading(false); }
   };
 
