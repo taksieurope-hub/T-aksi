@@ -44,7 +44,11 @@ const PRICING_RULES = {
   jumpstart: { name: "Jumpstart", base: 4.50, perKm: 0.00, perMinWait: 0.00, freeWait: 999, stopFee: 0.00, icon: "\u26A1", desc: "Flat rate battery jump" },
 };
 
-const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0, paymentMethod = "cash", promoCode = "") => {
+const AIRPORT_KEYWORDS_FE = ["airport","aeroport","aeroporti","tbilisi international","tbilisi airport","kutaisi airport","batumi airport","tbs airport","kut airport","აეროპორტი"];
+const isAirportAddress = (addr = "") => { const a = addr.toLowerCase(); return AIRPORT_KEYWORDS_FE.some(kw => a.includes(kw)); };
+const AIRPORT_MULTIPLIER = 2.5;
+
+const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0, paymentMethod = "cash", promoCode = "", airportRide = false) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
   let subtotal = rules.base;
   subtotal += distanceKm * rules.perKm;
@@ -60,8 +64,13 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
   const serviceFee = paymentMethod === "card" ? 2.00 : 0.00;
   
   let total = subtotal + surgeFee + serviceFee;
-  
-  // ??? ADD PROMO MATH
+
+  let airportFee = 0;
+  if (airportRide) {
+    airportFee = Math.round(total * (AIRPORT_MULTIPLIER - 1.0) * 100) / 100;
+    total += airportFee;
+  }
+
   let discount = 0;
   if (promoCode.toUpperCase() === "BETA15") {
     discount = total * 0.15;
@@ -77,7 +86,9 @@ const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numSto
     surgeFee: Math.round(surgeFee * 100) / 100,
     serviceFee: parseFloat(serviceFee.toFixed(2)),
     surgeMultiplier,
-    discount: Math.round(discount * 100) / 100, // New field
+    airportRide,
+    airportFee: Math.round(airportFee * 100) / 100,
+    discount: Math.round(discount * 100) / 100,
     total: Math.round(total * 100) / 100,
   };
 };
@@ -1771,7 +1782,8 @@ const [showPromo, setShowPromo] = useState(false);
 
     useEffect(() => {
   if (!routeInfo) return;
-  setFareEstimate(calculateFare(carType, routeInfo.distance, 0, 0, validStopsCount, surgeInfo?.multiplier || 1.0, paymentMethod, promoCode));
+  const _isAirport = isAirportAddress(pickup?.address || "") || isAirportAddress(destination?.address || "");
+  setFareEstimate(calculateFare(carType, routeInfo.distance, 0, 0, validStopsCount, surgeInfo?.multiplier || 1.0, paymentMethod, promoCode, _isAirport));
   setPromoApplied(promoCode.toUpperCase() === "BETA15");
 }, [routeInfo, carType, validStopsCount, surgeInfo, paymentMethod, promoCode]); // ??? Added promoCode
 
