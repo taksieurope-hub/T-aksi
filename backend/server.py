@@ -536,7 +536,7 @@ async def _check_and_dispatch_scheduled_rides():
                 data={"type": "scheduled_ride_dispatched", "ride_id": ride_ref.id},
             )
 
-            asyncio.create_task(match_drivers_to_ride(ride_ref.id))
+            asyncio.create_task(match_scheduled_ride_persistently(ride_ref.id, snap.id))
 
             snap.reference.update({
                 "status": "dispatched",
@@ -3762,7 +3762,6 @@ async def match_drivers_to_ride(ride_id: str):
             drivers = (
                 db.collection("users")
                 .where("user_type", "==", "driver")
-                .where("is_online", "==", True)
                 .where("registration_status", "==", "approved")
                 .stream()
             )
