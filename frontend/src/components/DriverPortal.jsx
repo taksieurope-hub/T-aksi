@@ -453,21 +453,12 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       center: { lat: 41.7151, lng: 44.8271 }, zoom: 17,
       disableDefaultUI: true, zoomControl: false, gestureHandling: "greedy",
       backgroundColor: "#ffffff",
-      styles: [
-        { elementType: "geometry",              stylers: [{ color: "#f5f5f5" }] },
-        { elementType: "labels.icon",           stylers: [{ visibility: "off" }] },
-        { elementType: "labels.text.fill",      stylers: [{ color: "#616161" }] },
-        { elementType: "labels.text.stroke",    stylers: [{ color: "#f5f5f5" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-        { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#e9e9e9" }] },
-      ],
     });
     map.addListener("dragstart", () => setIsFollowing(false));
 
     routeRendererRef.current = new window.google.maps.DirectionsRenderer({
       map, suppressMarkers: false,
-      polylineOptions: { strokeColor: "#00ff88", strokeWeight: 6 },
+      polylineOptions: { strokeColor: "#0088ff", strokeWeight: 6 },
       preserveViewport: true,
     });
     directionsServiceRef.current = new window.google.maps.DirectionsService();
