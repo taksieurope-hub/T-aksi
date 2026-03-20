@@ -1045,6 +1045,32 @@ def get_surge_multiplier(lat: float = None, lng: float = None) -> dict:
     }
 
 
+
+# Airport coordinates (pickup or dropoff within 1.5km = airport ride)
+AIRPORTS = [
+    {"name": "Tbilisi International Airport", "lat": 41.6692, "lng": 44.9547},
+    {"name": "Kutaisi International Airport", "lat": 42.1767, "lng": 42.4826},
+    {"name": "Batumi International Airport", "lat": 41.6103, "lng": 41.5997},
+]
+AIRPORT_RADIUS_KM = 1.5
+AIRPORT_MULTIPLIER = 2.5
+
+def is_airport_ride(pickup_lat, pickup_lng, dest_lat, dest_lng) -> bool:
+    """Returns True if pickup OR destination is within 1.5km of any airport."""
+    points = []
+    try:
+        if pickup_lat and pickup_lng:
+            points.append((float(pickup_lat), float(pickup_lng)))
+        if dest_lat and dest_lng:
+            points.append((float(dest_lat), float(dest_lng)))
+    except (TypeError, ValueError):
+        return False
+    for pt_lat, pt_lng in points:
+        for airport in AIRPORTS:
+            if haversine_distance(pt_lat, pt_lng, airport["lat"], airport["lng"]) <= AIRPORT_RADIUS_KM:
+                return True
+    return False
+
 def calculate_fare(
     car_type: str,
     distance_km: float,
@@ -1052,6 +1078,7 @@ def calculate_fare(
     stop_wait_minutes: float = 0.0,
     num_stops: int = 0,
     surge_multiplier: float = 1.0,
+    airport_ride: bool = False,
 ) -> dict:
     rules = PRICING_RULES.get(car_type, PRICING_RULES["economy"])
 
@@ -1075,6 +1102,12 @@ def calculate_fare(
     surge_fee = subtotal * (surge_multiplier - 1.0) if surge_multiplier > 1.0 else 0.0
     total = subtotal + surge_fee
 
+    # Airport multiplier applied after surge
+    airport_fee = 0.0
+    if airport_ride:
+        airport_fee = round(total * (AIRPORT_MULTIPLIER - 1.0), 2)
+        total = total + airport_fee
+
     return {
         "base": round(base_fare, 2),
         "distance": round(distance_fare, 2),
@@ -1086,6 +1119,8 @@ def calculate_fare(
         "subtotal": round(subtotal, 2),
         "surge_fee": round(surge_fee, 2),
         "surge_multiplier": surge_multiplier,
+        "airport_ride": airport_ride,
+        "airport_fee": round(airport_fee, 2) if airport_ride else 0.0,
         "base_total": round(total, 2),
         "total": round(total, 2),
         "breakdown": {
@@ -3588,7 +3623,8 @@ async def estimate_fare(
     payment_method: str = "cash",
 ):
     surge_info = get_surge_multiplier(lat, lng)
-    fare = calculate_fare(car_type, distance, 0, 0, stops, surge_info["multiplier"])
+    _airport = is_airport_ride(pickup_lat, pickup_lng, dest_lat, dest_lng)
+    fare = calculate_fare(car_type, distance, 0, 0, stops, surge_info["multiplier"], airport_ride=_airport)
     service_fee = 2.0 if payment_method == "card" else 0.0
     fare["service_fee"] = service_fee
     fare["base_total"] = fare["total"]
@@ -4203,7 +4239,12 @@ async def complete_ride(
     car_type = ride_data.get("carType") or ride_data.get("car_type") or "economy"
     surge_multiplier = ride_data.get("surge_multiplier", 1.0)
 
-    final_fare = calculate_fare(car_type, billing_distance, pickup_wait, stop_wait, num_stops, surge_multiplier)
+    _airport_final = is_airport_ride(
+        ride_data.get("pickup_lat"), ride_data.get("pickup_lng"),
+        ride_data.get("dest_lat") or ride_data.get("destination_lat"),
+        ride_data.get("dest_lng") or ride_data.get("destination_lng")
+    )
+    final_fare = calculate_fare(car_type, billing_distance, pickup_wait, stop_wait, num_stops, surge_multiplier, airport_ride=_airport_final)
 
     raw_payment = ride_data.get("payment_method") or ride_data.get("paymentMethod") or "cash"
     safe_payment_method = str(raw_payment).lower().strip()
