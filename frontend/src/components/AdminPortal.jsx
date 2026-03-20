@@ -1713,10 +1713,10 @@ const LiveMapPanel = () => {
           center: { lat: 41.7151, lng: 44.8271 }, // Tbilisi
           zoom: 12,
           styles: [
-            { elementType: "geometry", stylers: [{ color: "#0a0a18" }] },
-            { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+            { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#ffffff" }] },
             { featureType: "road", elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#ffffff" }] },
             { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e1626" }] },
           ],
         });
