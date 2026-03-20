@@ -7,10 +7,13 @@ self.__WB_MANIFEST;
 
 self.addEventListener("install", () => self.skipWaiting());
 
+const CACHE_VERSION = "taksi-v3";
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.map(k => caches.delete(k))))
+      .then(keys => Promise.all(
+        keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))
+      ))
       .then(() => self.clients.claim())
   );
 });

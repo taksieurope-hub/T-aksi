@@ -1594,10 +1594,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       // Animate heading rotation smoothly
       animateHeading(heading);
       
-      // Maintain immersive 3D tilt
-      if (mapInstanceRef.current.getTilt() !== 55) {
-        mapInstanceRef.current.setTilt(55);
-      }
+      // Tilt disabled - required for custom map styles to apply
     }
 
     // Advance to next navigation step when close enough
