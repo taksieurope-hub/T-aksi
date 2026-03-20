@@ -22,7 +22,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 41.7151, lng: 44.8271 }, zoom: 15,
-      disableDefaultUI: true, gestureHandling: "greedy", backgroundColor: "#0d0d1a",
+      disableDefaultUI: true, gestureHandling: "greedy", backgroundColor: "#1a1a2e",
       styles: [{ elementType: "geometry", stylers: [{ color: "#1a1a2e" }] }, { elementType: "labels.text.fill", stylers: [{ color: "#ffffff" }] }, { elementType: "labels.text.stroke", stylers: [{ color: "#000000" }] }, { featureType: "road", elementType: "geometry", stylers: [{ color: "#4a5568" }] }, { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#00d4ff" }] }, { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#3a4a5c" }] }, { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e1626" }] }, { featureType: "poi", elementType: "geometry", stylers: [{ color: "#1a2035" }] }, { featureType: "transit", elementType: "geometry", stylers: [{ color: "#2d3748" }] }],
     });
     directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
@@ -164,7 +164,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
   }, [driverLocation, isFollowing]);
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: "#0d0d1a" }}>
+    <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: "#1a1a2e" }}>
       <div ref={mapRef} style={{ height: "46vh", minHeight: "300px", width: "100%" }} />
       {etaSeconds != null && etaSeconds > 0 && status !== "preview" && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">

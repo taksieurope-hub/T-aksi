@@ -484,14 +484,14 @@ const RideCommunication = ({
                 className="flex-1 bg-gray-900/80 border border-gray-800 text-white text-sm px-4 h-10 rounded-full outline-none transition-colors placeholder:text-gray-600"
                 style={{ "--focus-ring": accent }}
                 onFocus={(e) => { e.target.style.borderColor = `${accent}60`; }}
-                onBlur={(e) => { e.target.style.borderColor = "#1f2937"; }}
+                onBlur={(e) => { e.target.style.borderColor = "#4a5568"; }}
               />
 
               <button
                 onClick={() => handleSend()}
                 disabled={!input.trim() || loading}
                 className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
-                style={{ background: input.trim() ? accent : "#1f2937" }}
+                style={{ background: input.trim() ? accent : "#4a5568" }}
               >
                 {loading
                   ? <Loader2 className="w-4 h-4 animate-spin text-black" />

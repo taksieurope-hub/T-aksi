@@ -130,10 +130,10 @@ const useGoogleMapsAutocomplete = (inputRef, onPlaceSelect, mapsLoaded) => {
     const style = document.createElement("style");
     style.id = "pac-styles";
     style.innerHTML = `
-      .pac-container { z-index:999999!important; background:#0d0d1a!important; border:1px solid rgba(0,255,136,0.3)!important;
+      .pac-container { z-index:999999!important; background:#1a1a2e!important; border:1px solid rgba(0,255,136,0.3)!important;
         border-radius:0 0 12px 12px!important; font-family:inherit!important;
         box-shadow:0 10px 40px rgba(0,0,0,.6)!important; position:absolute!important; padding-bottom:8px!important; }
-      .pac-item { color:#9ca3af!important; border-top:1px solid rgba(255,255,255,0.05)!important;
+      .pac-item { color:#ffffff!important; border-top:1px solid rgba(255,255,255,0.05)!important;
         padding:10px 14px!important; cursor:pointer!important; font-size:13px!important; }
       .pac-item:hover,.pac-item:active { background:rgba(0,255,136,0.08)!important; }
       .pac-item-query { color:#fff!important; font-weight:700!important; font-size:14px!important; }
@@ -192,7 +192,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
   useEffect(() => {
     if (!isOpen || !mapRef.current || !window.google || mapInstanceRef.current) return;
     const map = new window.google.maps.Map(mapRef.current, {
-      center, zoom: 17, disableDefaultUI: true, clickableIcons: false, backgroundColor: "#0d0d1a",
+      center, zoom: 17, disableDefaultUI: true, clickableIcons: false, backgroundColor: "#1a1a2e",
       styles: [
         { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
         { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
@@ -218,6 +218,23 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       }, 100);
     });
     map.addListener("dragstart", () => setIsDragging(true));
+  // Pan to user location when map opens if no initialLocation
+  useEffect(() => {
+    if (!isOpen || !mapInstanceRef.current) return;
+    if (!initialLocation?.lat && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude, lng = pos.coords.longitude;
+          mapInstanceRef.current.panTo({ lat, lng });
+          mapInstanceRef.current.setZoom(17);
+          setCenter({ lat, lng });
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    }
+  }, [isOpen, mapInstanceRef.current]);
+
   }, [isOpen]);
 
   const handleLocateMe = () => {
@@ -260,7 +277,7 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
           {locating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Crosshair className="w-5 h-5" />}
         </Button>
       </div>
-      <div className="bg-[#0d0d1a] p-6 rounded-t-2xl border-t border-white/10 -mt-6 relative z-10">
+      <div className="bg-[#1a1a2e] p-6 rounded-t-2xl border-t border-white/10 -mt-6 relative z-10">
         <div className="w-10 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
         <p className="text-gray-500 text-xs uppercase tracking-widest font-bold mb-1">Selected</p>
         <h3 className="text-white text-base font-semibold truncate mb-5">{isDragging ? "Drop to select..." : address}</h3>
@@ -338,7 +355,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 41.7151, lng: 44.8271 }, zoom: 17,
       tilt: 45,
-      disableDefaultUI: true, zoomControl: false, gestureHandling: "cooperative", backgroundColor: "#0d0d1a",
+      disableDefaultUI: true, zoomControl: false, gestureHandling: "cooperative", backgroundColor: "#1a1a2e",
       styles: [
         { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
         { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
@@ -509,7 +526,7 @@ const LiveTrackingMap = ({ pickup, destination, stops = [], driverLocation, stat
   };
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: "#0d0d1a" }}>
+    <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: "#1a1a2e" }}>
       {status !== "preview" && (
         <div style={{ position:"absolute", top:0, left:0, right:0, zIndex:20, pointerEvents:"none" }}>
           <div style={{ background:"rgba(7,7,15,0.96)", backdropFilter:"blur(12px)", borderBottom:"1px solid rgba(0,212,255,0.2)", padding:"12px 16px" }}>
@@ -818,7 +835,7 @@ const ReceiptModal = ({ isOpen, onClose, rideId }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
-      <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1a2e] border border-white/10 rounded-t-3xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/15 rounded-full mx-auto mb-5" />
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-white text-lg font-bold flex items-center gap-2">
@@ -885,7 +902,7 @@ const TipModal = ({ isOpen, onClose, rideId, driverName, onTipped }) => {
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
-      <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1a2e] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/15 rounded-full mx-auto mb-5" />
         <div className="text-center mb-5">
           <div className="w-14 h-14 rounded-2xl bg-yellow-500/15 border border-yellow-500/25 flex items-center justify-center mx-auto mb-3">
@@ -1014,7 +1031,7 @@ const ShareTripModal = ({ isOpen, onClose, rideId }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
-      <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1a2e] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/15 rounded-full mx-auto mb-5" />
         <div className="text-center mb-5">
           <div className="w-14 h-14 rounded-2xl bg-[#00d4ff]/15 border border-[#00d4ff]/25 flex items-center justify-center mx-auto mb-3">
@@ -1105,7 +1122,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
-      <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1a2e] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/15 rounded-full mx-auto mb-5" />
         <div className="flex items-center gap-3 mb-5">
           <div className="w-11 h-11 rounded-xl bg-yellow-500/15 flex items-center justify-center">
@@ -1138,7 +1155,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
             <div className="text-white/30 text-[10px] text-center pt-1.5">Hour</div>
             <select value={hour} onChange={e => setHour(Number(e.target.value))}
               className="w-full bg-transparent text-white text-center text-lg font-bold pb-2 pt-0.5 outline-none appearance-none cursor-pointer">
-              {[12,1,2,3,4,5,6,7,8,9,10,11].map(h => <option key={h} value={h} className="bg-[#0d0d1a]">{String(h).padStart(2,"0")}</option>)}
+              {[12,1,2,3,4,5,6,7,8,9,10,11].map(h => <option key={h} value={h} className="bg-[#1a1a2e]">{String(h).padStart(2,"0")}</option>)}
             </select>
           </div>
 
@@ -1147,7 +1164,7 @@ const ScheduledRideModal = ({ isOpen, onClose, pickup, destination, carType }) =
             <div className="text-white/30 text-[10px] text-center pt-1.5">Min</div>
             <select value={minute} onChange={e => setMinute(Number(e.target.value))}
               className="w-full bg-transparent text-white text-center text-lg font-bold pb-2 pt-0.5 outline-none appearance-none cursor-pointer">
-              {[0,15,30,45].map(m => <option key={m} value={m} className="bg-[#0d0d1a]">{String(m).padStart(2,"0")}</option>)}
+              {[0,15,30,45].map(m => <option key={m} value={m} className="bg-[#1a1a2e]">{String(m).padStart(2,"0")}</option>)}
             </select>
           </div>
 
@@ -1190,7 +1207,7 @@ const WalletTopUpModal = ({ isOpen, onClose, onSuccess }) => {
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end justify-center" onClick={onClose}>
-      <div className="bg-[#0d0d1a] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1a2e] border border-white/10 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/15 rounded-full mx-auto mb-5" />
         <div className="flex items-center gap-3 mb-5">
           <div className="w-11 h-11 rounded-xl bg-[#00ff88]/15 flex items-center justify-center">
@@ -1320,7 +1337,7 @@ const SaveFavoriteDialog = ({ location, onSave, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#0d0d1a] border border-white/10 rounded-2xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1a2e] border border-white/10 rounded-2xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
         <h3 className="text-white font-bold text-base mb-1">Save Location</h3>
         <p className="text-white/35 text-xs mb-4 truncate">{location?.address}</p>
         <div className="flex gap-1.5 mb-4">
