@@ -483,9 +483,15 @@ async def _check_and_dispatch_scheduled_rides():
             surge_multiplier = surge_info["multiplier"]
             commission_rate = surge_info["commission_rate"]
 
+            _sched_airport = is_airport_ride(
+                data.get("pickup_lat"), data.get("pickup_lng"),
+                data.get("destination_lat"), data.get("destination_lng"),
+                data.get("pickup_address", ""), data.get("destination_address", "")
+            )
             fare = calculate_fare(
                 data.get("car_type", "economy"), 5, 0, 0,
                 len(data.get("stops", [])), surge_multiplier,
+                airport_ride=_sched_airport,
             )
 
             payment_method = data.get("payment_method", "cash")
@@ -1055,8 +1061,26 @@ AIRPORTS = [
 AIRPORT_RADIUS_KM = 1.5
 AIRPORT_MULTIPLIER = 2.5
 
-def is_airport_ride(pickup_lat, pickup_lng, dest_lat, dest_lng) -> bool:
-    """Returns True if pickup OR destination is within 1.5km of any airport."""
+AIRPORT_KEYWORDS = [
+    "airport", "aeroport", "aeroporti", "aeroporti",
+    "აეროპორტი", "თბილისის აეროპორტი", "kutaisi airport",
+    "batumi airport", "tbilisi airport", "tbilisi international",
+    "TBS", "KUT", "BUS",
+]
+
+def is_airport_ride(pickup_lat, pickup_lng, dest_lat, dest_lng,
+                    pickup_address: str = "", dest_address: str = "") -> bool:
+    """Returns True if pickup OR destination is an airport.
+    Checks both GPS coordinates (within 1.5km) and address text."""
+
+    # 1. Check address text first (fast, no math needed)
+    for addr in [pickup_address or "", dest_address or ""]:
+        addr_lower = addr.lower()
+        for kw in AIRPORT_KEYWORDS:
+            if kw.lower() in addr_lower:
+                return True
+
+    # 2. Check GPS coordinates
     points = []
     try:
         if pickup_lat and pickup_lng:
@@ -3623,7 +3647,7 @@ async def estimate_fare(
     payment_method: str = "cash",
 ):
     surge_info = get_surge_multiplier(lat, lng)
-    _airport = is_airport_ride(pickup_lat, pickup_lng, dest_lat, dest_lng)
+    _airport = is_airport_ride(pickup_lat, pickup_lng, dest_lat, dest_lng, ride_data.get("pickup",""), ride_data.get("destination",""))
     fare = calculate_fare(car_type, distance, 0, 0, stops, surge_info["multiplier"], airport_ride=_airport)
     service_fee = 2.0 if payment_method == "card" else 0.0
     fare["service_fee"] = service_fee
@@ -4241,7 +4265,8 @@ async def complete_ride(
     _airport_final = is_airport_ride(
         ride_data.get("pickup_lat"), ride_data.get("pickup_lng"),
         ride_data.get("dest_lat") or ride_data.get("destination_lat"),
-        ride_data.get("dest_lng") or ride_data.get("destination_lng")
+        ride_data.get("dest_lng") or ride_data.get("destination_lng"),
+        ride_data.get("pickup", ""), ride_data.get("destination", "")
     )
     final_fare = calculate_fare(car_type, billing_distance, pickup_wait, stop_wait, num_stops, surge_multiplier, airport_ride=_airport_final)
 
