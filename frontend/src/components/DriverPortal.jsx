@@ -733,6 +733,7 @@ const DriverDashboard = () => {
 
   // ---- Fleet management ----
   const [fleetVehicles, setFleetVehicles] = useState([]);
+  const [campaigns,     setCampaigns]     = useState([]);
   const [showAddFleet,  setShowAddFleet]  = useState(false);
   const [fleetLoading,  setFleetLoading]  = useState(false);
   const [newVehicle,    setNewVehicle]    = useState({
@@ -825,7 +826,7 @@ const DriverDashboard = () => {
   // ==========================================================================
   // Polling
   // ==========================================================================
-  useEffect(() => { fetchActiveRide(); fetchRideHistory(); fetchFleet(); }, []);
+  useEffect(() => { fetchActiveRide(); fetchRideHistory(); fetchFleet(); fetchEarnings(); fetchCampaigns(); }, []);
 
   useEffect(() => {
     if (registrationStatus !== "approved" || !isOnline) return;
@@ -839,6 +840,21 @@ const DriverDashboard = () => {
   };
   const fetchActiveRide = async () => {
     try { const r = await api.get("/driver/active-ride"); if (r.data) { setActiveRide(r.data); setActiveTab("rides"); } } catch (_) {}
+  };
+
+  const fetchEarnings = async () => {
+    try {
+      const r = await api.get("/driver/earnings");
+      const d = r.data;
+      updateUser({ ...user, balance: d.balance ?? user?.balance, total_earned: d.total_earned });
+    } catch (_) {}
+  };
+
+  const fetchCampaigns = async () => {
+    try {
+      const r = await api.get("/driver/campaigns");
+      setCampaigns(r.data.campaigns || []);
+    } catch (_) {}
   };
   const fetchRideHistory = async () => {
     try { const r = await api.get("/driver/history"); setRideHistory(r.data.rides || []); } catch (_) {}
@@ -907,7 +923,7 @@ Issue: `);
     }
     setDisputeLoading(true);
     try {
-      const res = await api.post("/support/message", {
+      const res = await api.post("/support/chat", {
         message: disputeMessage,
         ticket_id: null,
       });
@@ -1729,13 +1745,47 @@ Issue: `);
               {/* CAMPAIGNS TAB                                                    */}
               {/* -------------------------------------------------------------- */}
               <TabsContent value="campaigns" className="m-0">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Active Campaigns</p>
-                  </div>
-                  <div className="text-center py-10 text-gray-500 text-sm">
-                    Loading campaigns...
-                  </div>
+                <div className="space-y-3">
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Bonus Campaigns</p>
+                  {campaigns.length === 0 ? (
+                    <div className="text-center py-10 bg-white/3 border border-white/8 rounded-2xl">
+                      <Trophy className="w-10 h-10 text-gray-600 mx-auto mb-2" />
+                      <p className="text-gray-500 text-sm">No active campaigns right now</p>
+                      <p className="text-gray-600 text-xs mt-1">Check back soon for bonus opportunities</p>
+                    </div>
+                  ) : campaigns.map(camp => (
+                    <div key={camp.id} className="bg-white/3 border border-white/8 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-white font-semibold text-sm">{camp.name}</p>
+                          <p className="text-gray-400 text-xs mt-0.5">{camp.description}</p>
+                        </div>
+                        <span className="text-amber-400 font-bold text-sm">+₾{camp.bonus_amount}</span>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>{camp.current_progress || 0} / {camp.target} rides</span>
+                          <span>{Math.round(((camp.current_progress || 0) / camp.target) * 100)}%</span>
+                        </div>
+                        <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-400 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, ((camp.current_progress || 0) / camp.target) * 100)}%` }} />
+                        </div>
+                      </div>
+                      {camp.joined ? (
+                        <span className="text-xs text-emerald-400 font-semibold">✓ Joined</span>
+                      ) : (
+                        <button onClick={async () => {
+                          try {
+                            await api.post(`/driver/campaigns/${camp.id}/join`);
+                            fetchCampaigns();
+                          } catch { toast.error("Could not join campaign"); }
+                        }} className="w-full h-9 bg-amber-500/20 border border-amber-500/40 text-amber-400 rounded-xl text-xs font-bold hover:bg-amber-500/30 transition-all">
+                          Join Campaign
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </TabsContent>
 
