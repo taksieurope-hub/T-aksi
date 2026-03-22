@@ -2472,6 +2472,29 @@ const [showPromo, setShowPromo] = useState(false);
                   </button>
                 )}
 
+                {/* Driver info card */}
+                {activeRide?.driver_info && (
+                  <div className="bg-white/3 border border-white/8 rounded-2xl p-4 flex items-center gap-4 mb-2">
+                    <div className="w-14 h-14 rounded-2xl bg-white/10 overflow-hidden shrink-0 flex items-center justify-center">
+                      {activeRide.driver_info.photo_url ? (
+                        <img src={activeRide.driver_info.photo_url} alt="Driver" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-2xl">🧑</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-bold text-base truncate">{activeRide.driver_info.name || "Your Driver"}</p>
+                      <p className="text-gray-400 text-xs mt-0.5">{activeRide.driver_info.car_model} · {activeRide.driver_info.plate_number}</p>
+                      {activeRide.driver_info.rating && (
+                        <p className="text-amber-400 text-xs font-semibold mt-0.5">⭐ {parseFloat(activeRide.driver_info.rating).toFixed(1)}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-gray-500 text-xs">ETA</p>
+                      <p className="text-white font-bold text-sm">{activeRide.eta_minutes ? `${activeRide.eta_minutes} min` : "—"}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-2xl px-4 py-4 flex justify-between items-center">
                   <div>
                     <p className="text-white/50 text-xs uppercase tracking-wider font-semibold mb-0.5">

@@ -715,6 +715,9 @@ const DriverDashboard = () => {
 
   // ---- Cancel ----
   const [showCancelModal,      setShowCancelModal]      = useState(false);
+  const [batteryLevel,        setBatteryLevel]        = useState(null);
+  const [destinationFilter,   setDestinationFilter]   = useState({ enabled: false, address: "", lat: null, lng: null });
+  const [showDestFilter,      setShowDestFilter]      = useState(false);
   const [selectedCancelReason, setSelectedCancelReason] = useState("");
 
   // ---- Vehicle ----
@@ -826,6 +829,15 @@ const DriverDashboard = () => {
   // Polling
   // ==========================================================================
   useEffect(() => { fetchActiveRide(); fetchRideHistory(); fetchFleet(); fetchEarnings(); fetchCampaigns(); }, []);
+
+  useEffect(() => {
+    if ("getBattery" in navigator) {
+      navigator.getBattery().then(bat => {
+        setBatteryLevel(Math.round(bat.level * 100));
+        bat.addEventListener("levelchange", () => setBatteryLevel(Math.round(bat.level * 100)));
+      });
+    }
+  }, []);
 
   useEffect(() => {
     if (registrationStatus !== "approved" || !isOnline) return;
@@ -1133,6 +1145,11 @@ Issue: `);
                     {registrationStatus?.replace(/_/g, " ").toUpperCase()}
                   </Badge>
                   <span className="text-[#00ff88] text-sm font-bold">₾{balance.toFixed(2)}</span>
+                  {user?.rating && (
+                    <span className="text-amber-400 text-xs font-bold flex items-center gap-0.5">
+                      ⭐ {parseFloat(user.rating).toFixed(1)}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -1155,6 +1172,21 @@ Issue: `);
                   {isOnline ? "Online" : "Offline"}
                 </button>
               )}
+              {/* SOS button */}
+              <button
+                onClick={async () => {
+                  if (!navigator.geolocation) return toast.error("Location not available");
+                  navigator.geolocation.getCurrentPosition(async (pos) => {
+                    try {
+                      await api.post("/sos", { lat: pos.coords.latitude, lng: pos.coords.longitude, user_type: "driver" });
+                      toast.error("🚨 SOS sent! Emergency services notified.", { duration: 8000 });
+                    } catch { toast.error("SOS failed - call 112 immediately"); }
+                  });
+                }}
+                className="w-9 h-9 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 hover:bg-red-500/30 transition-all shrink-0"
+                title="SOS Emergency">
+                <AlertTriangle className="w-4 h-4" />
+              </button>
               {/* Home — always visible */}
               <Button variant="ghost" size="icon"
                 className="text-[#00d4ff] shrink-0 w-9 h-9"
@@ -1171,6 +1203,43 @@ Issue: `);
           </div>
         </header>
 
+        {/* Destination filter bar */}
+        {isOnline && (
+          <div className="px-4 pb-2">
+            <button
+              onClick={() => setShowDestFilter(v => !v)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${destinationFilter.enabled ? "bg-blue-500/20 border-blue-500/40 text-blue-400" : "bg-white/3 border-white/8 text-gray-400 hover:border-white/20"}`}>
+              <span className="flex items-center gap-1.5">
+                <span>📍</span>
+                {destinationFilter.enabled ? `Going to: ${destinationFilter.address}` : "Destination Filter (off)"}
+              </span>
+              <span className="text-gray-500">{showDestFilter ? "▲" : "▼"}</span>
+            </button>
+            {showDestFilter && (
+              <div className="mt-2 bg-[#1a1a2e] border border-white/10 rounded-xl p-3 space-y-2">
+                <p className="text-gray-400 text-xs">Only receive rides heading toward your destination</p>
+                <input
+                  value={destinationFilter.address}
+                  onChange={e => setDestinationFilter(p => ({ ...p, address: e.target.value }))}
+                  placeholder="Enter your destination..."
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs placeholder-gray-500 outline-none focus:border-blue-500/50"
+                />
+                <div className="flex gap-2">
+                  <button onClick={() => { setDestinationFilter(p => ({ ...p, enabled: !!p.address })); setShowDestFilter(false); }}
+                    className="flex-1 h-8 bg-blue-500/20 border border-blue-500/40 text-blue-400 rounded-lg text-xs font-bold">
+                    {destinationFilter.enabled ? "Update" : "Enable"}
+                  </button>
+                  {destinationFilter.enabled && (
+                    <button onClick={() => { setDestinationFilter({ enabled: false, address: "", lat: null, lng: null }); setShowDestFilter(false); }}
+                      className="flex-1 h-8 bg-red-500/20 border border-red-500/40 text-red-400 rounded-lg text-xs font-bold">
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {isOnline && driverLocation && (
           <div className="bg-black/80 backdrop-blur-md border-b border-[#00ff88]/20 px-4 py-2">
             <div className="container mx-auto flex items-center text-xs text-[#00ff88]">
@@ -1207,7 +1276,7 @@ Issue: `);
             <Tabs value={activeTab} onValueChange={setActiveTab}>
 
               {!activeRide && (
-                <TabsList className="grid grid-cols-7 bg-black/50 border border-[#00d4ff]/20 mb-4 rounded-xl">
+                <TabsList className="grid grid-cols-8 bg-black/50 border border-[#00d4ff]/20 mb-4 rounded-xl">
                   {[
                     ["rides",     "Rides",     Activity],
                     ["nearby",    "Nearby",    Crosshair],
@@ -1215,6 +1284,7 @@ Issue: `);
                     ["fleet",     "Fleet",     Building2],
                     ["earnings",  "Earn",      Wallet],
                     ["campaigns", "Rewards",   Trophy],
+                    ["leaderboard","Top",      Star],
                     ["history",   "History",   History],
                   ].map(([val, label, Icon]) => (
                     <TabsTrigger key={val} value={val}
@@ -1789,6 +1859,13 @@ Issue: `);
               </TabsContent>
 
               {/* -------------------------------------------------------------- */}
+              {/* LEADERBOARD TAB                                                  */}
+              {/* -------------------------------------------------------------- */}
+              <TabsContent value="leaderboard" className="m-0">
+                <LeaderboardPanel />
+              </TabsContent>
+
+              {/* -------------------------------------------------------------- */}
               {/* HISTORY TAB                                                      */}
               {/* -------------------------------------------------------------- */}
               <TabsContent value="history">
@@ -1999,5 +2076,36 @@ const DriverPortal = () => {
     </PayPalScriptProvider>
   );
 };
+
+function LeaderboardPanel() {
+  const [leaders, setLeaders] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  React.useEffect(() => {
+    import("../api").then(({ default: api }) => {
+      api.get("/driver/leaderboard").then(r => setLeaders(r.data.leaders || [])).catch(() => {}).finally(() => setLoading(false));
+    });
+  }, []);
+  if (loading) return <div className="text-center py-10 text-gray-500 text-sm">Loading...</div>;
+  return (
+    <div className="space-y-3">
+      <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">This Week&apos;s Top Drivers</p>
+      {leaders.length === 0 ? (
+        <div className="text-center py-10 bg-white/3 border border-white/8 rounded-2xl">
+          <p className="text-gray-500 text-sm">No leaderboard data yet</p>
+          <p className="text-gray-600 text-xs mt-1">Complete more rides to appear here</p>
+        </div>
+      ) : leaders.map((d, i) => (
+        <div key={d.driver_id} className={`flex items-center gap-3 p-3 rounded-2xl border ${i===0?"bg-amber-500/10 border-amber-500/30":i===1?"bg-gray-400/10 border-gray-400/20":i===2?"bg-orange-600/10 border-orange-600/20":"bg-white/3 border-white/8"}`}>
+          <span className={`text-lg font-black w-7 text-center ${i===0?"text-amber-400":i===1?"text-gray-300":i===2?"text-orange-500":"text-gray-500"}`}>{i+1}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-semibold text-sm truncate">{d.name||"Driver"}</p>
+            <p className="text-gray-500 text-xs">{d.rides_this_week} rides · ⭐ {(d.rating||5).toFixed(1)}</p>
+          </div>
+          <p className="text-[#00ff88] font-bold text-sm">₾{(d.earned_this_week||0).toFixed(0)}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default DriverPortal;

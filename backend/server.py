@@ -2968,6 +2968,61 @@ async def request_to_join_ride(ride_id: str, user_id: Optional[str] = Depends(ge
 # =========================
 
 
+
+@app.get("/api/driver/leaderboard", tags=["Driver"])
+async def get_driver_leaderboard(current_user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    from datetime import datetime, timedelta
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    try:
+        drivers = list(db.collection("users").where("user_type", "==", "driver").where("registration_status", "==", "approved").stream())
+        leaderboard = []
+        for d in drivers:
+            data = d.to_dict()
+            try:
+                rides = list(db.collection("rides").where("driver_id", "==", d.id).where("status", "==", "completed").stream())
+                week_rides = [r for r in rides if r.to_dict().get("created_at") and r.to_dict()["created_at"].replace(tzinfo=None) > week_ago]
+                earned = sum(float(r.to_dict().get("driver_earnings") or r.to_dict().get("final_fare", 0) * 0.80) for r in week_rides)
+                leaderboard.append({
+                    "driver_id": d.id,
+                    "name": data.get("full_name") or data.get("name") or "Driver",
+                    "rating": float(data.get("rating") or 5.0),
+                    "rides_this_week": len(week_rides),
+                    "earned_this_week": round(earned, 2),
+                })
+            except Exception:
+                pass
+        leaderboard.sort(key=lambda x: x["earned_this_week"], reverse=True)
+        return {"leaders": leaderboard[:10]}
+    except Exception as e:
+        return {"leaders": []}
+
+
+@app.post("/api/rides/{ride_id}/tip", tags=["Rides"])
+async def add_tip(ride_id: str, req: dict, rider_id: str = Depends(get_current_user_id)):
+    if not rider_id:
+        raise HTTPException(401, "Not authenticated")
+    db = get_db()
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+    ride_data = ride_doc.to_dict()
+    if ride_data.get("rider_id") != rider_id:
+        raise HTTPException(403, "Not your ride")
+    amount = float(req.get("amount", 0))
+    if amount <= 0:
+        raise HTTPException(400, "Invalid tip amount")
+    driver_id = ride_data.get("driver_id")
+    db.collection("rides").document(ride_id).update({
+        "tip_amount": amount,
+        "tip_added_at": firestore.SERVER_TIMESTAMP,
+    })
+    if driver_id:
+        driver_doc = db.collection("users").document(driver_id).get()
+        current_balance = float((driver_doc.to_dict() or {}).get("balance", 0))
+        db.collection("users").document(driver_id).update({"balance": current_balance + amount})
+    return {"message": "Tip added", "amount": amount}
+
 @app.get("/api/driver/earnings", tags=["Driver"])
 async def get_driver_earnings(driver_id: str = Depends(get_current_user_id)):
     if not driver_id:
