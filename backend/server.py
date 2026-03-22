@@ -2987,10 +2987,10 @@ async def get_driver_earnings(driver_id: str = Depends(get_current_user_id)):
     except Exception:
         rides = []
     
-    total_earned = sum(float(r.to_dict().get("driver_earnings") or r.to_dict().get("final_fare", 0) * 0.77) for r in rides)
+    total_earned = sum(float(r.to_dict().get("driver_earnings") or r.to_dict().get("final_fare", 0) * 0.80) for r in rides)
     today_rides = [r for r in rides if r.to_dict().get("created_at") and 
                    r.to_dict()["created_at"].date() == __import__("datetime").date.today()]
-    today_earned = sum(float(r.to_dict().get("driver_earnings") or r.to_dict().get("final_fare", 0) * 0.77) for r in today_rides)
+    today_earned = sum(float(r.to_dict().get("driver_earnings") or r.to_dict().get("final_fare", 0) * 0.80) for r in today_rides)
     
     return {
         "balance": float(user_data.get("balance") or 0),
@@ -2999,7 +2999,7 @@ async def get_driver_earnings(driver_id: str = Depends(get_current_user_id)):
         "total_rides": len(rides),
         "today_rides": len(today_rides),
         "commission_rate": 0.23,
-        "driver_rate": 0.77,
+        "driver_rate": 0.80,
     }
 
 @app.get("/api/driver/campaigns", tags=["Driver"])
