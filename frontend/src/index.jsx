@@ -5,10 +5,16 @@ import { LanguageProvider } from "./i18n";
 import App from "./App.jsx";
 import "./index.css";
 
-// Unregister any existing service workers - they cause white screen on refresh
+// Register service worker for push notifications + PWA
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(reg => reg.unregister());
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" })
+      .then(reg => {
+        console.log("SW registered:", reg.scope);
+      })
+      .catch(err => {
+        console.warn("SW registration failed:", err);
+      });
   });
 }
 
