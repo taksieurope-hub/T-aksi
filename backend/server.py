@@ -982,7 +982,7 @@ PRICING_RULES = {
     },
 }
 
-DRIVER_COMMISSION_RATE = 0.23
+DRIVER_COMMISSION_RATE = 0.20
 
 SURGE_SCHEDULE = {
     2: {"start": 18, "end": 26},
@@ -2998,7 +2998,7 @@ async def get_driver_earnings(driver_id: str = Depends(get_current_user_id)):
         "today_earned": round(today_earned, 2),
         "total_rides": len(rides),
         "today_rides": len(today_rides),
-        "commission_rate": 0.23,
+        "commission_rate": 0.20,
         "driver_rate": 0.80,
     }
 
@@ -3148,7 +3148,7 @@ User: {user_name} ({user_type})
 T'aksi facts:
 - Ride types: Economy, Comfort, SUV/XL, Jumpstart (electric), Personal (luxury)
 - Payment: Cash, Wallet, Card, Corporate account
-- Drivers get 77% of fare, T'aksi takes 23% commission
+- Drivers get 80% of fare, T'aksi takes 20% commission
 - Drivers need a signup bonus to cover commission on cash rides
 - Corporate accounts need admin approval (up to 24 hours)
 - Riders get 15% off their first 2 rides
@@ -4450,7 +4450,7 @@ async def complete_ride(
     if driver_id:
         try:
             held_commission = ride_data.get("commission_paid", 0) or 0
-            commission_rate = ride_data.get("commission_rate", 0.23)
+            commission_rate = ride_data.get("commission_rate", 0.20)
 
             actual_commission = commissionable_amount * commission_rate
             driver_share = commissionable_amount - actual_commission
@@ -5162,7 +5162,7 @@ async def get_financials(
     for r in rides:
         data = r.to_dict()
         fare = data.get("final_fare") or data.get("estimated_fare") or 0
-        commission_rate = data.get("commission_rate", 0.23)
+        commission_rate = data.get("commission_rate", 0.20)
         service_fee = data.get("service_fee", 0) or 0
         surge_mult = data.get("surge_multiplier", 1.0) or 1.0
         payment = data.get("payment_method", "cash")
