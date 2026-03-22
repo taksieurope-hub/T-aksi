@@ -1,36 +1,15 @@
-# ── Hashed assets: immutable forever ────────────────────────
+﻿# Hashed assets: cache forever
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
-# ── Service workers: NEVER cache ────────────────────────────
+# Service workers: never cache
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
 /firebase-messaging-sw.js
   Cache-Control: no-cache, no-store, must-revalidate
 
-# ── MPA REWRITES (Fixes 404 on refresh) ─────────────────────
-# These ensure that /rider/dashboard points to /rider/index.html
-/rider/* /rider/index.html   200
-/driver/* /driver/index.html  200
-/admin/* /admin/index.html   200
-/* /index.html         200
-
-# ── Security Headers for All ────────────────────────────────
+# Security headers
 /*
-  X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-  Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=(self)
-
-# ── CSP for Rider ───────────────────────────────────────────
-/rider/index.html
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://www.paypal.com https://www.paypalobjects.com https://app.posthog.com 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.paypal.com https://*.paypalobjects.com; connect-src 'self' https://t-aksi.onrender.com https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://app.posthog.com https://*.paypal.com wss://*.firebaseio.com; font-src 'self' https://fonts.gstatic.com https://cdn.fontshare.com; frame-src https://www.paypal.com https://www.sandbox.paypal.com; worker-src 'self' blob:; manifest-src 'self';
-
-# ── CSP for Driver ──────────────────────────────────────────
-/driver/index.html
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com; connect-src 'self' https://t-aksi.onrender.com https://*.firebaseio.com https://firestore.googleapis.com https://*.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdn.fontshare.com; worker-src 'self' blob:; manifest-src 'self';
-
-# ── CSP for Admin ───────────────────────────────────────────
-/admin/index.html
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; connect-src 'self' https://t-aksi.onrender.com https://*.firebaseio.com; font-src 'self' https://cdn.fontshare.com;
