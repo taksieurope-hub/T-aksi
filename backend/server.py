@@ -1599,9 +1599,13 @@ async def change_password(req: ChangePasswordRequest, user_id: Optional[str] = D
 
 @app.post("/api/auth/fcm-token", tags=["Auth"])
 async def update_fcm_token(
-    token: str = Query(...),
+    request: Request,
     user_id: Optional[str] = Depends(get_current_user_id),
 ):
+    body = await request.json()
+    token = body.get("token") or body.get("fcm_token", "")
+    if not token:
+        raise HTTPException(422, "token is required")
     if not user_id:
         raise HTTPException(401, "Not authenticated")
     db = get_db()
