@@ -27,8 +27,7 @@ import {
   Target, Crosshair, Send, Banknote, CreditCard, ExternalLink,
   AlertTriangle, Activity, MapPinned, CheckCircle2, XCircle,
   Play, Timer, PauseCircle, Building2, Info, Car as CarIcon,
-  MessageCircle, FileText, ChevronDown, ChevronUp,
-} from "lucide-react";
+  MessageCircle, FileText, ChevronDown, ChevronUp,, Trophy} from "lucide-react";
 
 // =============================================================================
 // PRICING RULES — Synced with server.py + RiderPortal exactly
