@@ -46,7 +46,7 @@ const PRICING_RULES = {
 
 const AIRPORT_KEYWORDS_FE = ["airport","aeroport","aeroporti","tbilisi international","tbilisi airport","kutaisi airport","batumi airport","tbs airport","kut airport","აეროპორტი"];
 const isAirportAddress = (addr = "") => { const a = addr.toLowerCase(); return AIRPORT_KEYWORDS_FE.some(kw => a.includes(kw)); };
-const AIRPORT_MULTIPLIER = 2.5;
+const AIRPORT_MULTIPLIER = 2.0;
 
 const calculateFare = (carType, distanceKm, waitMin = 0, stopWaitMin = 0, numStops = 0, surgeMultiplier = 1.0, paymentMethod = "cash", promoCode = "", airportRide = false) => {
   const rules = PRICING_RULES[carType] || PRICING_RULES.economy;
@@ -239,6 +239,8 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
       }, 100);
     });
     map.addListener("dragstart", () => setIsDragging(true));
+  }, [isOpen]);
+
   // Pan to user location when map opens if no initialLocation
   useEffect(() => {
     if (!isOpen || !mapInstanceRef.current) return;
@@ -254,8 +256,6 @@ const MapPicker = ({ isOpen, onClose, onLocationSelect, title, initialLocation }
         { enableHighAccuracy: true, timeout: 5000 }
       );
     }
-  }, [isOpen, mapInstanceRef.current]);
-
   }, [isOpen]);
 
   const handleLocateMe = () => {
@@ -1538,33 +1538,14 @@ const RiderSupportPanel = () => {
   const { t } = useLanguage();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   useEffect(() => {
     api.get("/support/history").then(r => setTickets(r.data.tickets || [])).catch(() => {}).finally(() => setLoading(false));
   }, []);
-  const send = async () => {
-    if (!message.trim()) return;
-    setSending(true);
-    try {
-      await api.post("/support/message", { message: message.trim() });
-      toast.success("Message sent!");
-      setMessage("");
-      const r = await api.get("/support/history");
-      setTickets(r.data.tickets || []);
-    } catch { toast.error("Failed to send."); } finally { setSending(false); }
-  };
   return (
     <div className="space-y-4">
-      <div className="bg-white/3 border border-white/8 rounded-2xl p-4 space-y-3">
-        <p className="text-white/50 text-xs uppercase tracking-wider font-semibold">New Message</p>
-        <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} placeholder="Describe your issue or question..." style={{width:"100%",borderRadius:12,padding:"12px 16px",fontSize:14,resize:"none",outline:"none",background:"#1a1a2e",border:"1px solid rgba(0,212,255,0.3)",color:"#ffffff",caretColor:"#00d4ff",fontFamily:"inherit",lineHeight:1.5}} />
-        <Button onClick={send} disabled={!message.trim() || sending} className="w-full bg-[#00d4ff] text-black font-bold h-11 rounded-xl">
-          {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-          {sending ? "Sending..." : "Send Message"}
-        </Button>
-      </div>
+      {/* AI Chat Widget */}
+      <SupportChatWidget />
       {loading ? <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-white/30" /></div>
       : tickets.length === 0 ? (
         <div className="text-center py-10">
@@ -2491,9 +2472,28 @@ const [showPromo, setShowPromo] = useState(false);
                   </button>
                 )}
 
-                <div className="bg-[#00ff88]/5 border border-[#00ff88]/15 rounded-2xl px-4 py-3.5 flex justify-between items-center">
-                  <span className="text-white/40 text-sm">Estimated fare</span>
-                  <span className="text-[#00ff88] font-bold text-2xl font-mono">GEL {(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}</span>
+                <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-2xl px-4 py-4 flex justify-between items-center">
+                  <div>
+                    <p className="text-white/50 text-xs uppercase tracking-wider font-semibold mb-0.5">
+                      {activeRide.status === "in_progress" ? "Trip fare" : activeRide.status === "completed" ? "Final fare" : "Estimated fare"}
+                    </p>
+                    {activeRide.fare_breakdown?.airport_ride && (
+                      <p className="text-amber-400 text-xs font-semibold flex items-center gap-1">
+                        ✈️ Airport rate applied (2×)
+                      </p>
+                    )}
+                    {activeRide.fare_breakdown?.surge_multiplier > 1 && (
+                      <p className="text-orange-400 text-xs font-semibold">
+                        🔥 Surge ×{activeRide.fare_breakdown.surge_multiplier}
+                      </p>
+                    )}
+                    <p className="text-white/30 text-xs mt-1">
+                      {activeRide.payment_method === "card" ? "💳 Card" : activeRide.payment_method === "wallet" ? "👛 Wallet" : "💵 Cash"}
+                    </p>
+                  </div>
+                  <span className="text-[#00ff88] font-bold text-3xl font-mono">
+                    GEL {(activeRide.final_fare || activeRide.estimated_fare)?.toFixed(2)}
+                  </span>
                 </div>
 
                 {["searching","accepted"].includes(activeRide.status) && (
