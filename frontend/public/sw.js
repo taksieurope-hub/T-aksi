@@ -84,10 +84,38 @@ self.addEventListener("message", function (event) {
 });
 
 self.addEventListener("fetch", function(event) {
+  const url = new URL(event.request.url);
+
+  // Always fetch HTML navigation requests from network (fixes white screen on refresh)
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(function() {
-        return caches.match("/index.html");
+      fetch(event.request)
+        .then(response => {
+          // Cache a copy of the response
+          const clone = response.clone();
+          caches.open("taksi-v3").then(cache => cache.put("/index.html", clone));
+          return response;
+        })
+        .catch(() => {
+          // Offline fallback
+          return caches.match("/index.html")
+            .then(r => r || caches.match("/offline.html"));
+        })
+    );
+    return;
+  }
+
+  // For same-origin assets: cache first, then network
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        return cached || fetch(event.request).then(response => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open("taksi-v3").then(cache => cache.put(event.request, clone));
+          }
+          return response;
+        });
       })
     );
   }
