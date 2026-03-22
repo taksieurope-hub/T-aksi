@@ -1,5 +1,5 @@
 ﻿// T'aksi Service Worker - no ES module imports (plain SW script)
-const CACHE_VERSION = "taksi-v3";
+const CACHE_VERSION = "taksi-v4";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
