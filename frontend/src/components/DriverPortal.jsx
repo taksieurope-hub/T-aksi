@@ -436,6 +436,7 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
   const [mapReady, setMapReady]             = useState(false);
   const [routeSteps, setRouteSteps]         = useState([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [rerouteCounter, setRerouteCounter]     = useState(0);
 
   const getSafe = (v) => { const n = parseFloat(v); return !isNaN(n) && n !== 0 ? n : null; };
 
@@ -466,18 +467,23 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
     setMapReady(true);
   }, []);
 
-  // Update driver marker on every GPS tick — NO route redraw here
+  // Smooth animation refs
+  const animFrameRef   = useRef(null);
+  const prevPosRef     = useRef(null);
+  const lastRerouteRef = useRef(0);
+
+  // Update driver marker with smooth interpolation + map rotation
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !driverLocation) return;
     const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
     if (!lat || !lng) return;
 
-    const pos     = { lat, lng };
-    const heading = parseFloat(driverLocation.heading) || 0;
+    const heading   = parseFloat(driverLocation.heading) || 0;
+    const targetPos = { lat, lng };
 
     if (!markerRef.current) {
       markerRef.current = new window.google.maps.Marker({
-        position: pos, map: mapInstanceRef.current, zIndex: 1000,
+        position: targetPos, map: mapInstanceRef.current, zIndex: 1000,
         icon: {
           path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 6, fillColor: "#00d4ff", fillOpacity: 1,
@@ -485,19 +491,52 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
           rotation: heading, anchor: new window.google.maps.Point(0, 2.5),
         },
       });
-    } else {
-      markerRef.current.setPosition(pos);
-      const icon = { ...markerRef.current.getIcon(), rotation: heading };
-      markerRef.current.setIcon(icon);
+      prevPosRef.current = targetPos;
     }
-    if (isFollowing) mapInstanceRef.current.panTo(pos);
 
-    // Advance turn-by-turn step if close to waypoint
+    // Smooth interpolation over 1.8s (slightly under the 2s GPS interval)
+    const startPos  = prevPosRef.current || targetPos;
+    const startTime = performance.now();
+    const duration  = 1800;
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+
+    const animate = (now) => {
+      const t    = Math.min((now - startTime) / duration, 1);
+      const ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+      const cur  = { lat: startPos.lat + (targetPos.lat - startPos.lat)*ease, lng: startPos.lng + (targetPos.lng - startPos.lng)*ease };
+
+      if (markerRef.current) {
+        markerRef.current.setPosition(cur);
+        markerRef.current.setIcon({ ...markerRef.current.getIcon(), rotation: heading });
+      }
+      if (isFollowing && mapInstanceRef.current) {
+        mapInstanceRef.current.panTo(cur);
+        if (heading && typeof mapInstanceRef.current.setHeading === "function") {
+          mapInstanceRef.current.setHeading(heading);
+        }
+      }
+      if (t < 1) animFrameRef.current = requestAnimationFrame(animate);
+      else prevPosRef.current = targetPos;
+    };
+    animFrameRef.current = requestAnimationFrame(animate);
+
+    // Auto-reroute if off route (max once per 15s)
+    const now = Date.now();
+    if (routeSteps.length > 0 && now - lastRerouteRef.current > 15000) {
+      const step = routeSteps[currentStepIndex];
+      if (step && haversineKm(lat, lng, step.end_location.lat(), step.end_location.lng()) > 0.15) {
+        lastRerouteRef.current = now;
+        setRerouteCounter(n => n + 1);
+      }
+    }
+
+    // Advance turn-by-turn step
     if (routeSteps.length > 0 && currentStepIndex < routeSteps.length) {
       const step = routeSteps[currentStepIndex];
-      const dist = haversineKm(lat, lng, step.end_location.lat(), step.end_location.lng());
-      if (dist < 0.04) setCurrentStepIndex(p => p + 1);
+      if (haversineKm(lat, lng, step.end_location.lat(), step.end_location.lng()) < 0.04) setCurrentStepIndex(p => p + 1);
     }
+
+    return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); };
   }, [driverLocation, isFollowing, routeSteps, currentStepIndex]);
 
   // Redraw route ONLY when status or target destination changes
@@ -538,12 +577,13 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       }
     );
   }, [
-    // Only re-route when the actual navigation target changes, not every GPS ping
+    // Re-route when target changes OR when driver goes off route
     activeRide?.status,
     activeRide?.pickup_lat,
     activeRide?.dest_lat,
     activeRide?.destination_lat,
     mapReady,
+    rerouteCounter,
   ]);
 
   const getTurnIcon = (maneuver) => {
