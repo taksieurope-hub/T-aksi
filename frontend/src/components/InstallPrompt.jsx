@@ -106,20 +106,22 @@ const InstallPrompt = () => {
           <div className="w-full bg-black/50 border border-gray-700 rounded-xl p-4 flex flex-col items-center">
             <p className="text-[#00ff88] font-bold mb-4">{t('how_to_install_ios')}</p>
             
-            <div className="flex items-center text-sm text-white mb-4 w-full justify-center">
-              <span className="bg-gray-800 rounded-full w-6 h-6 flex items-center justify-center mr-3 font-bold text-xs">1</span>
-              {t('tap_to_rate')} <Share className="w-5 h-5 mx-2 text-blue-400" />
+            <div className="flex items-start gap-3 text-sm text-white mb-4 w-full text-left">
+              <span className="bg-[#00ff88]/20 border border-[#00ff88]/40 text-[#00ff88] rounded-full w-7 h-7 flex items-center justify-center shrink-0 font-bold text-xs">1</span>
+              <div>
+                <p className="font-semibold text-white">Tap the Share button</p>
+                <p className="text-gray-400 text-xs mt-0.5">The box-with-arrow icon at the bottom of Safari</p>
+              </div>
             </div>
-            
-            <div className="flex items-center text-sm text-white w-full justify-center">
-              <span className="bg-gray-800 rounded-full w-6 h-6 flex items-center justify-center mr-3 font-bold text-xs">2</span>
-              <PlusSquare className="w-5 h-5 mx-2 text-white" /> <strong>{t('add_to_home_screen')}</strong>
+            <div className="flex items-start gap-3 text-sm text-white w-full text-left">
+              <span className="bg-[#00ff88]/20 border border-[#00ff88]/40 text-[#00ff88] rounded-full w-7 h-7 flex items-center justify-center shrink-0 font-bold text-xs">2</span>
+              <div>
+                <p className="font-semibold text-white">Tap Add to Home Screen</p>
+                <p className="text-gray-400 text-xs mt-0.5">Then tap <strong className="text-white">Add</strong> in the top right</p>
+              </div>
             </div>
-
-            {/* Bouncing arrow pointing down to Safari's share menu */}
-            <div className="mt-8 animate-bounce text-[#00ff88]">
-              ↓
-            </div>
+            <div className="mt-6 animate-bounce text-[#00ff88] text-2xl text-center w-full">↓</div>
+            <p className="text-gray-500 text-xs text-center mt-1">Share button is at the bottom of Safari</p>
           </div>
         )}
 
