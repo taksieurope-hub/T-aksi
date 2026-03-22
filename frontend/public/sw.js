@@ -1,5 +1,4 @@
-﻿// T'aksi Service Worker - no ES module imports (plain SW script)
-const CACHE_VERSION = "taksi-v4";
+﻿const CACHE_VERSION = "taksi-v5";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -18,16 +17,32 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Navigation requests - always go to network so refresh works
-  if (event.request.mode === "navigate") {
+  // NEVER cache or intercept HTML navigation requests
+  // Always go straight to network - this fixes white screen on refresh
+  if (event.request.mode === "navigate" ||
+      event.request.destination === "document" ||
+      url.pathname === "/" ||
+      url.pathname.endsWith(".html")) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match("/index.html"))
+      fetch(event.request).catch(() => {
+        // Only use cache as last resort when truly offline
+        return caches.match("/index.html");
+      })
     );
     return;
   }
 
-  // Same-origin assets - cache first
-  if (url.origin === self.location.origin) {
+  // Only cache JS/CSS/image assets - never HTML
+  const isAsset = url.pathname.startsWith("/assets/") ||
+                  url.pathname.endsWith(".js") ||
+                  url.pathname.endsWith(".css") ||
+                  url.pathname.endsWith(".png") ||
+                  url.pathname.endsWith(".jpg") ||
+                  url.pathname.endsWith(".svg") ||
+                  url.pathname.endsWith(".ico") ||
+                  url.pathname.endsWith(".woff2");
+
+  if (isAsset && url.origin === self.location.origin) {
     event.respondWith(
       caches.match(event.request).then(cached => {
         return cached || fetch(event.request).then(response => {
