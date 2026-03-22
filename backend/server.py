@@ -2967,6 +2967,41 @@ async def request_to_join_ride(ride_id: str, user_id: Optional[str] = Depends(ge
 # CAMPAIGNS
 # =========================
 
+
+@app.get("/api/driver/earnings", tags=["Driver"])
+async def get_driver_earnings(driver_id: str = Depends(get_current_user_id)):
+    if not driver_id:
+        raise HTTPException(401, "Not authenticated")
+    db = get_db()
+    user_doc = db.collection("users").document(driver_id).get()
+    user_data = user_doc.to_dict() if user_doc.exists else {}
+    
+    # Get completed rides for earnings calculation
+    try:
+        rides = list(db.collection("rides")
+            .where("driver_id", "==", driver_id)
+            .where("status", "==", "completed")
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(100)
+            .stream())
+    except Exception:
+        rides = []
+    
+    total_earned = sum(float(r.to_dict().get("driver_earnings") or r.to_dict().get("final_fare", 0) * 0.77) for r in rides)
+    today_rides = [r for r in rides if r.to_dict().get("created_at") and 
+                   r.to_dict()["created_at"].date() == __import__("datetime").date.today()]
+    today_earned = sum(float(r.to_dict().get("driver_earnings") or r.to_dict().get("final_fare", 0) * 0.77) for r in today_rides)
+    
+    return {
+        "balance": float(user_data.get("balance") or 0),
+        "total_earned": round(total_earned, 2),
+        "today_earned": round(today_earned, 2),
+        "total_rides": len(rides),
+        "today_rides": len(today_rides),
+        "commission_rate": 0.23,
+        "driver_rate": 0.77,
+    }
+
 @app.get("/api/driver/campaigns", tags=["Driver"])
 async def get_driver_campaigns(user_id: Optional[str] = Depends(get_current_user_id)):
     if not user_id:
