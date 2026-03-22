@@ -4727,6 +4727,43 @@ async def rate_passenger(
 
 # --- FIX: registered on BOTH paths so frontend works regardless of which it calls
 @app.post("/api/rides/{ride_id}/rate-driver", tags=["Rides"])
+
+@app.post("/api/rides/{ride_id}/rate/rider", tags=["Rides"])
+async def rate_rider(ride_id: str, req: dict, driver_id: str = Depends(get_current_user_id)):
+    if not driver_id:
+        raise HTTPException(401, "Not authenticated")
+    db = get_db()
+    ride_doc = db.collection("rides").document(ride_id).get()
+    if not ride_doc.exists:
+        raise HTTPException(404, "Ride not found")
+    ride_data = ride_doc.to_dict()
+    if ride_data.get("driver_id") != driver_id:
+        raise HTTPException(403, "Not your ride")
+    rating = int(req.get("rating", 0))
+    if not 1 <= rating <= 5:
+        raise HTTPException(400, "Rating must be 1-5")
+    comment = req.get("comment", "")
+    tags = req.get("tags", [])
+    rider_id = ride_data.get("rider_id")
+    db.collection("rides").document(ride_id).update({
+        "rider_rating": rating,
+        "rider_rating_comment": comment,
+        "rider_rating_tags": tags,
+        "rider_rated_at": firestore.SERVER_TIMESTAMP,
+    })
+    if rider_id:
+        rider_doc = db.collection("users").document(rider_id).get()
+        rider_data = rider_doc.to_dict() if rider_doc.exists else {}
+        old_rating = float(rider_data.get("rating") or 5.0)
+        old_count = int(rider_data.get("rating_count") or 0)
+        new_count = old_count + 1
+        new_rating = round((old_rating * old_count + rating) / new_count, 2)
+        db.collection("users").document(rider_id).update({
+            "rating": new_rating,
+            "rating_count": new_count,
+        })
+    return {"message": "Rider rated successfully"}
+
 @app.post("/api/rides/{ride_id}/rate/driver", tags=["Rides"])
 async def rate_driver(
     ride_id: str, rating_data: RateDriverRequest, user_id: Optional[str] = Depends(get_current_user_id)
