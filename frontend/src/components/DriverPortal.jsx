@@ -728,6 +728,7 @@ const DriverDashboard = () => {
   // ---- Wallet ----
   const [showTopupModal, setShowTopupModal] = useState(false);
   const [topupAmount,    setTopupAmount]    = useState("");
+  const [surgeInfo,      setSurgeInfo]      = useState(null);
   const [earningsTab,    setEarningsTab]    = useState("overview");
 
   // ---- Fleet management ----
@@ -1121,6 +1122,11 @@ Issue: `);
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              {surgeInfo?.is_surge && (
+                <div className="flex items-center gap-1 bg-amber-500/20 border border-amber-500/40 text-amber-400 text-xs px-2 py-1 rounded-lg font-bold">
+                  🔥 {surgeInfo.multiplier}×
+                </div>
+              )}
               {/* Online/Offline toggle — always visible for approved drivers */}
               {registrationStatus === "approved" && (
                 <button
@@ -1186,14 +1192,15 @@ Issue: `);
             <Tabs value={activeTab} onValueChange={setActiveTab}>
 
               {!activeRide && (
-                <TabsList className="grid grid-cols-6 bg-black/50 border border-[#00d4ff]/20 mb-4 rounded-xl">
+                <TabsList className="grid grid-cols-7 bg-black/50 border border-[#00d4ff]/20 mb-4 rounded-xl">
                   {[
-                    ["rides",   "Rides",   Activity],
-                    ["nearby",  "Nearby",  Crosshair],
-                    ["vehicle", "Vehicle", Car],
-                    ["fleet",   "Fleet",   Building2],
-                    ["earnings","Earn",    Wallet],
-                    ["history", "History", History],
+                    ["rides",     "Rides",     Activity],
+                    ["nearby",    "Nearby",    Crosshair],
+                    ["vehicle",   "Vehicle",   Car],
+                    ["fleet",     "Fleet",     Building2],
+                    ["earnings",  "Earn",      Wallet],
+                    ["campaigns", "Rewards",   Trophy],
+                    ["history",   "History",   History],
                   ].map(([val, label, Icon]) => (
                     <TabsTrigger key={val} value={val}
                       onClick={val === "nearby" ? fetchNearbyRides : val === "fleet" ? fetchFleet : undefined}
@@ -1715,6 +1722,20 @@ Issue: `);
                       </div>
                     </div>
                   ))}
+                </div>
+              </TabsContent>
+
+              {/* -------------------------------------------------------------- */}
+              {/* CAMPAIGNS TAB                                                    */}
+              {/* -------------------------------------------------------------- */}
+              <TabsContent value="campaigns" className="m-0">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Active Campaigns</p>
+                  </div>
+                  <div className="text-center py-10 text-gray-500 text-sm">
+                    Loading campaigns...
+                  </div>
                 </div>
               </TabsContent>
 
