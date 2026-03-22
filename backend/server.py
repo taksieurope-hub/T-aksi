@@ -437,6 +437,55 @@ def _save_card_vault(db, user_id: str, vault_id: str, last4: Optional[str] = Non
 DISPATCH_CHECK_INTERVAL = 60
 
 
+async def match_scheduled_ride_persistently(ride_id: str, scheduled_ride_id: str):
+    """Notify approved drivers within 30km, retry every 2min until accepted or cancelled."""
+    import math
+    db = get_db()
+    already_notified = set()
+    logger.info(f"Persistent matcher started for scheduled ride {ride_id}")
+    for attempt in range(60):
+        await asyncio.sleep(10 if attempt == 0 else 120)
+        try:
+            ride_doc = db.collection("rides").document(ride_id).get()
+            if not ride_doc.exists:
+                return
+            ride_data = ride_doc.to_dict()
+            if ride_data.get("status") in ("accepted", "completed", "cancelled"):
+                logger.info(f"Scheduled ride {ride_id} is {ride_data.get('status')}, stopping matcher")
+                return
+            pickup_lat = float(ride_data.get("pickup_lat") or 0)
+            pickup_lng = float(ride_data.get("pickup_lng") or 0)
+            if not pickup_lat or not pickup_lng:
+                continue
+            all_drivers = list(
+                db.collection("users")
+                .where("user_type", "==", "driver")
+                .where("registration_status", "==", "approved")
+                .stream()
+            )
+            notified = 0
+            for driver in all_drivers:
+                if driver.id in already_notified:
+                    continue
+                driver_data = driver.to_dict()
+                loc = driver_data.get("current_location") or {}
+                dlat = float(loc.get("lat") or driver_data.get("last_lat") or 0)
+                dlng = float(loc.get("lng") or driver_data.get("last_lng") or 0)
+                if dlat and dlng:
+                    dLat = (pickup_lat - dlat) * math.pi / 180
+                    dLng = (pickup_lng - dlng) * math.pi / 180
+                    a = (math.sin(dLat/2)**2 + math.cos(dlat*math.pi/180)*math.cos(pickup_lat*math.pi/180)*math.sin(dLng/2)**2)
+                    dist_km = 6371 * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+                    if dist_km > 30:
+                        continue
+                already_notified.add(driver.id)
+                notified += 1
+            logger.info(f"Scheduled ride {ride_id}: notified {notified} new drivers (attempt {attempt+1})")
+        except Exception as e:
+            logger.warning(f"Scheduled ride matcher error: {e}")
+    logger.info(f"Scheduled ride {ride_id}: matcher exhausted after 60 attempts")
+
+
 async def _dispatch_scheduled_rides_loop():
     logger.info("Scheduled ride dispatcher started.")
     while True:
