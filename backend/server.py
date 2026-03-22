@@ -1059,7 +1059,7 @@ AIRPORTS = [
     {"name": "Batumi International Airport", "lat": 41.6103, "lng": 41.5997},
 ]
 AIRPORT_RADIUS_KM = 1.5
-AIRPORT_MULTIPLIER = 2.5
+AIRPORT_MULTIPLIER = 2.0
 
 AIRPORT_KEYWORDS = [
     "airport", "aeroport", "aeroporti", "aeroporti",
