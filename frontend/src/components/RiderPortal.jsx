@@ -679,7 +679,7 @@ const RiderAuth = () => {
           navigate("/rider/dashboard");
         }
       } else {
-        if (!termsAccepted) { toast.error("Please accept the Terms & Conditions to continue"); return; }
+        if (!termsAccepted) { toast.error("Please accept the Terms & Conditions to continue"); setLoading(false); return; }
         const res = await api.post("/auth/register/rider", formData, {
         });
         if (res.data?.token && res.data?.user) {
