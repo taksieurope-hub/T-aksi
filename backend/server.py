@@ -683,8 +683,26 @@ class MongoDocRef:
         data = self._col._col.find_one({"_id": self._id})
         return MongoDocSnap(self._id, data, self._col)
     def set(self, data, merge=False):
-        data["_id"] = self._id
-        self._col._col.replace_one({"_id": self._id}, data, upsert=True)
+        import datetime
+        clean = {}
+        for k, v in data.items():
+            if isinstance(v, _Sentinel):
+                clean[k] = datetime.datetime.utcnow()
+            elif isinstance(v, Increment):
+                clean[k] = v.value
+            elif isinstance(v, ArrayUnion):
+                clean[k] = v.values
+            elif isinstance(v, ArrayRemove):
+                clean[k] = []
+            else:
+                clean[k] = v
+        clean["_id"] = self._id
+        if merge:
+            existing = self._col._col.find_one({"_id": self._id}) or {}
+            existing.update(clean)
+            self._col._col.replace_one({"_id": self._id}, existing, upsert=True)
+        else:
+            self._col._col.replace_one({"_id": self._id}, clean, upsert=True)
     def update(self, data):
         import datetime
         set_ops, inc_ops, push_ops, pull_ops = {}, {}, {}, {}
