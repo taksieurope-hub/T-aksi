@@ -21,6 +21,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter, DialogTrigger
 } from "@/components/ui/dialog";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import React from "react";
 import {
   Shield, Users, Car, Home, LogOut, Lock, ArrowLeft, Loader2,
@@ -1706,73 +1708,47 @@ const LiveMapPanel = () => {
 
   React.useEffect(() => {
     if (!data || !mapRef.current) return;
-    const initMap = () => {
-      if (!window.google) return;
-      if (!mapInstanceRef.current) {
-        mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-          center: { lat: 41.7151, lng: 44.8271 }, // Tbilisi
-          zoom: 12,
-          styles: [
-            { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-            { elementType: "labels.text.fill", stylers: [{ color: "#ffffff" }] },
-            { featureType: "road", elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#ffffff" }] },
-            { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e1626" }] },
-          ],
-        });
-      }
-      // Clear old markers
-      markersRef.current.forEach(m => m.setMap(null));
-      markersRef.current = [];
-      const map = mapInstanceRef.current;
-      // Add driver markers
-      data.drivers?.forEach(driver => {
-        const isActive = !!driver.active_ride;
-        const marker = new window.google.maps.Marker({
-          position: { lat: driver.lat, lng: driver.lng },
-          map,
-          title: driver.name,
-          icon: {
-            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 6,
-            fillColor: isActive ? "#00ff88" : "#00d4ff",
-            fillOpacity: 1,
-            strokeColor: "#000",
-            strokeWeight: 1,
-            rotation: driver.heading || 0,
-          },
-        });
-        marker.addListener("click", () => setSelected(driver));
-        markersRef.current.push(marker);
-      });
-      // Add searching ride markers
-      data.searching_rides?.forEach(ride => {
-        if (!ride.pickup_lat || !ride.pickup_lng) return;
-        const marker = new window.google.maps.Marker({
-          position: { lat: ride.pickup_lat, lng: ride.pickup_lng },
-          map,
-          title: `Searching: ${ride.rider_name}`,
-          icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: "#ffd700",
-            fillOpacity: 0.9,
-            strokeColor: "#000",
-            strokeWeight: 1,
-          },
-        });
-        marker.addListener("click", () => setSelected({ ...ride, _type: "searching" }));
-        markersRef.current.push(marker);
-      });
-    };
-    if (window.google) {
-      initMap();
-    } else {
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}`;
-      script.onload = initMap;
-      document.head.appendChild(script);
+
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = L.map(mapRef.current, { attributionControl: false }).setView([54.0833, -4.6239], 11);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        maxZoom: 19,
+      }).addTo(mapInstanceRef.current);
     }
+    const map = mapInstanceRef.current;
+
+    // Clear old markers
+    markersRef.current.forEach(m => map.removeLayer(m));
+    markersRef.current = [];
+
+    // Add driver markers (arrow-style, rotated by heading)
+    data.drivers?.forEach(driver => {
+      const isActive = !!driver.active_ride;
+      const color = isActive ? "#00ff88" : "#00d4ff";
+      const icon = L.divIcon({
+        className: "",
+        html: `<div style="transform: rotate(${driver.heading || 0}deg); width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-bottom:14px solid ${color}; filter: drop-shadow(0 0 1px #000);"></div>`,
+        iconSize: [12, 14],
+        iconAnchor: [6, 7],
+      });
+      const marker = L.marker([driver.lat, driver.lng], { icon, title: driver.name }).addTo(map);
+      marker.on("click", () => setSelected(driver));
+      markersRef.current.push(marker);
+    });
+
+    // Add searching ride markers (dot-style)
+    data.searching_rides?.forEach(ride => {
+      if (!ride.pickup_lat || !ride.pickup_lng) return;
+      const icon = L.divIcon({
+        className: "",
+        html: `<div style="width:14px; height:14px; border-radius:50%; background:#ffd700; border:1px solid #000; opacity:0.9;"></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+      const marker = L.marker([ride.pickup_lat, ride.pickup_lng], { icon, title: `Searching: ${ride.rider_name}` }).addTo(map);
+      marker.on("click", () => setSelected({ ...ride, _type: "searching" }));
+      markersRef.current.push(marker);
+    });
   }, [data]);
 
   const statusColor = { searching: "#ffd700", accepted: "#00d4ff", arrived: "#a855f7", in_progress: "#00ff88" };

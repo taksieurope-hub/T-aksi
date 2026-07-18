@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
-import { useAuth, GOOGLE_MAPS_API_KEY } from "@/config";
+import { useAuth } from "@/config";
 import api from "@/api";
 import { useLanguage } from "@/i18n/LanguageContext";
 import LanguageSelector from "@/i18n/LanguageSelector";
@@ -447,21 +447,20 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
   // Init map once
   useEffect(() => {
-    if (!mapRef.current || !window.google || mapInstanceRef.current) return;
+    if (!mapRef.current || mapInstanceRef.current) return;
 
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 41.7151, lng: 44.8271 }, zoom: 17,
-      disableDefaultUI: true, zoomControl: false, gestureHandling: "greedy",
-      backgroundColor: "#ffffff",
+    const map = L.map(mapRef.current, {
+      center: [54.0833, -4.6239], zoom: 17,
+      zoomControl: false, attributionControl: false,
     });
-    map.addListener("dragstart", () => setIsFollowing(false));
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+    }).addTo(map);
+    map.on("dragstart", () => setIsFollowing(false));
 
-    routeRendererRef.current = new window.google.maps.DirectionsRenderer({
-      map, suppressMarkers: false,
-      polylineOptions: { strokeColor: "#0088ff", strokeWeight: 6 },
-      preserveViewport: true,
-    });
-    directionsServiceRef.current = new window.google.maps.DirectionsService();
+    // routeRendererRef will hold a Leaflet polyline (set in the routing effect)
+    routeRendererRef.current = null;
+    directionsServiceRef.current = null;
     mapInstanceRef.current = map;
     setMapReady(true);
   }, []);
@@ -473,23 +472,24 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
   // Update driver marker with smooth interpolation + map rotation
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !driverLocation) return;
+    if (!mapInstanceRef.current || !driverLocation) return;
     const lat = getSafe(driverLocation.lat), lng = getSafe(driverLocation.lng);
     if (!lat || !lng) return;
 
     const heading   = parseFloat(driverLocation.heading) || 0;
     const targetPos = { lat, lng };
 
+    const makeIcon = (rot) => L.divIcon({
+      className: "",
+      html: `<div style="transform: rotate(${rot}deg); width:0; height:0; border-left:7px solid transparent; border-right:7px solid transparent; border-bottom:16px solid #00d4ff; filter: drop-shadow(0 0 2px white);"></div>`,
+      iconSize: [14, 16],
+      iconAnchor: [7, 8],
+    });
+
     if (!markerRef.current) {
-      markerRef.current = new window.google.maps.Marker({
-        position: targetPos, map: mapInstanceRef.current, zIndex: 1000,
-        icon: {
-          path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 6, fillColor: "#00d4ff", fillOpacity: 1,
-          strokeColor: "white", strokeWeight: 2,
-          rotation: heading, anchor: new window.google.maps.Point(0, 2.5),
-        },
-      });
+      markerRef.current = L.marker([targetPos.lat, targetPos.lng], {
+        icon: makeIcon(heading), zIndexOffset: 1000,
+      }).addTo(mapInstanceRef.current);
       prevPosRef.current = targetPos;
     }
 
@@ -505,14 +505,11 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
       const cur  = { lat: startPos.lat + (targetPos.lat - startPos.lat)*ease, lng: startPos.lng + (targetPos.lng - startPos.lng)*ease };
 
       if (markerRef.current) {
-        markerRef.current.setPosition(cur);
-        markerRef.current.setIcon({ ...markerRef.current.getIcon(), rotation: heading });
+        markerRef.current.setLatLng([cur.lat, cur.lng]);
+        markerRef.current.setIcon(makeIcon(heading));
       }
       if (isFollowing && mapInstanceRef.current) {
-        mapInstanceRef.current.panTo(cur);
-        if (heading && typeof mapInstanceRef.current.setHeading === "function") {
-          mapInstanceRef.current.setHeading(heading);
-        }
+        mapInstanceRef.current.panTo([cur.lat, cur.lng]);
       }
       if (t < 1) animFrameRef.current = requestAnimationFrame(animate);
       else prevPosRef.current = targetPos;
@@ -540,41 +537,14 @@ const DriverSmartMap = ({ activeRide, driverLocation }) => {
 
   // Redraw route ONLY when status or target destination changes
   // BUG FIX: Removed driverLocation from deps — prevented billed API call every 2s
+  // TODO (Pass 2): replace with OSRM-based routing. Temporarily stubbed so no
+  // Google Directions calls happen (Google Maps is no longer loaded on this page).
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !directionsServiceRef.current) return;
-    if (!activeRide || !driverLocation) {
-      if (routeRendererRef.current) routeRendererRef.current.setDirections({ routes: [] });
-      setRouteSteps([]);
-      return;
+    if (routeRendererRef.current && mapInstanceRef.current) {
+      mapInstanceRef.current.removeLayer(routeRendererRef.current);
+      routeRendererRef.current = null;
     }
-
-    const dLat = getSafe(driverLocation?.lat), dLng = getSafe(driverLocation?.lng);
-    if (!dLat || !dLng) return;
-
-    let target = null;
-    if (["accepted", "arrived"].includes(activeRide.status)) {
-      const lat = getSafe(activeRide.pickup_lat);
-      const lng = getSafe(activeRide.pickup_lng);
-      if (lat && lng) target = { lat, lng };
-    } else if (activeRide.status === "in_progress") {
-      const lat = getSafe(activeRide.dest_lat || activeRide.destination_lat);
-      const lng = getSafe(activeRide.dest_lng || activeRide.destination_lng);
-      if (lat && lng) target = { lat, lng };
-    }
-
-    if (!target) return;
-
-    directionsServiceRef.current.route(
-      { origin: { lat: dLat, lng: dLng }, destination: target, travelMode: window.google.maps.TravelMode.DRIVING },
-      (result, status) => {
-        if (status === "OK" && routeRendererRef.current) {
-          routeRendererRef.current.setDirections(result);
-          const steps = result.routes[0].legs[0].steps;
-          setRouteSteps(steps);
-          setCurrentStepIndex(0);
-        }
-      }
-    );
+    setRouteSteps([]);
   }, [
     // Re-route when target changes OR when driver goes off route
     activeRide?.status,
@@ -759,12 +729,8 @@ const DriverDashboard = () => {
   // Maps
   // ==========================================================================
   useEffect(() => {
-    if (window.google) { setMapsLoaded(true); return; }
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
-    script.async = true;
-    script.onload = () => setMapsLoaded(true);
-    document.head.appendChild(script);
+    // Leaflet (OpenStreetMap) requires no external script load - it's bundled.
+    setMapsLoaded(true);
   }, []);
 
   // ==========================================================================
