@@ -1245,8 +1245,9 @@ SURGE_LEVELS = {
 
 
 def is_surge_time() -> bool:
+    from zoneinfo import ZoneInfo
     now = datetime.now(timezone.utc)
-    georgia_hour = (now.hour + 4) % 24
+    georgia_hour = now.astimezone(ZoneInfo("Europe/London")).hour
     weekday = now.weekday()
 
     if weekday in SURGE_SCHEDULE:
@@ -1348,18 +1349,14 @@ def get_surge_multiplier(lat: float = None, lng: float = None) -> dict:
 
 # Airport coordinates (pickup or dropoff within 1.5km = airport ride)
 AIRPORTS = [
-    {"name": "Tbilisi International Airport", "lat": 41.6692, "lng": 44.9547},
-    {"name": "Kutaisi International Airport", "lat": 42.1767, "lng": 42.4826},
-    {"name": "Batumi International Airport", "lat": 41.6103, "lng": 41.5997},
+    {"name": "Isle of Man Airport (Ronaldsway)", "lat": 54.0833, "lng": -4.6239},
 ]
 AIRPORT_RADIUS_KM = 1.5
 AIRPORT_MULTIPLIER = 2.0
 
 AIRPORT_KEYWORDS = [
-    "airport", "aeroport", "aeroporti", "aeroporti",
-    "აეროპორტი", "თბილისის აეროპორტი", "kutaisi airport",
-    "batumi airport", "tbilisi airport", "tbilisi international",
-    "TBS", "KUT", "BUS",
+    "airport", "aeroport",
+    "isle of man airport", "ronaldsway", "IOM",
 ]
 
 def is_airport_ride(pickup_lat, pickup_lng, dest_lat, dest_lng,
@@ -1675,11 +1672,11 @@ async def get_agora_token(channel: str, user_id: str = Depends(get_current_user_
 async def demo_login(response: Response, user_type: str = Query(...)):
     db = get_db()
     if user_type == "rider":
-        phone = "+995500000001"
+        phone = "+447700900001"
         name = "Demo"
         surname = "Rider"
     elif user_type == "driver":
-        phone = "+995500000002"
+        phone = "+447700900002"
         name = "Demo"
         surname = "Driver"
     else:
@@ -3441,7 +3438,7 @@ async def ai_support_chat(req: dict, user_id: Optional[str] = Depends(get_curren
     message = req.get("message", "")
     history = req.get("history", [])
 
-    system_prompt = f"""You are T'aksi Support AI, a helpful assistant for T'aksi - a ride-hailing app in Georgia (the country).
+    system_prompt = f"""You are T'aksi Support AI, a helpful assistant for T'aksi - a ride-hailing app in the Isle of Man.
 
 User: {user_name} ({user_type})
 
@@ -3454,7 +3451,7 @@ T'aksi facts:
 - Riders get 15% off their first 2 rides
 - Promo code BETA15 gives 15% off
 - Support email: taksigeorgia@gmail.com
-- Available in Georgia, prices in GEL
+- Available in the Isle of Man, prices in GBP
 
 You can answer ANY question, not just about T'aksi. Be friendly and helpful.
 
@@ -3890,8 +3887,9 @@ async def retry_ride_matching(
 @app.get("/api/surge/status", tags=["Rides"])
 async def get_surge_status(lat: float = Query(None), lng: float = Query(None)):
     surge_info = get_surge_multiplier(lat, lng)
+    from zoneinfo import ZoneInfo
     now = datetime.now(timezone.utc)
-    georgia_hour = (now.hour + 4) % 24
+    georgia_hour = now.astimezone(ZoneInfo("Europe/London")).hour
     weekday = now.weekday()
     weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     return {
@@ -4268,7 +4266,7 @@ async def match_drivers_to_ride(ride_id: str):
                 send_push_notification(
                     driver["id"],
                     title=f"New {(ride_data.get('carType') or 'Economy').title()} Ride Request",
-                    body=f"Pickup {round(driver['distance'], 1)}km away - GEL {ride_data.get('estimated_fare', 0):.0f}",
+                    body=f"Pickup {round(driver['distance'], 1)}km away - GBP {ride_data.get('estimated_fare', 0):.0f}",
                     data={
                         "type": "ride_request",
                         "ride_id": ride_id,
@@ -4345,8 +4343,8 @@ async def accept_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
     if ride_payment == "cash" and _effective_balance < held_commission:
         raise HTTPException(
             400,
-            f"Insufficient balance. Need GEL {held_commission:.2f} to accept this cash ride. "
-            f"Current balance: GEL {balance:.2f}. Please top up your wallet."
+            f"Insufficient balance. Need GBP {held_commission:.2f} to accept this cash ride. "
+            f"Current balance: GBP {balance:.2f}. Please top up your wallet."
         )
 
 
@@ -4894,7 +4892,7 @@ async def cancel_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
                 "earnings.total_commission_paid": firestore.Increment(-commission_paid),
             })
 
-    # Cancellation fee: 3 GEL if rider cancels after driver has arrived
+    # Cancellation fee: 3 GBP if rider cancels after driver has arrived
     cancellation_fee = 0.0
     is_rider_cancel = (user_id == rider_id)
     if is_rider_cancel and current_status == "arrived" and driver_id:
@@ -4924,7 +4922,7 @@ async def cancel_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
             send_push_notification(
                 driver_id,
                 title="Ride Cancelled - Fee Applied",
-                body=f"Rider cancelled after arrival. GEL {cancellation_fee:.2f} no-show fee paid to you.",
+                body=f"Rider cancelled after arrival. GBP {cancellation_fee:.2f} no-show fee paid to you.",
                 data={"type": "ride_cancelled", "ride_id": ride_id, "fee": str(cancellation_fee)},
             )
         else:
@@ -4938,12 +4936,12 @@ async def cancel_ride(ride_id: str, user_id: Optional[str] = Depends(get_current
         send_push_notification(
             rider_id,
             title="Cancellation Fee Applied",
-            body=f"GEL {cancellation_fee:.2f} no-show fee charged as the driver had already arrived.",
+            body=f"GBP {cancellation_fee:.2f} no-show fee charged as the driver had already arrived.",
             data={"type": "cancellation_fee", "fee": str(cancellation_fee)},
         )
     msg = "Ride cancelled"
     if cancellation_fee > 0:
-        msg = f"Ride cancelled. GEL {cancellation_fee:.2f} no-show fee applied."
+        msg = f"Ride cancelled. GBP {cancellation_fee:.2f} no-show fee applied."
     return {"message": msg, "cancellation_fee": cancellation_fee}
 
     return {"message": "Ride cancelled"}
@@ -5382,7 +5380,7 @@ async def run_competition_payout(admin_id: str = Depends(get_admin_user)):
         send_push_notification(
             driver_id,
             title="Ã°Å¸Ââ€  Competition Prize!",
-            body=f"Congratulations! You finished #{i+1} and won {prize} GEL!",
+            body=f"Congratulations! You finished #{i+1} and won {prize} GBP!",
             data={"type": "competition_prize", "amount": str(prize), "rank": str(i+1)},
         )
         results.append({"rank": i+1, "driver_id": driver_id, "name": entry["name"], "trips": entry["trips"], "prize": prize})
@@ -5520,7 +5518,7 @@ async def get_financials(
                 driver_breakdown[did]["phone"] = d.get("cellphone", "")
         except: pass
 
-    # Georgia tax brackets 2024 (individual income tax is flat 20%, VAT 18% on turnover > 100k GEL)
+    # Georgia tax brackets 2024 (individual income tax is flat 20%, VAT 18% on turnover > 100k GBP)
     # For a company: income tax 15%, dividend tax 5%
     annual_projection = platform_commission * (365 / max((now - start).days if start else 365, 1))
     if annual_projection < 500:
@@ -6066,7 +6064,7 @@ async def corporate_topup(data: CorporateTopUp, user_id: Optional[str] = Depends
         "wallet_balance": firestore.Increment(data.amount),
         "updated_at": firestore.SERVER_TIMESTAMP,
     })
-    return {"message": f"Topped up GEL {data.amount:.2f}"}
+    return {"message": f"Topped up GBP {data.amount:.2f}"}
 
 
 @app.get("/api/corporate/rides", tags=["Corporate"])
@@ -6133,7 +6131,7 @@ async def admin_topup_corporate(corp_id: str, data: CorporateTopUp, admin_id: st
         "wallet_balance": firestore.Increment(data.amount),
         "updated_at": firestore.SERVER_TIMESTAMP,
     })
-    return {"message": f"Added GEL {data.amount:.2f} to corporate wallet"}
+    return {"message": f"Added GBP {data.amount:.2f} to corporate wallet"}
 
 
 class AddDistanceRequest(BaseModel):
@@ -6180,7 +6178,7 @@ async def add_extra_distance(
         send_push_notification(
             rider_id,
             title="Route updated",
-            body=f"Driver took a different route. Fare adjusted to GEL {new_fare:.2f}",
+            body=f"Driver took a different route. Fare adjusted to GBP {new_fare:.2f}",
             data={"type": "fare_updated", "ride_id": ride_id, "new_fare": str(new_fare)}
         )
 
