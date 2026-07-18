@@ -371,20 +371,52 @@ async def get_paypal_token() -> Optional[str]:
             return None
 
 
+import boto3
+from botocore.config import Config as _BotoConfig
+
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME", "taksi")
+R2_ENDPOINT = os.environ.get("R2_ENDPOINT", f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else "")
+R2_SIGNED_URL_TTL = 3600 * 24 * 7  # 7 days
+
+_r2_client = None
+def get_r2_client():
+    global _r2_client
+    if _r2_client is None:
+        _r2_client = boto3.client(
+            "s3",
+            endpoint_url=R2_ENDPOINT,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            config=_BotoConfig(signature_version="s3v4"),
+            region_name="auto",
+        )
+    return _r2_client
+
 async def upload_file_to_storage(file: UploadFile, path: str) -> Optional[str]:
     if not file:
         return None
-    if not FIREBASE_STORAGE_BUCKET:
-        logger.warning("FIREBASE_STORAGE_BUCKET not set ? file upload skipped")
+    if not R2_ACCESS_KEY_ID or not R2_ENDPOINT:
+        logger.warning("R2 credentials not set - file upload skipped")
         return None
     try:
-        bucket = storage.bucket()
-        blob = bucket.blob(path)
-        blob.upload_from_file(file.file, content_type=file.content_type or "application/octet-stream")
-        blob.make_public()
-        return blob.public_url
+        client = get_r2_client()
+        client.upload_fileobj(
+            file.file,
+            R2_BUCKET_NAME,
+            path,
+            ExtraArgs={"ContentType": file.content_type or "application/octet-stream"},
+        )
+        url = client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": R2_BUCKET_NAME, "Key": path},
+            ExpiresIn=R2_SIGNED_URL_TTL,
+        )
+        return url
     except Exception as e:
-        logger.error(f"Firebase Storage upload failed for {path}: {e}")
+        logger.error(f"R2 upload failed for {path}: {e}")
         return None
 
 
@@ -619,6 +651,201 @@ async def lifespan(app_instance):
     except asyncio.CancelledError:
         pass
     logger.info("Background dispatcher task stopped.")
+
+
+
+# ============================================================
+# MONGODB - Firestore compatibility layer
+# ============================================================
+import motor.motor_asyncio
+from bson import ObjectId
+import pymongo
+
+MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb+srv://Gawaine:qw11B1Amv1Gigeaj@cluster0.opw8780.mongodb.net/taksi?retryWrites=true&w=majority")
+_mongo_client = None
+_mongo_db = None
+
+def get_mongo():
+    global _mongo_client, _mongo_db
+    if _mongo_db is None:
+        _mongo_client = pymongo.MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+        _mongo_db = _mongo_client["taksi"]
+    return _mongo_db
+
+class MongoDocRef:
+    def __init__(self, collection, doc_id):
+        self._col = collection
+        self._id = doc_id
+    @property
+    def id(self):
+        return self._id
+    def get(self):
+        data = self._col._col.find_one({"_id": self._id})
+        return MongoDocSnap(self._id, data, self._col)
+    def set(self, data, merge=False):
+        data["_id"] = self._id
+        self._col._col.replace_one({"_id": self._id}, data, upsert=True)
+    def update(self, data):
+        import datetime
+        set_ops, inc_ops, push_ops, pull_ops = {}, {}, {}, {}
+        for k, v in data.items():
+            if isinstance(v, Increment):
+                inc_ops[k] = v.value
+            elif isinstance(v, ArrayUnion):
+                push_ops[k] = {"$each": v.values}
+            elif isinstance(v, ArrayRemove):
+                pull_ops[k] = {"$in": v.values}
+            elif isinstance(v, _Sentinel):
+                set_ops[k] = datetime.datetime.utcnow()
+            else:
+                set_ops[k] = v
+        update_doc = {}
+        if set_ops: update_doc["$set"] = set_ops
+        if inc_ops: update_doc["$inc"] = inc_ops
+        if push_ops: update_doc["$addToSet"] = push_ops
+        if pull_ops: update_doc["$pull"] = pull_ops
+        if update_doc:
+            self._col._col.update_one({"_id": self._id}, update_doc, upsert=True)
+
+    @property
+    def reference(self):
+        return self
+    def delete(self):
+        self._col._col.delete_one({"_id": self._id})
+
+class MongoDocSnap:
+    def __init__(self, doc_id, data, col=None):
+        self._id = doc_id
+        self._data = data
+        self._col_ref = col
+    @property
+    def reference(self):
+        return MongoDocRef(self._col_ref, self._id)
+    @property
+    def id(self):
+        return self._id
+    @property
+    def exists(self):
+        return self._data is not None
+    def to_dict(self):
+        if not self._data:
+            return {}
+        d = dict(self._data)
+        d.pop("_id", None)
+        return d
+
+class MongoQuery:
+    def __init__(self, col, filters=None, order=None, lim=None):
+        self._col = col
+        self._filters = filters or {}
+        self._order = order
+        self._lim = lim
+    def where(self, field, op, value):
+        import copy
+        f = copy.deepcopy(self._filters)
+        if op == "==": f[field] = value
+        elif op == ">": f[field] = {"$gt": value}
+        elif op == ">=": f[field] = {"$gte": value}
+        elif op == "<": f[field] = {"$lt": value}
+        elif op == "<=": f[field] = {"$lte": value}
+        elif op == "in": f[field] = {"$in": value}
+        elif op == "array_contains": f[field] = value
+        return MongoQuery(self._col, f, self._order, self._lim)
+    def order_by(self, field, direction=None):
+        import pymongo as pm
+        d = pm.DESCENDING if (direction and "DESC" in str(direction).upper()) else pm.ASCENDING
+        return MongoQuery(self._col, self._filters, (field, d), self._lim)
+    def limit(self, n):
+        return MongoQuery(self._col, self._filters, self._order, n)
+    def stream(self):
+        cur = self._col._col.find(self._filters)
+        if self._order:
+            cur = cur.sort(*self._order)
+        if self._lim:
+            cur = cur.limit(self._lim)
+        return [MongoDocSnap(d["_id"], d, self._col) for d in cur]
+    def get(self):
+        return self.stream()
+
+class MongoCollection:
+    def __init__(self, db, name):
+        self._col = db[name]
+        self._name = name
+    def document(self, doc_id=None):
+        if doc_id is None:
+            import uuid
+            doc_id = str(uuid.uuid4()).replace("-", "")
+        return MongoDocRef(self, doc_id)
+    def where(self, field, op, value):
+        return MongoQuery(self).where(field, op, value)
+    def order_by(self, field, direction=None):
+        return MongoQuery(self).order_by(field, direction)
+    def limit(self, n):
+        return MongoQuery(self, {}, None, n)
+    def stream(self):
+        return [MongoDocSnap(d["_id"], d, self) for d in self._col.find()]
+    def add(self, data):
+        import uuid
+        doc_id = str(uuid.uuid4()).replace("-", "")
+        data["_id"] = doc_id
+        self._col.insert_one(data)
+        return (None, MongoDocRef(self, doc_id))
+
+class MongoDBCompat:
+    def __init__(self):
+        self._db = get_mongo()
+    def collection(self, name):
+        return MongoCollection(self._db, name)
+    def batch(self):
+        return MongoBatch()
+
+class Increment:
+    def __init__(self, value):
+        self.value = value
+
+class ArrayUnion:
+    def __init__(self, values):
+        self.values = values
+
+class ArrayRemove:
+    def __init__(self, values):
+        self.values = values
+
+class MongoBatch:
+    def __init__(self):
+        self._deletes = []
+        self._sets = []
+    def delete(self, ref):
+        self._deletes.append(ref)
+    def set(self, ref, data, merge=False):
+        self._sets.append((ref, data))
+    def commit(self):
+        for ref in self._deletes:
+            ref.delete()
+        for ref, data in self._sets:
+            ref.set(data, merge=True)
+        self._deletes = []
+        self._sets = []
+
+_compat_db = None
+def get_db():
+    global _compat_db
+    if _compat_db is None:
+        _compat_db = MongoDBCompat()
+    return _compat_db
+
+# Firestore SERVER_TIMESTAMP sentinel compat
+class _Sentinel:
+    pass
+class _FirestoreCompat:
+    SERVER_TIMESTAMP = _Sentinel()
+    Increment = Increment
+    ArrayUnion = ArrayUnion
+    ArrayRemove = ArrayRemove
+    class Query:
+        DESCENDING = "DESCENDING"
+        ASCENDING = "ASCENDING"
+firestore = _FirestoreCompat()
 
 
 app = FastAPI(title="T'aksi API", lifespan=lifespan)
